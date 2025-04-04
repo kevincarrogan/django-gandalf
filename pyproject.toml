@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A framework for building form wizards using Django forms"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+  "Django>=4.2",
+]
 
 [dependency-groups]
 dev = [
