@@ -5,14 +5,20 @@ description = "A framework for building form wizards using Django forms"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "Django>=4.2",
+  "django>=4.2",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
+    "pytest-django>=4.11.1",
 ]
 lint = [
     "pre-commit>=4.1.0",
     "ruff>=0.9.10",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+django_find_project = false
+pythonpath = "."
