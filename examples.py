@@ -1,4 +1,4 @@
-class Wizard():
+class Wizard:
     def __init__(self, **configuration):
         pass
 
@@ -10,6 +10,19 @@ class Wizard():
     
     def branch(self, *forms, otherwise=None):
         return self
+    
+
+class WizardViewSet:
+    pass
+
+
+class NamedURLRouter:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @property
+    def urls(self):
+        return []
     
 
 class FirstForm:
@@ -93,6 +106,17 @@ main_wizard = (
     )
     .then(MyFinalForm)
 )
+
+
+class MyWizardViewSet(WizardViewSet):
+    wizard = main_wizard
+
+    def done(self, wizard):
+        pass
+
+
+wizard_router = NamedURLRouter(MyWizardViewSet)
+urlpatterns = wizard_router.urls
 
 
 class ManagementFormClass:
