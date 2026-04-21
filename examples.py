@@ -13,6 +13,17 @@ class Wizard:
     
 
 class WizardViewSet:
+    # This handles the outside world of the request/response and then splits
+    # this out to route to the correct step (which should just be a FormView).
+    #
+    # This will handle routing to the right view, handle the urls.
+    #
+    # This is ideally how we would handle the ManagementForm.
+    # 
+    # __Although how do we inject the ManagentForm in whilst making the child
+    # FormViews not care that they're part of this - maybe the view needs to
+    # know more context__.
+    #
     pass
 
 
@@ -133,6 +144,19 @@ configured = (
 # Pretend this is:
 # from django.views.generic import FormView
 # class FirstFormView(FormView):
+#
+# Ideally this just follows the same pattern as any other FormView and can
+# easily be re-used as a FormView in its own right.
+#
+# This does mean that we have to handle more configuration outside of the
+# FormView to achieve that, but we can handle that in the Wizard declaration.
+#
+# From an abstraction perspective, these FormViews shouldn't know they exist
+# in a wizard context at all (how leaky that is remains to be seen).
+#
+# django-formtools instead viewed the Django Form as the thing to compose
+# in django-gandalf the FormView is instead the thing we compose.
+#
 class FirstFormView:
     form_class = FirstForm
 
