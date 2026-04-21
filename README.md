@@ -57,7 +57,7 @@ wizard = (
     .branch(
         condition(is_this, Wizard().start(AForm).then(BForm)),
         condition(is_that, some_other_wizard),
-        otherwise(FallbackForm),
+        otherwise=FallbackForm,
     )
     .then(FinalForm)
 )
@@ -67,9 +67,124 @@ This reads like a flow graph rather than a list of ad hoc callbacks.
 
 ---
 
-## Examples from the project
+## `django-formtools` to `django-gandalf` examples
 
-The `examples.py` file shows the intended declarative and chained style.
+These examples show equivalent flow setups, then how `django-gandalf` is intended to express the same thing with chained, declarative syntax.
+
+> Note: `django-gandalf` is still early/prototypal, so these are illustrative API examples.
+
+### 1) Linear 3-step wizard
+
+#### formtools style
+
+```python
+from formtools.wizard.views import SessionWizardView
+
+class CheckoutWizard(SessionWizardView):
+    form_list = [CustomerForm, AddressForm, ConfirmForm]
+```
+
+#### gandalf style
+
+```python
+checkout_wizard = (
+    Wizard()
+    .start(CustomerForm)
+    .then(AddressForm)
+    .then(ConfirmForm)
+)
+```
+
+What improves here:
+
+- Same readability for linear flows.
+- Keeps the same API style you will use for branching and nested flows.
+
+### 2) Conditional step inclusion
+
+#### formtools style (`condition_dict`)
+
+```python
+from formtools.wizard.views import SessionWizardView
+
+
+def needs_vat(wizard):
+    cleaned = wizard.get_cleaned_data_for_step("company") or {}
+    return cleaned.get("is_business")
+
+
+class CompanyWizard(SessionWizardView):
+    form_list = [
+        ("company", CompanyForm),
+        ("vat", VATForm),
+        ("summary", SummaryForm),
+    ]
+    condition_dict = {"vat": needs_vat}
+```
+
+#### gandalf style
+
+```python
+company_wizard = (
+    Wizard()
+    .start(CompanyForm)
+    .branch(
+        condition(needs_vat, VATForm),
+        otherwise=None,  # skip VAT if condition is false
+    )
+    .then(SummaryForm)
+)
+```
+
+What improves here:
+
+- Conditional routing is represented directly in the flow tree.
+- No step-name-to-condition lookup table; condition and target live together.
+
+### 3) Tree-like branching with reusable subflows
+
+#### formtools style (custom step navigation)
+
+```python
+from formtools.wizard.views import SessionWizardView
+
+class OnboardingWizard(SessionWizardView):
+    form_list = [AccountTypeForm, BizAForm, BizBForm, PersonAForm, FinalForm]
+
+    def get_next_step(self, step=None):
+        # custom branching logic based on cleaned step data
+        # ... return the next step name dynamically
+        ...
+```
+
+#### gandalf style
+
+```python
+business_flow = Wizard().start(BizAForm).then(BizBForm)
+personal_flow = Wizard().start(PersonAForm)
+
+onboarding_wizard = (
+    Wizard()
+    .start(AccountTypeForm)
+    .branch(
+        condition(is_business_account, business_flow),
+        otherwise=personal_flow,
+    )
+    .then(FinalForm)
+)
+```
+
+What improves here:
+
+- Branch targets can be full reusable sub-wizards.
+- Flow shape is explicit and visible in one declaration.
+- Less bespoke navigation plumbing for tree-style journeys.
+
+---
+
+## Examples from this project
+
+The `examples.py` file demonstrates the intended declarative and chained style.
 
 ### 1) A nested branch flow
 
