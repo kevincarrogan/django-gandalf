@@ -128,3 +128,22 @@ configured = (
     .start(FirstForm)
     .then(SecondForm)
 )
+
+
+# Pretend this is:
+# from django.views.generic import FormView
+# class FirstFormView(FormView):
+class FirstFormView:
+    form_class = FirstForm
+
+    def get_initial(self):
+        return {
+            "a_different_thing": "A different thing",
+        }
+
+
+view_based = (
+    Wizard()
+    .start(FirstFormView)
+    .then(SecondForm)  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
+)
