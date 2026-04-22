@@ -154,17 +154,6 @@ answer. For example, ask how many household members to collect, then append one
 generated step per member:
 
 ```python
-def completed_step_named(tree, step_name):
-    for node in tree.walk():
-        if not node.is_complete:
-            continue
-
-        if node.context.get("step_name") == step_name:
-            return node
-
-    return None
-
-
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
         wizard = Wizard().step(
@@ -172,9 +161,8 @@ class HouseholdWizardViewSet(WizardViewSet):
             context={"step_name": "household_count"},
         )  # asks for `member_count`
 
-        step_node = completed_step_named(
-            self.request.wizard.tree,
-            "household_count",
+        step_node = self.request.wizard.tree.find_one_by_context(
+            step_name="household_count",
         )
         step_count_data = step_node.cleaned_data if step_node and step_node.is_complete else {}
         member_count = int(step_count_data.get("member_count", 0) or 0)
@@ -255,6 +243,39 @@ signup_wizard = (
 
 That keeps naming in user space instead of forcing Gandalf to define one
 canonical global step-name mechanism for every project.
+
+The context argument should also be able to accept a callable that receives the
+current `request`. That allows step metadata to be derived from request state,
+including prior wizard execution stored on `request.wizard`.
+
+For example:
+
+```python
+def build_profile_context(request):
+    account = request.wizard.tree.find_one_by_context(step_name="account")
+    account_data = account.cleaned_data if account and account.is_complete else {}
+
+    return {
+        "step_name": "profile",
+        "analytics_key": "signup-profile",
+        "account_type": account_data.get("account_type"),
+        "prefill_source": "wizard" if account_data else "request",
+    }
+
+
+signup_wizard = (
+    Wizard()
+    .step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
+    .step(ProfileForm, context=build_profile_context)
+    .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
+)
+```
+
+This keeps context declarative in the common case while still allowing a later
+step to build richer metadata as the wizard tree accumulates completed nodes.
+Because the callable receives the request, it can also use tenant information,
+feature flags, locale, or any other request-scoped input when shaping that
+context.
 
 ### Additional configuration follows the same pattern
 
@@ -394,11 +415,13 @@ runtime state for that step.
 Conceptually:
 
 ```python
-step = completed_step_named(request.wizard.tree, "account")
+step = request.wizard.tree.find_one_by_context(step_name="account")
 ```
 
-That helper is intentionally consumer-defined: Gandalf exposes step metadata on
-the tree, and projects can decide for themselves how to index or retrieve nodes.
+The tree should expose helper methods for common context-based lookups. In
+particular, it should provide a single-node lookup like
+`find_one_by_context(...)` that returns `None` when no node matches and raises
+an error when the provided context is too broad and matches more than one node.
 
 and a `Step` node can hold things like:
 
@@ -470,8 +493,8 @@ class CheckoutWizardViewSet(WizardViewSet):
     wizard = checkout_wizard
 
     def done(self, wizard):
-        customer = completed_step_named(wizard.tree, "customer")
-        address = completed_step_named(wizard.tree, "address")
+        customer = wizard.tree.find_one_by_context(step_name="customer")
+        address = wizard.tree.find_one_by_context(step_name="address")
 
         create_order(
             email=customer.cleaned_data["email"],
@@ -578,7 +601,7 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    company = completed_step_named(request.wizard.tree, "company")
+    company = request.wizard.tree.find_one_by_context(step_name="company")
     cleaned = company.cleaned_data if company and company.is_complete else {}
     return cleaned.get("is_business")
 
@@ -738,7 +761,7 @@ class ProfileStepView(FormView):
     form_class = ProfileForm
 
     def get_initial(self):
-        account = completed_step_named(self.request.wizard.tree, "account")
+        account = self.request.wizard.tree.find_one_by_context(step_name="account")
         account_data = account.cleaned_data if account and account.is_complete else {}
         return {
             "contact_email": account_data.get("email"),
@@ -750,8 +773,8 @@ class ConfirmStepView(FormView):
     form_class = ConfirmForm
 
     def get_initial(self):
-        account = completed_step_named(self.request.wizard.tree, "account")
-        profile = completed_step_named(self.request.wizard.tree, "profile")
+        account = self.request.wizard.tree.find_one_by_context(step_name="account")
+        profile = self.request.wizard.tree.find_one_by_context(step_name="profile")
         account_data = account.cleaned_data if account and account.is_complete else {}
         profile_data = profile.cleaned_data if profile and profile.is_complete else {}
         return {
