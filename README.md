@@ -124,6 +124,35 @@ wizard = (
 
 This reads like a flow graph rather than a list of ad hoc callbacks.
 
+### `WizardViewSet.get_wizard()` can be dynamic per request
+
+You can still declare a static class-level wizard when that is enough:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    wizard = onboarding_wizard
+```
+
+But the viewset can also provide a request-aware `get_wizard()` hook that
+builds or selects the wizard at runtime:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    def get_wizard(self):
+        wizard = Wizard().step(AccountStepView)
+
+        if self.request.user.is_staff:
+            wizard = wizard.step(InternalReviewStepView)
+        else:
+            wizard = wizard.step(ProfileStepView)
+
+        return wizard.step(ConfirmStepView)
+```
+
+This allows flow shape to change by tenant, permissions, feature flags, locale,
+or any other request context, while keeping the same `WizardViewSet` entry
+point.
+
 ### `.step()` accepts either a `Form` or a `FormView`
 
 The default, easy case is to pass a Django `Form` directly:

@@ -14,6 +14,21 @@ wizard_router = NamedURLRouter(MyWizardViewSet)
 urlpatterns = wizard_router.urls
 
 
+class DynamicWizardViewSet(WizardViewSet):
+    def get_wizard(self):
+        wizard = Wizard().step(AccountStepView)
+
+        if getattr(self.request.user, "is_staff", False):
+            wizard = wizard.step(ProfileStepView)
+        else:
+            wizard = wizard.step(PortableProfileStepView)
+
+        return wizard.step(ConfirmStepView)
+
+    def done(self, wizard):
+        pass
+
+
 # Pretend these are regular Django FormViews.
 #
 # The important bit is that each step owns its own `get_initial()` logic, so

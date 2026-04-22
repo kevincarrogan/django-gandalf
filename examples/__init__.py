@@ -15,6 +15,7 @@ from .forms import (
     ThirdForm,
 )
 from .views import (
+    DynamicWizardViewSet,
     FirstFormView,
     MyWizardViewSet,
     PortableProfileStepView,
@@ -31,6 +32,7 @@ __all__ = [
     "BWizardThirdForm",
     "FirstForm",
     "FirstFormView",
+    "DynamicWizardViewSet",
     "ManagementFormClass",
     "MaybeThatForm",
     "MaybeThisForm",
