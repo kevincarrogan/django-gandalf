@@ -171,35 +171,40 @@ So the intended progression is:
 
 ### Additional configuration follows the same pattern
 
-When a step needs extra behavior, the configuration story should stay consistent: move from the plain-form shorthand to a `FormView`-based step (or to an explicitly generated FormView) and configure it there.
+Configuration for auto-generated step views should be passed **inline at wizard construction time**, in the same style as storage configuration.
 
-That means the auto FormView generator is not a separate special case in how you think about customization. It is the same model:
-
-- Gandalf composes steps as `FormView` units,
-- plain `Form`s are just convenience input that get upgraded into those units,
-- and additional configuration is applied at the FormView layer.
-
-For example, if the auto-generated view for a form needs custom behavior, you can provide your own step view explicitly:
+In other words, this:
 
 ```python
-class ProfileStepView(FormView):
-    form_class = ProfileForm
-
-    def get_initial(self):
-        initial = super().get_initial()
-        initial["timezone"] = self.request.user.timezone
-        return initial
-
-
-wizard = (
-    Wizard()
-    .step(AccountForm)       # auto-generated FormView
-    .step(ProfileStepView)   # explicit FormView with extra configuration
-    .step(ConfirmForm)       # auto-generated FormView
-)
+wizard = Wizard(storage_class=CookieStorage)
 ```
 
-This is also the intended direction for future configuration touch points: they should plug into this same mental model, rather than introducing one-off configuration mechanisms per feature.
+and auto FormView generation customization should follow the same shape:
+
+```python
+wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
+```
+
+Where `CustomFormViewFactory` is a class responsible for building the dynamic `FormView` class used when you call `.step(SomeForm)`.
+
+```python
+class CustomFormViewFactory:
+    def build(self, form_class):
+        class GeneratedFormView(FormView):
+            def get_initial(self):
+                initial = super().get_initial()
+                initial["source"] = "custom-factory"
+                return initial
+
+        GeneratedFormView.form_class = form_class
+        return GeneratedFormView
+```
+
+That keeps the mental model consistent:
+
+- `Wizard(...)` receives configuration touch points inline,
+- those touch points control how step `FormView` classes are produced,
+- and future configuration hooks should follow this same constructor-level pattern instead of introducing unrelated mechanisms.
 
 ### Storage backends
 
