@@ -149,6 +149,24 @@ class SignupWizardViewSet(WizardViewSet):
         return wizard.step(ConfirmStepView)
 ```
 
+You can also build a dynamic *range* of auto-generated steps from a previous
+answer. For example, ask how many household members to collect, then append one
+generated step per member:
+
+```python
+class HouseholdWizardViewSet(WizardViewSet):
+    def get_wizard(self):
+        wizard = Wizard().step(HouseholdCountForm)  # asks for `member_count`
+
+        count_data = getattr(self.request.wizard, "data", {}).get("household_count", {})
+        member_count = int(count_data.get("member_count", 0) or 0)
+
+        for index in range(1, max(member_count, 0) + 1):
+            wizard = wizard.step(build_member_form_view(index))
+
+        return wizard.step(ConfirmStepView)
+```
+
 This allows flow shape to change by tenant, permissions, feature flags, locale,
 or any other request context, while keeping the same `WizardViewSet` entry
 point.

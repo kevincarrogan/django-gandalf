@@ -44,3 +44,15 @@ class BWizardThirdForm:
 
 class ManagementFormClass:
     pass
+
+
+class StepCountForm:
+    """Ask how many follow-up steps should be generated."""
+
+    pass
+
+
+class RepeatedAnswerForm:
+    """Reusable form for each generated step."""
+
+    pass

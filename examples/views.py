@@ -1,6 +1,6 @@
 from .core import NamedURLRouter, Wizard, WizardViewSet
 from .wizards import main_wizard
-from .forms import FirstForm, SecondForm, ThirdForm
+from .forms import FirstForm, RepeatedAnswerForm, SecondForm, StepCountForm, ThirdForm
 
 
 class MyWizardViewSet(WizardViewSet):
@@ -105,3 +105,43 @@ FirstFormView = AccountStepView
 
 
 view_based = Wizard().step(AccountStepView).step(ProfileStepView).step(ConfirmStepView)
+
+
+def build_generated_step_view(step_number):
+    """
+    Build a lightweight generated step view class for the given index.
+
+    In the real implementation this class can be created by the same
+    auto-generated FormView factory used by `.step(SomeForm)`.
+    """
+
+    class GeneratedStepView(WizardStepView):
+        step_name = f"generated_step_{step_number}"
+        form_class = RepeatedAnswerForm
+
+        def get_initial(self):
+            return {"step_number": step_number}
+
+    GeneratedStepView.__name__ = f"GeneratedStep{step_number}View"
+    return GeneratedStepView
+
+
+class DynamicRangeWizardViewSet(WizardViewSet):
+    """
+    Example of a request-aware wizard where one answer controls step count.
+
+    Step 1 asks for `step_count`, then the wizard appends that many
+    auto-generated follow-up steps.
+    """
+
+    def get_wizard(self):
+        wizard = Wizard().step(StepCountForm)
+
+        # Pretend this is cleaned_data for `StepCountForm`.
+        step_count_data = getattr(self.request.wizard, "data", {}).get("step_count", {})
+        step_count = int(step_count_data.get("step_count", 0) or 0)
+
+        for index in range(1, max(step_count, 0) + 1):
+            wizard = wizard.step(build_generated_step_view(index))
+
+        return wizard.step(ConfirmStepView)
