@@ -21,7 +21,16 @@ class WizardViewSet:
     # FormViews not care that they're part of this - maybe the view needs to
     # know more context__.
     #
-    pass
+    wizard = None
+
+    def get_wizard(self):
+        """
+        Return the wizard used for this request.
+
+        Subclasses can override this to build the flow dynamically from the
+        current request (for example user role, feature flags, or tenant).
+        """
+        return self.wizard
 
 
 class NamedURLRouter:
