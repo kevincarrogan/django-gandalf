@@ -254,7 +254,7 @@ What improves here:
 
 ## Examples from this project
 
-The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `flows.py`, and `views.py`).
+The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `wizards.py`, and `views.py`).
 
 ### 1) A nested branch flow
 

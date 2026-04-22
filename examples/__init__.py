@@ -1,5 +1,5 @@
 from .core import NamedURLRouter, Wizard, WizardViewSet, condition, is_that, is_this
-from .flows import configured, main_wizard, that_wizard
+from .wizards import configured, main_wizard, that_wizard
 from .forms import (
     AWizardFirstForm,
     AWizardSecondForm,
