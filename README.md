@@ -451,6 +451,47 @@ So a node is not just a bag of cleaned data. It is the runtime record of:
 That means the tree can be walked not only to inspect collected values, but
 also to inspect how the wizard actually ran.
 
+### Path-shaped runtime projection (linked list of execution steps)
+
+In addition to the full execution tree, Gandalf should expose a **path**
+projection that represents the route actually taken through that tree.
+
+Conceptually:
+
+```python
+request.wizard.path
+```
+
+The path is intended to be a **linked list of step visits/completions** in
+execution order. In other words, it is the linearized timeline of the run, but
+only for steps that were actually visited.
+
+Each path entry should point back to the corresponding tree node, so callers can
+still reach full node metadata when needed. A path entry can hold things like:
+
+- a pointer/reference to the tree node,
+- whether that visit completed successfully,
+- completion timestamp or sequence index,
+- a `previous` link,
+- and a `next` link.
+
+This gives consumers a first-class way to iterate “what happened” without
+having to flatten `wizard.tree` themselves.
+
+For example:
+
+```python
+current = request.wizard.path.head
+while current is not None:
+    node = current.node
+    print(node.context.get("step_name"), current.is_complete)
+    current = current.next
+```
+
+The path should include nodes that were visited and completed, including
+historical entries when the user changes earlier answers and causes a different
+branch to become active.
+
 So if a user does this:
 
 1. Completes `AccountTypeForm` with `account_type="business"`.
@@ -467,19 +508,20 @@ That means:
 - The next step should now be `ProfileForm`, not `BizDetailsForm`.
 - Any previously collected business-branch data can remain attached to those
   nodes in the tree as historical runtime state.
-- Code consuming wizard state can walk the tree and decide for itself whether
-  it wants current-path data, historical data, completed-node data, or some
-  custom projection.
+- Code consuming wizard state can use `wizard.path` for ordered visited/completed
+  steps, or walk `wizard.tree` when it needs the full structural and historical
+  picture.
 
-This keeps Gandalf honest about its core abstraction:
+This keeps Gandalf honest about its core abstractions:
 
 - the flow is declared as a tree,
 - the runtime state is represented as a tree,
-- and consumers derive whatever flattened view they need from that tree.
+- and Gandalf also exposes a path projection of visited/completed steps so
+  consumers do not need to flatten the tree just to get execution order.
 
 In other words, Gandalf should not force one canonical interpretation of “all
-wizard data”. It should expose the shaped runtime structure and let callers
-decide what data they want from each step.
+wizard data”. It should expose both the shaped runtime tree and the execution
+path so callers can pick the structure that matches their use case.
 
 That also means Gandalf does not need a separate result-building abstraction.
 
@@ -505,40 +547,12 @@ class CheckoutWizardViewSet(WizardViewSet):
         )
 ```
 
-If a project wants a flattened or transformed view of the data, it can build
-that by traversing the tree itself. Gandalf only needs to guarantee that the
-tree accurately represents what ran and what data each step produced.
+If a project wants a transformed payload, it can still build one from either
+`wizard.tree` or `wizard.path`. Gandalf only needs to guarantee that:
 
-For example, a project could flatten completed steps into a plain dict:
-
-```python
-def flatten_completed_steps(tree):
-    flattened = {}
-
-    for node in tree.walk():
-        if not node.is_complete:
-            continue
-
-        if not node.cleaned_data:
-            continue
-
-        step_name = node.context.get("step_name")
-        if step_name:
-            flattened[step_name] = node.cleaned_data
-
-    return flattened
-
-
-class CheckoutWizardViewSet(WizardViewSet):
-    wizard = checkout_wizard
-
-    def done(self, wizard):
-        payload = flatten_completed_steps(wizard.tree)
-        create_order_from_payload(payload)
-```
-
-That flattening logic belongs to the consumer, not to Gandalf itself, because
-different projects may want different projections of the same tree.
+- `wizard.tree` accurately represents the declared structure plus runtime state,
+- and `wizard.path` accurately represents the visited/completed route through
+  that structure.
 
 ---
 
