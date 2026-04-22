@@ -171,7 +171,9 @@ So the intended progression is:
 
 ### Additional configuration follows the same pattern
 
-Configuration for auto-generated step views should be passed **inline at wizard construction time**, in the same style as storage configuration.
+Configuration for auto-generated step views is **optional** and follows the same inline constructor style as storage configuration.
+
+You do not need to pass anything for this in the common case: Gandalf should provide a sensible default factory for generating step `FormView` classes from plain forms.
 
 In other words, this:
 
@@ -179,7 +181,7 @@ In other words, this:
 wizard = Wizard(storage_class=CookieStorage)
 ```
 
-and auto FormView generation customization should follow the same shape:
+and auto FormView generation customization (when you need it) follows the same shape:
 
 ```python
 wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
@@ -203,6 +205,7 @@ class CustomFormViewFactory:
 That keeps the mental model consistent:
 
 - `Wizard(...)` receives configuration touch points inline,
+- each touch point has a sensible default so you only configure what you need,
 - those touch points control how step `FormView` classes are produced,
 - and future configuration hooks should follow this same constructor-level pattern instead of introducing unrelated mechanisms.
 
