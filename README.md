@@ -254,7 +254,7 @@ What improves here:
 
 ## Examples from this project
 
-The `examples.py` file demonstrates the intended declarative and chained style.
+The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `flows.py`, and `views.py`).
 
 ### 1) A nested branch flow
 
@@ -320,7 +320,7 @@ In short: if your journey behaves like a tree, the API should look like a tree.
 
 This repository is currently an early prototype and API sketch.
 
-- `examples.py` demonstrates desired usage and composition style.
+- `examples/` demonstrates desired usage and composition style across dedicated modules.
 - `implementation.py` contains rough implementation scaffolding and design notes.
 
 Expect iteration on naming, validation, execution semantics, and Django integration details.
@@ -343,6 +343,6 @@ Planned focus areas include:
 
 If you're exploring this project:
 
-1. Start with `examples.py` to understand the intended developer experience.
+1. Start with the `examples/` package to understand the intended developer experience.
 2. Use `implementation.py` to inspect current assumptions and gaps.
 3. Open issues/PRs with concrete branch/tree use-cases—especially where existing wizard tooling becomes hard to maintain.

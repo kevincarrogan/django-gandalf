@@ -1,0 +1,45 @@
+class Wizard:
+    def __init__(self, **configuration):
+        pass
+
+    def step(self, form):
+        return self
+
+    def branch(self, *forms, default=None):
+        return self
+
+
+class WizardViewSet:
+    # This handles the outside world of the request/response and then splits
+    # this out to route to the correct step (which should just be a FormView).
+    #
+    # This will handle routing to the right view, handle the urls.
+    #
+    # This is ideally how we would handle the ManagementForm.
+    #
+    # __Although how do we inject the ManagentForm in whilst making the child
+    # FormViews not care that they're part of this - maybe the view needs to
+    # know more context__.
+    #
+    pass
+
+
+class NamedURLRouter:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @property
+    def urls(self):
+        return []
+
+
+def is_this(wizard):
+    pass
+
+
+def is_that(wizard):
+    pass
+
+
+def condition(cond, flow):
+    pass
