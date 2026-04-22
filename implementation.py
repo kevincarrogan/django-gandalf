@@ -39,7 +39,16 @@ class WizardViewSet:
     # FormViews not care that they're part of this - maybe the view needs to
     # know more context__.
     #
-    pass
+    wizard = None
+
+    def get_wizard(self):
+        """
+        Return the wizard for this request.
+
+        The default implementation returns the class-level `wizard`, but this
+        can be overridden to build a wizard dynamically from request context.
+        """
+        return self.wizard
 
 
 class NamedURLRouter:
@@ -138,6 +147,21 @@ main_wizard = (
 
 class MyWizardViewSet(WizardViewSet):
     wizard = main_wizard
+
+    def done(self, wizard):
+        pass
+
+
+class DynamicWizardViewSet(WizardViewSet):
+    def get_wizard(self):
+        wizard = Wizard().step(FirstForm)
+
+        if getattr(self.request.user, "is_staff", False):
+            wizard = wizard.step(SecondForm)
+        else:
+            wizard = wizard.step(ThirdForm)
+
+        return wizard.step(MyFinalForm)
 
     def done(self, wizard):
         pass
