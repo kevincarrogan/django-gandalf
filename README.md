@@ -451,7 +451,7 @@ So a node is not just a bag of cleaned data. It is the runtime record of:
 That means the tree can be walked not only to inspect collected values, but
 also to inspect how the wizard actually ran.
 
-### Path-shaped runtime projection (linked list of execution steps)
+### Path-shaped runtime projection (sequence of execution steps)
 
 In addition to the full execution tree, Gandalf should expose a **path**
 projection that represents the route actually taken through that tree.
@@ -462,18 +462,18 @@ Conceptually:
 request.wizard.path
 ```
 
-The path is intended to be a **linked list of step visits/completions** in
-execution order. In other words, it is the linearized timeline of the run, but
-only for steps that were actually visited.
+The path is intended to be an **ordered sequence of step visits/completions**
+in execution order. In other words, it is the linearized timeline of the run,
+but only for steps that were actually visited.
 
-Each path entry should point back to the corresponding tree node, so callers can
-still reach full node metadata when needed. A path entry can hold things like:
+Each path item should point back to the corresponding tree node, so callers can
+still reach full node metadata when needed. A path item can hold things like:
 
 - a pointer/reference to the tree node,
 - whether that visit completed successfully,
 - completion timestamp or sequence index,
-- a `previous` link,
-- and a `next` link.
+- list index / sequence position,
+- and any visit metadata Gandalf records for that item.
 
 This gives consumers a first-class way to iterate “what happened” without
 having to flatten `wizard.tree` themselves.
@@ -481,12 +481,35 @@ having to flatten `wizard.tree` themselves.
 For example:
 
 ```python
-current = request.wizard.path.head
-while current is not None:
-    node = current.node
-    print(node.context.get("step_name"), current.is_complete)
-    current = current.next
+for path_item in request.wizard.path:
+    node = path_item.node
+    print(node.context.get("step_name"), path_item.is_complete)
+
+# Pythonic random access
+first = request.wizard.path[0]
+last = request.wizard.path[-1]
+count = len(request.wizard.path)
 ```
+
+The API should feel list-like, so callers can use familiar Python operations:
+
+- iterate directly (`for item in wizard.path`),
+- index and slice (`wizard.path[0]`, `wizard.path[-1]`, `wizard.path[1:4]`),
+- check length (`len(wizard.path)`),
+- and materialize when desired (`list(wizard.path)`).
+
+The path should also expose helper lookups so consumers can find subsets of
+steps without hand-rolling loops each time. For example:
+
+```python
+account = wizard.path.find_one_by_context(step_name="account")
+completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
+failed_steps = wizard.path.filter(lambda item: not item.is_complete)
+```
+
+`find_one_by_context(...)` should return `None` when there is no match and
+raise an error when the lookup is ambiguous. `filter_by_context(...)` should
+return all matching path items in execution order.
 
 The path should include nodes that were visited and completed, including
 historical entries when the user changes earlier answers and causes a different
@@ -535,8 +558,8 @@ class CheckoutWizardViewSet(WizardViewSet):
     wizard = checkout_wizard
 
     def done(self, wizard):
-        customer = wizard.path.find_by_context(step_name="customer")
-        address = wizard.path.find_by_context(step_name="address")
+        customer = wizard.path.find_one_by_context(step_name="customer")
+        address = wizard.path.find_one_by_context(step_name="address")
 
         create_order(
             email=customer.cleaned_data["email"],
