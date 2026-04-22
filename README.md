@@ -154,11 +154,28 @@ answer. For example, ask how many household members to collect, then append one
 generated step per member:
 
 ```python
+def completed_step_named(tree, step_name):
+    for node in tree.walk():
+        if not node.is_complete:
+            continue
+
+        if node.context.get("step_name") == step_name:
+            return node
+
+    return None
+
+
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = Wizard().step(HouseholdCountForm)  # asks for `member_count`
+        wizard = Wizard().step(
+            HouseholdCountForm,
+            context={"step_name": "household_count"},
+        )  # asks for `member_count`
 
-        step_node = self.request.wizard.tree.step("household_count")
+        step_node = completed_step_named(
+            self.request.wizard.tree,
+            "household_count",
+        )
         step_count_data = step_node.cleaned_data if step_node and step_node.is_complete else {}
         member_count = int(step_count_data.get("member_count", 0) or 0)
 
@@ -216,6 +233,28 @@ So the intended progression is:
 - start with plain `Form`s for the common case,
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
+
+### `.step()` can also carry arbitrary context
+
+Step declarations can also include a `context` dict for metadata that belongs to
+that step definition rather than to the submitted form data.
+
+That metadata is exposed again on the runtime tree as `node.context`, so a
+project can build its own lookup helpers and conventions on top of the tree.
+
+For example, a project can choose to attach a step name explicitly:
+
+```python
+signup_wizard = (
+    Wizard()
+    .step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
+    .step(ProfileForm, context={"step_name": "profile", "analytics_key": "signup-profile"})
+    .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
+)
+```
+
+That keeps naming in user space instead of forcing Gandalf to define one
+canonical global step-name mechanism for every project.
 
 ### Additional configuration follows the same pattern
 
@@ -334,12 +373,12 @@ personal_flow = Wizard().step(ProfileForm)
 
 onboarding_wizard = (
     Wizard()
-    .step(AccountTypeForm)
+    .step(AccountTypeForm, context={"step_name": "account_type"})
     .branch(
         condition(is_business_account, business_flow),
         default=personal_flow,
     )
-    .step(ReviewForm)
+    .step(ReviewForm, context={"step_name": "review"})
 )
 ```
 
@@ -355,14 +394,17 @@ runtime state for that step.
 Conceptually:
 
 ```python
-step = request.wizard.tree.step("account")
+step = completed_step_named(request.wizard.tree, "account")
 ```
+
+That helper is intentionally consumer-defined: Gandalf exposes step metadata on
+the tree, and projects can decide for themselves how to index or retrieve nodes.
 
 and a `Step` node can hold things like:
 
-- the step name,
 - its position in the tree,
 - the underlying form class or `FormView` class,
+- the step context declared for that node (for example `{"step_name": "account"}`),
 - whether it is currently reachable,
 - whether it has run,
 - whether it completed successfully,
@@ -428,8 +470,8 @@ class CheckoutWizardViewSet(WizardViewSet):
     wizard = checkout_wizard
 
     def done(self, wizard):
-        customer = wizard.tree.step("customer")
-        address = wizard.tree.step("address")
+        customer = completed_step_named(wizard.tree, "customer")
+        address = completed_step_named(wizard.tree, "address")
 
         create_order(
             email=customer.cleaned_data["email"],
@@ -457,7 +499,9 @@ def flatten_completed_steps(tree):
         if not node.cleaned_data:
             continue
 
-        flattened[node.step_name] = node.cleaned_data
+        step_name = node.context.get("step_name")
+        if step_name:
+            flattened[step_name] = node.cleaned_data
 
     return flattened
 
@@ -497,9 +541,9 @@ class CheckoutWizard(SessionWizardView):
 ```python
 checkout_wizard = (
     Wizard()
-    .step(CustomerForm)
-    .step(AddressForm)
-    .step(ConfirmForm)
+    .step(CustomerForm, context={"step_name": "customer"})
+    .step(AddressForm, context={"step_name": "address"})
+    .step(ConfirmForm, context={"step_name": "confirm"})
 )
 ```
 
@@ -534,19 +578,19 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    company = request.wizard.tree.step("company")
+    company = completed_step_named(request.wizard.tree, "company")
     cleaned = company.cleaned_data if company and company.is_complete else {}
     return cleaned.get("is_business")
 
 
 company_wizard = (
     Wizard()
-    .step(CompanyForm)
+    .step(CompanyForm, context={"step_name": "company"})
     .branch(
         condition(needs_vat, VATForm),
         default=None,  # skip VAT if condition is false
     )
-    .step(SummaryForm)
+    .step(SummaryForm, context={"step_name": "summary"})
 )
 ```
 
@@ -694,7 +738,7 @@ class ProfileStepView(FormView):
     form_class = ProfileForm
 
     def get_initial(self):
-        account = self.request.wizard.tree.step("account")
+        account = completed_step_named(self.request.wizard.tree, "account")
         account_data = account.cleaned_data if account and account.is_complete else {}
         return {
             "contact_email": account_data.get("email"),
@@ -706,8 +750,8 @@ class ConfirmStepView(FormView):
     form_class = ConfirmForm
 
     def get_initial(self):
-        account = self.request.wizard.tree.step("account")
-        profile = self.request.wizard.tree.step("profile")
+        account = completed_step_named(self.request.wizard.tree, "account")
+        profile = completed_step_named(self.request.wizard.tree, "profile")
         account_data = account.cleaned_data if account and account.is_complete else {}
         profile_data = profile.cleaned_data if profile and profile.is_complete else {}
         return {
@@ -728,9 +772,9 @@ class PortableProfileStepView(FormView):
 
 view_based = (
     Wizard()
-    .step(AccountStepView)
-    .step(ProfileStepView)
-    .step(ConfirmStepView)
+    .step(AccountStepView, context={"step_name": "account"})
+    .step(ProfileStepView, context={"step_name": "profile"})
+    .step(ConfirmStepView, context={"step_name": "confirm"})
 )
 ```
 

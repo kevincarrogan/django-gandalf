@@ -1,4 +1,3 @@
-from django import forms
 from django.generic.views import FormView
 
 
@@ -8,18 +7,26 @@ def form_view_factory(form_class):
     return type(f"{form_name}View", (FormView), {"form_class": form_class})
 
 
+class StepDefinition:
+    def __init__(self, form_view_class, context=None):
+        self.form_view_class = form_view_class
+        self.context = context or {}
+
+
 class Wizard:
     def __init__(self, **configuration):
         self.tree = []
 
-    def step(self, form_class_or_form_view_class):
-        if isinstance(form_class_or_form_view_class, forms.Form):
+    def step(self, form_class_or_form_view_class, context=None):
+        if hasattr(form_class_or_form_view_class, "form_class"):
+            form_view_class = form_class_or_form_view_class
+        else:
             form_view_class = form_view_factory(form_class_or_form_view_class)
 
-        if not isinstance(form_class_or_form_view_class, FormView):
+        if not isinstance(form_view_class, type):
             raise TypeError("This should be a FormView")
 
-        self.tree.append(form_view_class)
+        self.tree.append(StepDefinition(form_view_class, context=context))
 
         return self
 
@@ -118,7 +125,7 @@ def condition(cond, flow):
 
 that_wizard = (
     Wizard()
-    .step(BWizardFirstForm)
+    .step(BWizardFirstForm, context={"step_name": "b_wizard_first"})
     .branch(
         condition(is_this, BWizardSecondForm),
         default=BWizardThirdForm,
@@ -129,19 +136,22 @@ that_wizard = (
 main_wizard = (
     Wizard()  # This will be used for high-level configuration
     .step(
-        FirstForm
+        FirstForm,
+        context={"step_name": "first"},
     )  # This could possibly be a view instead (need to work out that concept)
-    .step(SecondForm)
-    .step(ThirdForm)
+    .step(SecondForm, context={"step_name": "second"})
+    .step(ThirdForm, context={"step_name": "third"})
     .branch(
         condition(
             is_this,
-            Wizard().step(AWizardFirstForm).step(AWizardSecondForm),
+            Wizard()
+            .step(AWizardFirstForm, context={"step_name": "a_wizard_first"})
+            .step(AWizardSecondForm, context={"step_name": "a_wizard_second"}),
         ),
         condition(is_that, that_wizard),
         # If neither condition is met then this would be skipped instead of erroring
     )
-    .step(MyFinalForm)
+    .step(MyFinalForm, context={"step_name": "final"})
 )
 
 
@@ -154,14 +164,14 @@ class MyWizardViewSet(WizardViewSet):
 
 class DynamicWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = Wizard().step(FirstForm)
+        wizard = Wizard().step(FirstForm, context={"step_name": "first"})
 
         if getattr(self.request.user, "is_staff", False):
-            wizard = wizard.step(SecondForm)
+            wizard = wizard.step(SecondForm, context={"step_name": "second"})
         else:
-            wizard = wizard.step(ThirdForm)
+            wizard = wizard.step(ThirdForm, context={"step_name": "third"})
 
-        return wizard.step(MyFinalForm)
+        return wizard.step(MyFinalForm, context={"step_name": "final"})
 
     def done(self, wizard):
         pass
@@ -176,7 +186,9 @@ class ManagementFormClass:
 
 
 configured = (
-    Wizard(management_form_class=ManagementFormClass).step(FirstForm).step(SecondForm)
+    Wizard(management_form_class=ManagementFormClass)
+    .step(FirstForm, context={"step_name": "first"})
+    .step(SecondForm, context={"step_name": "second"})
 )
 
 
@@ -207,8 +219,9 @@ class FirstFormView:
 
 view_based = (
     Wizard()
-    .step(FirstFormView)
+    .step(FirstFormView, context={"step_name": "first"})
     .step(
-        SecondForm
+        SecondForm,
+        context={"step_name": "second"},
     )  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
 )
