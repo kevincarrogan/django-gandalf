@@ -38,7 +38,7 @@ These often need tree-like flow composition where pieces can be nested and reuse
 ## Design goals
 
 - **Declarative flow definitions**: read the flow structure in one place.
-- **Chainable API**: build flows with `.start()`, `.then()`, and `.branch()`.
+- **Chainable API**: build flows with `.step()` and `.branch()`.
 - **Branching as a first-class concept**: nested and conditional flows should be easy to model.
 - **Reusable flow fragments**: define mini-wizards and compose them into larger trees.
 - **Django-friendly abstraction**: compose around `FormView`-like steps instead of tightly coupling everything to raw forms.
@@ -52,18 +52,41 @@ From the prototype examples, flow construction follows this style:
 ```python
 wizard = (
     Wizard()
-    .start(FirstForm)
-    .then(SecondForm)
+    .step(FirstForm)
+    .step(SecondForm)
     .branch(
-        condition(is_this, Wizard().start(AForm).then(BForm)),
+        condition(is_this, Wizard().step(AForm).step(BForm)),
         condition(is_that, some_other_wizard),
-        otherwise=FallbackForm,
+        default=FallbackForm,
     )
-    .then(FinalForm)
+    .step(FinalForm)
 )
 ```
 
 This reads like a flow graph rather than a list of ad hoc callbacks.
+
+### Branching from the beginning
+
+You can also branch immediately based on runtime context (for example, the current day of the week):
+
+```python
+from datetime import date
+
+
+def is_weekend(_wizard):
+    return date.today().weekday() >= 5
+
+
+weekday_or_weekend_wizard = (
+    Wizard()
+    .branch(
+        condition(is_weekend, WeekendForm),
+        default=WeekdayForm,
+    )
+    .step(CommonDetailsForm)
+    .step(ConfirmationForm)
+)
+```
 
 ---
 
@@ -89,9 +112,9 @@ class CheckoutWizard(SessionWizardView):
 ```python
 checkout_wizard = (
     Wizard()
-    .start(CustomerForm)
-    .then(AddressForm)
-    .then(ConfirmForm)
+    .step(CustomerForm)
+    .step(AddressForm)
+    .step(ConfirmForm)
 )
 ```
 
@@ -127,12 +150,12 @@ class CompanyWizard(SessionWizardView):
 ```python
 company_wizard = (
     Wizard()
-    .start(CompanyForm)
+    .step(CompanyForm)
     .branch(
         condition(needs_vat, VATForm),
-        otherwise=None,  # skip VAT if condition is false
+        default=None,  # skip VAT if condition is false
     )
-    .then(SummaryForm)
+    .step(SummaryForm)
 )
 ```
 
@@ -160,17 +183,17 @@ class OnboardingWizard(SessionWizardView):
 #### gandalf style
 
 ```python
-business_flow = Wizard().start(BizAForm).then(BizBForm)
-personal_flow = Wizard().start(PersonAForm)
+business_flow = Wizard().step(BizAForm).step(BizBForm)
+personal_flow = Wizard().step(PersonAForm)
 
 onboarding_wizard = (
     Wizard()
-    .start(AccountTypeForm)
+    .step(AccountTypeForm)
     .branch(
         condition(is_business_account, business_flow),
-        otherwise=personal_flow,
+        default=personal_flow,
     )
-    .then(FinalForm)
+    .step(FinalForm)
 )
 ```
 
@@ -191,23 +214,23 @@ The `examples.py` file demonstrates the intended declarative and chained style.
 ```python
 that_wizard = (
     Wizard()
-    .start(BWizardFirstForm)
+    .step(BWizardFirstForm)
     .branch(
         condition(is_this, BWizardSecondForm),
-        otherwise=BWizardThirdForm,
+        default=BWizardThirdForm,
     )
 )
 
 main_wizard = (
     Wizard()
-    .start(FirstForm)
-    .then(SecondForm)
-    .then(ThirdForm)
+    .step(FirstForm)
+    .step(SecondForm)
+    .step(ThirdForm)
     .branch(
-        condition(is_this, Wizard().start(AWizardFirstForm).then(AWizardSecondForm)),
+        condition(is_this, Wizard().step(AWizardFirstForm).step(AWizardSecondForm)),
         condition(is_that, that_wizard),
     )
-    .then(MyFinalForm)
+    .step(MyFinalForm)
 )
 ```
 
@@ -224,8 +247,8 @@ The examples also show the intent to compose with `FormView`-like steps:
 ```python
 view_based = (
     Wizard()
-    .start(FirstFormView)
-    .then(SecondForm)
+    .step(FirstFormView)
+    .step(SecondForm)
 )
 ```
 

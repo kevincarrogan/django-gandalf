@@ -12,10 +12,7 @@ class Wizard:
     def __init__(self, **configuration):
         self.tree = []
 
-    def start(self, form_class_or_form_view_class):
-        return self
-    
-    def then(self, form_class_or_form_view_class):
+    def step(self, form_class_or_form_view_class):
         if isinstance(form_class_or_form_view_class, forms.Form):
             form_view_class = form_view_factory(form_class_or_form_view_class)
 
@@ -26,7 +23,7 @@ class Wizard:
 
         return self
     
-    def branch(self, *forms_or_form_views, otherwise=None):
+    def branch(self, *forms_or_form_views, default=None):
         return self
     
 
@@ -112,28 +109,28 @@ def condition(cond, flow):
 
 that_wizard = (
     Wizard()
-    .start(BWizardFirstForm)
+    .step(BWizardFirstForm)
     .branch(
         condition(is_this, BWizardSecondForm),
-        otherwise=BWizardThirdForm,
+        default=BWizardThirdForm,
     )
 )
 
 
 main_wizard = (
     Wizard()  # This will be used for high-level configuration
-    .start(FirstForm)  # This could possibly be a view instead (need to work out that concept) - also starts to feel annoying to have to `start` each time, but maybe that's explicit
-    .then(SecondForm)
-    .then(ThirdForm)
+    .step(FirstForm)  # This could possibly be a view instead (need to work out that concept)
+    .step(SecondForm)
+    .step(ThirdForm)
     .branch(
         condition(
             is_this,
-            Wizard().start(AWizardFirstForm).then(AWizardSecondForm),
+            Wizard().step(AWizardFirstForm).step(AWizardSecondForm),
         ),
         condition(is_that, that_wizard),
         # If neither condition is met then this would be skipped instead of erroring
     )
-    .then(MyFinalForm)
+    .step(MyFinalForm)
 )
 
 
@@ -154,8 +151,8 @@ class ManagementFormClass:
 
 configured = (
     Wizard(management_form_class=ManagementFormClass)
-    .start(FirstForm)
-    .then(SecondForm)
+    .step(FirstForm)
+    .step(SecondForm)
 )
 
 
@@ -186,6 +183,6 @@ class FirstFormView:
 
 view_based = (
     Wizard()
-    .start(FirstFormView)
-    .then(SecondForm)  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
+    .step(FirstFormView)
+    .step(SecondForm)  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
 )
