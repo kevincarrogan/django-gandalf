@@ -14,10 +14,40 @@ Instead of stitching this together with scattered step conditions and navigation
 
 ## The core aim (up front): model branching flows cleanly
 
-The main value proposition is a declarative, chainable API where branching is first-class:
+Here is the same branching onboarding idea in both styles.
+
+### formtools style (when the flow becomes tree-like)
+
+```python
+from formtools.wizard.views import SessionWizardView
+
+
+class OnboardingWizard(SessionWizardView):
+    form_list = [
+        ("account_type", AccountTypeForm),
+        ("biz_details", BizDetailsForm),
+        ("biz_compliance", BizComplianceForm),
+        ("intl_tax", IntlTaxForm),
+        ("intl_kyc", IntlKYCForm),
+        ("profile", ProfileForm),
+        ("review", ReviewForm),
+        ("confirmation", ConfirmationForm),
+    ]
+
+    condition_dict = {
+        "biz_details": is_business_account,
+        "biz_compliance": is_business_account,
+        "intl_tax": needs_international_checks,
+        "intl_kyc": needs_international_checks,
+        "profile": lambda wizard: not is_business_account(wizard),
+    }
+```
+
+### django-gandalf style (same flow, explicit as a tree)
 
 ```python
 business_flow = Wizard().step(BizDetailsForm).step(BizComplianceForm)
+international_flow = Wizard().step(IntlTaxForm).step(IntlKYCForm)
 personal_flow = Wizard().step(ProfileForm)
 
 onboarding_wizard = (
@@ -25,7 +55,7 @@ onboarding_wizard = (
     .step(AccountTypeForm)
     .branch(
         condition(is_business_account, business_flow),
-        condition(needs_international_checks, Wizard().step(IntlTaxForm).step(IntlKYCForm)),
+        condition(needs_international_checks, international_flow),
         default=personal_flow,
     )
     .step(ReviewForm)
@@ -33,7 +63,14 @@ onboarding_wizard = (
 )
 ```
 
-This is the project’s focus: expressing real-world flow trees clearly, not just linear demos.
+Why this is better in this project’s sweet spot (complex branching):
+
+- Branch condition and target flow stay together (no separate lookup table).
+- Branch targets can be reusable subflows (`business_flow`, `international_flow`, etc.).
+- The overall journey is visible in one declaration as a tree.
+- You avoid growing custom step-navigation plumbing as branches multiply.
+
+This is the project’s focus: make real-world flow trees clear and composable, not just linear demos.
 
 ---
 
