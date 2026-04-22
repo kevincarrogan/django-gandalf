@@ -98,7 +98,9 @@ Traditional wizard tooling is great for simple, linear steps, but it gets harder
 - **Chainable API**: build flows with `.step()` and `.branch()`.
 - **Branching as a first-class concept**: nested and conditional flows should be easy to model.
 - **Reusable flow fragments**: define mini-wizards and compose them into larger trees.
-- **Django-friendly abstraction**: compose around `FormView`-like steps instead of tightly coupling everything to raw forms.
+- **Easy by default**: pass a plain `Form` to `.step()` for the common case.
+- **Django-friendly abstraction**: each step is still treated as a `FormView`-like unit under the hood.
+- **Advanced escape hatch**: pass a full `FormView` to `.step()` when a step needs extra configuration.
 
 ---
 
@@ -121,6 +123,45 @@ wizard = (
 ```
 
 This reads like a flow graph rather than a list of ad hoc callbacks.
+
+### `.step()` accepts either a `Form` or a `FormView`
+
+The default, easy case is to pass a Django `Form` directly:
+
+```python
+wizard = (
+    Wizard()
+    .step(AccountForm)
+    .step(ProfileForm)
+    .step(ConfirmForm)
+)
+```
+
+In that case, Gandalf automatically generates the corresponding `FormView` under the hood for you.
+
+You only need to provide a full `FormView` yourself when you want extra per-step configuration, such as custom `get_initial()`, `form_valid()`, or other view-level behavior.
+
+```python
+class AccountStepView(FormView):
+    form_class = AccountForm
+
+    def get_initial(self):
+        return {"email": self.request.user.email}
+
+
+wizard = (
+    Wizard()
+    .step(AccountStepView)
+    .step(ProfileForm)
+    .step(ConfirmForm)
+)
+```
+
+So the intended progression is:
+
+- start with plain `Form`s for the common case,
+- let Gandalf create the `FormView`s automatically,
+- and only reach for a custom `FormView` when a step needs more configuration.
 
 ### Branching from the beginning
 
@@ -304,9 +345,9 @@ Why this is important:
 - Sub-flows are reusable objects, not one-off inline logic.
 - The whole structure still reads top-to-bottom.
 
-### 2) View-centric composition
+### 2) View-centric composition when you need more control
 
-The examples also show the intent to compose with `FormView`-like steps.
+The default usage is still to pass plain `Form` classes to `.step()`. The examples below show the more configurable path, where you provide explicit `FormView`s because a step needs custom view logic.
 
 Here is the more direct comparison for `get_initial()`-style wiring.
 
@@ -404,7 +445,7 @@ view_based = (
 
 With `formtools`, the initial-value logic tends to accumulate in one wizard-level method keyed by step name.
 
-With Gandalf, each step owns its own `get_initial()` and can still read prior wizard data when needed via `self.request.wizard`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
+With Gandalf, the easy case is still just `.step(MyForm)`. When a step needs more control, each explicit `FormView` can own its own `get_initial()` and still read prior wizard data via `self.request.wizard`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
 
 ---
 
