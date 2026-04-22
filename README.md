@@ -1,37 +1,47 @@
 # django-gandalf
 
-`django-gandalf` is an alternative approach to multi-step Django form flows.
+`django-gandalf` helps you declare **complex, tree-like Django form flows** as readable, composable code.
 
-This project exists because `django-formtools` can become hard to configure when your flow stops being a straight line and starts looking like a tree (multiple branches, nested branches, optional sub-flows, and reusable path fragments).
+It is built for the point where your journey stops being a straight line and starts branching repeatedly:
 
-The core idea is:
+- user type branches (business vs individual),
+- regional branches (domestic vs international),
+- nested compliance/risk sub-flows,
+- optional setup paths,
+- reusable path fragments shared across journeys.
 
-- define flows declaratively,
-- compose them with chained syntax,
-- and model branching as first-class structure.
+Instead of stitching this together with scattered step conditions and navigation overrides, `django-gandalf` aims to let you describe the flow as one explicit tree.
+
+## The core aim (up front): model branching flows cleanly
+
+The main value proposition is a declarative, chainable API where branching is first-class:
+
+```python
+business_flow = Wizard().step(BizDetailsForm).step(BizComplianceForm)
+personal_flow = Wizard().step(ProfileForm)
+
+onboarding_wizard = (
+    Wizard()
+    .step(AccountTypeForm)
+    .branch(
+        condition(is_business_account, business_flow),
+        condition(needs_international_checks, Wizard().step(IntlTaxForm).step(IntlKYCForm)),
+        default=personal_flow,
+    )
+    .step(ReviewForm)
+    .step(ConfirmationForm)
+)
+```
+
+This is the project’s focus: expressing real-world flow trees clearly, not just linear demos.
 
 ---
 
 ## Why this exists
 
-Traditional wizard tooling is great for simple, linear steps:
+Traditional wizard tooling is great for simple, linear steps, but it gets harder to reason about once branching and nested subflows become the norm.
 
-1. Step A
-2. Step B
-3. Step C
-
-But real product journeys often branch based on earlier answers, and those branches can branch again.
-
-For example:
-
-- business user vs individual user,
-- domestic vs international onboarding,
-- risk/compliance sub-flows,
-- optional feature setup paths.
-
-These often need tree-like flow composition where pieces can be nested and reused cleanly.
-
-`django-gandalf` is intended to make this easier to express than `django-formtools` by favoring explicit, composable flow declarations.
+`django-gandalf` is intended to make tree-style journeys easier to express than `django-formtools` by favoring explicit, composable flow declarations.
 
 ---
 
