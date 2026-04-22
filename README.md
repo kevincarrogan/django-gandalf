@@ -73,6 +73,10 @@ onboarding_wizard = (
 )
 ```
 
+Branch selection is **first-match-wins**. Gandalf evaluates branch conditions in
+the order you declare them and short-circuits on the first truthy condition,
+then routes into only that branch for the active execution path.
+
 Why this is better in this project’s sweet spot (complex branching):
 
 - Branch condition and target flow stay together (no separate lookup table).
@@ -411,6 +415,11 @@ request.wizard.tree
 
 where each `Step` node represents one step in the declared flow and exposes the
 runtime state for that step.
+
+Even though branch evaluation short-circuits for routing, the full declared tree
+still exists in `wizard.tree`. Inactive branch nodes remain part of the
+structure, so introspection code can still walk the complete flow definition
+while `wizard.path` reflects only the visited/completed path.
 
 Conceptually:
 
