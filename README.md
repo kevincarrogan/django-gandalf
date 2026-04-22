@@ -169,6 +169,38 @@ So the intended progression is:
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
 
+### Additional configuration follows the same pattern
+
+When a step needs extra behavior, the configuration story should stay consistent: move from the plain-form shorthand to a `FormView`-based step (or to an explicitly generated FormView) and configure it there.
+
+That means the auto FormView generator is not a separate special case in how you think about customization. It is the same model:
+
+- Gandalf composes steps as `FormView` units,
+- plain `Form`s are just convenience input that get upgraded into those units,
+- and additional configuration is applied at the FormView layer.
+
+For example, if the auto-generated view for a form needs custom behavior, you can provide your own step view explicitly:
+
+```python
+class ProfileStepView(FormView):
+    form_class = ProfileForm
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["timezone"] = self.request.user.timezone
+        return initial
+
+
+wizard = (
+    Wizard()
+    .step(AccountForm)       # auto-generated FormView
+    .step(ProfileStepView)   # explicit FormView with extra configuration
+    .step(ConfirmForm)       # auto-generated FormView
+)
+```
+
+This is also the intended direction for future configuration touch points: they should plug into this same mental model, rather than introducing one-off configuration mechanisms per feature.
+
 ### Storage backends
 
 Wizard state will be backed by a storage object.
