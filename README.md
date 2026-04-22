@@ -158,8 +158,9 @@ class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
         wizard = Wizard().step(HouseholdCountForm)  # asks for `member_count`
 
-        count_data = getattr(self.request.wizard, "data", {}).get("household_count", {})
-        member_count = int(count_data.get("member_count", 0) or 0)
+        step_node = self.request.wizard.tree.step("household_count")
+        step_count_data = step_node.cleaned_data if step_node and step_node.is_complete else {}
+        member_count = int(step_count_data.get("member_count", 0) or 0)
 
         for index in range(1, max(member_count, 0) + 1):
             wizard = wizard.step(build_member_form_view(index))
@@ -308,6 +309,170 @@ weekday_or_weekend_wizard = (
 )
 ```
 
+### Tree-shaped runtime data contract
+
+The *mechanics* of tracking the current step are an implementation detail.
+
+The *behavior* is not.
+
+Because Gandalf models the journey as a real tree, the runtime data contract
+should also be shaped like a tree.
+
+The intent is that Gandalf reevaluates the flow from the root on each
+request/response cycle using the data it currently has.
+
+That means the primary runtime object is not a flattened `data` dict. It is the
+evaluated tree itself, with step results attached to the nodes that have run.
+
+More concretely, `wizard.tree` should be a tree of `Step` nodes.
+
+For example:
+
+```python
+business_flow = Wizard().step(BizDetailsForm).step(BizComplianceForm)
+personal_flow = Wizard().step(ProfileForm)
+
+onboarding_wizard = (
+    Wizard()
+    .step(AccountTypeForm)
+    .branch(
+        condition(is_business_account, business_flow),
+        default=personal_flow,
+    )
+    .step(ReviewForm)
+)
+```
+
+At runtime, the user should be able to inspect something conceptually like:
+
+```python
+request.wizard.tree
+```
+
+where each `Step` node represents one step in the declared flow and exposes the
+runtime state for that step.
+
+Conceptually:
+
+```python
+step = request.wizard.tree.step("account")
+```
+
+and a `Step` node can hold things like:
+
+- the step name,
+- its position in the tree,
+- the underlying form class or `FormView` class,
+- whether it is currently reachable,
+- whether it has run,
+- whether it completed successfully,
+- any cleaned data produced by that step,
+- validation errors for the most recent run,
+- the request that was passed into that step view,
+- the response returned by that step view,
+- and any step-level metadata Gandalf records while executing the flow.
+
+The important idea is that Gandalf is not just storing “form answers”.
+It is capturing the execution of the flow step-by-step in a structure that
+matches the declared tree.
+
+So a node is not just a bag of cleaned data. It is the runtime record of:
+
+- what step this was,
+- what view handled it,
+- what request/response interaction happened there,
+- and what data or metadata was produced as a result.
+
+That means the tree can be walked not only to inspect collected values, but
+also to inspect how the wizard actually ran.
+
+So if a user does this:
+
+1. Completes `AccountTypeForm` with `account_type="business"`.
+2. Completes `BizDetailsForm`.
+3. Completes `BizComplianceForm`.
+4. Goes back to `AccountTypeForm` and changes the answer to `account_type="personal"`.
+
+then Gandalf should reevaluate the tree from the root using the new
+`AccountTypeForm` answer.
+
+That means:
+
+- `BizDetailsForm` and `BizComplianceForm` are no longer on the current active path.
+- The next step should now be `ProfileForm`, not `BizDetailsForm`.
+- Any previously collected business-branch data can remain attached to those
+  nodes in the tree as historical runtime state.
+- Code consuming wizard state can walk the tree and decide for itself whether
+  it wants current-path data, historical data, completed-node data, or some
+  custom projection.
+
+This keeps Gandalf honest about its core abstraction:
+
+- the flow is declared as a tree,
+- the runtime state is represented as a tree,
+- and consumers derive whatever flattened view they need from that tree.
+
+In other words, Gandalf should not force one canonical interpretation of “all
+wizard data”. It should expose the shaped runtime structure and let callers
+decide what data they want from each step.
+
+That also means Gandalf does not need a separate result-building abstraction.
+
+The tree-shaped runtime state is the source of truth, and code running at
+`done()` time can walk that tree to derive whatever final payload it needs.
+
+For example:
+
+```python
+class CheckoutWizardViewSet(WizardViewSet):
+    wizard = checkout_wizard
+
+    def done(self, wizard):
+        customer = wizard.tree.step("customer")
+        address = wizard.tree.step("address")
+
+        create_order(
+            email=customer.cleaned_data["email"],
+            shipping_address={
+                "line_1": address.cleaned_data["line_1"],
+                "postcode": address.cleaned_data["postcode"],
+            },
+        )
+```
+
+If a project wants a flattened or transformed view of the data, it can build
+that by traversing the tree itself. Gandalf only needs to guarantee that the
+tree accurately represents what ran and what data each step produced.
+
+For example, a project could flatten completed steps into a plain dict:
+
+```python
+def flatten_completed_steps(tree):
+    flattened = {}
+
+    for node in tree.walk():
+        if not node.is_complete:
+            continue
+
+        if not node.cleaned_data:
+            continue
+
+        flattened[node.step_name] = node.cleaned_data
+
+    return flattened
+
+
+class CheckoutWizardViewSet(WizardViewSet):
+    wizard = checkout_wizard
+
+    def done(self, wizard):
+        payload = flatten_completed_steps(wizard.tree)
+        create_order_from_payload(payload)
+```
+
+That flattening logic belongs to the consumer, not to Gandalf itself, because
+different projects may want different projections of the same tree.
+
 ---
 
 ## `django-formtools` to `django-gandalf` examples
@@ -369,7 +534,8 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    cleaned = request.wizard.data.get("company", {})
+    company = request.wizard.tree.step("company")
+    cleaned = company.cleaned_data if company and company.is_complete else {}
     return cleaned.get("is_business")
 
 
@@ -528,10 +694,11 @@ class ProfileStepView(FormView):
     form_class = ProfileForm
 
     def get_initial(self):
-        account = self.request.wizard.data.get("account", {})
+        account = self.request.wizard.tree.step("account")
+        account_data = account.cleaned_data if account and account.is_complete else {}
         return {
-            "contact_email": account.get("email"),
-            "country": account.get("country"),
+            "contact_email": account_data.get("email"),
+            "country": account_data.get("country"),
         }
 
 
@@ -539,11 +706,13 @@ class ConfirmStepView(FormView):
     form_class = ConfirmForm
 
     def get_initial(self):
-        account = self.request.wizard.data.get("account", {})
-        profile = self.request.wizard.data.get("profile", {})
+        account = self.request.wizard.tree.step("account")
+        profile = self.request.wizard.tree.step("profile")
+        account_data = account.cleaned_data if account and account.is_complete else {}
+        profile_data = profile.cleaned_data if profile and profile.is_complete else {}
         return {
-            "email": account.get("email"),
-            "display_name": profile.get("display_name"),
+            "email": account_data.get("email"),
+            "display_name": profile_data.get("display_name"),
         }
 
 
@@ -567,7 +736,7 @@ view_based = (
 
 With `formtools`, the initial-value logic tends to accumulate in one wizard-level method keyed by step name.
 
-With Gandalf, the easy case is still just `.step(MyForm)`. When a step needs more control, each explicit `FormView` can own its own `get_initial()` and still read prior wizard data via `self.request.wizard`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
+With Gandalf, the easy case is still just `.step(MyForm)`. When a step needs more control, each explicit `FormView` can own its own `get_initial()` and still read prior wizard state via `self.request.wizard.tree`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
 
 ---
 
