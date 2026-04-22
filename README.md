@@ -535,8 +535,8 @@ class CheckoutWizardViewSet(WizardViewSet):
     wizard = checkout_wizard
 
     def done(self, wizard):
-        customer = wizard.tree.find_one_by_context(step_name="customer")
-        address = wizard.tree.find_one_by_context(step_name="address")
+        customer = wizard.path.find_by_context(step_name="customer")
+        address = wizard.path.find_by_context(step_name="address")
 
         create_order(
             email=customer.cleaned_data["email"],
