@@ -1,5 +1,5 @@
 from .core import NamedURLRouter, Wizard, WizardViewSet
-from .flows import main_wizard
+from .wizards import main_wizard
 from .forms import FirstForm, SecondForm
 
 
