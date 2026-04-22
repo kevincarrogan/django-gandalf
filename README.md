@@ -22,6 +22,16 @@ Here is the same branching onboarding idea in both styles.
 from formtools.wizard.views import SessionWizardView
 
 
+def is_business_account(wizard):
+    account_type = wizard.get_cleaned_data_for_step("account_type") or {}
+    return account_type.get("account_type") == "business"
+
+
+def needs_international_checks(wizard):
+    account_type = wizard.get_cleaned_data_for_step("account_type") or {}
+    return account_type.get("region") == "international"
+
+
 class OnboardingWizard(SessionWizardView):
     form_list = [
         ("account_type", AccountTypeForm),
@@ -39,7 +49,7 @@ class OnboardingWizard(SessionWizardView):
         "biz_compliance": is_business_account,
         "intl_tax": needs_international_checks,
         "intl_kyc": needs_international_checks,
-        "profile": lambda wizard: not is_business_account(wizard.request),
+        "profile": lambda wizard: not is_business_account(wizard),
     }
 ```
 
@@ -178,8 +188,8 @@ What improves here:
 from formtools.wizard.views import SessionWizardView
 
 
-def needs_vat(request):
-    cleaned = request.wizard.data.get("company", {})
+def needs_vat(wizard):
+    cleaned = wizard.get_cleaned_data_for_step("company") or {}
     return cleaned.get("is_business")
 
 
@@ -261,7 +271,7 @@ What improves here:
 
 The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `wizards.py`, and `views.py`).
 
-Conditional functions passed to `condition(...)` take the current `request`. When they need wizard state, they can read it from `request.wizard`.
+In `django-formtools`, condition callables receive the wizard view. In Gandalf, condition callables intentionally receive the current `request`; when they need wizard state, they can read it from `request.wizard`.
 
 ### 1) A nested branch flow
 
