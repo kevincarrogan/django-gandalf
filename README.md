@@ -169,6 +169,31 @@ So the intended progression is:
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
 
+### Storage backends
+
+Wizard state is backed by a storage object, and Gandalf ships with two options:
+
+- `SessionStorage` (default),
+- `CookieStorage`.
+
+You can configure storage in three ways:
+
+1. **Default behavior**: do nothing and use `SessionStorage`.
+2. **Global setting**:
+
+   ```python
+   GANDALF_WIZARD_STORAGE_CLASS = "gandalf.storage.CookieStorage"
+   ```
+
+3. **Per wizard**:
+
+   ```python
+   from gandalf import Wizard
+   from gandalf.storage import CookieStorage
+
+   wizard = Wizard(storage_class=CookieStorage)
+   ```
+
 ### Branching from the beginning
 
 You can also branch immediately based on runtime context (for example, the current day of the week):
