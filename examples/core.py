@@ -33,11 +33,11 @@ class NamedURLRouter:
         return []
 
 
-def is_this(wizard):
+def is_this(request):
     pass
 
 
-def is_that(wizard):
+def is_that(request):
     pass
 
 

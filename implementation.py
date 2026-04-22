@@ -18,14 +18,14 @@ class Wizard:
 
         if not isinstance(form_class_or_form_view_class, FormView):
             raise TypeError("This should be a FormView")
-        
+
         self.tree.append(form_view_class)
 
         return self
-    
+
     def branch(self, *forms_or_form_views, default=None):
         return self
-    
+
 
 class WizardViewSet:
     # This handles the outside world of the request/response and then splits
@@ -34,8 +34,8 @@ class WizardViewSet:
     # This will handle routing to the right view, handle the urls.
     #
     # This is ideally how we would handle the ManagementForm.
-    # 
-    # __Although how do we inject the ManagentForm in whilst making the child
+    #
+    # __Although how do we inject the ManagentForm in whilst making the child
     # FormViews not care that they're part of this - maybe the view needs to
     # know more context__.
     #
@@ -49,7 +49,7 @@ class NamedURLRouter:
     @property
     def urls(self):
         return []
-    
+
 
 class FirstForm:
     pass
@@ -95,11 +95,11 @@ class BWizardThirdForm:
     pass
 
 
-def is_this(wizard):
+def is_this(request):
     pass
 
 
-def is_that(wizard):
+def is_that(request):
     pass
 
 
@@ -119,7 +119,9 @@ that_wizard = (
 
 main_wizard = (
     Wizard()  # This will be used for high-level configuration
-    .step(FirstForm)  # This could possibly be a view instead (need to work out that concept)
+    .step(
+        FirstForm
+    )  # This could possibly be a view instead (need to work out that concept)
     .step(SecondForm)
     .step(ThirdForm)
     .branch(
@@ -150,9 +152,7 @@ class ManagementFormClass:
 
 
 configured = (
-    Wizard(management_form_class=ManagementFormClass)
-    .step(FirstForm)
-    .step(SecondForm)
+    Wizard(management_form_class=ManagementFormClass).step(FirstForm).step(SecondForm)
 )
 
 
@@ -184,5 +184,7 @@ class FirstFormView:
 view_based = (
     Wizard()
     .step(FirstFormView)
-    .step(SecondForm)  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
+    .step(
+        SecondForm
+    )  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
 )

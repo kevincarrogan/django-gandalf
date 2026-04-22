@@ -39,7 +39,7 @@ class OnboardingWizard(SessionWizardView):
         "biz_compliance": is_business_account,
         "intl_tax": needs_international_checks,
         "intl_kyc": needs_international_checks,
-        "profile": lambda wizard: not is_business_account(wizard),
+        "profile": lambda wizard: not is_business_account(wizard.request),
     }
 ```
 
@@ -120,7 +120,7 @@ You can also branch immediately based on runtime context (for example, the curre
 from datetime import date
 
 
-def is_weekend(_wizard):
+def is_weekend(_request):
     return date.today().weekday() >= 5
 
 
@@ -178,8 +178,8 @@ What improves here:
 from formtools.wizard.views import SessionWizardView
 
 
-def needs_vat(wizard):
-    cleaned = wizard.get_cleaned_data_for_step("company") or {}
+def needs_vat(request):
+    cleaned = request.wizard.data.get("company", {})
     return cleaned.get("is_business")
 
 
@@ -195,6 +195,11 @@ class CompanyWizard(SessionWizardView):
 #### gandalf style
 
 ```python
+def needs_vat(request):
+    cleaned = request.wizard.data.get("company", {})
+    return cleaned.get("is_business")
+
+
 company_wizard = (
     Wizard()
     .step(CompanyForm)
@@ -255,6 +260,8 @@ What improves here:
 ## Examples from this project
 
 The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `wizards.py`, and `views.py`).
+
+Conditional functions passed to `condition(...)` take the current `request`. When they need wizard state, they can read it from `request.wizard`.
 
 ### 1) A nested branch flow
 
