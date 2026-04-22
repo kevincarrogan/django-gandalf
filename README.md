@@ -348,7 +348,7 @@ class ProfileStepView(FormView):
     form_class = ProfileForm
 
     def get_initial(self):
-        account = self.wizard.data.get("account", {})
+        account = self.request.wizard.data.get("account", {})
         return {
             "contact_email": account.get("email"),
             "country": account.get("country"),
@@ -359,11 +359,21 @@ class ConfirmStepView(FormView):
     form_class = ConfirmForm
 
     def get_initial(self):
-        account = self.wizard.data.get("account", {})
-        profile = self.wizard.data.get("profile", {})
+        account = self.request.wizard.data.get("account", {})
+        profile = self.request.wizard.data.get("profile", {})
         return {
             "email": account.get("email"),
             "display_name": profile.get("display_name"),
+        }
+
+
+class PortableProfileStepView(FormView):
+    form_class = ProfileForm
+
+    def get_initial(self):
+        return {
+            "contact_email": self.request.user.email,
+            "country": self.request.user.profile.country,
         }
 
 
@@ -377,7 +387,7 @@ view_based = (
 
 With `formtools`, the initial-value logic tends to accumulate in one wizard-level method keyed by step name.
 
-With Gandalf, each step owns its own `get_initial()` and can still read prior wizard data when needed. That keeps the wiring local to the step and lets those views remain reusable outside the wizard as well.
+With Gandalf, each step owns its own `get_initial()` and can still read prior wizard data when needed via `self.request.wizard`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
 
 ---
 

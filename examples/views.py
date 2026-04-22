@@ -18,10 +18,10 @@ urlpatterns = wizard_router.urls
 #
 # The important bit is that each step owns its own `get_initial()` logic, so
 # you do not end up with one giant `if current_step == ...` block. The wizard
-# just provides a way to read the already-completed steps.
+# just provides a way to read the already-completed steps when needed.
 #
-# For example, imagine `self.wizard.data` contains cleaned data keyed by step
-# name:
+# For example, imagine `self.request.wizard.data` contains cleaned data keyed
+# by step name:
 #
 # {
 #     "account": {"email": "kevin@example.com", "country": "GB"},
@@ -32,7 +32,7 @@ class WizardStepView:
     step_name = None
 
     def get_wizard_data(self, step_name):
-        return self.wizard.data.get(step_name, {})
+        return self.request.wizard.data.get(step_name, {})
 
 
 class AccountStepView(WizardStepView):
@@ -42,6 +42,17 @@ class AccountStepView(WizardStepView):
     def get_initial(self):
         return {
             "email": self.request.user.email,
+            "country": getattr(self.request.user.profile, "country", "GB"),
+        }
+
+
+class PortableProfileStepView:
+    form_class = SecondForm
+
+    def get_initial(self):
+        return {
+            "display_name": self.request.user.get_full_name(),
+            "contact_email": self.request.user.email,
             "country": getattr(self.request.user.profile, "country", "GB"),
         }
 

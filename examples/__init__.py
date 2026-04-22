@@ -14,7 +14,14 @@ from .forms import (
     SecondForm,
     ThirdForm,
 )
-from .views import FirstFormView, MyWizardViewSet, urlpatterns, view_based, wizard_router
+from .views import (
+    FirstFormView,
+    MyWizardViewSet,
+    PortableProfileStepView,
+    urlpatterns,
+    view_based,
+    wizard_router,
+)
 
 __all__ = [
     "AWizardFirstForm",
@@ -30,6 +37,7 @@ __all__ = [
     "MyFinalForm",
     "MyWizardViewSet",
     "NamedURLRouter",
+    "PortableProfileStepView",
     "SecondForm",
     "ThirdForm",
     "Wizard",
