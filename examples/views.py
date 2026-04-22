@@ -1,6 +1,6 @@
 from .core import NamedURLRouter, Wizard, WizardViewSet
 from .wizards import main_wizard
-from .forms import FirstForm, SecondForm
+from .forms import FirstForm, SecondForm, ThirdForm
 
 
 class MyWizardViewSet(WizardViewSet):
@@ -14,33 +14,68 @@ wizard_router = NamedURLRouter(MyWizardViewSet)
 urlpatterns = wizard_router.urls
 
 
-# Pretend this is:
-# from django.views.generic import FormView
-# class FirstFormView(FormView):
+# Pretend these are regular Django FormViews.
 #
-# Ideally this just follows the same pattern as any other FormView and can
-# easily be re-used as a FormView in its own right.
+# The important bit is that each step owns its own `get_initial()` logic, so
+# you do not end up with one giant `if current_step == ...` block. The wizard
+# just provides a way to read the already-completed steps.
 #
-# This does mean that we have to handle more configuration outside of the
-# FormView to achieve that, but we can handle that in the Wizard declaration.
+# For example, imagine `self.wizard.data` contains cleaned data keyed by step
+# name:
 #
-# From an abstraction perspective, these FormViews shouldn't know they exist
-# in a wizard context at all (how leaky that is remains to be seen).
+# {
+#     "account": {"email": "kevin@example.com", "country": "GB"},
+#     "profile": {"display_name": "Kevin"},
+# }
 #
-# django-formtools instead viewed the Django Form as the thing to compose
-# in django-gandalf the FormView is instead the thing we compose.
-#
-class FirstFormView:
+class WizardStepView:
+    step_name = None
+
+    def get_wizard_data(self, step_name):
+        return self.wizard.data.get(step_name, {})
+
+
+class AccountStepView(WizardStepView):
+    step_name = "account"
     form_class = FirstForm
 
     def get_initial(self):
         return {
-            "a_different_thing": "A different thing",
+            "email": self.request.user.email,
+            "country": getattr(self.request.user.profile, "country", "GB"),
         }
 
 
-view_based = (
-    Wizard()
-    .step(FirstFormView)
-    .step(SecondForm)  # Under the hood this is just automatically generating the FormView for us, but each step _is_ a FormView (or something that matches that contract)
-)
+class ProfileStepView(WizardStepView):
+    step_name = "profile"
+    form_class = SecondForm
+
+    def get_initial(self):
+        account = self.get_wizard_data("account")
+
+        return {
+            "display_name": self.request.user.get_full_name(),
+            "contact_email": account.get("email"),
+            "country": account.get("country"),
+        }
+
+
+class ConfirmStepView(WizardStepView):
+    step_name = "confirm"
+    form_class = ThirdForm
+
+    def get_initial(self):
+        account = self.get_wizard_data("account")
+        profile = self.get_wizard_data("profile")
+
+        return {
+            "email": account.get("email"),
+            "display_name": profile.get("display_name"),
+            "country": profile.get("country") or account.get("country"),
+        }
+
+
+FirstFormView = AccountStepView
+
+
+view_based = Wizard().step(AccountStepView).step(ProfileStepView).step(ConfirmStepView)

@@ -289,17 +289,95 @@ Why this is important:
 
 ### 2) View-centric composition
 
-The examples also show the intent to compose with `FormView`-like steps:
+The examples also show the intent to compose with `FormView`-like steps.
+
+Here is the more direct comparison for `get_initial()`-style wiring.
+
+#### formtools style
 
 ```python
+from formtools.wizard.views import SessionWizardView
+
+
+class SignupWizard(SessionWizardView):
+    form_list = [
+        ("account", AccountForm),
+        ("profile", ProfileForm),
+        ("confirm", ConfirmForm),
+    ]
+
+    def get_form_initial(self, step):
+        if step == "account":
+            return {
+                "email": self.request.user.email,
+                "country": self.request.user.profile.country,
+            }
+
+        if step == "profile":
+            account = self.get_cleaned_data_for_step("account") or {}
+            return {
+                "contact_email": account.get("email"),
+                "country": account.get("country"),
+            }
+
+        if step == "confirm":
+            account = self.get_cleaned_data_for_step("account") or {}
+            profile = self.get_cleaned_data_for_step("profile") or {}
+            return {
+                "email": account.get("email"),
+                "display_name": profile.get("display_name"),
+            }
+
+        return {}
+```
+
+#### gandalf style
+
+```python
+class AccountStepView(FormView):
+    form_class = AccountForm
+
+    def get_initial(self):
+        return {
+            "email": self.request.user.email,
+            "country": self.request.user.profile.country,
+        }
+
+
+class ProfileStepView(FormView):
+    form_class = ProfileForm
+
+    def get_initial(self):
+        account = self.wizard.data.get("account", {})
+        return {
+            "contact_email": account.get("email"),
+            "country": account.get("country"),
+        }
+
+
+class ConfirmStepView(FormView):
+    form_class = ConfirmForm
+
+    def get_initial(self):
+        account = self.wizard.data.get("account", {})
+        profile = self.wizard.data.get("profile", {})
+        return {
+            "email": account.get("email"),
+            "display_name": profile.get("display_name"),
+        }
+
+
 view_based = (
     Wizard()
-    .step(FirstFormView)
-    .step(SecondForm)
+    .step(AccountStepView)
+    .step(ProfileStepView)
+    .step(ConfirmStepView)
 )
 ```
 
-This supports an architecture where existing form views can stay reusable outside wizard contexts.
+With `formtools`, the initial-value logic tends to accumulate in one wizard-level method keyed by step name.
+
+With Gandalf, each step owns its own `get_initial()` and can still read prior wizard data when needed. That keeps the wiring local to the step and lets those views remain reusable outside the wizard as well.
 
 ---
 
