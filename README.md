@@ -171,21 +171,23 @@ So the intended progression is:
 
 ### Storage backends
 
-Wizard state is backed by a storage object, and Gandalf ships with two options:
+Wizard state will be backed by a storage object.
+
+The intended built-in options are:
 
 - `SessionStorage` (default),
 - `CookieStorage`.
 
-You can configure storage in three ways:
+The intended configuration story is:
 
 1. **Default behavior**: do nothing and use `SessionStorage`.
-2. **Global setting**:
+2. **Global setting** (Django settings):
 
    ```python
    GANDALF_WIZARD_STORAGE_CLASS = "gandalf.storage.CookieStorage"
    ```
 
-3. **Per wizard**:
+3. **Per wizard**: pass a storage class when constructing the wizard.
 
    ```python
    from gandalf import Wizard
@@ -193,6 +195,8 @@ You can configure storage in three ways:
 
    wizard = Wizard(storage_class=CookieStorage)
    ```
+
+> This section describes the API direction; storage behavior internals are intentionally deferred.
 
 ### Branching from the beginning
 
