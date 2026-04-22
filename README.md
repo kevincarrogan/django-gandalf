@@ -778,8 +778,4 @@ Planned focus areas include:
 
 ## Contributing
 
-If you're exploring this project:
-
-1. Start with the `examples/` package to understand the intended developer experience.
-2. Use `implementation.py` to inspect current assumptions and gaps.
-3. Open issues/PRs with concrete branch/tree use-cases—especially where existing wizard tooling becomes hard to maintain.
+See `CONTRIBUTING.md` for local setup, workflow expectations, and commit message conventions.
