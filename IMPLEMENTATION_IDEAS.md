@@ -129,7 +129,7 @@ class FormViewFactory(BaseFormViewFactory):
 ## `BaseManagementForm`
 
 ```python
-class BaseManagementForm:
+class BaseManagementForm(forms.Form):
     ...
 ```
 
