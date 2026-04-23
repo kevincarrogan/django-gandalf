@@ -226,6 +226,28 @@ So the intended progression is:
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
 
+### `WizardViewSet.template_name` is applied to auto-generated step `FormView`s
+
+When a step is declared with a plain `Form`, Gandalf can generate the step
+`FormView` and still let the viewset control which template it renders:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    template_name = "signup/step.html"
+    wizard = Wizard().step(AccountForm)
+```
+
+The template can then include the Gandalf management form via template tag:
+
+```django
+{% load gandalf %}
+<form method="post">
+  {% csrf_token %}
+  {% gandalf_management_form %}
+  {{ form.as_p }}
+</form>
+```
+
 ### `.step()` can also carry arbitrary context
 
 Step declarations can also include a `context` dict for metadata that belongs to

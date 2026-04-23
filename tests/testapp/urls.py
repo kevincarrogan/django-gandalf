@@ -4,5 +4,5 @@ from tests.testapp import views
 
 
 urlpatterns = [
-    path("wizard/", views.WizardView.as_view(), name="wizard"),
+    path("wizard/", views.WizardStepViewSet.as_view(), name="wizard"),
 ]
