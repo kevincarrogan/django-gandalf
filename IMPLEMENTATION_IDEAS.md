@@ -146,13 +146,16 @@ class ManagementForm(BaseManagementForm):
 ## `WizardViewSet`
 
 ```python
+from django.http import HttpRequest, HttpResponse
+
+
 class WizardViewSet:
     wizard: "Wizard | None"
     template_name: "str | None"
 
-    def get_wizard(self, request: "HttpRequest") -> "Wizard":
+    def get_wizard(self, request: HttpRequest) -> "Wizard":
         ...
 
-    def done(self, request: "HttpRequest") -> "HttpResponse":
+    def done(self, request: HttpRequest) -> HttpResponse:
         ...
 ```
