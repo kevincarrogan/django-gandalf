@@ -248,6 +248,17 @@ The template can then include the Gandalf management form via template tag:
 </form>
 ```
 
+`{% gandalf_management_form %}` reads the template context and checks for
+wizard state on the request object. When the template is being rendered as part
+of a wizard step, the tag automatically injects the wizard management form.
+
+If no wizard is present (for example, `request.wizard` is not available in the
+context), the tag is a no-op and safely renders nothing extra.
+
+In practice, this behavior is mostly transparent: with a normal Gandalf wizard
+setup, you can include the tag in your form template and usually do not need to
+think about the implementation details.
+
 ### `.step()` can also carry arbitrary context
 
 Step declarations can also include a `context` dict for metadata that belongs to
