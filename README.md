@@ -220,6 +220,20 @@ wizard = (
 )
 ```
 
+`.step()` can also accept another `Wizard`, which makes reusable subflows easy
+to compose inline:
+
+```python
+address_flow = Wizard().step(AddressForm).step(PostcodeLookupForm)
+
+checkout_wizard = (
+    Wizard()
+    .step(CustomerForm)
+    .step(address_flow)
+    .step(ConfirmForm)
+)
+```
+
 So the intended progression is:
 
 - start with plain `Form`s for the common case,
