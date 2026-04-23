@@ -4,7 +4,23 @@
 
 ```python
 class Wizard:
-    ...
+    def __init__(
+        self,
+        *,
+        storage_class: type["BaseStorage"] = SessionStorage,
+        form_view_factory_class: type["BaseFormViewFactory"] = FormViewFactory,
+        management_form_class: type["BaseManagementForm"] = ManagementForm,
+    ):
+        ...
+
+    def step(self, step, context=None) -> "Wizard":
+        ...
+
+    def branch(self, *conditions, default=None) -> "Wizard":
+        ...
+
+    def populate(self, request) -> "Wizard":
+        ...
 ```
 
 ## `WizardTree`
@@ -46,6 +62,41 @@ class Step:
 
 ```python
 class BaseStorage:
+    ...
+```
+
+## `SessionStorage`
+
+```python
+class SessionStorage(BaseStorage):
+    ...
+```
+
+## `BaseFormViewFactory`
+
+```python
+class BaseFormViewFactory:
+    ...
+```
+
+## `FormViewFactory`
+
+```python
+class FormViewFactory(BaseFormViewFactory):
+    ...
+```
+
+## `BaseManagementForm`
+
+```python
+class BaseManagementForm:
+    ...
+```
+
+## `ManagementForm`
+
+```python
+class ManagementForm(BaseManagementForm):
     ...
 ```
 
