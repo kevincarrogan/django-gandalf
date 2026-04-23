@@ -129,6 +129,9 @@ class FormViewFactory(BaseFormViewFactory):
 ## `BaseManagementForm`
 
 ```python
+from django import forms
+
+
 class BaseManagementForm(forms.Form):
     ...
 ```
