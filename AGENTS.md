@@ -1,5 +1,15 @@
 # Agent Instructions
 
+## Project Stage
+
+This project is currently in the prototype stage.
+
+- Treat the README as the primary source of truth for current work.
+- Unless the user explicitly says otherwise, changes should be limited to `README.md`.
+- Do not write or modify implementation code unless the user explicitly asks for it.
+- Do not write or modify tests unless the user explicitly asks for them.
+- When working on the README, call out any inconsistencies you notice in its coding examples.
+
 ## Commit Messages
 
 When creating commits in this repository, follow the existing project style:
