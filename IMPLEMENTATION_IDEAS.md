@@ -4,6 +4,8 @@
 
 ```python
 class Wizard:
+    """Declare and evaluate a wizard flow."""
+
     tree: "WizardTree | None"
     path: "WizardPath | None"
 
@@ -20,15 +22,19 @@ class Wizard:
         form_view_factory_class: type["BaseFormViewFactory"] = FormViewFactory,
         management_form_class: type["BaseManagementForm"] = ManagementForm,
     ):
+        """Configure a wizard with its storage, view factory, and management form."""
         ...
 
     def step(self, step, context=None) -> "Wizard":
+        """Append a step or sub-wizard to the flow."""
         ...
 
     def branch(self, *conditions, default=None) -> "Wizard":
+        """Append a conditional branch to the flow."""
         ...
 
     def populate(self, request) -> "Wizard":
+        """Return a wizard populated from the current request state."""
         ...
 ```
 
