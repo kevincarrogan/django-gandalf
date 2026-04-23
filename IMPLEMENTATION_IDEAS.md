@@ -150,6 +150,6 @@ class WizardViewSet:
     def get_wizard(self, request: "HttpRequest") -> "Wizard":
         ...
 
-    def done(self, request: "HttpRequest"):
+    def done(self, request: "HttpRequest") -> "HttpResponse":
         ...
 ```
