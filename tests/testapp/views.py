@@ -1,7 +1,12 @@
-from django.http import HttpResponse
-from django.views import View
+from django import forms
+
+from gandalf import Wizard, WizardViewSet
 
 
-class WizardView(View):
-    def get(self, request, *args, **kwargs):
-        return HttpResponse("OK")
+class AccountForm(forms.Form):
+    email = forms.EmailField()
+
+
+class WizardStepViewSet(WizardViewSet):
+    template_name = "tests/testapp/wizard_step.html"
+    wizard = Wizard().step(AccountForm)
