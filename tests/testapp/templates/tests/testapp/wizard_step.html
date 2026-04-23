@@ -1,7 +1,0 @@
-{% load gandalf %}
-<form method="post">
-  {% csrf_token %}
-  {% gandalf_management_form %}
-  {{ form.as_p }}
-  <button type="submit">Continue</button>
-</form>
