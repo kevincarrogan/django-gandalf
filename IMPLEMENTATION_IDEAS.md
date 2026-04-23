@@ -36,7 +36,12 @@ class Wizard:
 
 ```python
 class WizardTree:
-    def find_one_by_context(self, **context):
+    def find_one_by_context(self, **context) -> "Step | None":
+        """Return the matching Step, or None if no match.
+
+        Raises:
+            MultipleStepsReturned: If the lookup is ambiguous.
+        """
         ...
 ```
 
@@ -53,7 +58,12 @@ class WizardPath:
     def __getitem__(self, index):
         ...
 
-    def find_one_by_context(self, **context):
+    def find_one_by_context(self, **context) -> "Step | None":
+        """Return the matching Step, or None if no match.
+
+        Raises:
+            MultipleStepsReturned: If the lookup is ambiguous.
+        """
         ...
 
     def filter_by_context(self, **context):
@@ -64,6 +74,13 @@ class WizardPath:
 
 ```python
 class Step:
+    ...
+```
+
+## `MultipleStepsReturned`
+
+```python
+class MultipleStepsReturned(ValueError):
     ...
 ```
 
