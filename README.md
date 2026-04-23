@@ -169,16 +169,12 @@ class HouseholdWizardViewSet(WizardViewSet):
         household_count = populated_wizard.path.find_one_by_context(
             step_name="household_count",
         )
-        household_count_data = (
-            household_count.cleaned_data
-            if household_count and household_count.is_complete
-            else {}
-        )
-        member_count = int(household_count_data.get("member_count", 0) or 0)
+        household_count_data = household_count.cleaned_data if household_count else {"member_count": 0}
+        member_count = int(household_count_data["member_count"])
 
         wizard = declared_wizard
 
-        for index in range(1, max(member_count, 0) + 1):
+        for index in range(1, member_count):
             wizard = wizard.step(build_member_form_view(index))
 
         return wizard.step(ConfirmStepView)
@@ -693,7 +689,9 @@ completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
 no match, and raise an error when the lookup is ambiguous.
 `filter_by_context(...)` should return matching `Step` objects in execution
 order. Because `wizard.path` only contains visited/completed nodes, every
-returned step should already be complete.
+returned step should already be complete and should expose its submitted
+`cleaned_data`. In other words, being part of `wizard.path` means the step has
+completed successfully enough to contribute runtime data to the execution path.
 
 The path should include nodes that were visited and completed, including
 historical entries when the user changes earlier answers and causes a different
