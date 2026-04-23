@@ -170,7 +170,7 @@ class HouseholdWizardViewSet(WizardViewSet):
             step_name="household_count",
         )
         household_count_data = (
-            household_count.node.cleaned_data
+            household_count.cleaned_data
             if household_count and household_count.is_complete
             else {}
         )
@@ -645,18 +645,19 @@ Conceptually:
 request.wizard.path
 ```
 
-The path is intended to be an **ordered sequence of step visits/completions**
+The path is intended to be an **ordered sequence of steps**
 in execution order. In other words, it is the linearized timeline of the run,
 but only for steps that were actually visited.
 
-Each path item should point back to the corresponding tree node, so callers can
-still reach full node metadata when needed. A path item can hold things like:
+Each item in `wizard.path` should be the same `Step` object exposed by
+`wizard.tree`, just presented in execution order. That keeps lookups and
+iteration consistent across both APIs while still allowing each `Step` to carry
+whatever runtime metadata Gandalf records, such as:
 
-- a pointer/reference to the tree node,
-- whether that visit completed successfully,
+- whether the step completed successfully,
 - completion timestamp or sequence index,
 - list index / sequence position,
-- and any visit metadata Gandalf records for that item.
+- and any other step-level runtime metadata collected during execution.
 
 This gives consumers a first-class way to iterate “what happened” without
 having to flatten `wizard.tree` themselves.
@@ -664,9 +665,8 @@ having to flatten `wizard.tree` themselves.
 For example:
 
 ```python
-for path_item in request.wizard.path:
-    node = path_item.node
-    print(node.context.get("step_name"), path_item.is_complete)
+for step in request.wizard.path:
+    print(step.context.get("step_name"), step.is_complete)
 
 # Pythonic random access
 first = request.wizard.path[0]
@@ -689,11 +689,11 @@ account = wizard.path.find_one_by_context(step_name="account")
 completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
 ```
 
-`find_one_by_context(...)` should return `None` when there is no match and
-raise an error when the lookup is ambiguous. `filter_by_context(...)` should
-return all matching path items in execution order. Because `wizard.path` only
-contains visited/completed nodes, every returned path item should already be
-complete.
+`find_one_by_context(...)` should return a `Step`, return `None` when there is
+no match, and raise an error when the lookup is ambiguous.
+`filter_by_context(...)` should return matching `Step` objects in execution
+order. Because `wizard.path` only contains visited/completed nodes, every
+returned step should already be complete.
 
 The path should include nodes that were visited and completed, including
 historical entries when the user changes earlier answers and causes a different
