@@ -219,6 +219,8 @@ In other words, the step-level `FormView` should still be able to behave as if i
 
 That illusion is where a lot of the power comes from: because the wizard owns the transformed request/response boundary, it can inspect, augment, and process those step interactions as the flow progresses without forcing each `FormView` to understand wizard mechanics directly.
 
+One open design decision still needs to be nailed down here: what should happen when a step `FormView` chooses to return its own `HttpResponse` instead of following the normal wizard progression? The README currently assumes Gandalf owns that boundary, but the exact behavior for step-level escape responses still needs to be defined.
+
 Crucially, the wizard context is still available to the step view when it needs it. Even though the request seen by the step is a wizard-shaped request, `self.request.wizard` is still present, so an explicit `FormView` can tell that it is running inside Gandalf and can inspect wizard state when that is useful.
 
 And if a step needs the untouched incoming request, that is preserved on the wizard itself as `self.request.wizard.original_request`. So the shaped request keeps the step experience ergonomic, while the original request remains available for cases where the distinction matters.
