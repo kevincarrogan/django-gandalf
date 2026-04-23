@@ -430,6 +430,21 @@ signup_wizard = (
 That keeps naming in user space instead of forcing Gandalf to define one
 canonical global step-name mechanism for every project.
 
+For the very common case where you only want to attach a `step_name`, Gandalf
+should also provide a helper like `named` so the declaration stays concise:
+
+```python
+signup_wizard = (
+    Wizard()
+    .step(named(AccountForm, "account"))
+    .step(named(ProfileForm, "profile"))
+    .step(named(ConfirmForm, "confirm"))
+)
+```
+
+This is shorthand for passing the same form with `context={"step_name": ...}`
+and keeps repetitive naming boilerplate out of the flow declaration.
+
 The context argument should also be able to accept a callable that receives the
 current `request`. That allows step metadata to be derived from request state,
 including prior wizard execution stored on `request.wizard`.
@@ -438,7 +453,7 @@ For example:
 
 ```python
 def build_profile_context(request):
-    account_step = request.wizard.tree.find_one_by_context(step_name="account")
+    account_step = request.wizard.path.find_one_by_context(step_name="account")
     account_data = (
         account_step.form.cleaned_data
         if account_step and account_step.is_complete
