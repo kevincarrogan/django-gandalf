@@ -560,12 +560,13 @@ steps without hand-rolling loops each time. For example:
 ```python
 account = wizard.path.find_one_by_context(step_name="account")
 completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
-failed_steps = wizard.path.filter(lambda item: not item.is_complete)
 ```
 
 `find_one_by_context(...)` should return `None` when there is no match and
 raise an error when the lookup is ambiguous. `filter_by_context(...)` should
-return all matching path items in execution order.
+return all matching path items in execution order. Because `wizard.path` only
+contains visited/completed nodes, every returned path item should already be
+complete.
 
 The path should include nodes that were visited and completed, including
 historical entries when the user changes earlier answers and causes a different
