@@ -19,7 +19,20 @@ class WizardTree:
 
 ```python
 class WizardPath:
-    ...
+    def __iter__(self):
+        ...
+
+    def __len__(self):
+        ...
+
+    def __getitem__(self, index):
+        ...
+
+    def find_one_by_context(self, **context):
+        ...
+
+    def filter_by_context(self, **context):
+        ...
 ```
 
 ## `Step`
