@@ -219,7 +219,9 @@ In other words, the step-level `FormView` should still be able to behave as if i
 
 That illusion is where a lot of the power comes from: because the wizard owns the transformed request/response boundary, it can inspect, augment, and process those step interactions as the flow progresses without forcing each `FormView` to understand wizard mechanics directly.
 
-One open design decision still needs to be nailed down here: what should happen when a step `FormView` chooses to return its own `HttpResponse` instead of following the normal wizard progression? The README currently assumes Gandalf owns that boundary, but the exact behavior for step-level escape responses still needs to be defined.
+When a step `FormView` chooses to return its own `HttpResponse`, the default behavior should still be that the `WizardViewSet` swallows that response and decides what to do from the status code. On a `POST`, a `200 OK` response should be treated as an error outcome for the step, while a redirect response should be treated as a successful outcome and hand control back to the wizard so normal progression can continue.
+
+That default can still be overridden on a per-step basis when a particular step needs different semantics, but the out-of-the-box rule should be that Gandalf remains in control of the boundary and interprets the step response rather than passing it straight through unchanged.
 
 Crucially, the wizard context is still available to the step view when it needs it. Even though the request seen by the step is a wizard-shaped request, `self.request.wizard` is still present, so an explicit `FormView` can tell that it is running inside Gandalf and can inspect wizard state when that is useful.
 
