@@ -11,7 +11,8 @@ class Wizard:
 
 ```python
 class WizardTree:
-    ...
+    def find_one_by_context(self, **context):
+        ...
 ```
 
 ## `WizardPath`
