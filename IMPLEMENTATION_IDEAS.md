@@ -4,6 +4,15 @@
 
 ```python
 class Wizard:
+    tree: "WizardTree | None"
+    path: "WizardPath | None"
+
+    original_request: "HttpRequest | None"
+
+    storage_class: type["BaseStorage"]
+    form_view_factory_class: type["BaseFormViewFactory"]
+    management_form_class: type["BaseManagementForm"]
+
     def __init__(
         self,
         *,
