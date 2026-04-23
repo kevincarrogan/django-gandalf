@@ -436,9 +436,9 @@ should also provide a helper like `named` so the declaration stays concise:
 ```python
 signup_wizard = (
     Wizard()
-    .step(named(AccountForm, "account"))
-    .step(named(ProfileForm, "profile"))
-    .step(named(ConfirmForm, "confirm"))
+    .step(named("account", AccountForm))
+    .step(named("profile", ProfileForm))
+    .step(named("confirm", ConfirmForm))
 )
 ```
 
