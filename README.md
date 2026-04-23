@@ -240,6 +240,51 @@ So the intended progression is:
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
 
+### Why standalone `FormView` + wizard step reuse matters
+
+One practical payoff of this design is that a configured `FormView` can be
+reused in two contexts:
+
+1. as a step inside a wizard flow, and
+2. as a normal standalone Django view outside any wizard.
+
+That lets teams keep form behavior in one place instead of duplicating it for
+“create in wizard” vs “edit later” screens.
+
+For example, imagine onboarding captures a billing profile in a multi-step
+wizard. Later, users can edit that same billing profile from account settings.
+
+```python
+class BillingProfileStepView(FormView):
+    form_class = BillingProfileForm
+    template_name = "account/billing_profile_form.html"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        customer = getattr(self.request.user, "customer", None)
+        if customer:
+            initial["company_name"] = customer.company_name
+            initial["vat_id"] = customer.vat_id
+        return initial
+
+
+onboarding_wizard = (
+    Wizard()
+    .step(AccountForm)
+    .step(BillingProfileStepView)  # same configured view
+    .step(ConfirmForm)
+)
+
+
+class BillingProfileEditView(BillingProfileStepView):
+    """Standalone edit screen reusing the same form/view configuration."""
+```
+
+In this setup, validation rules, initial-data behavior, template choice, and
+any custom view hooks live in one shared step view. The wizard gains that
+behavior during onboarding, while the account settings page reuses it later
+without a separate implementation.
+
 ### `WizardViewSet.template_name` is applied to auto-generated step `FormView`s
 
 When a step is declared with a plain `Form`, Gandalf generates the step
