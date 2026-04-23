@@ -160,20 +160,23 @@ generated step per member:
 ```python
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = Wizard().step(
+        declared_wizard = Wizard().step(
             HouseholdCountForm,
             context={"step_name": "household_count"},
         )  # asks for `member_count`
 
-        step_node = self.request.wizard.tree.find_one_by_context(
+        populated_wizard = declared_wizard.populate(self.request)
+        household_count = populated_wizard.path.find_one_by_context(
             step_name="household_count",
         )
-        step_count_data = (
-            step_node.form.cleaned_data
-            if step_node and step_node.is_complete
+        household_count_data = (
+            household_count.node.cleaned_data
+            if household_count and household_count.is_complete
             else {}
         )
-        member_count = int(step_count_data.get("member_count", 0) or 0)
+        member_count = int(household_count_data.get("member_count", 0) or 0)
+
+        wizard = declared_wizard
 
         for index in range(1, max(member_count, 0) + 1):
             wizard = wizard.step(build_member_form_view(index))
