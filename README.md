@@ -228,6 +228,9 @@ And if a step needs the untouched incoming request, that is preserved on the wiz
 You only need to provide a full `FormView` yourself when you want extra per-step configuration, such as custom `get_initial()`, `form_valid()`, or other view-level behavior.
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class AccountStepView(FormView):
     form_class = AccountForm
 
@@ -278,6 +281,9 @@ For example, imagine onboarding captures a billing profile in a multi-step
 wizard. Later, users can edit that same billing profile from account settings.
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class BillingProfileStepView(FormView):
     form_class = BillingProfileForm
     template_name = "account/billing_profile_form.html"
@@ -324,6 +330,9 @@ If you pass your own `FormView` to `.step()`, that step keeps its own
 `template_name` instead of inheriting the one from the `WizardViewSet`:
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class ProfileStepView(FormView):
     form_class = ProfileForm
     template_name = "signup/profile_step.html"
@@ -362,6 +371,9 @@ pass an explicit `FormView` to `.step()`, Gandalf uses that `FormView` as-is
 instead of taking the corresponding method from the `WizardViewSet`:
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class AccountStepView(FormView):
     form_class = AccountForm
 
@@ -503,6 +515,9 @@ wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
 Where `CustomFormViewFactory` is a class responsible for building the dynamic `FormView` class used when you call `.step(SomeForm)`.
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class CustomFormViewFactory:
     def build(self, form_class):
         class GeneratedFormView(FormView):
@@ -1004,6 +1019,9 @@ class SignupWizard(SessionWizardView):
 #### gandalf style
 
 ```python
+from django.views.generic.edit import FormView
+
+
 class AccountStepView(FormView):
     form_class = AccountForm
 

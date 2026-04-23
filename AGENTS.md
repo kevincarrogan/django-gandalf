@@ -9,6 +9,7 @@ This project is currently in the prototype stage.
 - Do not write or modify implementation code unless the user explicitly asks for it.
 - Do not write or modify tests unless the user explicitly asks for them.
 - When working on the README, call out any inconsistencies you notice in its coding examples.
+- In documentation examples, if Django classes/functions are referenced, include the full Django import lines needed for that snippet.
 
 ## Commit Messages
 
