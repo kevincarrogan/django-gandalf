@@ -144,5 +144,12 @@ class ManagementForm(BaseManagementForm):
 
 ```python
 class WizardViewSet:
-    ...
+    wizard: "Wizard | None"
+    template_name: "str | None"
+
+    def get_wizard(self, request: "HttpRequest") -> "Wizard":
+        ...
+
+    def done(self, request: "HttpRequest"):
+        ...
 ```
