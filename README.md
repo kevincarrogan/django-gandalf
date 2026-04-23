@@ -242,8 +242,9 @@ So the intended progression is:
 
 ### `WizardViewSet.template_name` is applied to auto-generated step `FormView`s
 
-When a step is declared with a plain `Form`, Gandalf can generate the step
-`FormView` and still let the viewset control which template it renders:
+When a step is declared with a plain `Form`, Gandalf generates the step
+`FormView` and lets the viewset-level `template_name` control which template it
+renders:
 
 ```python
 class SignupWizardViewSet(WizardViewSet):
@@ -251,7 +252,26 @@ class SignupWizardViewSet(WizardViewSet):
     wizard = Wizard().step(AccountForm)
 ```
 
-The template can then include the Gandalf management form via template tag:
+If you pass your own `FormView` to `.step()`, that step keeps its own
+`template_name` instead of inheriting the one from the `WizardViewSet`:
+
+```python
+class ProfileStepView(FormView):
+    form_class = ProfileForm
+    template_name = "signup/profile_step.html"
+
+
+class SignupWizardViewSet(WizardViewSet):
+    template_name = "signup/step.html"
+    wizard = Wizard().step(AccountForm).step(ProfileStepView)
+```
+
+In that example, `AccountForm` is rendered with `signup/step.html` because
+Gandalf generated the step `FormView`, while `ProfileStepView` is rendered with
+`signup/profile_step.html` because the step supplied its own `FormView`.
+
+Whichever template is used for a wizard step should include the Gandalf
+management form tag:
 
 ```django
 {% load gandalf %}
