@@ -56,16 +56,30 @@ class OnboardingWizard(SessionWizardView):
 ### django-gandalf style (same flow, explicit as a tree)
 
 ```python
-business_flow = Wizard().step(BizDetailsForm).step(BizComplianceForm)
 international_flow = Wizard().step(IntlTaxForm).step(IntlKYCForm)
-personal_flow = Wizard().step(ProfileForm)
+business_flow = (
+    Wizard()
+    .step(BizDetailsForm)
+    .step(BizComplianceForm)
+    .branch(
+        condition(needs_international_checks, international_flow),
+        default=None,
+    )
+)
+personal_flow = (
+    Wizard()
+    .branch(
+        condition(needs_international_checks, international_flow),
+        default=None,
+    )
+    .step(ProfileForm)
+)
 
 onboarding_wizard = (
     Wizard()
     .step(AccountTypeForm)
     .branch(
         condition(is_business_account, business_flow),
-        condition(needs_international_checks, international_flow),
         default=personal_flow,
     )
     .step(ReviewForm)
@@ -174,8 +188,8 @@ class HouseholdWizardViewSet(WizardViewSet):
 
         wizard = declared_wizard
 
-        for index in range(1, member_count):
-            wizard = wizard.step(build_member_form_view(index))
+        for index in range(member_count):
+            wizard = wizard.step(build_member_form_view(index + 1))
 
         return wizard.step(ConfirmStepView)
 ```
