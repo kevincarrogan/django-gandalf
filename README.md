@@ -168,7 +168,11 @@ class HouseholdWizardViewSet(WizardViewSet):
         step_node = self.request.wizard.tree.find_one_by_context(
             step_name="household_count",
         )
-        step_count_data = step_node.cleaned_data if step_node and step_node.is_complete else {}
+        step_count_data = (
+            step_node.form.cleaned_data
+            if step_node and step_node.is_complete
+            else {}
+        )
         member_count = int(step_count_data.get("member_count", 0) or 0)
 
         for index in range(1, max(member_count, 0) + 1):
@@ -319,6 +323,53 @@ In that example, `AccountForm` is rendered with `signup/step.html` because
 Gandalf generated the step `FormView`, while `ProfileStepView` is rendered with
 `signup/profile_step.html` because the step supplied its own `FormView`.
 
+The same idea applies more generally to `FormView` behavior on the
+`WizardViewSet`. If Gandalf is generating the step `FormView` for you, methods
+defined on the `WizardViewSet` can act as the corresponding `FormView` methods
+for that generated step view.
+
+For example, a viewset-level `get_context_data()` can be used by the
+auto-generated `FormView`:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    template_name = "signup/step.html"
+    wizard = Wizard().step(AccountForm)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["product_name"] = "Gandalf Pro"
+        return context
+```
+
+That inheritance only applies when Gandalf is generating the step view. If you
+pass an explicit `FormView` to `.step()`, Gandalf uses that `FormView` as-is
+instead of taking the corresponding method from the `WizardViewSet`:
+
+```python
+class AccountStepView(FormView):
+    form_class = AccountForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["product_name"] = "Step-specific value"
+        return context
+
+
+class SignupWizardViewSet(WizardViewSet):
+    template_name = "signup/step.html"
+    wizard = Wizard().step(AccountStepView)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["product_name"] = "Viewset value"
+        return context
+```
+
+In that case, `AccountStepView.get_context_data()` is the method that runs for
+that step, because the user-supplied `FormView` always takes precedence over
+the auto-generated one.
+
 Whichever template is used for a wizard step should include the Gandalf
 management form tag:
 
@@ -372,8 +423,12 @@ For example:
 
 ```python
 def build_profile_context(request):
-    account = request.wizard.tree.find_one_by_context(step_name="account")
-    account_data = account.cleaned_data if account and account.is_complete else {}
+    account_step = request.wizard.tree.find_one_by_context(step_name="account")
+    account_data = (
+        account_step.form.cleaned_data
+        if account_step and account_step.is_complete
+        else {}
+    )
 
     return {
         "step_name": "profile",
@@ -684,14 +739,14 @@ class CheckoutWizardViewSet(WizardViewSet):
     wizard = checkout_wizard
 
     def done(self, wizard):
-        customer = wizard.path.find_one_by_context(step_name="customer")
-        address = wizard.path.find_one_by_context(step_name="address")
+        customer_step = wizard.path.find_one_by_context(step_name="customer")
+        address_step = wizard.path.find_one_by_context(step_name="address")
 
         create_order(
-            email=customer.cleaned_data["email"],
+            email=customer_step.form.cleaned_data["email"],
             shipping_address={
-                "line_1": address.cleaned_data["line_1"],
-                "postcode": address.cleaned_data["postcode"],
+                "line_1": address_step.form.cleaned_data["line_1"],
+                "postcode": address_step.form.cleaned_data["postcode"],
             },
         )
 ```
@@ -764,8 +819,12 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    company = request.wizard.tree.find_one_by_context(step_name="company")
-    cleaned = company.cleaned_data if company and company.is_complete else {}
+    company_step = request.wizard.tree.find_one_by_context(step_name="company")
+    cleaned = (
+        company_step.form.cleaned_data
+        if company_step and company_step.is_complete
+        else {}
+    )
     return cleaned.get("is_business")
 
 
@@ -779,6 +838,9 @@ company_wizard = (
     .step(SummaryForm, context={"step_name": "summary"})
 )
 ```
+
+`find_one_by_context(...)` returns a `Step` node. To read submitted values from
+that step, access the bound form state via `step.form.cleaned_data`.
 
 What improves here:
 
@@ -924,8 +986,12 @@ class ProfileStepView(FormView):
     form_class = ProfileForm
 
     def get_initial(self):
-        account = self.request.wizard.tree.find_one_by_context(step_name="account")
-        account_data = account.cleaned_data if account and account.is_complete else {}
+        account_step = self.request.wizard.tree.find_one_by_context(step_name="account")
+        account_data = (
+            account_step.form.cleaned_data
+            if account_step and account_step.is_complete
+            else {}
+        )
         return {
             "contact_email": account_data.get("email"),
             "country": account_data.get("country"),
@@ -936,10 +1002,18 @@ class ConfirmStepView(FormView):
     form_class = ConfirmForm
 
     def get_initial(self):
-        account = self.request.wizard.tree.find_one_by_context(step_name="account")
-        profile = self.request.wizard.tree.find_one_by_context(step_name="profile")
-        account_data = account.cleaned_data if account and account.is_complete else {}
-        profile_data = profile.cleaned_data if profile and profile.is_complete else {}
+        account_step = self.request.wizard.tree.find_one_by_context(step_name="account")
+        profile_step = self.request.wizard.tree.find_one_by_context(step_name="profile")
+        account_data = (
+            account_step.form.cleaned_data
+            if account_step and account_step.is_complete
+            else {}
+        )
+        profile_data = (
+            profile_step.form.cleaned_data
+            if profile_step and profile_step.is_complete
+            else {}
+        )
         return {
             "email": account_data.get("email"),
             "display_name": profile_data.get("display_name"),
