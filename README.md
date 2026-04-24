@@ -517,11 +517,17 @@ context.
 
 ### Additional configuration follows the same pattern
 
-Configuration for auto-generated step views is **optional** and follows the same inline constructor style as the rest of the wizard API.
+Configuration for auto-generated step views and storage is **optional** and follows the same inline constructor style.
 
 You do not need to pass anything for this in the common case: Gandalf should provide a sensible default factory for generating step `FormView` classes from plain forms.
 
-When auto FormView generation customization is needed, it follows this shape:
+In other words, storage customization:
+
+```python
+wizard = Wizard(storage_class=CustomSessionStorage)
+```
+
+and auto FormView generation customization:
 
 ```python
 wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
@@ -556,7 +562,9 @@ That keeps the mental model consistent:
 
 ### Storage
 
-Wizard state will be backed by `SessionStorage`.
+Wizard state will be backed by a session storage class. Gandalf should provide
+`SessionStorage` as its only built-in storage class, and users may pass a
+compatible custom session-backed class with `Wizard(storage_class=...)`.
 
 For now, Gandalf should not expose `CookieStorage` as a built-in option. Wizard
 state can include enough structured form data and runtime metadata that
