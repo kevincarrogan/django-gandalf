@@ -4,7 +4,13 @@ from django.generic.views import FormView
 def form_view_factory(form_class):
     form_name = form_class.__name__
 
-    return type(f"{form_name}View", (FormView), {"form_class": form_class})
+    class GeneratedFormView(FormView):
+        pass
+
+    GeneratedFormView.form_class = form_class
+    GeneratedFormView.__name__ = f"{form_name}View"
+    GeneratedFormView.__qualname__ = GeneratedFormView.__name__
+    return GeneratedFormView
 
 
 class StepDefinition:

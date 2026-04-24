@@ -172,6 +172,21 @@ answer. For example, ask how many household members to collect, then append one
 generated step per member:
 
 ```python
+from django.views.generic.edit import FormView
+
+
+def build_member_form_view(member_number):
+    class GeneratedMemberFormView(FormView):
+        form_class = HouseholdMemberForm
+
+        def get_initial(self):
+            return {"member_number": member_number}
+
+    GeneratedMemberFormView.__name__ = f"HouseholdMember{member_number}FormView"
+    GeneratedMemberFormView.__qualname__ = GeneratedMemberFormView.__name__
+    return GeneratedMemberFormView
+
+
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
         declared_wizard = Wizard().step(
@@ -533,6 +548,8 @@ class CustomFormViewFactory:
                 return initial
 
         GeneratedFormView.form_class = form_class
+        GeneratedFormView.__name__ = f"{form_class.__name__}View"
+        GeneratedFormView.__qualname__ = GeneratedFormView.__name__
         return GeneratedFormView
 ```
 

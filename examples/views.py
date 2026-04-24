@@ -123,6 +123,7 @@ def build_generated_step_view(step_number):
             return {"step_number": step_number}
 
     GeneratedStepView.__name__ = f"GeneratedStep{step_number}View"
+    GeneratedStepView.__qualname__ = GeneratedStepView.__name__
     return GeneratedStepView
 
 
