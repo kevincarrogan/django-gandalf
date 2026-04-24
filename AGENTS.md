@@ -4,11 +4,11 @@
 
 This project is currently in the prototype stage.
 
-- Treat the README as the primary source of truth for current work.
-- Unless the user explicitly says otherwise, changes should be limited to `README.md`.
+- Treat `IMPLEMENTATION_IDEAS.md` as the primary source of truth for current work.
+- Unless the user explicitly says otherwise, changes should be limited to `IMPLEMENTATION_IDEAS.md`.
 - Do not write or modify implementation code unless the user explicitly asks for it.
 - Do not write or modify tests unless the user explicitly asks for them.
-- When working on the README, call out any inconsistencies you notice in its coding examples.
+- Keep `README.md` in sync where possible, and call out any inconsistencies you notice between it and `IMPLEMENTATION_IDEAS.md`.
 - In documentation examples, if Django classes/functions are referenced, include the full Django import lines needed for that snippet.
 
 ## Commit Messages
