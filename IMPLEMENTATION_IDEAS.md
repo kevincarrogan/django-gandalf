@@ -94,7 +94,18 @@ class WizardTree:
         Raises:
             MultipleStepsReturned: If the lookup is ambiguous.
         """
-        ...
+        finder = ContextFinder(context)
+        self.walk(finder)
+        return finder.one()
+
+    def filter_by_context(self, **context) -> list["Step"]:
+        """Match against Step context values using the provided context kwargs.
+
+        Return the matching Step objects in execution order.
+        """
+        finder = ContextFinder(context)
+        self.walk(finder)
+        return finder.all()
 ```
 
 ## `WizardTreeBuilder`
@@ -139,6 +150,35 @@ then descend into children when every visitor allows it, then call `exit()` in
 reverse order. That gives visitors a predictable stack-like lifecycle while
 still allowing a visitor such as `BranchEvaluator` to prevent traversal into
 unreachable branches.
+
+## `ContextFinder`
+
+```python
+class ContextFinder(WizardTreeVisitor):
+    """Collect step nodes whose context matches the provided values."""
+
+    def __init__(self, context: dict):
+        self.context = context
+        self.matches = []
+
+    def enter(self, node) -> None:
+        if node.is_step and node.matches_context(**self.context):
+            self.matches.append(node)
+
+    def one(self) -> "Step | None":
+        if len(self.matches) > 1:
+            raise MultipleStepsReturned
+        if not self.matches:
+            return None
+        return self.matches[0]
+
+    def all(self) -> list["Step"]:
+        return self.matches
+```
+
+`ContextFinder` keeps context lookup as a traversal concern. `WizardTree` can
+walk the full evaluated tree, while `WizardPath` can walk only the ordered path
+steps and still reuse the same finder.
 
 ## `WizardStateDeserializer`
 
@@ -210,6 +250,14 @@ class BranchEvaluator:
 
 ```python
 class WizardPath:
+    def walk(self, *visitors) -> None:
+        """Walk the path steps in order and let each visitor inspect them."""
+        for step in self:
+            for visitor in visitors:
+                visitor.enter(step)
+            for visitor in reversed(visitors):
+                visitor.exit(step)
+
     def __iter__(self):
         ...
 
@@ -227,14 +275,18 @@ class WizardPath:
         Raises:
             MultipleStepsReturned: If the lookup is ambiguous.
         """
-        ...
+        finder = ContextFinder(context)
+        self.walk(finder)
+        return finder.one()
 
     def filter_by_context(self, **context) -> list["Step"]:
         """Match against Step context values using the provided context kwargs.
 
         Return the matching Step objects in execution order.
         """
-        ...
+        finder = ContextFinder(context)
+        self.walk(finder)
+        return finder.all()
 ```
 
 ## `WizardPathBuilder`
@@ -262,12 +314,19 @@ class WizardPathBuilder(WizardTreeVisitor):
 ```python
 class Step:
     key: str
+    context: dict
 
     def to_state(self) -> dict:
         ...
 
     def apply_state(self, data: dict | None) -> None:
         ...
+
+    def matches_context(self, **context) -> bool:
+        return all(
+            self.context.get(key) == value
+            for key, value in context.items()
+        )
 ```
 
 ## `MultipleStepsReturned`
