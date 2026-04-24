@@ -572,6 +572,25 @@ The intended configuration story is:
 
 > This section describes the API direction; storage behavior internals are intentionally deferred.
 
+Implementation idea for the runtime population boundary:
+
+```python
+class Wizard:
+    def populate(self, request):
+        # Take the incoming request and resolve the configured storage backend.
+        # Load the current wizard state for this request from that storage.
+        # Combine the stored state with the declared wizard tree.
+        # Populate the tree with the current runtime state for each step.
+        # Reevaluate branch reachability from the root using the current data.
+        # Build the path projection for the visited/completed execution route.
+        # Return the request-specific runtime wizard.
+        #
+        # This should not execute the current step. Step execution happens later
+        # when the active FormView receives a wizard-shaped request and returns
+        # a response.
+        pass
+```
+
 ### Branching from the beginning
 
 You can also branch immediately based on runtime context (for example, the current day of the week):
