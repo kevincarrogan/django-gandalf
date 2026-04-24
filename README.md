@@ -517,17 +517,11 @@ context.
 
 ### Additional configuration follows the same pattern
 
-Configuration for auto-generated step views is **optional** and follows the same inline constructor style as storage configuration.
+Configuration for auto-generated step views is **optional** and follows the same inline constructor style as the rest of the wizard API.
 
 You do not need to pass anything for this in the common case: Gandalf should provide a sensible default factory for generating step `FormView` classes from plain forms.
 
-In other words, this:
-
-```python
-wizard = Wizard(storage_class=CookieStorage)
-```
-
-and auto FormView generation customization (when you need it) follows the same shape:
+When auto FormView generation customization is needed, it follows this shape:
 
 ```python
 wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
@@ -560,32 +554,17 @@ That keeps the mental model consistent:
 - those touch points control how step `FormView` classes are produced,
 - and future configuration hooks should follow this same constructor-level pattern instead of introducing unrelated mechanisms.
 
-### Storage backends
+### Storage
 
-Wizard state will be backed by a storage object.
+Wizard state will be backed by `SessionStorage`.
 
-The intended built-in options are:
+For now, Gandalf should not expose `CookieStorage` as a built-in option. Wizard
+state can include enough structured form data and runtime metadata that
+cookie-backed storage is too size-constrained.
 
-- `SessionStorage` (default),
-- `CookieStorage`.
-
-The intended configuration story is:
-
-1. **Default behavior**: do nothing and use `SessionStorage`.
-2. **Global setting** (Django settings):
-
-   ```python
-   GANDALF_WIZARD_STORAGE_CLASS = "gandalf.storage.CookieStorage"
-   ```
-
-3. **Per wizard**: pass a storage class when constructing the wizard.
-
-   ```python
-   from gandalf import Wizard
-   from gandalf.storage import CookieStorage
-
-   wizard = Wizard(storage_class=CookieStorage)
-   ```
+`SessionStorage` should store plain JSON-compatible data in `request.session`,
+not pickled Python objects or live runtime objects. Django's configured session
+backend then handles the actual serialization and persistence.
 
 > This section describes the API direction; storage behavior internals are intentionally deferred.
 

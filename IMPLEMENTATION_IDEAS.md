@@ -11,18 +11,16 @@ class Wizard:
 
     original_request: "HttpRequest | None"
 
-    storage_class: type["BaseStorage"]
     form_view_factory_class: type["BaseFormViewFactory"]
     management_form_class: type["BaseManagementForm"]
 
     def __init__(
         self,
         *,
-        storage_class: type["BaseStorage"] = SessionStorage,
         form_view_factory_class: type["BaseFormViewFactory"] = FormViewFactory,
         management_form_class: type["BaseManagementForm"] = ManagementForm,
     ):
-        """Configure a wizard with its storage, view factory, and management form."""
+        """Configure a wizard with its view factory and management form."""
         ...
 
     def step(self, step, context=None) -> "Wizard":
@@ -38,7 +36,7 @@ class Wizard:
         runtime_wizard = self._clone_for_request(request)
         runtime_wizard.original_request = request
 
-        storage = runtime_wizard.storage_class.from_request(request, runtime_wizard)
+        storage = SessionStorage.from_request(request, runtime_wizard)
         serialized_state = storage.load()
 
         runtime_wizard.tree = WizardTreeBuilder(
@@ -342,6 +340,15 @@ class MultipleStepsReturned(ValueError):
 class BaseStorage:
     ...
 ```
+
+Storage is intentionally session-backed for the prototype. Do not expose
+`CookieStorage` as a built-in or documented configuration option for now:
+wizard state may include enough structured form data and runtime metadata that
+cookie-backed storage would be too size-constrained.
+
+Storage implementations should persist plain JSON-compatible data in
+`request.session`, not pickled Python objects or live runtime objects. Django
+then handles serialization through the configured session backend.
 
 ## `SessionStorage`
 
