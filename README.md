@@ -183,7 +183,11 @@ class HouseholdWizardViewSet(WizardViewSet):
         household_count = populated_wizard.path.find_one_by_context(
             step_name="household_count",
         )
-        household_count_data = household_count.cleaned_data if household_count else {"member_count": 0}
+        household_count_data = (
+            household_count.form.cleaned_data
+            if household_count
+            else {"member_count": 0}
+        )
         member_count = int(household_count_data["member_count"])
 
         wizard = declared_wizard
@@ -658,7 +662,7 @@ and a `Step` node can hold things like:
 - whether it is currently reachable,
 - whether it has run,
 - whether it completed successfully,
-- any cleaned data produced by that step,
+- the bound form state, including `form.cleaned_data` when the step completes,
 - validation errors for the most recent run,
 - the request that was passed into that step view,
 - the response returned by that step view,
@@ -668,7 +672,7 @@ The important idea is that Gandalf is not just storing “form answers”.
 It is capturing the execution of the flow step-by-step in a structure that
 matches the declared tree.
 
-So a node is not just a bag of cleaned data. It is the runtime record of:
+So a node is not just a bag of form data. It is the runtime record of:
 
 - what step this was,
 - what view handled it,
@@ -737,9 +741,14 @@ completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
 no match, and raise an error when the lookup is ambiguous.
 `filter_by_context(...)` should return matching `Step` objects in execution
 order. Because `wizard.path` only contains visited/completed nodes, every
-returned step should already be complete and should expose its submitted
-`cleaned_data`. In other words, being part of `wizard.path` means the step has
-completed successfully enough to contribute runtime data to the execution path.
+returned step should already be complete and should expose its submitted data
+through `step.form.cleaned_data`. In other words, being part of `wizard.path`
+means the step has completed successfully enough to contribute runtime data to
+the execution path.
+
+`Step` should not expose its own `cleaned_data` alias. Submitted form data
+should only be read through `step.form.cleaned_data`, keeping the bound form as
+the single data entry point.
 
 The path should include nodes that were visited and completed, including
 historical entries when the user changes earlier answers and causes a different
