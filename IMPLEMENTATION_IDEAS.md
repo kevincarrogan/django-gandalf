@@ -49,7 +49,6 @@ class Wizard:
         runtime_wizard.tree.walk(
             WizardStateDeserializer(serialized_state),
             ContextResolver(request),
-            BranchEvaluator(request),
         )
 
         path_builder = WizardPathBuilder()
@@ -76,7 +75,7 @@ collaborator. Visitors operate on a tree that already exists; `WizardTreeBuilder
 creates that tree from the declared wizard structure for the current request.
 
 Path building can use the same visitor pattern, but should happen after
-context resolution and branch evaluation so it collects from the evaluated tree.
+context resolution so it collects completed steps from the runtime tree.
 
 ## `WizardTree`
 
@@ -139,17 +138,12 @@ class WizardTreeVisitor:
     def exit(self, node) -> None:
         """Run after visiting the node's children."""
         ...
-
-    def should_descend(self, node) -> bool:
-        """Return whether traversal should continue into the node's children."""
-        return True
 ```
 
 `WizardTree.walk()` should call `enter()` for each visitor in the order passed,
-then descend into children when every visitor allows it, then call `exit()` in
-reverse order. That gives visitors a predictable stack-like lifecycle while
-still allowing a visitor such as `BranchEvaluator` to prevent traversal into
-unreachable branches.
+then descend into children, then call `exit()` in reverse order. That gives
+visitors a predictable stack-like lifecycle without making traversal control a
+visitor responsibility yet.
 
 ## `ContextFinder`
 
@@ -230,22 +224,6 @@ class ContextResolver:
         ...
 ```
 
-## `BranchEvaluator`
-
-```python
-class BranchEvaluator:
-    """Evaluate branch conditions and mark reachable nodes while walking."""
-
-    def __init__(self, request):
-        ...
-
-    def enter(self, node) -> None:
-        ...
-
-    def should_descend(self, node) -> bool:
-        ...
-```
-
 ## `WizardPath`
 
 ```python
@@ -299,15 +277,20 @@ class WizardPathBuilder(WizardTreeVisitor):
         self.steps = []
 
     def enter(self, node) -> None:
-        if node.is_step and node.is_reachable and node.is_complete:
+        if node.is_step and node.is_complete:
             self.steps.append(node)
-
-    def should_descend(self, node) -> bool:
-        return node.is_reachable
 
     def build(self) -> "WizardPath":
         return WizardPath(self.steps)
 ```
+
+`WizardPathBuilder` should not filter out completed steps solely because they
+are no longer on the active route after a later branch decision changes. If a
+user completes a business branch, goes back, and changes an earlier answer so
+the personal branch becomes active, the previous business steps should remain
+in `wizard.path` as historical visited/completed entries. Active-step selection
+can still decide which branch route should run next, but the path is an ordered
+execution history rather than only the current active route.
 
 ## `Step`
 

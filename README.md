@@ -120,6 +120,9 @@ Traditional wizard tooling is great for simple, linear steps, but it gets harder
 - **Django-friendly abstraction**: each step is still treated as a `FormView`-like unit under the hood.
 - **Advanced escape hatch**: pass a full `FormView` to `.step()` when a step needs extra configuration.
 
+For a request/response-level view of how the pieces are intended to fit
+together, see [LIFECYCLE.md](LIFECYCLE.md).
+
 ---
 
 ## Core API shape (early)
@@ -663,7 +666,7 @@ and a `Step` node can hold things like:
 - its position in the tree,
 - the underlying form class or `FormView` class,
 - the step context declared for that node (for example `{"step_name": "account"}`),
-- whether it is currently reachable,
+- whether it is currently on the active route,
 - whether it has run,
 - whether it completed successfully,
 - the bound form state, including `form.cleaned_data` when the step completes,
