@@ -1,2 +1,2 @@
 test:
-    uv run pytest
+    uv run pytest || test $? -eq 5
