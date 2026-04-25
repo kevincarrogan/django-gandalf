@@ -62,13 +62,13 @@ class Wizard:
 active step. Step execution should happen later, when the active `FormView`
 receives a wizard-shaped request and returns a response.
 
-The important abstraction is that the runtime wizard is a tree that can be
-walked. Storage should persist serialized node state, while serializer and
-visitor objects apply behavior to each node during traversal.
+The important abstraction is that the runtime wizard is a tree of `Step` nodes
+that can be walked. Storage should persist serialized step state, while
+serializer and visitor objects apply behavior to each step during traversal.
 
 Serialization and deserialization should use the same traversal API. Storage
 loads and saves plain data, while tree visitors translate between that data and
-runtime node state.
+runtime step state.
 
 Building the runtime tree is significant enough to be its own named
 collaborator. Visitors operate on a tree that already exists; `WizardTreeBuilder`
@@ -82,7 +82,7 @@ context resolution so it collects completed steps from the runtime tree.
 ```python
 class WizardTree:
     def walk(self, *visitors) -> None:
-        """Walk the tree in execution order and let each visitor inspect nodes."""
+        """Walk the Step tree in execution order and let each visitor inspect steps."""
         ...
 
     def find_one_by_context(self, **context) -> "Step | None":
@@ -121,22 +121,22 @@ class WizardTreeBuilder:
 ```
 
 `WizardTreeBuilder` is responsible for structural work such as expanding nested
-`Wizard` instances, creating generated `FormView` step nodes for plain forms,
-preserving explicit `FormView` steps, attaching declared context, assigning
-stable node keys, and preserving declaration order.
+`Wizard` instances into a tree of `Step` nodes, creating generated `FormView`
+steps for plain forms, preserving explicit `FormView` steps, attaching declared
+context, assigning stable step keys, and preserving declaration order.
 
 ## `WizardTreeVisitor`
 
 ```python
 class WizardTreeVisitor:
-    """Hook object used by WizardTree.walk() while traversing nodes."""
+    """Hook object used by WizardTree.walk() while traversing steps."""
 
-    def enter(self, node) -> None:
-        """Run before visiting the node's children."""
+    def enter(self, step) -> None:
+        """Run before visiting the step's children."""
         ...
 
-    def exit(self, node) -> None:
-        """Run after visiting the node's children."""
+    def exit(self, step) -> None:
+        """Run after visiting the step's children."""
         ...
 ```
 
@@ -149,15 +149,15 @@ visitor responsibility yet.
 
 ```python
 class ContextFinder(WizardTreeVisitor):
-    """Collect step nodes whose context matches the provided values."""
+    """Collect steps whose context matches the provided values."""
 
     def __init__(self, context: dict):
         self.context = context
         self.matches = []
 
-    def enter(self, node) -> None:
-        if node.is_step and node.matches_context(**self.context):
-            self.matches.append(node)
+    def enter(self, step) -> None:
+        if step.matches_context(**self.context):
+            self.matches.append(step)
 
     def one(self) -> "Step | None":
         if len(self.matches) > 1:
@@ -178,26 +178,26 @@ steps and still reuse the same finder.
 
 ```python
 class WizardStateDeserializer(WizardTreeVisitor):
-    """Apply persisted storage data to runtime tree nodes."""
+    """Apply persisted storage data to runtime Step nodes."""
 
     def __init__(self, data: dict):
         ...
 
-    def enter(self, node) -> None:
-        node.apply_state(self.data.get(node.key))
+    def enter(self, step) -> None:
+        step.apply_state(self.data.get(step.key))
 ```
 
 ## `WizardStateSerializer`
 
 ```python
 class WizardStateSerializer(WizardTreeVisitor):
-    """Collect runtime tree node state into plain storage data."""
+    """Collect runtime Step state into plain storage data."""
 
     def __init__(self):
         self.data = {}
 
-    def enter(self, node) -> None:
-        self.data[node.key] = node.to_state()
+    def enter(self, step) -> None:
+        self.data[step.key] = step.to_state()
 
     def build(self) -> dict:
         return self.data
@@ -220,7 +220,7 @@ class ContextResolver:
     def __init__(self, request):
         ...
 
-    def enter(self, node) -> None:
+    def enter(self, step) -> None:
         ...
 ```
 
@@ -276,9 +276,9 @@ class WizardPathBuilder(WizardTreeVisitor):
     def __init__(self):
         self.steps = []
 
-    def enter(self, node) -> None:
-        if node.is_step and node.is_complete:
-            self.steps.append(node)
+    def enter(self, step) -> None:
+        if step.is_complete:
+            self.steps.append(step)
 
     def build(self) -> "WizardPath":
         return WizardPath(self.steps)

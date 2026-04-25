@@ -646,7 +646,7 @@ where each `Step` node represents one step in the declared flow and exposes the
 runtime state for that step.
 
 Even though branch evaluation short-circuits for routing, the full declared tree
-still exists in `wizard.tree`. Inactive branch nodes remain part of the
+still exists in `wizard.tree`. Steps from inactive branches remain part of the
 structure, so introspection code can still walk the complete flow definition
 while `wizard.path` reflects only the visited/completed path.
 
@@ -658,7 +658,7 @@ step = request.wizard.tree.find_one_by_context(step_name="account")
 
 The tree should expose helper methods for common context-based lookups. In
 particular, it should provide a single-node lookup like
-`find_one_by_context(...)` that returns `None` when no node matches and raises
+`find_one_by_context(...)` that returns `None` when no step matches and raises
 an error when the provided context is too broad and matches more than one node.
 
 and a `Step` node can hold things like:
@@ -679,7 +679,7 @@ The important idea is that Gandalf is not just storing “form answers”.
 It is capturing the execution of the flow step-by-step in a structure that
 matches the declared tree.
 
-So a node is not just a bag of form data. It is the runtime record of:
+So a `Step` is not just a bag of form data. It is the runtime record of:
 
 - what step this was,
 - what view handled it,

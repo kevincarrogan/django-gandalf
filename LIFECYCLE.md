@@ -130,7 +130,7 @@ During population:
    state.
 3. `storage.load()` returns plain JSON-compatible data.
 4. `WizardTreeBuilder` expands the declaration into a runtime tree.
-5. `WizardStateDeserializer` applies persisted node state.
+5. `WizardStateDeserializer` applies persisted step state.
 6. `ContextResolver` resolves static and callable step context.
 7. `WizardPathBuilder` collects visited/completed steps from the evaluated
    tree.
@@ -144,13 +144,14 @@ branches that are no longer active.
 
 `wizard.tree` is the complete runtime representation of the declared flow.
 
-The tree should keep the full structure even when some branch nodes are not on
+The tree should keep the full structure even when some branch steps are not on
 the currently active route. This matters because callers may need to inspect
 historical or inactive branch state after a user changes an earlier answer.
 
-Each `Step` node should represent one form interaction and can carry:
+Each node in `wizard.tree` should be a `Step`. A `Step` represents one form
+interaction and can carry:
 
-- a stable node key
+- a stable step key
 - declared or resolved context
 - the underlying form class or `FormView` class
 - whether the step is on the currently active route, if Gandalf records that
@@ -162,7 +163,7 @@ Each `Step` node should represent one form interaction and can carry:
 - the response returned by the step
 - serialized runtime metadata
 
-Storage should not save the tree object itself. It should save plain node state
+Storage should not save the tree object itself. It should save plain step state
 collected by walking the tree with `WizardStateSerializer`.
 
 ## Runtime Path
@@ -277,7 +278,7 @@ wizard.tree.walk(serializer)
 storage.save(serializer.build())
 ```
 
-The saved data should be plain JSON-compatible state keyed by stable node key.
+The saved data should be plain JSON-compatible state keyed by stable step key.
 It should not include live `Form`, `FormView`, request, response, or tree
 objects.
 
@@ -317,16 +318,16 @@ class CheckoutWizardViewSet(WizardViewSet):
   navigation semantics.
 - `WizardTreeBuilder`: Expands a declared wizard into a request-specific
   runtime tree.
-- `WizardTree`: Holds the full evaluated flow structure and supports visitor
-  traversal.
+- `WizardTree`: Holds the full evaluated tree of `Step` nodes and supports
+  visitor traversal.
 - `WizardPath`: Presents the completed route as an ordered sequence of `Step`
   objects.
 - `Step`: Records one runtime form interaction inside the tree.
 - `SessionStorage`: Loads and saves plain serialized wizard state in
   `request.session`.
-- `WizardStateDeserializer`: Applies persisted node state to a freshly built
+- `WizardStateDeserializer`: Applies persisted step state to a freshly built
   tree.
-- `WizardStateSerializer`: Collects runtime node state into storage-safe data.
+- `WizardStateSerializer`: Collects runtime step state into storage-safe data.
 - `ContextResolver`: Resolves static and request-aware context values.
 - `FormViewFactory`: Builds a step `FormView` class when a user declares a
   plain form.
@@ -337,6 +338,6 @@ class CheckoutWizardViewSet(WizardViewSet):
 - How exactly should Gandalf identify an explicitly targeted previous step?
 - Which management form fields are required for routing and tamper detection?
 - Should response interpretation be configured per step, per wizard, or both?
-- What metadata belongs in serialized state versus runtime-only node state?
+- What metadata belongs in serialized state versus runtime-only step state?
 - How should historical branch state be exposed when a changed answer makes a
   previous branch inactive?
