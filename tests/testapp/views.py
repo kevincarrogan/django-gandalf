@@ -7,3 +7,8 @@ from .forms import FirstStepForm
 class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["step_title"] = "First step"
+        return context
