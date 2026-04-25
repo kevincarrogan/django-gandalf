@@ -1,3 +1,4 @@
+from django import forms
 from django.views.generic.edit import FormView
 
 
@@ -16,9 +17,15 @@ def form_view_factory(form_class):
 
 
 class Wizard:
+    tree = None
+
     def __init__(self, **configuration):
         self.configuration = configuration
-        self.tree = []
+        self.start = None
 
     def step(self, form_class_or_form_view_class, context=None):
+        if issubclass(form_class_or_form_view_class, forms.Form):
+            form_class = form_class_or_form_view_class
+            self.start = form_view_factory(form_class)
+
         return self
