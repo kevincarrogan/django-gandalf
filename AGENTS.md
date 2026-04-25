@@ -14,6 +14,18 @@ This project follows a test-driven development approach for filling out the requ
 - Keep `README.md` in sync where possible, and call out any inconsistencies you notice between it and the implemented behavior.
 - In documentation examples, if Django classes/functions are referenced, include the full Django import lines needed for that snippet.
 
+## Django Test Style
+
+- Prefer `pytest-django` fixtures and helpers over manually constructing Django test machinery where possible.
+- Use fixtures such as `client`, `rf`, `admin_client`, `settings`, `django_assert_num_queries`, and `django_db_blocker` when they fit the test.
+- Use `pytest_django.asserts` helpers such as `assertTemplateUsed`, `assertContains`, and `assertRedirects` instead of hand-rolled checks when they express the behavior clearly.
+- Avoid instantiating Django `Client`, `RequestFactory`, or modifying settings manually unless the fixture or helper is insufficient for the test.
+- Name tests after observable behavior, not implementation details.
+- Prefer one request per test unless the behavior specifically requires multiple requests.
+- Keep assertions focused on user-visible or framework-visible outcomes such as status codes, templates used, response context, rendered HTML, redirects, form errors, and persisted state.
+- When testing view rendering, prefer proving the complete request/render path: assert the response status, the template used, the expected context object, and a small representative HTML fragment.
+- Keep test app fixtures small and explicit. Put scenario-specific views and forms in `tests/testapp/` rather than building large inline test objects.
+
 ## Implementation Ownership
 
 - A human will implement the main package code.
