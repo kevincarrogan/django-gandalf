@@ -3,7 +3,7 @@ from pytest_django.asserts import assertTemplateUsed
 from tests.testapp.forms import FirstStepForm
 
 
-def test_wizard_viewset_renders(client):
+def test_wizard_viewset_renders_template(client):
     response = client.get("/wizard/")
 
     assert response.status_code == 200
@@ -15,3 +15,13 @@ def test_wizard_viewset_renders_first_step_form(client):
 
     assert response.status_code == 200
     assert isinstance(response.context["form"], FirstStepForm)
+
+
+def test_wizard_viewset_delegates_post_to_first_step_form(client):
+    response = client.post("/wizard/", data={"name": ""})
+
+    assert response.status_code == 200
+    assert isinstance(response.context["form"], FirstStepForm)
+    assert response.context["form"].errors == {
+        "name": ["This field is required."],
+    }
