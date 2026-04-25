@@ -1,15 +1,25 @@
 # Agent Instructions
 
-## Project Stage
+## Development Approach
 
-This project is currently in the prototype stage.
+This project follows a test-driven development approach for filling out the required functionality.
 
-- Treat `IMPLEMENTATION_IDEAS.md` as the primary source of truth for current work.
-- Unless the user explicitly says otherwise, changes should be limited to `IMPLEMENTATION_IDEAS.md`.
-- Do not write or modify implementation code unless the user explicitly asks for it.
-- Do not write or modify tests unless the user explicitly asks for them.
-- Keep `README.md` in sync where possible, and call out any inconsistencies you notice between it and `IMPLEMENTATION_IDEAS.md`.
+- Start each task by describing the intended functionality before implementation.
+- Write or update tests first so the expected behavior is captured before production code changes.
+- Run the relevant tests and confirm they fail for the expected reason before implementing the functionality.
+- Implement the smallest change needed to make the failing tests pass.
+- Run the relevant tests again and confirm they pass.
+- Refactor after the tests pass, keeping the test suite green.
+- Only move on to the next task after the failing-test, implementation, passing-test, and refactor cycle is complete.
+- Keep `README.md` in sync where possible, and call out any inconsistencies you notice between it and the implemented behavior.
 - In documentation examples, if Django classes/functions are referenced, include the full Django import lines needed for that snippet.
+
+## Implementation Ownership
+
+- A human will implement the main package code.
+- Agents may suggest production-code changes, outline implementation approaches, and add minimal stubs when needed to make tests importable.
+- Agents should not fill out production behavior in `gandalf/` unless explicitly asked to do so by the human.
+- Agents may write and update test code, test app fixtures, and documentation that captures expected behavior.
 
 ## Commit Messages
 
