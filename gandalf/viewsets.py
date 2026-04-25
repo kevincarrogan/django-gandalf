@@ -1,5 +1,5 @@
-from django.views import View
+from django.views.generic import TemplateView
 
 
-class WizardViewSet(View):
+class WizardViewSet(TemplateView):
     pass

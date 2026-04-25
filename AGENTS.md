@@ -21,6 +21,13 @@ This project follows a test-driven development approach for filling out the requ
 - Agents should not fill out production behavior in `gandalf/` unless explicitly asked to do so by the human.
 - Agents may write and update test code, test app fixtures, and documentation that captures expected behavior.
 
+## Dependencies
+
+- New package dependencies should be pinned to the latest appropriate minor release using the compatible-release `~=` specifier.
+- Prefer a full minor or patch floor such as `pytest~=8.3.5` over an open lower bound such as `pytest>=8.3.5`.
+- If a dependency intentionally needs an exact patch pin or a broader range, call out the reason when making the change.
+- Refresh `uv.lock` after changing dependencies.
+
 ## Commit Messages
 
 When creating commits in this repository, follow the existing project style:
