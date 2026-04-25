@@ -22,3 +22,4 @@ lint = [
 DJANGO_SETTINGS_MODULE = "tests.settings"
 django_find_project = false
 pythonpath = "."
+xfail_strict = true

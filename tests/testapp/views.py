@@ -1,7 +1,9 @@
-from django.http import HttpResponse
-from django.views import View
+from gandalf.wizards import Wizard
+from gandalf.viewsets import WizardViewSet
+
+from .forms import FirstStepForm
 
 
-class WizardView(View):
-    def get(self, request, *args, **kwargs):
-        return HttpResponse("OK")
+class SingleStepWizardViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm)
