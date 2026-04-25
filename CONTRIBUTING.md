@@ -19,8 +19,10 @@ uv sync --group dev --group lint
 Run the test suite with:
 
 ```bash
-uv run pytest
+just test
 ```
+
+The `test` recipe runs `uv run pytest`.
 
 Run linting and formatting with:
 
