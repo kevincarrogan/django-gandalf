@@ -1,7 +1,7 @@
 from pytest_django.asserts import assertTemplateUsed
 
 
-def test_wizard_viewset_delegates_get_request_to_first_step(client):
+def test_wizard_viewset_renders(client):
     response = client.get("/wizard/")
 
     assert response.status_code == 200
