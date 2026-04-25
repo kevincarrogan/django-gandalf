@@ -26,6 +26,12 @@ This project follows a test-driven development approach for filling out the requ
 - When testing view rendering, prefer proving the complete request/render path: assert the response status, the template used, the expected context object, and a small representative HTML fragment.
 - Keep test app fixtures small and explicit. Put scenario-specific views and forms in `tests/testapp/` rather than building large inline test objects.
 
+## Current Implementation Direction
+
+- For now, prefer the generated `FormView` route: wizard steps should be declared with plain Django `forms.Form` subclasses and Gandalf should generate the corresponding step view.
+- Do not prioritize explicit user-supplied `FormView` step classes unless the human asks to expand the declaration API in that direction.
+- When choosing the next test, strengthen the generated-form path before broadening to alternate step declaration styles.
+
 ## Implementation Ownership
 
 - A human will implement the main package code.
