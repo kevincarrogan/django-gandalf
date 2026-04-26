@@ -11,22 +11,21 @@ class WizardViewSet(View):
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         bound_wizard = self.wizard.bind(request, run_id)
-        current_form_view = bound_wizard.get_current_form_view()
-        step_view = current_form_view.as_view(
-            template_name=self.template_name,
-        )
-        return step_view(request, *args, **kwargs)
+        return self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
     def post(self, request, *args, run_id, **kwargs):
         bound_wizard = self.wizard.bind(request, run_id)
-        current_form_view = bound_wizard.get_current_form_view()
-        step_view = current_form_view.as_view(
-            template_name=self.template_name,
-        )
-        response = step_view(request, *args, **kwargs)
+        response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
         if HTTPStatus(response.status_code).is_redirection:
             bound_wizard.complete_current_step()
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         return response
+
+    def dispatch_current_step(self, request, bound_wizard, *args, **kwargs):
+        current_form_view = bound_wizard.get_current_form_view()
+        step_view = current_form_view.as_view(
+            template_name=self.template_name,
+        )
+        return step_view(request, *args, **kwargs)
