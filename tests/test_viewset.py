@@ -1,7 +1,9 @@
+from django.test import Client
 import pytest
 from pytest_django.asserts import assertContains, assertTemplateUsed
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.testapp.views import LinearWizardViewSet
 
 
 def test_wizard_viewset_renders_form(client):
@@ -49,3 +51,18 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(client):
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
     assert isinstance(response.context["form"], SecondStepForm)
     assertContains(response, '<input type="email" name="email"')
+
+
+@pytest.mark.xfail(
+    reason="Wizard runtime progress is stored on the class-level wizard declaration.",
+)
+def test_linear_wizard_progress_does_not_leak_to_new_client():
+    LinearWizardViewSet.wizard.current_step_index = 0
+    first_client = Client()
+    second_client = Client()
+
+    first_client.post("/linear-wizard/", data={"name": "Ada"})
+    response = second_client.get("/linear-wizard/")
+
+    assert response.status_code == 200
+    assert isinstance(response.context["form"], FirstStepForm)
