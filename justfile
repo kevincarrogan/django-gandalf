@@ -1,6 +1,9 @@
 test:
     uv run pytest
 
+coverage:
+    uv run pytest --cov=gandalf --cov-report=term-missing
+
 test-django python_version django_version:
     uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
 

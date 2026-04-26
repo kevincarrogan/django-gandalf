@@ -12,6 +12,7 @@ dependencies = [
 dev = [
     "ipdb~=0.13.13",
     "pytest~=8.3.5",
+    "pytest-cov~=7.1.0",
     "pytest-django~=4.11.1",
     "pytest-sugar~=1.1.1",
 ]
@@ -25,3 +26,11 @@ DJANGO_SETTINGS_MODULE = "tests.settings"
 django_find_project = false
 pythonpath = "."
 xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["gandalf"]
+
+[tool.coverage.report]
+fail_under = 98
+show_missing = true

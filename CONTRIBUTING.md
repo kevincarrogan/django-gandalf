@@ -24,6 +24,15 @@ just test
 
 The `test` recipe runs `uv run pytest`.
 
+Check package coverage with:
+
+```bash
+just coverage
+```
+
+The `coverage` recipe tracks branch-aware coverage for `gandalf` and fails if
+coverage drops below the configured threshold.
+
 Run a specific Python and Django compatibility check with:
 
 ```bash

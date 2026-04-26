@@ -28,3 +28,6 @@ jobs:
 
       - name: Run tests
         run: just test
+
+      - name: Check coverage
+        run: just coverage
