@@ -22,6 +22,19 @@ def single_step_wizard_run_url():
 
 
 @pytest.fixture
+def single_step_wizard_without_done_url():
+    return reverse("single-step-wizard-without-done")
+
+
+@pytest.fixture
+def single_step_wizard_without_done_run_url():
+    def build_url(run_id):
+        return reverse("single-step-wizard-without-done-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
 def linear_wizard_url():
     return reverse("linear-wizard")
 
@@ -66,15 +79,11 @@ def get_only_run_info_from_session(session):
     return list(gandalf_runs.items())[0]
 
 
-def initialise_wizard_run(client, wizard_url):
-    existing_run_ids = set(client.session.get("gandalf_runs", {}))
-    response = client.get(wizard_url)
-    gandalf_runs = client.session["gandalf_runs"]
+def get_new_run_id_from_session(session, existing_run_ids):
+    gandalf_runs = session["gandalf_runs"]
     new_run_ids = set(gandalf_runs) - existing_run_ids
     assert len(new_run_ids) == 1
-    run_id = new_run_ids.pop()
-    assert response.status_code == HTTPStatus.FOUND
-    return run_id, gandalf_runs[run_id], response
+    return new_run_ids.pop()
 
 
 def test_wizard_viewset_redirects_to_run_url_on_initialise(
@@ -82,7 +91,8 @@ def test_wizard_viewset_redirects_to_run_url_on_initialise(
     single_step_wizard_url,
     single_step_wizard_run_url,
 ):
-    run_id, run_data, response = initialise_wizard_run(client, single_step_wizard_url)
+    response = client.get(single_step_wizard_url)
+    run_id, run_data = get_only_run_info_from_session(client.session)
 
     assertRedirects(
         response,
@@ -97,7 +107,8 @@ def test_wizard_viewset_delegates_run_get_to_first_step_form(
     single_step_wizard_url,
     single_step_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
+    client.get(single_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.get(single_step_wizard_run_url(run_id))
 
@@ -112,7 +123,8 @@ def test_wizard_viewset_delegates_run_post_to_first_step_form(
     single_step_wizard_url,
     single_step_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
+    client.get(single_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(single_step_wizard_run_url(run_id), data={"name": ""})
 
@@ -123,15 +135,13 @@ def test_wizard_viewset_delegates_run_post_to_first_step_form(
     }
 
 
-@pytest.mark.xfail(
-    reason="WizardViewSet does not yet call done() after a valid final step.",
-)
 def test_single_step_wizard_valid_post_returns_done_response(
     client,
     single_step_wizard_url,
     single_step_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
+    client.get(single_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
 
@@ -144,7 +154,8 @@ def test_linear_wizard_run_starts_with_first_declared_form(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.get(linear_wizard_run_url(run_id))
 
@@ -159,7 +170,8 @@ def test_linear_wizard_valid_first_step_redirects_to_run_url(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
 
@@ -175,7 +187,8 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
     response = client.get(linear_wizard_run_url(run_id))
@@ -187,14 +200,33 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     assertContains(response, '<input type="email" name="email"')
 
 
+def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
+    client,
+    single_step_wizard_without_done_url,
+    single_step_wizard_without_done_run_url,
+):
+    client.get(single_step_wizard_without_done_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    with pytest.raises(
+        NotImplementedError,
+        match="WizardViewSet subclasses must define done().",
+    ):
+        client.post(
+            single_step_wizard_without_done_run_url(run_id), data={"name": "Ada"}
+        )
+
+
 def test_linear_wizard_progress_does_not_leak_to_new_client(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
     first_client = Client()
     second_client = Client()
-    first_run_id, _, _ = initialise_wizard_run(first_client, linear_wizard_url)
-    second_run_id, _, _ = initialise_wizard_run(second_client, linear_wizard_url)
+    first_client.get(linear_wizard_url)
+    first_run_id, _ = get_only_run_info_from_session(first_client.session)
+    second_client.get(linear_wizard_url)
+    second_run_id, _ = get_only_run_info_from_session(second_client.session)
 
     first_client.post(linear_wizard_run_url(first_run_id), data={"name": "Ada"})
     response = second_client.get(linear_wizard_run_url(second_run_id))
@@ -208,7 +240,8 @@ def test_linear_wizard_progress_persists_for_same_client(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
     response = client.get(linear_wizard_run_url(run_id))
@@ -224,10 +257,13 @@ def test_linear_wizard_progress_does_not_leak_to_different_wizard(
     other_linear_wizard_url,
     other_linear_wizard_run_url,
 ):
-    linear_run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    linear_run_id, _ = get_only_run_info_from_session(client.session)
     client.post(linear_wizard_run_url(linear_run_id), data={"name": "Ada"})
 
-    other_run_id, _, _ = initialise_wizard_run(client, other_linear_wizard_url)
+    existing_run_ids = set(client.session["gandalf_runs"])
+    client.get(other_linear_wizard_url)
+    other_run_id = get_new_run_id_from_session(client.session, existing_run_ids)
     response = client.get(other_linear_wizard_run_url(other_run_id))
 
     assert response.status_code == HTTPStatus.OK
@@ -240,7 +276,8 @@ def test_linear_wizard_progress_survives_recreated_declaration(
     linear_wizard_run_url,
     recreated_linear_wizard_run_url,
 ):
-    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
     response = client.get(recreated_linear_wizard_run_url(run_id))

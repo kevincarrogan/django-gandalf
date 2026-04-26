@@ -15,6 +15,16 @@ urlpatterns = [
         name="single-step-wizard-run",
     ),
     path(
+        "wizard-without-done/",
+        views.SingleStepWizardWithoutDoneViewSet.as_view(),
+        name="single-step-wizard-without-done",
+    ),
+    path(
+        "wizard-without-done/<uuid:run_id>/",
+        views.SingleStepWizardWithoutDoneViewSet.as_view(),
+        name="single-step-wizard-without-done-run",
+    ),
+    path(
         "linear-wizard/",
         views.LinearWizardViewSet.as_view(),
         name="linear-wizard",

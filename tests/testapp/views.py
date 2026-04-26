@@ -23,6 +23,19 @@ class SingleStepWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
+class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "single-step-wizard-without-done-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+
 class LinearWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (

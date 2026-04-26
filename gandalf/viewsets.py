@@ -18,10 +18,16 @@ class WizardViewSet(View):
         response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
         if HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST:
+            if bound_wizard.is_current_step_final():
+                return self.done(bound_wizard)
+
             bound_wizard.complete_current_step()
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         return response
+
+    def done(self, bound_wizard):
+        raise NotImplementedError("WizardViewSet subclasses must define done().")
 
     def dispatch_current_step(self, request, bound_wizard, *args, **kwargs):
         current_form_view = bound_wizard.get_current_form_view()
