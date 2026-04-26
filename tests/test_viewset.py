@@ -138,7 +138,7 @@ def test_linear_wizard_run_starts_with_first_declared_form(
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_linear_wizard_valid_first_step_renders_next_declared_form(
+def test_linear_wizard_valid_first_step_redirects_to_run_url(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
@@ -146,6 +146,23 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(
     run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
 
     response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+
+    assertRedirects(
+        response,
+        linear_wizard_run_url(run_id),
+        fetch_redirect_response=False,
+    )
+
+
+def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+
+    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.get(linear_wizard_run_url(run_id))
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")

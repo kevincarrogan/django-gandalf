@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 from django.shortcuts import redirect
 from django.views import View
 
@@ -23,20 +25,8 @@ class WizardViewSet(View):
         )
         response = step_view(request, *args, **kwargs)
 
-        if 300 <= response.status_code < 400:
+        if HTTPStatus(response.status_code).is_redirection:
             bound_wizard.complete_current_step()
-            return self.render_current_step(request, bound_wizard, *args, **kwargs)
+            return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         return response
-
-    def render_current_step(self, request, bound_wizard, *args, **kwargs):
-        current_form_view = bound_wizard.get_current_form_view()
-        step_view = current_form_view.as_view(
-            template_name=self.template_name,
-        )
-        original_method = request.method
-        request.method = "GET"
-        try:
-            return step_view(request, *args, **kwargs)
-        finally:
-            request.method = original_method
