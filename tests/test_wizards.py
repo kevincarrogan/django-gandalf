@@ -1,7 +1,18 @@
+import pytest
 from django.views.generic.edit import FormView
 
 from gandalf.wizards import Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+
+
+@pytest.fixture
+def request_with_session_factory(rf):
+    def build_request(path="/wizard/"):
+        request = rf.get(path)
+        request.session = {}
+        return request
+
+    return build_request
 
 
 def test_get_current_form_view_returns_first_declared_form_view():
@@ -13,7 +24,9 @@ def test_get_current_form_view_returns_first_declared_form_view():
     assert current_form_view.form_class is FirstStepForm
 
 
-def test_bound_wizard_starts_with_first_declared_form_view(rf):
+def test_bound_wizard_starts_with_first_declared_form_view(
+    request_with_session_factory,
+):
     wizard = (
         Wizard()
         .step(
@@ -24,13 +37,15 @@ def test_bound_wizard_starts_with_first_declared_form_view(rf):
         )
     )
 
-    bound_wizard = wizard.bind(rf.get("/wizard/"))
+    bound_wizard = wizard.bind(request_with_session_factory())
     current_form_view = bound_wizard.get_current_form_view()
 
     assert current_form_view.form_class is FirstStepForm
 
 
-def test_bound_wizard_completing_current_step_updates_current_form_view(rf):
+def test_bound_wizard_completing_current_step_updates_current_form_view(
+    request_with_session_factory,
+):
     wizard = (
         Wizard()
         .step(
@@ -40,7 +55,7 @@ def test_bound_wizard_completing_current_step_updates_current_form_view(rf):
             SecondStepForm,
         )
     )
-    bound_wizard = wizard.bind(rf.get("/wizard/"))
+    bound_wizard = wizard.bind(request_with_session_factory())
 
     bound_wizard.complete_current_step()
     current_form_view = bound_wizard.get_current_form_view()
@@ -48,7 +63,9 @@ def test_bound_wizard_completing_current_step_updates_current_form_view(rf):
     assert current_form_view.form_class is SecondStepForm
 
 
-def test_bound_wizard_progress_is_isolated_between_bindings(rf):
+def test_bound_wizard_progress_is_isolated_between_bindings(
+    request_with_session_factory,
+):
     wizard = (
         Wizard()
         .step(
@@ -58,8 +75,8 @@ def test_bound_wizard_progress_is_isolated_between_bindings(rf):
             SecondStepForm,
         )
     )
-    first_bound_wizard = wizard.bind(rf.get("/wizard/"))
-    second_bound_wizard = wizard.bind(rf.get("/wizard/"))
+    first_bound_wizard = wizard.bind(request_with_session_factory())
+    second_bound_wizard = wizard.bind(request_with_session_factory())
 
     first_bound_wizard.complete_current_step()
 

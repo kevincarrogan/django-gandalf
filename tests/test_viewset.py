@@ -43,7 +43,7 @@ def test_linear_wizard_starts_with_first_declared_form(client):
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_linear_wizard_valid_first_step_renders_next_declared_form(client):
+def test_linear_wizard_valid_first_step_renders_next_declared_form(client, db):
     response = client.post("/linear-wizard/", data={"name": "Ada"})
 
     assert response.status_code == 200
@@ -52,7 +52,7 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(client):
     assertContains(response, '<input type="email" name="email"')
 
 
-def test_linear_wizard_progress_does_not_leak_to_new_client():
+def test_linear_wizard_progress_does_not_leak_to_new_client(db):
     first_client = Client()
     second_client = Client()
 
@@ -63,10 +63,7 @@ def test_linear_wizard_progress_does_not_leak_to_new_client():
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-@pytest.mark.xfail(
-    reason="BoundWizard progress is not persisted across requests yet.",
-)
-def test_linear_wizard_progress_persists_for_same_client(client):
+def test_linear_wizard_progress_persists_for_same_client(client, db):
     client.post("/linear-wizard/", data={"name": "Ada"})
 
     response = client.get("/linear-wizard/")

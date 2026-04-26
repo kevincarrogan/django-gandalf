@@ -41,13 +41,16 @@ class Wizard:
 
 
 class BoundWizard:
+    session_key = "gandalf_current_step_index"
+
     def __init__(self, wizard, request):
         self.wizard = wizard
         self.request = request
-        self.current_step_index = 0
+        self.current_step_index = request.session.get(self.session_key, 0)
 
     def get_current_form_view(self):
         return self.wizard.steps[self.current_step_index]
 
     def complete_current_step(self):
         self.current_step_index += 1
+        self.request.session[self.session_key] = self.current_step_index
