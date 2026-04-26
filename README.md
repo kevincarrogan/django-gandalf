@@ -145,6 +145,25 @@ wizard = (
 
 This reads like a flow graph rather than a list of ad hoc callbacks.
 
+### Builder calls are immutable (ORM-style)
+
+`Wizard()` is intended to behave like Django `QuerySet` chaining: each call to
+`.step()` or `.branch()` returns a **new wizard instance** instead of mutating
+the existing one in place.
+
+That makes it safer to define reusable bases and derive variants without
+unexpected side effects:
+
+```python
+base_wizard = Wizard().step(AccountForm)
+
+staff_wizard = base_wizard.step(InternalReviewForm)
+customer_wizard = base_wizard.step(ProfileForm)
+```
+
+In the example above, `base_wizard` still contains only `AccountForm`, while
+`staff_wizard` and `customer_wizard` each represent their own extended flow.
+
 ### `WizardViewSet.get_wizard()` can be dynamic per request
 
 You can still declare a static class-level wizard when that is enough:
