@@ -40,7 +40,7 @@ def linear_wizard():
 def test_declared_form_step_creates_generated_form_view():
     wizard = Wizard().step(FirstStepForm)
 
-    current_form_view = wizard.start
+    current_form_view = wizard.steps[0]
 
     assert issubclass(current_form_view, FormView)
     assert current_form_view.form_class is FirstStepForm

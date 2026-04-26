@@ -33,7 +33,6 @@ class Wizard:
     def __init__(self, **configuration):
         self.storage_class = configuration.get("storage_class", self.storage_class)
         self.steps = []
-        self.start = None
 
     def initialise(self, request):
         bound_wizard = self.get_bound_wizard(request)
@@ -53,7 +52,6 @@ class Wizard:
             form_class = form_class_or_form_view_class
             form_view = form_view_factory(form_class)
             self.steps.append(form_view)
-            self.start = self.steps[0]
 
         return self
 
