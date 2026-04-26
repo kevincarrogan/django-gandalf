@@ -31,7 +31,7 @@ class Wizard:
         return self.steps[0]
 
     def step(self, form_class_or_form_view_class, context=None):
-        if issubclass(form_class_or_form_view_class, forms.Form):
+        if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
             form_class = form_class_or_form_view_class
             form_view = form_view_factory(form_class)
             self.steps.append(form_view)
