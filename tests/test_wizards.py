@@ -46,6 +46,48 @@ def test_declared_form_step_creates_generated_form_view():
     assert current_form_view.form_class is FirstStepForm
 
 
+def test_wizard_initialise_uses_configured_storage_class(request_with_session_factory):
+    class FakeStorage:
+        def __init__(self, request):
+            self.request = request
+
+        def initialise_run(self):
+            return "fake-run"
+
+    request = request_with_session_factory()
+    wizard = Wizard(storage_class=FakeStorage)
+
+    bound_wizard = wizard.initialise(request)
+
+    assert bound_wizard.run_id == "fake-run"
+    assert isinstance(bound_wizard.storage, FakeStorage)
+    assert bound_wizard.storage.request is request
+
+
+def test_wizard_initialise_uses_get_bound_wizard_hook(request_with_session_factory):
+    class FakeBoundWizard:
+        initialise_call_count = 0
+        run_id = None
+
+        def initialise(self):
+            self.__class__.initialise_call_count += 1
+            self.run_id = "fake-run"
+
+    class CustomWizard(Wizard):
+        def get_bound_wizard(self, request):
+            self.bound_wizard_request = request
+            return FakeBoundWizard()
+
+    request = request_with_session_factory()
+    wizard = CustomWizard()
+
+    bound_wizard = wizard.initialise(request)
+
+    assert wizard.bound_wizard_request is request
+    assert bound_wizard.run_id == "fake-run"
+    assert FakeBoundWizard.initialise_call_count == 1
+
+
 def test_bound_wizard_initialise_creates_session_run(
     request_with_session_factory,
     linear_wizard,

@@ -1,10 +1,11 @@
 import logging
 from copy import copy
 from http import HTTPStatus
-import uuid
 
 from django import forms
 from django.views.generic.edit import FormView
+
+from gandalf.storage import SessionStorage
 
 
 logger = logging.getLogger(__name__)
@@ -26,22 +27,26 @@ def form_view_factory(form_class):
 
 
 class Wizard:
+    storage_class = SessionStorage
     tree = None
 
     def __init__(self, **configuration):
-        self.configuration = configuration
+        self.storage_class = configuration.get("storage_class", self.storage_class)
         self.steps = []
         self.start = None
 
     def initialise(self, request):
-        bound_wizard = BoundWizard(self, request)
+        bound_wizard = self.get_bound_wizard(request)
         bound_wizard.initialise()
         return bound_wizard
 
     def bind(self, request, run_id):
-        bound_wizard = BoundWizard(self, request)
+        bound_wizard = self.get_bound_wizard(request)
         bound_wizard.retrieve(run_id)
         return bound_wizard
+
+    def get_bound_wizard(self, request):
+        return BoundWizard(self, request, self.storage_class(request))
 
     def step(self, form_class_or_form_view_class, context=None):
         if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
@@ -54,48 +59,36 @@ class Wizard:
 
 
 class BoundWizard:
-    SESSION_KEY = "gandalf_runs"
-
-    def __init__(self, wizard, request):
+    def __init__(self, wizard, request, storage):
         self.wizard = wizard
         self.request = request
+        self.storage = storage
         self.run_id = None
 
     def initialise(self):
-        self.run_id = str(uuid.uuid4())
+        self.run_id = self.storage.initialise_run()
         logger.debug("Initialise BoundWizard: %s", self.run_id)
 
-        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        gandalf_runs[self.run_id] = {}
-        logger.debug("Initialised data: %s", gandalf_runs)
-
-        self.request.session.modified = True
-
     def retrieve(self, run_id):
-        self.run_id = run_id
+        self.run_id = self.storage.retrieve_run(run_id)
         logger.debug("Retrieving BoundWizard: %s", self.run_id)
-        gandalf_runs = self.request.session[self.SESSION_KEY]
-        logger.debug("Retrieved data: %s", gandalf_runs)
-
-        self.request.session.modified = True
 
     def get_run_data(self):
-        gandalf_runs = self.request.session[self.SESSION_KEY]
-        return gandalf_runs[str(self.run_id)]
+        return self.storage.get_run_data(self.run_id)
 
     def get_submissions(self):
-        run_data = self.get_run_data()
-        return run_data.get("submissions", [])
+        return self.storage.get_submissions(self.run_id)
 
     def submit(self, submission, template_name, *args, **kwargs):
-        run_data = self.get_run_data()
-        run_data["submissions"] = self._build_updated_submissions(
-            submission,
-            template_name,
-            *args,
-            **kwargs,
+        self.storage.set_submissions(
+            self.run_id,
+            self._build_updated_submissions(
+                submission,
+                template_name,
+                *args,
+                **kwargs,
+            ),
         )
-        self.request.session.modified = True
 
     def _build_updated_submissions(self, submission, template_name, *args, **kwargs):
         updated_submissions = []
