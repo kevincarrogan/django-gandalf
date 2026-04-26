@@ -5,6 +5,8 @@ from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizards import Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -331,3 +333,20 @@ def test_linear_wizard_submissions_survive_recreated_declaration(
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
+
+
+def test_wizard_viewset_rejects_unconfigured_wizard(rf):
+    class UnconfiguredWizardViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm)
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+    request = rf.get("/wizard/")
+
+    with pytest.raises(
+        TypeError,
+        match="WizardViewSet.wizard must be a ConfiguredWizard",
+    ):
+        UnconfiguredWizardViewSet.as_view()(request)

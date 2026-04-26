@@ -27,15 +27,10 @@ def form_view_factory(form_class):
 
 
 class Wizard:
-    storage_class = SessionStorage
     tree = None
 
-    def __init__(self, **configuration):
-        self.storage_class = configuration.get("storage_class", self.storage_class)
+    def __init__(self):
         self.steps = []
-
-    def get_bound_wizard(self, request):
-        return BoundWizard(self, request, self.storage_class(request))
 
     def step(self, form_class_or_form_view_class, context=None):
         if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
@@ -45,6 +40,24 @@ class Wizard:
 
         return self
 
+    def configure(self, **configuration):
+        return ConfiguredWizard(
+            steps=self.steps,
+            configuration=configuration,
+        )
+
+
+class ConfiguredWizard:
+    storage_class = SessionStorage
+    tree = None
+
+    def __init__(self, *, steps, configuration):
+        self.steps = steps
+        self.configuration = configuration
+        self.storage_class = configuration.get("storage_class", self.storage_class)
+
+    def get_bound_wizard(self, request):
+        return BoundWizard(self, request, self.storage_class(request))
 
 class BoundWizard:
     def __init__(self, wizard, request, storage):

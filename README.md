@@ -581,7 +581,7 @@ context.
 
 ### Additional configuration follows the same pattern
 
-Configuration for auto-generated step views and storage is **optional** and follows the same inline constructor style.
+Configuration for auto-generated step views and storage is **optional** and is applied at the end of the builder chain with `.configure(...)`.
 
 You do not need to pass anything for this in the common case: Gandalf should provide a sensible default factory for generating step `FormView` classes from plain forms.
 
@@ -589,8 +589,9 @@ In other words, storage customization:
 
 ```python
 wizard = (
-    Wizard(storage_class=CustomSessionStorage)
+    Wizard()
     .step(AccountForm)
+    .configure(storage_class=CustomSessionStorage)
 )
 ```
 
@@ -598,8 +599,9 @@ and auto FormView generation customization:
 
 ```python
 wizard = (
-    Wizard(form_view_factory_class=CustomFormViewFactory)
+    Wizard()
     .step(AccountForm)
+    .configure(form_view_factory_class=CustomFormViewFactory)
 )
 ```
 
@@ -625,16 +627,17 @@ class CustomFormViewFactory:
 
 That keeps the mental model consistent:
 
-- `Wizard(...)` receives configuration touch points inline,
+- `Wizard()` remains focused on step/branch declaration,
+- `configure(...)` receives configuration touch points,
 - each touch point has a sensible default so you only configure what you need,
 - those touch points control how step `FormView` classes are produced,
-- and future configuration hooks should follow this same constructor-level pattern instead of introducing unrelated mechanisms.
+- and future configuration hooks should follow this same `configure(...)` pattern instead of introducing unrelated mechanisms.
 
 ### Storage
 
 Wizard state will be backed by a session storage class. Gandalf should provide
 `SessionStorage` as its only built-in storage class, and users may pass a
-compatible custom session-backed class with `Wizard(storage_class=...)`.
+compatible custom session-backed class with `Wizard().configure(storage_class=...)`.
 
 For now, Gandalf should not expose `CookieStorage` as a built-in option. Wizard
 state can include enough structured form data and runtime metadata that

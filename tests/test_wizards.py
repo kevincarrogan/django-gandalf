@@ -3,7 +3,7 @@ import uuid
 import pytest
 from django.views.generic.edit import FormView
 
-from gandalf.wizards import Wizard
+from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -34,14 +34,18 @@ def linear_wizard():
         .step(
             SecondStepForm,
         )
+        .configure()
     )
 
 
 def test_declared_form_step_creates_generated_form_view():
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard()
+
+    returned_wizard = wizard.step(FirstStepForm)
 
     current_form_view = wizard.steps[0]
 
+    assert returned_wizard is wizard
     assert issubclass(current_form_view, FormView)
     assert current_form_view.form_class is FirstStepForm
 
@@ -59,12 +63,22 @@ def test_get_bound_wizard_uses_configured_storage_class(request_with_session_fac
             self.request = request
 
     request = request_with_session_factory()
-    wizard = Wizard(storage_class=FakeStorage)
+    wizard = Wizard().configure(storage_class=FakeStorage)
 
     bound_wizard = wizard.get_bound_wizard(request)
 
     assert isinstance(bound_wizard.storage, FakeStorage)
     assert bound_wizard.storage.request is request
+
+
+def test_wizard_configure_returns_configured_wizard():
+    wizard = Wizard().step(FirstStepForm)
+
+    configured_wizard = wizard.configure()
+
+    assert isinstance(configured_wizard, ConfiguredWizard)
+    assert configured_wizard.steps == wizard.steps
+    assert configured_wizard.configuration == {}
 
 
 def test_bound_wizard_initialise_creates_session_run(

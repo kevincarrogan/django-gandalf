@@ -192,9 +192,10 @@ class ManagementFormClass:
 
 
 configured = (
-    Wizard(management_form_class=ManagementFormClass)
+    Wizard()
     .step(FirstForm, context={"step_name": "first"})
     .step(SecondForm, context={"step_name": "second"})
+    .configure(management_form_class=ManagementFormClass)
 )
 
 
