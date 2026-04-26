@@ -42,9 +42,6 @@ def test_linear_wizard_starts_with_first_declared_form(client):
     assertContains(response, '<input type="text" name="name"')
 
 
-@pytest.mark.xfail(
-    reason="Valid generated step submissions still use FormView.form_valid instead of advancing the wizard.",
-)
 def test_linear_wizard_valid_first_step_renders_next_declared_form(client):
     response = client.post("/linear-wizard/", data={"name": "Ada"})
 
