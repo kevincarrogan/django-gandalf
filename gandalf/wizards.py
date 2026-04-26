@@ -55,7 +55,7 @@ class Wizard:
 
 class BoundWizard:
     SESSION_KEY = "gandalf_runs"
-    NO_STEP_DATA = object()
+    NO_SUBMISSION = object()
 
     def __init__(self, wizard, request):
         self.wizard = wizard
@@ -84,91 +84,91 @@ class BoundWizard:
         gandalf_runs = self.request.session[self.SESSION_KEY]
         return gandalf_runs[str(self.run_id)]
 
-    def get_step_data(self):
+    def get_submissions(self):
         run_data = self.get_run_data()
-        return run_data.get("step_data", [])
+        return run_data.get("submissions", [])
 
-    def save_current_step_data(self, data, template_name, *args, **kwargs):
+    def submit(self, submission, template_name, *args, **kwargs):
         run_data = self.get_run_data()
-        run_data["step_data"] = self.build_updated_step_data(
-            data,
+        run_data["submissions"] = self._build_updated_submissions(
+            submission,
             template_name,
             *args,
             **kwargs,
         )
         self.request.session.modified = True
 
-    def build_updated_step_data(self, data, template_name, *args, **kwargs):
-        updated_step_data = []
-        stored_step_data = iter(self.get_step_data())
+    def _build_updated_submissions(self, submission, template_name, *args, **kwargs):
+        updated_submissions = []
+        stored_submissions = iter(self.get_submissions())
 
         for form_view in self.wizard.steps:
-            stored_data = next(stored_step_data, self.NO_STEP_DATA)
-            if stored_data is self.NO_STEP_DATA:
-                updated_step_data.append(data)
-                return updated_step_data
+            stored_submission = next(stored_submissions, self.NO_SUBMISSION)
+            if stored_submission is self.NO_SUBMISSION:
+                updated_submissions.append(submission)
+                return updated_submissions
 
-            response = self.dispatch_form_view(
+            response = self._dispatch_step(
                 form_view,
-                self.build_step_request("POST", data=stored_data),
+                self._build_step_request("POST", submission=stored_submission),
                 template_name,
                 *args,
                 **kwargs,
             )
 
-            if self.is_step_response_successful(response):
-                updated_step_data.append(stored_data)
+            if self._response_satisfies_step(response):
+                updated_submissions.append(stored_submission)
                 continue
 
-            updated_step_data.append(data)
-            return updated_step_data
+            updated_submissions.append(submission)
+            return updated_submissions
 
-        return updated_step_data
+        return updated_submissions
 
-    def dispatch_next_incomplete_step(self, template_name, *args, **kwargs):
-        stored_step_data = iter(self.get_step_data())
+    def replay(self, template_name, *args, **kwargs):
+        stored_submissions = iter(self.get_submissions())
 
         for form_view in self.wizard.steps:
-            data = next(stored_step_data, self.NO_STEP_DATA)
+            submission = next(stored_submissions, self.NO_SUBMISSION)
 
-            if data is self.NO_STEP_DATA:
-                return self.dispatch_form_view(
+            if submission is self.NO_SUBMISSION:
+                return self._dispatch_step(
                     form_view,
-                    self.build_step_request("GET"),
+                    self._build_step_request("GET"),
                     template_name,
                     *args,
                     **kwargs,
                 )
 
-            response = self.dispatch_form_view(
+            response = self._dispatch_step(
                 form_view,
-                self.build_step_request("POST", data=data),
+                self._build_step_request("POST", submission=submission),
                 template_name,
                 *args,
                 **kwargs,
             )
 
-            if not self.is_step_response_successful(response):
+            if not self._response_satisfies_step(response):
                 return response
 
         return None
 
-    def is_step_response_successful(self, response):
+    def _response_satisfies_step(self, response):
         return (
             HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
         )
 
-    def dispatch_form_view(self, form_view, request, template_name, *args, **kwargs):
+    def _dispatch_step(self, form_view, request, template_name, *args, **kwargs):
         step_view = form_view.as_view(
             template_name=template_name,
         )
         return step_view(request, *args, **kwargs)
 
-    def build_step_request(self, method, data=None):
+    def _build_step_request(self, method, submission=None):
         request = copy(self.request)
         request.method = method
 
         if method == "POST":
-            request.POST = data
+            request.POST = submission
 
         return request

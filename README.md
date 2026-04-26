@@ -285,7 +285,7 @@ In other words, the step-level `FormView` should still be able to behave as if i
 
 That illusion is where a lot of the power comes from: because the wizard owns the transformed request/response boundary, it can inspect, augment, and process those step interactions as the flow progresses without forcing each `FormView` to understand wizard mechanics directly.
 
-When a step `FormView` chooses to return its own `HttpResponse`, the default behavior should still be that the `WizardViewSet` swallows that response and decides what to do from the status code. Gandalf stores the raw posted data for each step, then replays the stored data through the step `FormView`s in order. A `200 OK` response is treated as the first step that needs user attention, while a redirect response is treated as a successful outcome and traversal continues to the next step.
+When a step `FormView` chooses to return its own `HttpResponse`, the default behavior should still be that the `WizardViewSet` swallows that response and decides what to do from the status code. Gandalf stores raw submissions, then replays those submissions through the step `FormView`s in order. A `200 OK` response is treated as the first step that needs user attention, while a redirect response is treated as a successful outcome and traversal continues to the next step.
 
 That default can still be overridden on a per-step basis when a particular step needs different semantics, but the out-of-the-box rule should be that Gandalf remains in control of the boundary and interprets the step response rather than passing it straight through unchanged.
 
@@ -671,7 +671,7 @@ weekday_or_weekend_wizard = (
 
 ### Tree-shaped runtime data contract
 
-The *mechanics* of tracking the current step are an implementation detail.
+The *mechanics* of replaying submissions are an implementation detail.
 
 The *behavior* is not.
 

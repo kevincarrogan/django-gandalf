@@ -210,10 +210,10 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(
     assert isinstance(response.context["form"], SecondStepForm)
     assert response.context["form"].errors == {}
     assertContains(response, '<input type="email" name="email"')
-    assert client.session["gandalf_runs"][run_id]["step_data"] == [{"name": "Ada"}]
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [{"name": "Ada"}]
 
 
-def test_linear_wizard_replaces_invalid_step_data_on_next_post(
+def test_linear_wizard_replaces_invalid_submission_on_next_post(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
@@ -226,7 +226,7 @@ def test_linear_wizard_replaces_invalid_step_data_on_next_post(
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
-    assert client.session["gandalf_runs"][run_id]["step_data"] == [{"name": "Ada"}]
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [{"name": "Ada"}]
 
 
 def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
@@ -264,7 +264,7 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
         )
 
 
-def test_linear_wizard_progress_does_not_leak_to_new_client(
+def test_linear_wizard_submissions_do_not_leak_to_new_client(
     linear_wizard_url,
     linear_wizard_run_url,
 ):
@@ -282,7 +282,7 @@ def test_linear_wizard_progress_does_not_leak_to_new_client(
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-def test_linear_wizard_progress_persists_for_same_client(
+def test_linear_wizard_submissions_persist_for_same_client(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
@@ -297,7 +297,7 @@ def test_linear_wizard_progress_persists_for_same_client(
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_linear_wizard_progress_does_not_leak_to_different_wizard(
+def test_linear_wizard_submissions_do_not_leak_to_different_wizard(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
@@ -317,7 +317,7 @@ def test_linear_wizard_progress_does_not_leak_to_different_wizard(
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-def test_linear_wizard_progress_survives_recreated_declaration(
+def test_linear_wizard_submissions_survive_recreated_declaration(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
