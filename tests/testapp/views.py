@@ -36,6 +36,23 @@ class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
         )
 
 
+class SingleStepWizardDoneDataViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "single-step-wizard-done-data-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        step_data = bound_wizard.get_current_step_data()
+        return HttpResponse(f"completed {step_data.get('name')}")
+
+
 class LinearWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (

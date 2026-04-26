@@ -35,6 +35,19 @@ def single_step_wizard_without_done_run_url():
 
 
 @pytest.fixture
+def single_step_wizard_done_data_url():
+    return reverse("single-step-wizard-done-data")
+
+
+@pytest.fixture
+def single_step_wizard_done_data_run_url():
+    def build_url(run_id):
+        return reverse("single-step-wizard-done-data-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
 def linear_wizard_url():
     return reverse("linear-wizard")
 
@@ -147,6 +160,26 @@ def test_single_step_wizard_valid_post_returns_done_response(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
+
+
+@pytest.mark.xfail(
+    reason="Generated form submissions do not yet persist cleaned data.",
+)
+def test_single_step_wizard_done_can_read_submitted_form_data(
+    client,
+    single_step_wizard_done_data_url,
+    single_step_wizard_done_data_run_url,
+):
+    client.get(single_step_wizard_done_data_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        single_step_wizard_done_data_run_url(run_id),
+        data={"name": "Ada"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed Ada"
 
 
 def test_linear_wizard_run_starts_with_first_declared_form(

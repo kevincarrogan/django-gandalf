@@ -87,6 +87,9 @@ class BoundWizard:
     def is_current_step_final(self):
         return self.current_step_index == len(self.wizard.steps) - 1
 
+    def get_current_step_data(self):
+        return {}
+
     def complete_current_step(self):
         self.current_step_index += 1
         gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
