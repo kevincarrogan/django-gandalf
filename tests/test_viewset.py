@@ -72,9 +72,6 @@ def test_linear_wizard_progress_persists_for_same_client(client, db):
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-@pytest.mark.xfail(
-    reason="BoundWizard progress uses a global session key shared by all wizards.",
-)
 def test_linear_wizard_progress_does_not_leak_to_different_wizard(client, db):
     client.post("/linear-wizard/", data={"name": "Ada"})
 
@@ -82,3 +79,15 @@ def test_linear_wizard_progress_does_not_leak_to_different_wizard(client, db):
 
     assert response.status_code == 200
     assert isinstance(response.context["form"], FirstStepForm)
+
+
+@pytest.mark.xfail(
+    reason="Wizard key configuration is not used for stable session storage yet.",
+)
+def test_linear_wizard_progress_survives_recreated_declaration(client, db):
+    client.post("/linear-wizard/", data={"name": "Ada"})
+
+    response = client.get("/recreated-linear-wizard/")
+
+    assert response.status_code == 200
+    assert isinstance(response.context["form"], SecondStepForm)

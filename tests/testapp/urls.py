@@ -11,4 +11,9 @@ urlpatterns = [
         views.OtherLinearWizardViewSet.as_view(),
         name="other-linear-wizard",
     ),
+    path(
+        "recreated-linear-wizard/",
+        views.RecreatedLinearWizardViewSet.as_view(),
+        name="recreated-linear-wizard",
+    ),
 ]
