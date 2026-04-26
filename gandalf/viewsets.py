@@ -4,6 +4,7 @@ from django.views import View
 class WizardViewSet(View):
     def dispatch(self, request, *args, **kwargs):
         wizard = self.wizard.bind(request)
+        request.wizard = wizard
         current_form_view = wizard.get_current_form_view()
 
         if request.method == "POST":

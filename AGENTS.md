@@ -46,6 +46,8 @@ wizard = (
 When `ruff-format` keeps a short wizard declaration compact, accept that output
 as idiomatic too. Do not add `# fmt: off` only to force wizard declaration
 wrapping.
+- Express class-level configuration constants in uppercase, for example
+  `SESSION_KEY` or `MANAGEMENT_FORM_RUN_ID_FIELD_NAME`.
 
 ## Implementation Ownership
 
