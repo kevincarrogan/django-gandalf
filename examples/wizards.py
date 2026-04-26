@@ -48,11 +48,12 @@ main_wizard = (
 )
 
 configured = (
-    Wizard(management_form_class=ManagementFormClass)
+    Wizard()
     .step(
         FirstForm,
     )
     .step(
         SecondForm,
     )
+    .configure(management_form_class=ManagementFormClass)
 )

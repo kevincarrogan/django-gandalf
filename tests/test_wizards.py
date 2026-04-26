@@ -3,7 +3,7 @@ import uuid
 import pytest
 from django.views.generic.edit import FormView
 
-from gandalf.wizards import Wizard
+from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -34,16 +34,30 @@ def linear_wizard():
         .step(
             SecondStepForm,
         )
+        .configure()
     )
 
 
 def test_declared_form_step_creates_generated_form_view():
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard()
+
+    returned_wizard = wizard.step(FirstStepForm)
 
     current_form_view = wizard.start
 
+    assert returned_wizard is wizard
     assert issubclass(current_form_view, FormView)
     assert current_form_view.form_class is FirstStepForm
+
+
+def test_wizard_configure_returns_configured_wizard():
+    wizard = Wizard().step(FirstStepForm)
+
+    configured_wizard = wizard.configure()
+
+    assert isinstance(configured_wizard, ConfiguredWizard)
+    assert configured_wizard.start is wizard.start
+    assert configured_wizard.steps == wizard.steps
 
 
 def test_bound_wizard_initialise_creates_session_run(

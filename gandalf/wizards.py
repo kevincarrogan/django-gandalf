@@ -28,10 +28,34 @@ def form_view_factory(form_class):
 class Wizard:
     tree = None
 
-    def __init__(self, **configuration):
-        self.configuration = configuration
+    def __init__(self):
         self.steps = []
         self.start = None
+
+    def step(self, form_class_or_form_view_class, context=None):
+        if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
+            form_class = form_class_or_form_view_class
+            form_view = form_view_factory(form_class)
+            self.steps.append(form_view)
+            self.start = self.steps[0]
+
+        return self
+
+    def configure(self, **configuration):
+        return ConfiguredWizard(
+            steps=self.steps,
+            start=self.start,
+            configuration=configuration,
+        )
+
+
+class ConfiguredWizard:
+    tree = None
+
+    def __init__(self, *, steps, start, configuration):
+        self.steps = steps
+        self.start = start
+        self.configuration = configuration
 
     def initialise(self, request):
         bound_wizard = BoundWizard(self, request)
@@ -42,15 +66,6 @@ class Wizard:
         bound_wizard = BoundWizard(self, request)
         bound_wizard.retrieve(run_id)
         return bound_wizard
-
-    def step(self, form_class_or_form_view_class, context=None):
-        if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
-            form_class = form_class_or_form_view_class
-            form_view = form_view_factory(form_class)
-            self.steps.append(form_view)
-            self.start = self.steps[0]
-
-        return self
 
 
 class BoundWizard:

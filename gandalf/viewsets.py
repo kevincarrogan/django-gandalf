@@ -1,14 +1,24 @@
 from django.shortcuts import redirect
 from django.views import View
 
+from gandalf.wizards import ConfiguredWizard
+
 
 class WizardViewSet(View):
+    def get_wizard(self):
+        wizard = self.wizard
+        if not isinstance(wizard, ConfiguredWizard):
+            raise TypeError("WizardViewSet.wizard must be a ConfiguredWizard")
+
+        return wizard
+
     def get(self, request, *args, run_id=None, **kwargs):
+        wizard = self.get_wizard()
         if run_id is None:
-            bound_wizard = self.wizard.initialise(request)
+            bound_wizard = wizard.initialise(request)
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
-        bound_wizard = self.wizard.bind(request, run_id)
+        bound_wizard = wizard.bind(request, run_id)
         response = bound_wizard.replay(self.template_name, *args, **kwargs)
         if response is None:
             return self.done(bound_wizard)
@@ -16,7 +26,8 @@ class WizardViewSet(View):
         return response
 
     def post(self, request, *args, run_id, **kwargs):
-        bound_wizard = self.wizard.bind(request, run_id)
+        wizard = self.get_wizard()
+        bound_wizard = wizard.bind(request, run_id)
         bound_wizard.submit(
             request.POST.dict(),
             self.template_name,
