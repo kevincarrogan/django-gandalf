@@ -70,3 +70,15 @@ def test_linear_wizard_progress_persists_for_same_client(client, db):
 
     assert response.status_code == 200
     assert isinstance(response.context["form"], SecondStepForm)
+
+
+@pytest.mark.xfail(
+    reason="BoundWizard progress uses a global session key shared by all wizards.",
+)
+def test_linear_wizard_progress_does_not_leak_to_different_wizard(client, db):
+    client.post("/linear-wizard/", data={"name": "Ada"})
+
+    response = client.get("/other-linear-wizard/")
+
+    assert response.status_code == 200
+    assert isinstance(response.context["form"], FirstStepForm)

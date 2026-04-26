@@ -25,3 +25,16 @@ class LinearWizardViewSet(WizardViewSet):
             SecondStepForm,
         )
     )
+
+
+class OtherLinearWizardViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            FirstStepForm,
+        )
+        .step(
+            SecondStepForm,
+        )
+    )
