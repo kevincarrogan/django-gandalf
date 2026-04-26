@@ -1,11 +1,9 @@
 <!doctype html>
-{% load gandalf %}
 <html lang="en">
 <body>
   <h1>Recreated linear wizard</h1>
   <form method="post">
     {% csrf_token %}
-    {% gandalf_management_form %}
     {{ form.as_p }}
     <button type="submit">Continue</button>
   </form>

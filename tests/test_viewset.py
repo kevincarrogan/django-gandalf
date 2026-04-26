@@ -1,128 +1,216 @@
+from http import HTTPStatus
+
 from django.test import Client
+from django.urls import reverse
 import pytest
-from pytest_django.asserts import assertContains, assertTemplateUsed
+from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
-def run_id_from_response(response):
-    return response.wsgi_request.wizard.run_id
+@pytest.fixture
+def single_step_wizard_url():
+    return reverse("single-step-wizard")
 
 
-def test_wizard_viewset_renders_form(client):
-    response = client.get("/wizard/")
+@pytest.fixture
+def single_step_wizard_run_url():
+    def build_url(run_id):
+        return reverse("single-step-wizard-run", kwargs={"run_id": run_id})
 
-    assert response.status_code == 200
+    return build_url
+
+
+@pytest.fixture
+def linear_wizard_url():
+    return reverse("linear-wizard")
+
+
+@pytest.fixture
+def linear_wizard_run_url():
+    def build_url(run_id):
+        return reverse("linear-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def other_linear_wizard_url():
+    return reverse("other-linear-wizard")
+
+
+@pytest.fixture
+def other_linear_wizard_run_url():
+    def build_url(run_id):
+        return reverse("other-linear-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def recreated_linear_wizard_url():
+    return reverse("recreated-linear-wizard")
+
+
+@pytest.fixture
+def recreated_linear_wizard_run_url():
+    def build_url(run_id):
+        return reverse("recreated-linear-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def get_only_run_info_from_session(session):
+    gandalf_runs = session["gandalf_runs"]
+    assert len(gandalf_runs) == 1
+    return list(gandalf_runs.items())[0]
+
+
+def initialise_wizard_run(client, wizard_url):
+    existing_run_ids = set(client.session.get("gandalf_runs", {}))
+    response = client.get(wizard_url)
+    gandalf_runs = client.session["gandalf_runs"]
+    new_run_ids = set(gandalf_runs) - existing_run_ids
+    assert len(new_run_ids) == 1
+    run_id = new_run_ids.pop()
+    assert response.status_code == HTTPStatus.FOUND
+    return run_id, gandalf_runs[run_id], response
+
+
+def test_wizard_viewset_redirects_to_run_url_on_initialise(
+    client,
+    single_step_wizard_url,
+    single_step_wizard_run_url,
+):
+    run_id, run_data, response = initialise_wizard_run(client, single_step_wizard_url)
+
+    assertRedirects(
+        response,
+        single_step_wizard_run_url(run_id),
+        fetch_redirect_response=False,
+    )
+    assert run_data == {"current_step_index": 0}
+
+
+def test_wizard_viewset_delegates_run_get_to_first_step_form(
+    client,
+    single_step_wizard_url,
+    single_step_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
+
+    response = client.get(single_step_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
     assert isinstance(response.context["form"], FirstStepForm)
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_wizard_viewset_renders_management_form_with_run_id(client):
-    response = client.get("/linear-wizard/")
-    run_id = run_id_from_response(response)
+def test_wizard_viewset_delegates_run_post_to_first_step_form(
+    client,
+    single_step_wizard_url,
+    single_step_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
 
-    assert response.status_code == 200
-    assertContains(response, 'name="run_id"')
-    assertContains(response, f'value="{run_id}"')
+    response = client.post(single_step_wizard_run_url(run_id), data={"name": ""})
 
-
-@pytest.mark.xfail(
-    reason="Generated step views do not inherit viewset get_context_data yet.",
-)
-def test_generated_step_view_uses_viewset_context_data(client):
-    response = client.get("/wizard/")
-
-    assert response.status_code == 200
-    assert response.context["step_title"] == "First step"
-
-
-def test_wizard_viewset_delegates_post_to_first_step_form(client):
-    response = client.post("/wizard/", data={"name": ""})
-
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
     assert response.context["form"].errors == {
         "name": ["This field is required."],
     }
 
 
-def test_linear_wizard_starts_with_first_declared_form(client):
-    response = client.get("/linear-wizard/")
+def test_linear_wizard_run_starts_with_first_declared_form(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
 
-    assert response.status_code == 200
+    response = client.get(linear_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")
     assert isinstance(response.context["form"], FirstStepForm)
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_linear_wizard_valid_first_step_renders_next_declared_form(client, db):
-    response = client.post("/linear-wizard/", data={"name": "Ada"})
+def test_linear_wizard_valid_first_step_renders_next_declared_form(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
 
-    assert response.status_code == 200
+    response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+
+    assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")
     assert isinstance(response.context["form"], SecondStepForm)
+    assert response.context["form"].errors == {}
     assertContains(response, '<input type="email" name="email"')
 
 
-def test_linear_wizard_progress_does_not_leak_to_new_client(db):
+def test_linear_wizard_progress_does_not_leak_to_new_client(
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
     first_client = Client()
     second_client = Client()
-    response = first_client.get("/linear-wizard/")
-    run_id = run_id_from_response(response)
+    first_run_id, _, _ = initialise_wizard_run(first_client, linear_wizard_url)
+    second_run_id, _, _ = initialise_wizard_run(second_client, linear_wizard_url)
 
-    first_client.post(
-        "/linear-wizard/",
-        data={"name": "Ada", "run_id": run_id},
-    )
-    response = second_client.get("/linear-wizard/")
+    first_client.post(linear_wizard_run_url(first_run_id), data={"name": "Ada"})
+    response = second_client.get(linear_wizard_run_url(second_run_id))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-def test_linear_wizard_progress_persists_for_same_client(client, db):
-    response = client.get("/linear-wizard/")
-    run_id = run_id_from_response(response)
+def test_linear_wizard_progress_persists_for_same_client(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
 
-    client.post(
-        "/linear-wizard/",
-        data={"name": "Ada", "run_id": run_id},
-    )
-    response = client.get("/linear-wizard/", data={"run_id": run_id})
+    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.get(linear_wizard_run_url(run_id))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_linear_wizard_progress_does_not_leak_to_different_wizard(client, db):
-    response = client.get("/linear-wizard/")
-    run_id = run_id_from_response(response)
+def test_linear_wizard_progress_does_not_leak_to_different_wizard(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+    other_linear_wizard_url,
+    other_linear_wizard_run_url,
+):
+    linear_run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
+    client.post(linear_wizard_run_url(linear_run_id), data={"name": "Ada"})
 
-    client.post(
-        "/linear-wizard/",
-        data={"name": "Ada", "run_id": run_id},
-    )
+    other_run_id, _, _ = initialise_wizard_run(client, other_linear_wizard_url)
+    response = client.get(other_linear_wizard_run_url(other_run_id))
 
-    response = client.get("/other-linear-wizard/")
-
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-def test_linear_wizard_progress_survives_recreated_declaration(client, db):
-    response = client.get("/linear-wizard/")
-    run_id = run_id_from_response(response)
+def test_linear_wizard_progress_survives_recreated_declaration(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+    recreated_linear_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, linear_wizard_url)
 
-    client.post(
-        "/linear-wizard/",
-        data={"name": "Ada", "run_id": run_id},
-    )
+    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.get(recreated_linear_wizard_run_url(run_id))
 
-    response = client.get(
-        "/recreated-linear-wizard/",
-        data={"run_id": run_id},
-    )
-
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)

@@ -1,6 +1,8 @@
 from gandalf.wizards import Wizard
 from gandalf.viewsets import WizardViewSet
 
+from django.urls import reverse
+
 from .forms import FirstStepForm, SecondStepForm
 
 
@@ -8,10 +10,13 @@ class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["step_title"] = "First step"
-        return context
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "single-step-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
 
 
 class LinearWizardViewSet(WizardViewSet):
@@ -26,6 +31,14 @@ class LinearWizardViewSet(WizardViewSet):
         )
     )
 
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
 
 class OtherLinearWizardViewSet(WizardViewSet):
     template_name = "testapp/other_linear_wizard.html"
@@ -39,6 +52,14 @@ class OtherLinearWizardViewSet(WizardViewSet):
         )
     )
 
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "other-linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
 
 class RecreatedLinearWizardViewSet(WizardViewSet):
     template_name = "testapp/recreated_linear_wizard.html"
@@ -51,3 +72,11 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
             SecondStepForm,
         )
     )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "recreated-linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )

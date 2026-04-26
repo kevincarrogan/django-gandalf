@@ -1,16 +1,19 @@
+import logging
 import uuid
 
 from django import forms
 from django.views.generic.edit import FormView
 
-from .forms import ManagementForm
+
+logger = logging.getLogger(__name__)
 
 
 def form_view_factory(form_class):
     form_name = form_class.__name__
 
     class GeneratedFormView(FormView):
-        pass
+        def get_success_url(self):
+            return self.request.path
 
     GeneratedFormView.form_class = form_class
     GeneratedFormView.__module__ = form_class.__module__
@@ -28,11 +31,15 @@ class Wizard:
         self.steps = []
         self.start = None
 
-    def bind(self, request):
-        return BoundWizard(self, request=request)
+    def initialise(self, request):
+        bound_wizard = BoundWizard(self, request)
+        bound_wizard.initialise()
+        return bound_wizard
 
-    def get_current_form_view(self):
-        return self.steps[0]
+    def bind(self, request, run_id):
+        bound_wizard = BoundWizard(self, request)
+        bound_wizard.retrieve(run_id)
+        return bound_wizard
 
     def step(self, form_class_or_form_view_class, context=None):
         if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
@@ -45,34 +52,34 @@ class Wizard:
 
 
 class BoundWizard:
-    MANAGEMENT_FORM_RUN_ID_FIELD_NAME = "run_id"
     SESSION_KEY = "gandalf_runs"
 
     def __init__(self, wizard, request):
         self.wizard = wizard
         self.request = request
-        self.run_id = self.get_run_id()
-        self.current_step_index = self.get_session_state().get("current_step_index", 0)
+        self.run_id = None
 
-    def get_run_id(self):
-        management_form = self.get_bound_management_form()
+    def initialise(self):
+        self.run_id = str(uuid.uuid4())
+        logger.debug("Initialise BoundWizard: %s", self.run_id)
 
-        if management_form.is_valid():
-            return management_form.cleaned_data[self.MANAGEMENT_FORM_RUN_ID_FIELD_NAME]
+        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
+        gandalf_runs[self.run_id] = {
+            "current_step_index": 0,
+        }
+        logger.debug("Initialised data: %s", gandalf_runs)
 
-        return str(uuid.uuid4())
+        self.request.session.modified = True
 
-    def get_bound_management_form(self):
-        data = self.request.POST or self.request.GET or None
-        return ManagementForm(data=data)
+    def retrieve(self, run_id):
+        self.run_id = run_id
+        logger.debug("Retrieving BoundWizard: %s", self.run_id)
+        gandalf_runs = self.request.session[self.SESSION_KEY]
+        logger.debug("Retrieved data: %s", gandalf_runs)
+        run_data = gandalf_runs[str(self.run_id)]
+        self.current_step_index = run_data["current_step_index"]
 
-    def get_management_form(self):
-        return ManagementForm(
-            initial={self.MANAGEMENT_FORM_RUN_ID_FIELD_NAME: self.run_id},
-        )
-
-    def get_session_state(self):
-        return self.request.session.get(self.SESSION_KEY, {}).get(self.run_id, {})
+        self.request.session.modified = True
 
     def get_current_form_view(self):
         return self.wizard.steps[self.current_step_index]
@@ -80,8 +87,7 @@ class BoundWizard:
     def complete_current_step(self):
         self.current_step_index += 1
         gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        gandalf_runs[self.run_id] = {
+        gandalf_runs[str(self.run_id)] = {
             "current_step_index": self.current_step_index,
         }
-        if hasattr(self.request.session, "modified"):
-            self.request.session.modified = True
+        self.request.session.modified = True

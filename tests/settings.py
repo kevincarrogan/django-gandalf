@@ -46,3 +46,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 USE_TZ = True
 
 ROOT_URLCONF = "tests.testapp.urls"
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
