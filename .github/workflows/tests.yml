@@ -24,7 +24,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       - name: Run tests
         run: just test

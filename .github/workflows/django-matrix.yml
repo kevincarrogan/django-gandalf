@@ -50,5 +50,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install just
+        uses: extractions/setup-just@v4
+
       - name: Run tests
-        run: uv run --group dev --with "django~=${{ matrix.django-version }}" pytest
+        run: just test-django "${{ matrix.python-version }}" "${{ matrix.django-version }}"
