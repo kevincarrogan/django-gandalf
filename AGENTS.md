@@ -25,6 +25,7 @@ This project follows a test-driven development approach for filling out the requ
 - Keep assertions focused on user-visible or framework-visible outcomes such as status codes, templates used, response context, rendered HTML, redirects, form errors, and persisted state.
 - When testing view rendering, prefer proving the complete request/render path: assert the response status, the template used, the expected context object, and a small representative HTML fragment.
 - Keep test app fixtures small and explicit. Put scenario-specific views and forms in `tests/testapp/` rather than building large inline test objects.
+- Keep tests close to the behavior owner. Put `Wizard` API and step-selection behavior in wizard-focused unit tests, and keep `WizardViewSet` tests focused on request/response integration such as dispatching, rendering, templates, context, redirects, and form errors. Avoid adding viewset-specific routes or fixtures solely to prove a `Wizard` method unless the request boundary itself is the behavior under test.
 
 ## Current Implementation Direction
 

@@ -23,6 +23,9 @@ class Wizard:
         self.configuration = configuration
         self.start = None
 
+    def get_current_form_view(self):
+        return self.start
+
     def step(self, form_class_or_form_view_class, context=None):
         if issubclass(form_class_or_form_view_class, forms.Form):
             form_class = form_class_or_form_view_class
