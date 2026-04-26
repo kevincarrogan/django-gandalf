@@ -88,12 +88,21 @@ class BoundWizard:
         return self.current_step_index == len(self.wizard.steps) - 1
 
     def get_current_step_data(self):
-        return {}
+        gandalf_runs = self.request.session[self.SESSION_KEY]
+        run_data = gandalf_runs[str(self.run_id)]
+        step_data = run_data.get("step_data", {})
+        return step_data.get(str(self.current_step_index), {})
+
+    def save_current_step_data(self, data):
+        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
+        run_data = gandalf_runs[str(self.run_id)]
+        step_data = run_data.setdefault("step_data", {})
+        step_data[str(self.current_step_index)] = data
+        self.request.session.modified = True
 
     def complete_current_step(self):
         self.current_step_index += 1
         gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        gandalf_runs[str(self.run_id)] = {
-            "current_step_index": self.current_step_index,
-        }
+        run_data = gandalf_runs[str(self.run_id)]
+        run_data["current_step_index"] = self.current_step_index
         self.request.session.modified = True

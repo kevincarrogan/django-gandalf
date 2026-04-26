@@ -162,9 +162,6 @@ def test_single_step_wizard_valid_post_returns_done_response(
     assert response.content == f"completed {run_id}".encode()
 
 
-@pytest.mark.xfail(
-    reason="Generated form submissions do not yet persist cleaned data.",
-)
 def test_single_step_wizard_done_can_read_submitted_form_data(
     client,
     single_step_wizard_done_data_url,

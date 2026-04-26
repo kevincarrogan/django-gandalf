@@ -15,6 +15,7 @@ class WizardViewSet(View):
 
     def post(self, request, *args, run_id, **kwargs):
         bound_wizard = self.wizard.bind(request, run_id)
+        bound_wizard.save_current_step_data(request.POST.dict())
         response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
         if HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST:
