@@ -33,7 +33,7 @@ This project follows a test-driven development approach for filling out the requ
 - For now, prefer the generated `FormView` route: wizard steps should be declared with plain Django `forms.Form` subclasses and Gandalf should generate the corresponding step view.
 - Do not prioritize explicit user-supplied `FormView` step classes unless the human asks to expand the declaration API in that direction.
 - When choosing the next test, strengthen the generated-form path before broadening to alternate step declaration styles.
-- Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation, including one-step examples:
+- Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation when the declaration naturally spans multiple steps or arguments:
 
 ```python
 wizard = (
@@ -42,6 +42,10 @@ wizard = (
     .step(SecondStepForm)
 )
 ```
+
+When `ruff-format` keeps a short wizard declaration compact, accept that output
+as idiomatic too. Do not add `# fmt: off` only to force wizard declaration
+wrapping.
 
 ## Implementation Ownership
 

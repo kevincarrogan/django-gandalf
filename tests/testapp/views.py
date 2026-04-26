@@ -6,12 +6,7 @@ from .forms import FirstStepForm, SecondStepForm
 
 class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
-    # fmt: off
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-    )
-    # fmt: on
+    wizard = Wizard().step(FirstStepForm)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
