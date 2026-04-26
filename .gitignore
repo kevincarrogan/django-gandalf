@@ -15,3 +15,5 @@ wheels/
 .pytest_cache
 
 .DS_Store
+
+.gandalf-testapp.sqlite3
