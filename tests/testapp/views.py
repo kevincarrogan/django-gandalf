@@ -1,6 +1,7 @@
 from gandalf.wizards import Wizard
 from gandalf.viewsets import WizardViewSet
 
+from django.http import HttpResponse
 from django.urls import reverse
 
 from .forms import FirstStepForm, SecondStepForm
@@ -17,6 +18,9 @@ class SingleStepWizardViewSet(WizardViewSet):
                 "run_id": run_id,
             },
         )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
 class LinearWizardViewSet(WizardViewSet):

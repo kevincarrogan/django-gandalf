@@ -123,6 +123,22 @@ def test_wizard_viewset_delegates_run_post_to_first_step_form(
     }
 
 
+@pytest.mark.xfail(
+    reason="WizardViewSet does not yet call done() after a valid final step.",
+)
+def test_single_step_wizard_valid_post_returns_done_response(
+    client,
+    single_step_wizard_url,
+    single_step_wizard_run_url,
+):
+    run_id, _, _ = initialise_wizard_run(client, single_step_wizard_url)
+
+    response = client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
 def test_linear_wizard_run_starts_with_first_declared_form(
     client,
     linear_wizard_url,
