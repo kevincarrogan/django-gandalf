@@ -24,6 +24,15 @@ just test
 
 The `test` recipe runs `uv run pytest`.
 
+Run a specific Python and Django compatibility check with:
+
+```bash
+just test-django 3.12 6.0
+```
+
+The `test-django` recipe runs the suite with uv using the requested Python version
+and a compatible-release Django constraint.
+
 Run linting and formatting with:
 
 ```bash

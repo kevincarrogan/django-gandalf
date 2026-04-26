@@ -5,7 +5,7 @@ description = "A framework for building form wizards using Django forms"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "django~=4.2.28",
+  "django>=4.2,<6.1",
 ]
 
 [dependency-groups]

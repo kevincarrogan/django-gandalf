@@ -1,5 +1,8 @@
 test:
-    uv run pytest || test $? -eq 5
+    uv run pytest
+
+test-django python_version django_version:
+    uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
 
 serve:
     PYTHONPATH=. uv run django-admin migrate --settings tests.serve_settings
