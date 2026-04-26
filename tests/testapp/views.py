@@ -1,14 +1,32 @@
 from gandalf.wizards import Wizard
 from gandalf.viewsets import WizardViewSet
 
-from .forms import FirstStepForm
+from .forms import FirstStepForm, SecondStepForm
 
 
 class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm)
+    # fmt: off
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+    )
+    # fmt: on
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["step_title"] = "First step"
         return context
+
+
+class LinearWizardViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            FirstStepForm,
+        )
+        .step(
+            SecondStepForm,
+        )
+    )

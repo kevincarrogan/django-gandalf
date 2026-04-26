@@ -56,7 +56,11 @@ class OnboardingWizard(SessionWizardView):
 ### django-gandalf style (same flow, explicit as a tree)
 
 ```python
-international_flow = Wizard().step(IntlTaxForm).step(IntlKYCForm)
+international_flow = (
+    Wizard()
+    .step(IntlTaxForm)
+    .step(IntlKYCForm)
+)
 business_flow = (
     Wizard()
     .step(BizDetailsForm)
@@ -135,7 +139,14 @@ wizard = (
     .step(FirstForm)
     .step(SecondForm)
     .branch(
-        condition(is_this, Wizard().step(AForm).step(BForm)),
+        condition(
+            is_this,
+            (
+                Wizard()
+                .step(AForm)
+                .step(BForm)
+            ),
+        ),
         condition(is_that, some_other_wizard),
         default=FallbackForm,
     )
@@ -144,6 +155,11 @@ wizard = (
 ```
 
 This reads like a flow graph rather than a list of ad hoc callbacks.
+
+Wizard declarations should use this parenthesized, one-builder-call-per-line
+style throughout tests and documentation. Even short one-step examples should
+prefer the same shape so wizard declarations remain visually consistent as they
+grow.
 
 ### Builder calls are immutable (ORM-style)
 
@@ -155,7 +171,10 @@ That makes it safer to define reusable bases and derive variants without
 unexpected side effects:
 
 ```python
-base_wizard = Wizard().step(AccountForm)
+base_wizard = (
+    Wizard()
+    .step(AccountForm)
+)
 
 staff_wizard = base_wizard.step(InternalReviewForm)
 customer_wizard = base_wizard.step(ProfileForm)
@@ -179,7 +198,10 @@ builds or selects the wizard at runtime:
 ```python
 class SignupWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = Wizard().step(AccountStepView)
+        wizard = (
+            Wizard()
+            .step(AccountStepView)
+        )
 
         if self.request.user.is_staff:
             wizard = wizard.step(InternalReviewStepView)
@@ -211,10 +233,13 @@ def build_member_form_view(member_number):
 
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        declared_wizard = Wizard().step(
-            HouseholdCountForm,
-            context={"step_name": "household_count"},
-        )  # asks for `member_count`
+        declared_wizard = (
+            Wizard()
+            .step(
+                HouseholdCountForm,
+                context={"step_name": "household_count"},
+            )  # asks for `member_count`
+        )
 
         populated_wizard = declared_wizard.populate(self.request)
         household_count = populated_wizard.path.find_one_by_context(
@@ -293,7 +318,11 @@ wizard = (
 to compose inline:
 
 ```python
-address_flow = Wizard().step(AddressForm).step(PostcodeLookupForm)
+address_flow = (
+    Wizard()
+    .step(AddressForm)
+    .step(PostcodeLookupForm)
+)
 
 checkout_wizard = (
     Wizard()
@@ -366,7 +395,10 @@ renders:
 ```python
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
-    wizard = Wizard().step(AccountForm)
+    wizard = (
+        Wizard()
+        .step(AccountForm)
+    )
 ```
 
 If you pass your own `FormView` to `.step()`, that step keeps its own
@@ -383,7 +415,11 @@ class ProfileStepView(FormView):
 
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
-    wizard = Wizard().step(AccountForm).step(ProfileStepView)
+    wizard = (
+        Wizard()
+        .step(AccountForm)
+        .step(ProfileStepView)
+    )
 ```
 
 In that example, `AccountForm` is rendered with `signup/step.html` because
@@ -401,7 +437,10 @@ auto-generated `FormView`:
 ```python
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
-    wizard = Wizard().step(AccountForm)
+    wizard = (
+        Wizard()
+        .step(AccountForm)
+    )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -428,7 +467,10 @@ class AccountStepView(FormView):
 
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
-    wizard = Wizard().step(AccountStepView)
+    wizard = (
+        Wizard()
+        .step(AccountStepView)
+    )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -546,13 +588,19 @@ You do not need to pass anything for this in the common case: Gandalf should pro
 In other words, storage customization:
 
 ```python
-wizard = Wizard(storage_class=CustomSessionStorage)
+wizard = (
+    Wizard(storage_class=CustomSessionStorage)
+    .step(AccountForm)
+)
 ```
 
 and auto FormView generation customization:
 
 ```python
-wizard = Wizard(form_view_factory_class=CustomFormViewFactory)
+wizard = (
+    Wizard(form_view_factory_class=CustomFormViewFactory)
+    .step(AccountForm)
+)
 ```
 
 Where `CustomFormViewFactory` is a class responsible for building the dynamic `FormView` class used when you call `.step(SomeForm)`.
@@ -641,8 +689,15 @@ More concretely, `wizard.tree` should be a tree of `Step` nodes.
 For example:
 
 ```python
-business_flow = Wizard().step(BizDetailsForm).step(BizComplianceForm)
-personal_flow = Wizard().step(ProfileForm)
+business_flow = (
+    Wizard()
+    .step(BizDetailsForm)
+    .step(BizComplianceForm)
+)
+personal_flow = (
+    Wizard()
+    .step(ProfileForm)
+)
 
 onboarding_wizard = (
     Wizard()
@@ -950,8 +1005,15 @@ class OnboardingWizard(SessionWizardView):
 #### gandalf style
 
 ```python
-business_flow = Wizard().step(BizAForm).step(BizBForm)
-personal_flow = Wizard().step(PersonAForm)
+business_flow = (
+    Wizard()
+    .step(BizAForm)
+    .step(BizBForm)
+)
+personal_flow = (
+    Wizard()
+    .step(PersonAForm)
+)
 
 onboarding_wizard = (
     Wizard()
@@ -996,7 +1058,14 @@ main_wizard = (
     .step(SecondForm)
     .step(ThirdForm)
     .branch(
-        condition(is_this, Wizard().step(AWizardFirstForm).step(AWizardSecondForm)),
+        condition(
+            is_this,
+            (
+                Wizard()
+                .step(AWizardFirstForm)
+                .step(AWizardSecondForm)
+            ),
+        ),
         condition(is_that, that_wizard),
     )
     .step(MyFinalForm)

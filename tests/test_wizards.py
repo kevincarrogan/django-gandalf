@@ -5,7 +5,12 @@ from tests.testapp.forms import FirstStepForm
 
 
 def test_get_current_form_view_returns_first_declared_form_view():
-    wizard = Wizard().step(FirstStepForm)
+    # fmt: off
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+    )
+    # fmt: on
 
     current_form_view = wizard.get_current_form_view()
 

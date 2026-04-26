@@ -33,6 +33,15 @@ This project follows a test-driven development approach for filling out the requ
 - For now, prefer the generated `FormView` route: wizard steps should be declared with plain Django `forms.Form` subclasses and Gandalf should generate the corresponding step view.
 - Do not prioritize explicit user-supplied `FormView` step classes unless the human asks to expand the declaration API in that direction.
 - When choosing the next test, strengthen the generated-form path before broadening to alternate step declaration styles.
+- Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation, including one-step examples:
+
+```python
+wizard = (
+    Wizard()
+    .step(FirstStepForm)
+    .step(SecondStepForm)
+)
+```
 
 ## Implementation Ownership
 

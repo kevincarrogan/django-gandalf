@@ -31,3 +31,15 @@ def test_wizard_viewset_delegates_post_to_first_step_form(client):
     assert response.context["form"].errors == {
         "name": ["This field is required."],
     }
+
+
+@pytest.mark.xfail(
+    reason="Wizard.step() overwrites the current form view instead of preserving an ordered journey.",
+)
+def test_linear_wizard_starts_with_first_declared_form(client):
+    response = client.get("/linear-wizard/")
+
+    assert response.status_code == 200
+    assertTemplateUsed(response, "testapp/single_step_wizard.html")
+    assert isinstance(response.context["form"], FirstStepForm)
+    assertContains(response, '<input type="text" name="name"')

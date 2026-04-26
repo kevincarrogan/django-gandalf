@@ -23,13 +23,23 @@ that_wizard = (
 
 main_wizard = (
     Wizard()  # This will be used for high-level configuration
-    .step(FirstForm)  # This could possibly be a view instead (need to work out that concept)
+    .step(
+        FirstForm,
+    )  # This could possibly be a view instead (need to work out that concept)
     .step(SecondForm)
     .step(ThirdForm)
     .branch(
         condition(
             is_this,
-            Wizard().step(AWizardFirstForm).step(AWizardSecondForm),
+            (
+                Wizard()
+                .step(
+                    AWizardFirstForm,
+                )
+                .step(
+                    AWizardSecondForm,
+                )
+            ),
         ),
         condition(is_that, that_wizard),
         # If neither condition is met then this would be skipped instead of erroring
@@ -39,6 +49,10 @@ main_wizard = (
 
 configured = (
     Wizard(management_form_class=ManagementFormClass)
-    .step(FirstForm)
-    .step(SecondForm)
+    .step(
+        FirstForm,
+    )
+    .step(
+        SecondForm,
+    )
 )

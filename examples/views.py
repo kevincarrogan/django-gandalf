@@ -16,7 +16,12 @@ urlpatterns = wizard_router.urls
 
 class DynamicWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = Wizard().step(AccountStepView)
+        # fmt: off
+        wizard = (
+            Wizard()
+            .step(AccountStepView)
+        )
+        # fmt: on
 
         if getattr(self.request.user, "is_staff", False):
             wizard = wizard.step(ProfileStepView)
@@ -104,7 +109,18 @@ class ConfirmStepView(WizardStepView):
 FirstFormView = AccountStepView
 
 
-view_based = Wizard().step(AccountStepView).step(ProfileStepView).step(ConfirmStepView)
+view_based = (
+    Wizard()
+    .step(
+        AccountStepView,
+    )
+    .step(
+        ProfileStepView,
+    )
+    .step(
+        ConfirmStepView,
+    )
+)
 
 
 def build_generated_step_view(step_number):
@@ -136,7 +152,12 @@ class DynamicRangeWizardViewSet(WizardViewSet):
     """
 
     def get_wizard(self):
-        wizard = Wizard().step(StepCountForm)
+        # fmt: off
+        wizard = (
+            Wizard()
+            .step(StepCountForm)
+        )
+        # fmt: on
 
         # Pretend this is cleaned_data for `StepCountForm`.
         step_count_data = getattr(self.request.wizard, "data", {}).get("step_count", {})
