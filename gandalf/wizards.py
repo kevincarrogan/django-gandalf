@@ -55,7 +55,6 @@ class Wizard:
 
 class BoundWizard:
     SESSION_KEY = "gandalf_runs"
-    NO_SUBMISSION = object()
 
     def __init__(self, wizard, request):
         self.wizard = wizard
@@ -100,14 +99,10 @@ class BoundWizard:
 
     def _build_updated_submissions(self, submission, template_name, *args, **kwargs):
         updated_submissions = []
-        stored_submissions = iter(self.get_submissions())
 
-        for form_view in self.wizard.steps:
-            stored_submission = next(stored_submissions, self.NO_SUBMISSION)
-            if stored_submission is self.NO_SUBMISSION:
-                updated_submissions.append(submission)
-                return updated_submissions
-
+        for form_view, stored_submission in zip(
+            self.wizard.steps, self.get_submissions()
+        ):
             response = self._dispatch_step(
                 form_view,
                 self._build_step_request("POST", submission=stored_submission),
@@ -123,23 +118,14 @@ class BoundWizard:
             updated_submissions.append(submission)
             return updated_submissions
 
+        if len(updated_submissions) < len(self.wizard.steps):
+            updated_submissions.append(submission)
+
         return updated_submissions
 
     def replay(self, template_name, *args, **kwargs):
-        stored_submissions = iter(self.get_submissions())
-
-        for form_view in self.wizard.steps:
-            submission = next(stored_submissions, self.NO_SUBMISSION)
-
-            if submission is self.NO_SUBMISSION:
-                return self._dispatch_step(
-                    form_view,
-                    self._build_step_request("GET"),
-                    template_name,
-                    *args,
-                    **kwargs,
-                )
-
+        submissions = self.get_submissions()
+        for form_view, submission in zip(self.wizard.steps, submissions):
             response = self._dispatch_step(
                 form_view,
                 self._build_step_request("POST", submission=submission),
@@ -150,6 +136,16 @@ class BoundWizard:
 
             if not self._response_satisfies_step(response):
                 return response
+
+        remaining_steps = self.wizard.steps[len(submissions) :]
+        if remaining_steps:
+            return self._dispatch_step(
+                remaining_steps[0],
+                self._build_step_request("GET"),
+                template_name,
+                *args,
+                **kwargs,
+            )
 
         return None
 
