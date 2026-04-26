@@ -350,3 +350,22 @@ def test_wizard_viewset_rejects_unconfigured_wizard(rf):
         match="WizardViewSet.wizard must be a ConfiguredWizard",
     ):
         UnconfiguredWizardViewSet.as_view()(request)
+
+
+def test_wizard_viewset_rejects_unconfigured_wizard_from_get_wizard(rf):
+    class UnconfiguredWizardFromGetterViewSet(WizardViewSet):
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_wizard(self):
+            return Wizard().step(FirstStepForm)
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+    request = rf.get("/wizard/")
+
+    with pytest.raises(
+        TypeError,
+        match="WizardViewSet.wizard must be a ConfiguredWizard",
+    ):
+        UnconfiguredWizardFromGetterViewSet.as_view()(request)
