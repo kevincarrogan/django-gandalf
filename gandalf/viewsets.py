@@ -1,5 +1,3 @@
-from http import HTTPStatus
-
 from django.shortcuts import redirect
 from django.views import View
 
@@ -11,19 +9,24 @@ class WizardViewSet(View):
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         bound_wizard = self.wizard.bind(request, run_id)
-        return self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
+        response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
+        if response is None:
+            return self.done(bound_wizard)
+
+        return response
 
     def post(self, request, *args, run_id, **kwargs):
         bound_wizard = self.wizard.bind(request, run_id)
-        bound_wizard.save_current_step_data(request.POST.dict())
+        bound_wizard.save_current_step_data(
+            request.POST.dict(),
+            self.template_name,
+            *args,
+            **kwargs,
+        )
         response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
-        if HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST:
-            if bound_wizard.is_current_step_final():
-                return self.done(bound_wizard)
-
-            bound_wizard.complete_current_step()
-            return redirect(self.get_wizard_url(bound_wizard.run_id))
+        if response is None:
+            return self.done(bound_wizard)
 
         return response
 
@@ -31,8 +34,8 @@ class WizardViewSet(View):
         raise NotImplementedError("WizardViewSet subclasses must define done().")
 
     def dispatch_current_step(self, request, bound_wizard, *args, **kwargs):
-        current_form_view = bound_wizard.get_current_form_view()
-        step_view = current_form_view.as_view(
-            template_name=self.template_name,
+        return bound_wizard.dispatch_next_incomplete_step(
+            self.template_name,
+            *args,
+            **kwargs,
         )
-        return step_view(request, *args, **kwargs)

@@ -49,7 +49,7 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
-        step_data = bound_wizard.get_current_step_data()
+        step_data = bound_wizard.get_step_data()[0]
         return HttpResponse(f"completed {step_data.get('name')}")
 
 

@@ -1,4 +1,6 @@
 import logging
+from copy import copy
+from http import HTTPStatus
 import uuid
 
 from django import forms
@@ -53,6 +55,7 @@ class Wizard:
 
 class BoundWizard:
     SESSION_KEY = "gandalf_runs"
+    NO_STEP_DATA = object()
 
     def __init__(self, wizard, request):
         self.wizard = wizard
@@ -64,9 +67,7 @@ class BoundWizard:
         logger.debug("Initialise BoundWizard: %s", self.run_id)
 
         gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        gandalf_runs[self.run_id] = {
-            "current_step_index": 0,
-        }
+        gandalf_runs[self.run_id] = {}
         logger.debug("Initialised data: %s", gandalf_runs)
 
         self.request.session.modified = True
@@ -76,33 +77,98 @@ class BoundWizard:
         logger.debug("Retrieving BoundWizard: %s", self.run_id)
         gandalf_runs = self.request.session[self.SESSION_KEY]
         logger.debug("Retrieved data: %s", gandalf_runs)
-        run_data = gandalf_runs[str(self.run_id)]
-        self.current_step_index = run_data["current_step_index"]
 
         self.request.session.modified = True
 
-    def get_current_form_view(self):
-        return self.wizard.steps[self.current_step_index]
-
-    def is_current_step_final(self):
-        return self.current_step_index == len(self.wizard.steps) - 1
-
-    def get_current_step_data(self):
+    def get_run_data(self):
         gandalf_runs = self.request.session[self.SESSION_KEY]
-        run_data = gandalf_runs[str(self.run_id)]
-        step_data = run_data.get("step_data", {})
-        return step_data.get(str(self.current_step_index), {})
+        return gandalf_runs[str(self.run_id)]
 
-    def save_current_step_data(self, data):
-        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        run_data = gandalf_runs[str(self.run_id)]
-        step_data = run_data.setdefault("step_data", {})
-        step_data[str(self.current_step_index)] = data
+    def get_step_data(self):
+        run_data = self.get_run_data()
+        return run_data.get("step_data", [])
+
+    def save_current_step_data(self, data, template_name, *args, **kwargs):
+        run_data = self.get_run_data()
+        run_data["step_data"] = self.build_updated_step_data(
+            data,
+            template_name,
+            *args,
+            **kwargs,
+        )
         self.request.session.modified = True
 
-    def complete_current_step(self):
-        self.current_step_index += 1
-        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
-        run_data = gandalf_runs[str(self.run_id)]
-        run_data["current_step_index"] = self.current_step_index
-        self.request.session.modified = True
+    def build_updated_step_data(self, data, template_name, *args, **kwargs):
+        updated_step_data = []
+        stored_step_data = iter(self.get_step_data())
+
+        for form_view in self.wizard.steps:
+            stored_data = next(stored_step_data, self.NO_STEP_DATA)
+            if stored_data is self.NO_STEP_DATA:
+                updated_step_data.append(data)
+                return updated_step_data
+
+            response = self.dispatch_form_view(
+                form_view,
+                self.build_step_request("POST", data=stored_data),
+                template_name,
+                *args,
+                **kwargs,
+            )
+
+            if self.is_step_response_successful(response):
+                updated_step_data.append(stored_data)
+                continue
+
+            updated_step_data.append(data)
+            return updated_step_data
+
+        return updated_step_data
+
+    def dispatch_next_incomplete_step(self, template_name, *args, **kwargs):
+        stored_step_data = iter(self.get_step_data())
+
+        for form_view in self.wizard.steps:
+            data = next(stored_step_data, self.NO_STEP_DATA)
+
+            if data is self.NO_STEP_DATA:
+                return self.dispatch_form_view(
+                    form_view,
+                    self.build_step_request("GET"),
+                    template_name,
+                    *args,
+                    **kwargs,
+                )
+
+            response = self.dispatch_form_view(
+                form_view,
+                self.build_step_request("POST", data=data),
+                template_name,
+                *args,
+                **kwargs,
+            )
+
+            if not self.is_step_response_successful(response):
+                return response
+
+        return None
+
+    def is_step_response_successful(self, response):
+        return (
+            HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
+        )
+
+    def dispatch_form_view(self, form_view, request, template_name, *args, **kwargs):
+        step_view = form_view.as_view(
+            template_name=template_name,
+        )
+        return step_view(request, *args, **kwargs)
+
+    def build_step_request(self, method, data=None):
+        request = copy(self.request)
+        request.method = method
+
+        if method == "POST":
+            request.POST = data
+
+        return request

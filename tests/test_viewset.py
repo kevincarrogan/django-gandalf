@@ -112,7 +112,7 @@ def test_wizard_viewset_redirects_to_run_url_on_initialise(
         single_step_wizard_run_url(run_id),
         fetch_redirect_response=False,
     )
-    assert run_data == {"current_step_index": 0}
+    assert run_data == {}
 
 
 def test_wizard_viewset_delegates_run_get_to_first_step_form(
@@ -195,7 +195,7 @@ def test_linear_wizard_run_starts_with_first_declared_form(
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_linear_wizard_valid_first_step_redirects_to_run_url(
+def test_linear_wizard_valid_first_step_renders_next_declared_form(
     client,
     linear_wizard_url,
     linear_wizard_run_url,
@@ -205,11 +205,28 @@ def test_linear_wizard_valid_first_step_redirects_to_run_url(
 
     response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
 
-    assertRedirects(
-        response,
-        linear_wizard_run_url(run_id),
-        fetch_redirect_response=False,
-    )
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], SecondStepForm)
+    assert response.context["form"].errors == {}
+    assertContains(response, '<input type="email" name="email"')
+    assert client.session["gandalf_runs"][run_id]["step_data"] == [{"name": "Ada"}]
+
+
+def test_linear_wizard_replaces_invalid_step_data_on_next_post(
+    client,
+    linear_wizard_url,
+    linear_wizard_run_url,
+):
+    client.get(linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(linear_wizard_run_url(run_id), data={"name": ""})
+    response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], SecondStepForm)
+    assert client.session["gandalf_runs"][run_id]["step_data"] == [{"name": "Ada"}]
 
 
 def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(

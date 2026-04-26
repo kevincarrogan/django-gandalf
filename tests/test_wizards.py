@@ -56,9 +56,7 @@ def test_bound_wizard_initialise_creates_session_run(
 
     assert uuid.UUID(bound_wizard.run_id)
     assert request.session["gandalf_runs"] == {
-        bound_wizard.run_id: {
-            "current_step_index": 0,
-        },
+        bound_wizard.run_id: {},
     }
 
 
@@ -81,16 +79,17 @@ def test_bound_wizard_retrieves_current_step_from_url_run_id(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "current_step_index": 1,
+                    "step_data": [{"name": "Ada"}],
                 },
             },
         },
     )
 
     bound_wizard = linear_wizard.bind(request, "existing-run")
+    response = bound_wizard.dispatch_next_incomplete_step("testapp/linear_wizard.html")
 
     assert bound_wizard.run_id == "existing-run"
-    assert bound_wizard.get_current_form_view().form_class is SecondStepForm
+    assert response.context_data["form"].__class__ is SecondStepForm
 
 
 def test_bound_wizard_retrieves_current_step_from_uuid_url_run_id(
@@ -102,16 +101,17 @@ def test_bound_wizard_retrieves_current_step_from_uuid_url_run_id(
         session={
             "gandalf_runs": {
                 str(run_id): {
-                    "current_step_index": 1,
+                    "step_data": [{"name": "Ada"}],
                 },
             },
         },
     )
 
     bound_wizard = linear_wizard.bind(request, run_id)
+    response = bound_wizard.dispatch_next_incomplete_step("testapp/linear_wizard.html")
 
     assert bound_wizard.run_id == run_id
-    assert bound_wizard.get_current_form_view().form_class is SecondStepForm
+    assert response.context_data["form"].__class__ is SecondStepForm
 
 
 def test_bound_wizard_retrieve_marks_session_modified(
@@ -121,9 +121,7 @@ def test_bound_wizard_retrieve_marks_session_modified(
     request = request_with_session_factory(
         session={
             "gandalf_runs": {
-                "existing-run": {
-                    "current_step_index": 0,
-                },
+                "existing-run": {},
             },
         },
     )
@@ -133,46 +131,43 @@ def test_bound_wizard_retrieve_marks_session_modified(
     assert request.session.modified is True
 
 
-def test_bound_wizard_completing_current_step_updates_current_form_view(
+def test_bound_wizard_uses_stored_step_data_to_render_next_form_view(
     request_with_session_factory,
     linear_wizard,
 ):
     request = request_with_session_factory(
         session={
             "gandalf_runs": {
-                "existing-run": {
-                    "current_step_index": 0,
-                },
+                "existing-run": {},
             },
         },
     )
     bound_wizard = linear_wizard.bind(request, "existing-run")
 
-    bound_wizard.complete_current_step()
+    bound_wizard.save_current_step_data({"name": "Ada"}, "testapp/linear_wizard.html")
+    response = bound_wizard.dispatch_next_incomplete_step("testapp/linear_wizard.html")
 
-    assert bound_wizard.get_current_form_view().form_class is SecondStepForm
+    assert response.context_data["form"].__class__ is SecondStepForm
 
 
-def test_bound_wizard_completing_current_step_persists_by_url_run_id(
+def test_bound_wizard_persists_step_data_by_url_run_id(
     request_with_session_factory,
     linear_wizard,
 ):
     request = request_with_session_factory(
         session={
             "gandalf_runs": {
-                "existing-run": {
-                    "current_step_index": 0,
-                },
+                "existing-run": {},
             },
         },
     )
     bound_wizard = linear_wizard.bind(request, "existing-run")
 
-    bound_wizard.complete_current_step()
+    bound_wizard.save_current_step_data({"name": "Ada"}, "testapp/linear_wizard.html")
 
     assert request.session["gandalf_runs"] == {
         "existing-run": {
-            "current_step_index": 1,
+            "step_data": [{"name": "Ada"}],
         },
     }
 
@@ -184,19 +179,58 @@ def test_bound_wizard_progress_is_isolated_between_url_run_ids(
     request = request_with_session_factory(
         session={
             "gandalf_runs": {
-                "first-run": {
-                    "current_step_index": 0,
-                },
-                "second-run": {
-                    "current_step_index": 0,
-                },
+                "first-run": {},
+                "second-run": {},
             },
         },
     )
     first_bound_wizard = linear_wizard.bind(request, "first-run")
 
-    first_bound_wizard.complete_current_step()
+    first_bound_wizard.save_current_step_data(
+        {"name": "Ada"},
+        "testapp/linear_wizard.html",
+    )
     second_bound_wizard = linear_wizard.bind(request, "second-run")
+    first_response = first_bound_wizard.dispatch_next_incomplete_step(
+        "testapp/linear_wizard.html"
+    )
+    second_response = second_bound_wizard.dispatch_next_incomplete_step(
+        "testapp/linear_wizard.html"
+    )
 
-    assert first_bound_wizard.get_current_form_view().form_class is SecondStepForm
-    assert second_bound_wizard.get_current_form_view().form_class is FirstStepForm
+    assert first_response.context_data["form"].__class__ is SecondStepForm
+    assert second_response.context_data["form"].__class__ is FirstStepForm
+
+
+def test_bound_wizard_replays_stored_step_data_through_form_view_form_valid(
+    request_with_session_factory,
+    linear_wizard,
+):
+    class TrackingFirstStepFormView(FormView):
+        form_class = FirstStepForm
+        form_valid_call_count = 0
+
+        def get_success_url(self):
+            return self.request.path
+
+        def form_valid(self, form):
+            self.__class__.form_valid_call_count += 1
+            return super().form_valid(form)
+
+    linear_wizard.steps[0] = TrackingFirstStepFormView
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "step_data": [{"name": "Ada"}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.bind(request, "existing-run")
+
+    response = bound_wizard.dispatch_next_incomplete_step("testapp/linear_wizard.html")
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is SecondStepForm
+    assert TrackingFirstStepFormView.form_valid_call_count == 1
