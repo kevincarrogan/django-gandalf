@@ -15,7 +15,7 @@ class SingleStepWizardViewSet(WizardViewSet):
 
 
 class LinearWizardViewSet(WizardViewSet):
-    template_name = "testapp/single_step_wizard.html"
+    template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
         .step(
@@ -28,7 +28,7 @@ class LinearWizardViewSet(WizardViewSet):
 
 
 class OtherLinearWizardViewSet(WizardViewSet):
-    template_name = "testapp/single_step_wizard.html"
+    template_name = "testapp/other_linear_wizard.html"
     wizard = (
         Wizard()
         .step(
@@ -41,7 +41,7 @@ class OtherLinearWizardViewSet(WizardViewSet):
 
 
 class RecreatedLinearWizardViewSet(WizardViewSet):
-    template_name = "testapp/single_step_wizard.html"
+    template_name = "testapp/recreated_linear_wizard.html"
     wizard = (
         Wizard()
         .step(
