@@ -1,7 +1,7 @@
 import pytest
 from pytest_django.asserts import assertContains, assertTemplateUsed
 
-from tests.testapp.forms import FirstStepForm
+from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
 def test_wizard_viewset_renders_form(client):
@@ -40,3 +40,15 @@ def test_linear_wizard_starts_with_first_declared_form(client):
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
     assert isinstance(response.context["form"], FirstStepForm)
     assertContains(response, '<input type="text" name="name"')
+
+
+@pytest.mark.xfail(
+    reason="Valid generated step submissions still use FormView.form_valid instead of advancing the wizard.",
+)
+def test_linear_wizard_valid_first_step_renders_next_declared_form(client):
+    response = client.post("/linear-wizard/", data={"name": "Ada"})
+
+    assert response.status_code == 200
+    assertTemplateUsed(response, "testapp/single_step_wizard.html")
+    assert isinstance(response.context["form"], SecondStepForm)
+    assertContains(response, '<input type="email" name="email"')
