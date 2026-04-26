@@ -17,7 +17,7 @@ class WizardViewSet(View):
         bound_wizard = self.wizard.bind(request, run_id)
         response = self.dispatch_current_step(request, bound_wizard, *args, **kwargs)
 
-        if HTTPStatus(response.status_code).is_redirection:
+        if HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST:
             bound_wizard.complete_current_step()
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
