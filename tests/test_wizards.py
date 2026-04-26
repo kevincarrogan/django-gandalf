@@ -58,6 +58,14 @@ def test_wizard_configure_returns_configured_wizard():
     assert isinstance(configured_wizard, ConfiguredWizard)
     assert configured_wizard.start is wizard.start
     assert configured_wizard.steps == wizard.steps
+    assert configured_wizard.configuration == {}
+
+
+def test_wizard_does_not_expose_runtime_binding_without_configure():
+    wizard = Wizard().step(FirstStepForm)
+
+    assert not hasattr(wizard, "initialise")
+    assert not hasattr(wizard, "bind")
 
 
 def test_bound_wizard_initialise_creates_session_run(

@@ -581,9 +581,9 @@ context.
 
 ### Additional configuration follows the same pattern
 
-Configuration for auto-generated step views and storage is **optional** and is applied at the end of the builder chain with `.configure(...)`.
+Calling `.configure(...)` is required to produce a runtime wizard. Configuration values for auto-generated step views and storage are optional keyword arguments to that call.
 
-You do not need to pass anything for this in the common case: Gandalf should provide a sensible default factory for generating step `FormView` classes from plain forms.
+In the common case, call `.configure()` with no arguments and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
 
 In other words, storage customization:
 

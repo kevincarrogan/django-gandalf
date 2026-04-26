@@ -5,15 +5,18 @@ from gandalf.wizards import ConfiguredWizard
 
 
 class WizardViewSet(View):
-    def get_wizard(self):
-        wizard = self.wizard
+    def _require_configured_wizard(self, wizard):
         if not isinstance(wizard, ConfiguredWizard):
             raise TypeError("WizardViewSet.wizard must be a ConfiguredWizard")
 
         return wizard
 
+    def get_wizard(self):
+        wizard = self.wizard
+        return self._require_configured_wizard(wizard)
+
     def get(self, request, *args, run_id=None, **kwargs):
-        wizard = self.get_wizard()
+        wizard = self._require_configured_wizard(self.get_wizard())
         if run_id is None:
             bound_wizard = wizard.initialise(request)
             return redirect(self.get_wizard_url(bound_wizard.run_id))
@@ -26,7 +29,7 @@ class WizardViewSet(View):
         return response
 
     def post(self, request, *args, run_id, **kwargs):
-        wizard = self.get_wizard()
+        wizard = self._require_configured_wizard(self.get_wizard())
         bound_wizard = wizard.bind(request, run_id)
         bound_wizard.submit(
             request.POST.dict(),
