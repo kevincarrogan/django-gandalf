@@ -46,46 +46,25 @@ def test_declared_form_step_creates_generated_form_view():
     assert current_form_view.form_class is FirstStepForm
 
 
-def test_wizard_initialise_uses_configured_storage_class(request_with_session_factory):
+def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
+    wizard = Wizard()
+
+    assert not hasattr(wizard, "initialise")
+    assert not hasattr(wizard, "bind")
+
+
+def test_get_bound_wizard_uses_configured_storage_class(request_with_session_factory):
     class FakeStorage:
         def __init__(self, request):
             self.request = request
 
-        def initialise_run(self):
-            return "fake-run"
-
     request = request_with_session_factory()
     wizard = Wizard(storage_class=FakeStorage)
 
-    bound_wizard = wizard.initialise(request)
+    bound_wizard = wizard.get_bound_wizard(request)
 
-    assert bound_wizard.run_id == "fake-run"
     assert isinstance(bound_wizard.storage, FakeStorage)
     assert bound_wizard.storage.request is request
-
-
-def test_wizard_initialise_uses_get_bound_wizard_hook(request_with_session_factory):
-    class FakeBoundWizard:
-        initialise_call_count = 0
-        run_id = None
-
-        def initialise(self):
-            self.__class__.initialise_call_count += 1
-            self.run_id = "fake-run"
-
-    class CustomWizard(Wizard):
-        def get_bound_wizard(self, request):
-            self.bound_wizard_request = request
-            return FakeBoundWizard()
-
-    request = request_with_session_factory()
-    wizard = CustomWizard()
-
-    bound_wizard = wizard.initialise(request)
-
-    assert wizard.bound_wizard_request is request
-    assert bound_wizard.run_id == "fake-run"
-    assert FakeBoundWizard.initialise_call_count == 1
 
 
 def test_bound_wizard_initialise_creates_session_run(
@@ -93,8 +72,9 @@ def test_bound_wizard_initialise_creates_session_run(
     linear_wizard,
 ):
     request = request_with_session_factory()
+    bound_wizard = linear_wizard.get_bound_wizard(request)
 
-    bound_wizard = linear_wizard.initialise(request)
+    bound_wizard.initialise()
 
     assert uuid.UUID(bound_wizard.run_id)
     assert request.session["gandalf_runs"] == {
@@ -107,8 +87,9 @@ def test_bound_wizard_initialise_marks_session_modified(
     linear_wizard,
 ):
     request = request_with_session_factory()
+    bound_wizard = linear_wizard.get_bound_wizard(request)
 
-    linear_wizard.initialise(request)
+    bound_wizard.initialise()
 
     assert request.session.modified is True
 
@@ -127,7 +108,8 @@ def test_bound_wizard_replays_submissions_from_url_run_id(
         },
     )
 
-    bound_wizard = linear_wizard.bind(request, "existing-run")
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
     response = bound_wizard.replay("testapp/linear_wizard.html")
 
     assert bound_wizard.run_id == "existing-run"
@@ -149,7 +131,8 @@ def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
         },
     )
 
-    bound_wizard = linear_wizard.bind(request, run_id)
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve(run_id)
     response = bound_wizard.replay("testapp/linear_wizard.html")
 
     assert bound_wizard.run_id == run_id
@@ -168,7 +151,8 @@ def test_bound_wizard_retrieve_marks_session_modified(
         },
     )
 
-    linear_wizard.bind(request, "existing-run")
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     assert request.session.modified is True
 
@@ -184,7 +168,8 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
             },
         },
     )
-    bound_wizard = linear_wizard.bind(request, "existing-run")
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"}, "testapp/linear_wizard.html")
     response = bound_wizard.replay("testapp/linear_wizard.html")
@@ -203,7 +188,8 @@ def test_bound_wizard_persists_submissions_by_url_run_id(
             },
         },
     )
-    bound_wizard = linear_wizard.bind(request, "existing-run")
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"}, "testapp/linear_wizard.html")
 
@@ -226,13 +212,15 @@ def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
             },
         },
     )
-    first_bound_wizard = linear_wizard.bind(request, "first-run")
+    first_bound_wizard = linear_wizard.get_bound_wizard(request)
+    first_bound_wizard.retrieve("first-run")
 
     first_bound_wizard.submit(
         {"name": "Ada"},
         "testapp/linear_wizard.html",
     )
-    second_bound_wizard = linear_wizard.bind(request, "second-run")
+    second_bound_wizard = linear_wizard.get_bound_wizard(request)
+    second_bound_wizard.retrieve("second-run")
     first_response = first_bound_wizard.replay("testapp/linear_wizard.html")
     second_response = second_bound_wizard.replay("testapp/linear_wizard.html")
 
@@ -265,7 +253,8 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
             },
         },
     )
-    bound_wizard = linear_wizard.bind(request, "existing-run")
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     response = bound_wizard.replay("testapp/linear_wizard.html")
 

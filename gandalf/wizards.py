@@ -34,16 +34,6 @@ class Wizard:
         self.storage_class = configuration.get("storage_class", self.storage_class)
         self.steps = []
 
-    def initialise(self, request):
-        bound_wizard = self.get_bound_wizard(request)
-        bound_wizard.initialise()
-        return bound_wizard
-
-    def bind(self, request, run_id):
-        bound_wizard = self.get_bound_wizard(request)
-        bound_wizard.retrieve(run_id)
-        return bound_wizard
-
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
 
