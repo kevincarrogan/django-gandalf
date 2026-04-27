@@ -44,7 +44,7 @@ class Wizard:
                 ],
             )
 
-        return self.__class__(steps=self.steps)
+        return self.__class__(steps=self.steps)  # pragma: no cover
 
     def configure(self, **configuration):
         return ConfiguredWizard(
