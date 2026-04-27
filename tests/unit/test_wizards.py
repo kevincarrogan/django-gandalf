@@ -118,6 +118,12 @@ def test_wizard_configure_returns_configured_wizard():
     assert configured_wizard.configuration == {}
 
 
+def test_configured_wizard_does_not_expose_configure():
+    configured_wizard = Wizard().configure()
+
+    assert not hasattr(configured_wizard, "configure")
+
+
 def test_wizard_configure_requires_template_for_form_steps():
     wizard = Wizard().step(FirstStepForm)
 

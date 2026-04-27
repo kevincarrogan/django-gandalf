@@ -159,6 +159,23 @@ def test_wizard_viewset_uses_configured_wizard():
     assert wizard is configured_wizard
 
 
+def test_wizard_viewset_does_not_reconfigure_configured_wizard():
+    configured_wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+
+    class ConfiguredWizardViewSet(WizardViewSet):
+        wizard = configured_wizard
+        template_name = "testapp/other_wizard.html"
+
+    wizard = ConfiguredWizardViewSet().get_configured_wizard()
+
+    assert wizard is configured_wizard
+    assert wizard.steps[0].form_view.template_name == "testapp/single_step_wizard.html"
+
+
 def test_wizard_viewset_rejects_invalid_wizard_type():
     class InvalidWizardViewSet(WizardViewSet):
         wizard = object()
