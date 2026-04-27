@@ -90,6 +90,9 @@ class ConfiguredWizard:
         self.steps = self._configure_steps(steps)
         self.storage_class = configuration.get("storage_class", self.storage_class)
 
+    def configure(self, **configuration):
+        raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
+
     def _configure_steps(self, steps):
         template_name = self.configuration.get("template_name")
 
