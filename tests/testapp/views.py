@@ -53,6 +53,24 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
         return HttpResponse(f"completed {submission.get('name')}")
 
 
+class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "single-step-wizard-done-run-data-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        run_data = bound_wizard.get_run_data()
+        submission = run_data["submissions"][0]
+        return HttpResponse(f"completed {submission.get('name')}")
+
+
 class LinearWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
@@ -72,6 +90,30 @@ class LinearWizardViewSet(WizardViewSet):
                 "run_id": run_id,
             },
         )
+
+
+class DoneLinearWizardViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            FirstStepForm,
+        )
+        .step(
+            SecondStepForm,
+        )
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "done-linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
 class OtherLinearWizardViewSet(WizardViewSet):
@@ -114,3 +156,7 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
                 "run_id": run_id,
             },
         )
+
+
+class InvalidWizardViewSet(WizardViewSet):
+    wizard = object()

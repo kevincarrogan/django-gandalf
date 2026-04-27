@@ -1,4 +1,4 @@
-name: Tests
+name: Functional tests
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  functional:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,8 +26,5 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v4
 
-      - name: Run tests
-        run: just test
-
-      - name: Check coverage
-        run: just coverage
+      - name: Check functional coverage
+        run: just coverage-functional

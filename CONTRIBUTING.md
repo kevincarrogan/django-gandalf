@@ -24,6 +24,16 @@ just test
 
 The `test` recipe runs `uv run pytest`.
 
+Run the separated suites with:
+
+```bash
+just test-unit
+just test-functional
+```
+
+The unit suite exercises package behavior directly. The functional suite
+exercises the package through Django's test client.
+
 Check package coverage with:
 
 ```bash
@@ -32,6 +42,16 @@ just coverage
 
 The `coverage` recipe tracks branch-aware coverage for `gandalf` and fails if
 coverage drops below the configured threshold.
+
+Check coverage for each separated suite with:
+
+```bash
+just coverage-unit
+just coverage-functional
+```
+
+Each separated coverage recipe independently tracks branch-aware coverage for
+`gandalf` and fails below the configured threshold.
 
 Run a specific Python and Django compatibility check with:
 

@@ -214,6 +214,31 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
+def test_bound_wizard_replay_returns_invalid_stored_step_response(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [{"name": ""}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.replay("testapp/linear_wizard.html")
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is FirstStepForm
+    assert response.context_data["form"].errors == {
+        "name": ["This field is required."],
+    }
+
+
 def test_bound_wizard_persists_submissions_by_url_run_id(
     request_with_session_factory,
     linear_wizard,
@@ -294,6 +319,34 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
     }
 
 
+def test_bound_wizard_replaces_invalid_stored_submission(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [{"name": ""}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit(
+        {"name": "Ada"},
+        "testapp/linear_wizard.html",
+    )
+
+    assert request.session["gandalf_runs"]["existing-run"] == {
+        "submissions": [
+            {"name": "Ada"},
+        ],
+    }
+
+
 def test_bound_wizard_does_not_append_submission_after_complete_path(
     request_with_session_factory,
     linear_wizard,
@@ -324,6 +377,30 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
             {"email": "ada@example.com"},
         ],
     }
+
+
+def test_bound_wizard_replay_returns_none_after_complete_path(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [
+                        {"name": "Ada"},
+                        {"email": "ada@example.com"},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.replay("testapp/linear_wizard.html")
+
+    assert response is None
 
 
 def test_bound_wizard_replays_submissions_through_form_view_form_valid(

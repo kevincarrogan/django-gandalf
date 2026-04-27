@@ -1,17 +1,10 @@
 from http import HTTPStatus
 
-from django.test import Client
 from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from gandalf.viewsets import WizardViewSet
-from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
-
-
-class _Session(dict):
-    modified = False
 
 
 @pytest.fixture
@@ -54,6 +47,21 @@ def single_step_wizard_done_data_run_url():
 
 
 @pytest.fixture
+def single_step_wizard_done_run_data_url():
+    return reverse("single-step-wizard-done-run-data")
+
+
+@pytest.fixture
+def single_step_wizard_done_run_data_run_url():
+    def build_url(run_id):
+        return reverse(
+            "single-step-wizard-done-run-data-run", kwargs={"run_id": run_id}
+        )
+
+    return build_url
+
+
+@pytest.fixture
 def linear_wizard_url():
     return reverse("linear-wizard")
 
@@ -62,6 +70,19 @@ def linear_wizard_url():
 def linear_wizard_run_url():
     def build_url(run_id):
         return reverse("linear-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def done_linear_wizard_url():
+    return reverse("done-linear-wizard")
+
+
+@pytest.fixture
+def done_linear_wizard_run_url():
+    def build_url(run_id):
+        return reverse("done-linear-wizard-run", kwargs={"run_id": run_id})
 
     return build_url
 
@@ -200,6 +221,23 @@ def test_single_step_wizard_done_can_read_submitted_form_data(
     assert response.content == b"completed Ada"
 
 
+def test_single_step_wizard_done_can_read_run_data(
+    client,
+    single_step_wizard_done_run_data_url,
+    single_step_wizard_done_run_data_run_url,
+):
+    client.get(single_step_wizard_done_run_data_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        single_step_wizard_done_run_data_run_url(run_id),
+        data={"name": "Ada"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed Ada"
+
+
 def test_linear_wizard_run_starts_with_first_declared_form(
     client,
     linear_wizard_url,
@@ -250,6 +288,50 @@ def test_linear_wizard_replaces_invalid_submission_on_next_post(
     assert client.session["gandalf_runs"][run_id]["submissions"] == [{"name": "Ada"}]
 
 
+def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_step(
+    client,
+    done_linear_wizard_url,
+    done_linear_wizard_run_url,
+):
+    client.get(done_linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        done_linear_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [
+        {"name": "Ada"},
+        {"email": "ada@example.com"},
+    ]
+
+
+def test_linear_wizard_does_not_append_submission_after_done(
+    client,
+    done_linear_wizard_url,
+    done_linear_wizard_run_url,
+):
+    client.get(done_linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(done_linear_wizard_run_url(run_id), data={"email": "ada@example.com"})
+    response = client.post(
+        done_linear_wizard_run_url(run_id),
+        data={"email": "grace@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [
+        {"name": "Ada"},
+        {"email": "ada@example.com"},
+    ]
+
+
 def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     client,
     linear_wizard_url,
@@ -286,11 +368,12 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
 
 
 def test_linear_wizard_submissions_do_not_leak_to_new_client(
+    client,
     linear_wizard_url,
     linear_wizard_run_url,
 ):
-    first_client = Client()
-    second_client = Client()
+    first_client = client
+    second_client = client.__class__()
     first_client.get(linear_wizard_url)
     first_run_id, _ = get_only_run_info_from_session(first_client.session)
     second_client.get(linear_wizard_url)
@@ -354,73 +437,9 @@ def test_linear_wizard_submissions_survive_recreated_declaration(
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_wizard_viewset_configures_plain_wizard(rf):
-    class PlainWizardViewSet(WizardViewSet):
-        wizard = Wizard().step(FirstStepForm)
-        template_name = "testapp/single_step_wizard.html"
-
-        def get_wizard_url(self, run_id):
-            return f"/wizard/{run_id}/"
-
-    request = rf.get("/wizard/")
-    request.session = _Session()
-
-    response = PlainWizardViewSet.as_view()(request)
-
-    assert response.status_code == HTTPStatus.FOUND
-    assert isinstance(PlainWizardViewSet().get_configured_wizard(), ConfiguredWizard)
-
-
-def test_wizard_viewset_uses_configured_wizard():
-    configured_wizard = Wizard().step(FirstStepForm).configure()
-
-    class ConfiguredWizardViewSet(WizardViewSet):
-        wizard = configured_wizard
-
-    wizard = ConfiguredWizardViewSet().get_wizard()
-
-    assert wizard is configured_wizard
-
-
-def test_wizard_viewset_rejects_invalid_wizard_type():
-    class InvalidWizardViewSet(WizardViewSet):
-        wizard = object()
-
+def test_wizard_viewset_rejects_invalid_wizard_type(client):
     with pytest.raises(
         TypeError,
         match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
     ):
-        InvalidWizardViewSet().get_configured_wizard()
-
-
-def test_wizard_viewset_configures_plain_wizard_from_get_wizard(rf):
-    class PlainWizardFromGetterViewSet(WizardViewSet):
-        template_name = "testapp/single_step_wizard.html"
-
-        def get_wizard(self):
-            return Wizard().step(FirstStepForm)
-
-        def get_wizard_url(self, run_id):
-            return f"/wizard/{run_id}/"
-
-    request = rf.get("/wizard/")
-    request.session = _Session()
-
-    response = PlainWizardFromGetterViewSet.as_view()(request)
-
-    assert response.status_code == HTTPStatus.FOUND
-
-
-def test_wizard_viewset_allows_get_configured_wizard_override():
-    class ConfiguringWizardViewSet(WizardViewSet):
-        wizard = Wizard().step(FirstStepForm)
-        configured_wizard = None
-
-        def get_configured_wizard(self):
-            self.__class__.configured_wizard = super().get_configured_wizard()
-            return self.__class__.configured_wizard
-
-    configured_wizard = ConfiguringWizardViewSet().get_configured_wizard()
-
-    assert configured_wizard is ConfiguringWizardViewSet.configured_wizard
-    assert isinstance(ConfiguringWizardViewSet.configured_wizard, ConfiguredWizard)
+        client.get(reverse("invalid-wizard"))

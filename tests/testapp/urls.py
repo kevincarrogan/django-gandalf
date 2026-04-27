@@ -35,6 +35,16 @@ urlpatterns = [
         name="single-step-wizard-done-data-run",
     ),
     path(
+        "wizard-done-run-data/",
+        views.SingleStepWizardDoneRunDataViewSet.as_view(),
+        name="single-step-wizard-done-run-data",
+    ),
+    path(
+        "wizard-done-run-data/<uuid:run_id>/",
+        views.SingleStepWizardDoneRunDataViewSet.as_view(),
+        name="single-step-wizard-done-run-data-run",
+    ),
+    path(
         "linear-wizard/",
         views.LinearWizardViewSet.as_view(),
         name="linear-wizard",
@@ -43,6 +53,16 @@ urlpatterns = [
         "linear-wizard/<uuid:run_id>/",
         views.LinearWizardViewSet.as_view(),
         name="linear-wizard-run",
+    ),
+    path(
+        "done-linear-wizard/",
+        views.DoneLinearWizardViewSet.as_view(),
+        name="done-linear-wizard",
+    ),
+    path(
+        "done-linear-wizard/<uuid:run_id>/",
+        views.DoneLinearWizardViewSet.as_view(),
+        name="done-linear-wizard-run",
     ),
     path(
         "other-linear-wizard/",
@@ -63,5 +83,10 @@ urlpatterns = [
         "recreated-linear-wizard/<uuid:run_id>/",
         views.RecreatedLinearWizardViewSet.as_view(),
         name="recreated-linear-wizard-run",
+    ),
+    path(
+        "invalid-wizard/",
+        views.InvalidWizardViewSet.as_view(),
+        name="invalid-wizard",
     ),
 ]

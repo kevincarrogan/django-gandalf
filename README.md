@@ -1245,4 +1245,5 @@ Planned focus areas include:
 
 ## Contributing
 
-See `CONTRIBUTING.md` for local setup, workflow expectations, and commit message conventions.
+See `CONTRIBUTING.md` for local setup, workflow expectations, separated unit
+and functional test commands, and commit message conventions.
