@@ -1,8 +1,10 @@
 import uuid
 
 import pytest
+from django import forms
 from django.views.generic.edit import FormView
 
+import gandalf.wizards
 from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
@@ -250,6 +252,64 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     response = bound_wizard.replay("testapp/linear_wizard.html")
 
     assert response.context_data["form"].__class__ is SecondStepForm
+
+
+@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
+def test_bound_wizard_renders_first_step_in_matching_branch(
+    request_with_session_factory,
+):
+    class AccountTypeForm(forms.Form):
+        account_type = forms.ChoiceField(
+            choices=[
+                ("personal", "Personal"),
+                ("business", "Business"),
+            ],
+        )
+
+    class BusinessDetailsForm(forms.Form):
+        business_name = forms.CharField()
+
+    class PersonalDetailsForm(forms.Form):
+        preferred_name = forms.CharField()
+
+    class ReviewForm(forms.Form):
+        confirmed = forms.BooleanField()
+
+    def is_business_account(request):
+        account_type_submission = request.wizard.get_submissions()[0]
+        return account_type_submission["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .configure()
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {},
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit(
+        {"account_type": "business"},
+        "testapp/linear_wizard.html",
+    )
+    response = bound_wizard.replay("testapp/linear_wizard.html")
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is BusinessDetailsForm
 
 
 def test_bound_wizard_replay_returns_invalid_stored_step_response(

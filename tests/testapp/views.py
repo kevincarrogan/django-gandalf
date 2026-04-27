@@ -1,10 +1,22 @@
-from gandalf.wizards import Wizard
+from gandalf.wizards import Wizard, condition
 from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
 from django.urls import reverse
 
-from .forms import FirstStepForm, SecondStepForm
+from .forms import (
+    AccountTypeForm,
+    BusinessDetailsForm,
+    FirstStepForm,
+    PersonalDetailsForm,
+    ReviewForm,
+    SecondStepForm,
+)
+
+
+def is_business_account(request):
+    account_type_submission = request.wizard.get_submissions()[0]
+    return account_type_submission["account_type"] == "business"
 
 
 class SingleStepWizardViewSet(WizardViewSet):
@@ -156,6 +168,30 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
     def get_wizard_url(self, run_id):
         return reverse(
             "recreated-linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+
+class BranchingWizardViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "branching-wizard-run",
             kwargs={
                 "run_id": run_id,
             },

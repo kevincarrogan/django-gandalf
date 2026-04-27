@@ -4,7 +4,7 @@ from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.testapp.forms import BusinessDetailsForm, FirstStepForm, SecondStepForm
 
 
 @pytest.fixture
@@ -109,6 +109,19 @@ def recreated_linear_wizard_url():
 def recreated_linear_wizard_run_url():
     def build_url(run_id):
         return reverse("recreated-linear-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def branching_wizard_url():
+    return reverse("branching-wizard")
+
+
+@pytest.fixture
+def branching_wizard_run_url():
+    def build_url(run_id):
+        return reverse("branching-wizard-run", kwargs={"run_id": run_id})
 
     return build_url
 
@@ -366,6 +379,30 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     assert isinstance(response.context["form"], SecondStepForm)
     assert response.context["form"].errors == {}
     assertContains(response, '<input type="email" name="email"')
+
+
+@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
+def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
+    client,
+    branching_wizard_url,
+    branching_wizard_run_url,
+):
+    client.get(branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], BusinessDetailsForm)
+    assert response.context["form"].errors == {}
+    assertContains(response, '<input type="text" name="business_name"')
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [
+        {"account_type": "business"},
+    ]
 
 
 def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(

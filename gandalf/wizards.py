@@ -11,6 +11,10 @@ from gandalf.storage import SessionStorage
 logger = logging.getLogger(__name__)
 
 
+def condition(predicate, target):
+    return predicate, target
+
+
 def form_view_factory(form_class):
     form_name = form_class.__name__
 
@@ -45,6 +49,9 @@ class Wizard:
             )
 
         return self.__class__(steps=self.steps)  # pragma: no cover
+
+    def branch(self, *conditions, default=None):
+        return self.__class__(steps=self.steps)
 
     def configure(self, **configuration):
         return ConfiguredWizard(
