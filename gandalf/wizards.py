@@ -1,5 +1,6 @@
 import logging
 from copy import copy
+from dataclasses import dataclass, replace
 from http import HTTPStatus
 
 from django import forms
@@ -32,6 +33,30 @@ def form_view_factory(form_class, *, template_name):
     return GeneratedFormView
 
 
+@dataclass(frozen=True)
+class Step:
+    declaration: type
+    form_view: type[FormView] | None = None
+
+    def configure(self, *, template_name=None):
+        if issubclass(self.declaration, forms.Form):
+            if template_name is None:
+                raise ImproperlyConfigured(
+                    "Wizard.configure() must receive template_name when "
+                    "generating FormView steps from Form classes."
+                )
+
+            return replace(
+                self,
+                form_view=form_view_factory(
+                    self.declaration,
+                    template_name=template_name,
+                ),
+            )
+
+        return replace(self, form_view=self.declaration)
+
+
 class Wizard:
     def __init__(self, *, steps=None):
         if steps is None:
@@ -43,7 +68,7 @@ class Wizard:
         return self.__class__(
             steps=[
                 *self.steps,
-                form_class_or_form_view_class,
+                Step(declaration=form_class_or_form_view_class),
             ],
         )
 
@@ -80,19 +105,7 @@ class ConfiguredWizard:
         configured_steps = []
 
         for step in steps:
-            if issubclass(step, forms.Form):
-                if template_name is None:
-                    raise ImproperlyConfigured(
-                        "Wizard.configure() must receive template_name when "
-                        "generating FormView steps from Form classes."
-                    )
-
-                step = form_view_factory(
-                    step,
-                    template_name=template_name,
-                )
-
-            configured_steps.append(step)
+            configured_steps.append(step.configure(template_name=template_name))
 
         return configured_steps
 
@@ -134,11 +147,9 @@ class BoundWizard:
     def _build_updated_submissions(self, submission, *args, **kwargs):
         updated_submissions = []
 
-        for form_view, stored_submission in zip(
-            self.wizard.steps, self.get_submissions()
-        ):
+        for step, stored_submission in zip(self.wizard.steps, self.get_submissions()):
             response = self._dispatch_step(
-                form_view,
+                step,
                 self._build_step_request("POST", submission=stored_submission),
                 *args,
                 **kwargs,
@@ -158,9 +169,9 @@ class BoundWizard:
 
     def replay(self, *args, **kwargs):
         submissions = self.get_submissions()
-        for form_view, submission in zip(self.wizard.steps, submissions):
+        for step, submission in zip(self.wizard.steps, submissions):
             response = self._dispatch_step(
-                form_view,
+                step,
                 self._build_step_request("POST", submission=submission),
                 *args,
                 **kwargs,
@@ -185,8 +196,8 @@ class BoundWizard:
             HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
         )
 
-    def _dispatch_step(self, form_view, request, *args, **kwargs):
-        step_view = form_view.as_view()
+    def _dispatch_step(self, step, request, *args, **kwargs):
+        step_view = step.form_view.as_view()
         return step_view(request, *args, **kwargs)
 
     def _build_step_request(self, method, submission=None):
