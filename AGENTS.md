@@ -48,6 +48,10 @@ as idiomatic too. Do not add `# fmt: off` only to force wizard declaration
 wrapping.
 - Express class-level configuration constants in uppercase, for example
   `SESSION_KEY` or `MANAGEMENT_FORM_RUN_ID_FIELD_NAME`.
+- Prefer explicit `if value is None` branches when handling optional mutable
+  defaults instead of shortened expressions such as `value or []`. When the
+  value is transformed after defaulting, assign the default to the local
+  parameter first and then perform the final assignment once.
 
 ## Implementation Ownership
 

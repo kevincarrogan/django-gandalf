@@ -43,11 +43,41 @@ def test_declared_form_step_creates_generated_form_view():
 
     returned_wizard = wizard.step(FirstStepForm)
 
-    current_form_view = wizard.steps[0]
+    current_form_view = returned_wizard.steps[0]
 
-    assert returned_wizard is wizard
+    assert returned_wizard is not wizard
+    assert wizard.steps == []
     assert issubclass(current_form_view, FormView)
     assert current_form_view.form_class is FirstStepForm
+
+
+def test_step_builder_does_not_mutate_source_wizard():
+    base_wizard = Wizard().step(FirstStepForm)
+
+    derived_wizard = base_wizard.step(SecondStepForm)
+
+    assert len(base_wizard.steps) == 1
+    assert base_wizard.steps[0].form_class is FirstStepForm
+    assert len(derived_wizard.steps) == 2
+    assert derived_wizard.steps[0].form_class is FirstStepForm
+    assert derived_wizard.steps[1].form_class is SecondStepForm
+
+
+def test_step_builder_allows_independent_variants():
+    base_wizard = Wizard().step(FirstStepForm)
+
+    first_variant = base_wizard.step(SecondStepForm)
+    second_variant = base_wizard.step(FirstStepForm)
+
+    assert len(base_wizard.steps) == 1
+    assert [step.form_class for step in first_variant.steps] == [
+        FirstStepForm,
+        SecondStepForm,
+    ]
+    assert [step.form_class for step in second_variant.steps] == [
+        FirstStepForm,
+        FirstStepForm,
+    ]
 
 
 def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
