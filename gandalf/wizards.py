@@ -27,8 +27,6 @@ def form_view_factory(form_class):
 
 
 class Wizard:
-    tree = None
-
     def __init__(self, *, steps=None):
         if steps is None:
             steps = []
@@ -57,7 +55,6 @@ class Wizard:
 
 class ConfiguredWizard:
     storage_class = SessionStorage
-    tree = None
 
     def __init__(self, *, steps, configuration):
         self.steps = steps

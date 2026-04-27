@@ -87,6 +87,14 @@ def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
     assert not hasattr(wizard, "bind")
 
 
+def test_wizards_do_not_expose_runtime_tree_placeholder():
+    wizard = Wizard()
+    configured_wizard = wizard.configure()
+
+    assert not hasattr(wizard, "tree")
+    assert not hasattr(configured_wizard, "tree")
+
+
 def test_get_bound_wizard_uses_configured_storage_class(request_with_session_factory):
     class FakeStorage:
         def __init__(self, request):
