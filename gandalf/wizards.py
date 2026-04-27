@@ -15,7 +15,7 @@ def condition(predicate, target):
     return predicate, target
 
 
-def form_view_factory(form_class):
+def form_view_factory(form_class, *, template_name=None):
     form_name = form_class.__name__
 
     class GeneratedFormView(FormView):
@@ -23,9 +23,11 @@ def form_view_factory(form_class):
             return self.request.path
 
     GeneratedFormView.form_class = form_class
+    GeneratedFormView.template_name = template_name
     GeneratedFormView.__module__ = form_class.__module__
     GeneratedFormView.__name__ = f"{form_name}View"
     GeneratedFormView.__qualname__ = GeneratedFormView.__name__
+    GeneratedFormView.gandalf_generated = True
 
     return GeneratedFormView
 
@@ -64,9 +66,36 @@ class ConfiguredWizard:
     storage_class = SessionStorage
 
     def __init__(self, *, steps, configuration):
-        self.steps = steps
         self.configuration = configuration
+        self.steps = self._configure_steps(steps)
         self.storage_class = configuration.get("storage_class", self.storage_class)
+
+    def configure(self, **configuration):
+        return self.__class__(
+            steps=self.steps,
+            configuration={
+                **self.configuration,
+                **configuration,
+            },
+        )
+
+    def _configure_steps(self, steps):
+        template_name = self.configuration.get("template_name")
+        if template_name is None:
+            return steps
+
+        configured_steps = []
+
+        for step in steps:
+            if getattr(step, "gandalf_generated", False):
+                step = form_view_factory(
+                    step.form_class,
+                    template_name=template_name,
+                )
+
+            configured_steps.append(step)
+
+        return configured_steps
 
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
@@ -93,18 +122,17 @@ class BoundWizard:
     def get_submissions(self):
         return self.storage.get_submissions(self.run_id)
 
-    def submit(self, submission, template_name, *args, **kwargs):
+    def submit(self, submission, *args, **kwargs):
         self.storage.set_submissions(
             self.run_id,
             self._build_updated_submissions(
                 submission,
-                template_name,
                 *args,
                 **kwargs,
             ),
         )
 
-    def _build_updated_submissions(self, submission, template_name, *args, **kwargs):
+    def _build_updated_submissions(self, submission, *args, **kwargs):
         updated_submissions = []
 
         for form_view, stored_submission in zip(
@@ -113,7 +141,6 @@ class BoundWizard:
             response = self._dispatch_step(
                 form_view,
                 self._build_step_request("POST", submission=stored_submission),
-                template_name,
                 *args,
                 **kwargs,
             )
@@ -130,13 +157,12 @@ class BoundWizard:
 
         return updated_submissions
 
-    def replay(self, template_name, *args, **kwargs):
+    def replay(self, *args, **kwargs):
         submissions = self.get_submissions()
         for form_view, submission in zip(self.wizard.steps, submissions):
             response = self._dispatch_step(
                 form_view,
                 self._build_step_request("POST", submission=submission),
-                template_name,
                 *args,
                 **kwargs,
             )
@@ -149,7 +175,6 @@ class BoundWizard:
             return self._dispatch_step(
                 remaining_steps[0],
                 self._build_step_request("GET"),
-                template_name,
                 *args,
                 **kwargs,
             )
@@ -161,10 +186,8 @@ class BoundWizard:
             HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
         )
 
-    def _dispatch_step(self, form_view, request, template_name, *args, **kwargs):
-        step_view = form_view.as_view(
-            template_name=template_name,
-        )
+    def _dispatch_step(self, form_view, request, *args, **kwargs):
+        step_view = form_view.as_view()
         return step_view(request, *args, **kwargs)
 
     def _build_step_request(self, method, submission=None):

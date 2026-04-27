@@ -14,11 +14,15 @@ class WizardViewSet(View):
         return self.configure_wizard(wizard)
 
     def configure_wizard(self, wizard):
+        configuration = {}
+        if hasattr(self, "template_name"):
+            configuration["template_name"] = self.template_name
+
         if isinstance(wizard, ConfiguredWizard):
-            return wizard
+            return wizard.configure(**configuration)
 
         if isinstance(wizard, Wizard):
-            return wizard.configure()
+            return wizard.configure(**configuration)
 
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
@@ -31,7 +35,7 @@ class WizardViewSet(View):
         else:
             bound_wizard.retrieve(run_id)
 
-        response = bound_wizard.replay(self.template_name, *args, **kwargs)
+        response = bound_wizard.replay(*args, **kwargs)
         if response is None:
             return self.done(bound_wizard)
 
@@ -43,11 +47,10 @@ class WizardViewSet(View):
         bound_wizard.retrieve(run_id)
         bound_wizard.submit(
             request.POST.dict(),
-            self.template_name,
             *args,
             **kwargs,
         )
-        response = bound_wizard.replay(self.template_name, *args, **kwargs)
+        response = bound_wizard.replay(*args, **kwargs)
 
         if response is None:
             return self.done(bound_wizard)
