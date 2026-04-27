@@ -171,6 +171,29 @@ def test_bound_wizard_retrieve_marks_session_modified(
     assert request.session.modified is True
 
 
+def test_bound_wizard_get_run_data_returns_current_run_data(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [{"name": "Ada"}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    run_data = bound_wizard.get_run_data()
+
+    assert run_data == {
+        "submissions": [{"name": "Ada"}],
+    }
+
+
 def test_bound_wizard_replays_submissions_to_render_next_form_view(
     request_with_session_factory,
     linear_wizard,
@@ -240,6 +263,67 @@ def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
 
     assert first_response.context_data["form"].__class__ is SecondStepForm
     assert second_response.context_data["form"].__class__ is FirstStepForm
+
+
+def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_step(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [{"name": "Ada"}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit(
+        {"email": "ada@example.com"},
+        "testapp/linear_wizard.html",
+    )
+
+    assert request.session["gandalf_runs"]["existing-run"] == {
+        "submissions": [
+            {"name": "Ada"},
+            {"email": "ada@example.com"},
+        ],
+    }
+
+
+def test_bound_wizard_does_not_append_submission_after_complete_path(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [
+                        {"name": "Ada"},
+                        {"email": "ada@example.com"},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit(
+        {"email": "grace@example.com"},
+        "testapp/linear_wizard.html",
+    )
+
+    assert request.session["gandalf_runs"]["existing-run"] == {
+        "submissions": [
+            {"name": "Ada"},
+            {"email": "ada@example.com"},
+        ],
+    }
 
 
 def test_bound_wizard_replays_submissions_through_form_view_form_valid(

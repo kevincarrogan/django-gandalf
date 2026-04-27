@@ -581,9 +581,9 @@ context.
 
 ### Additional configuration follows the same pattern
 
-Calling `.configure(...)` is required to produce a runtime wizard. Configuration values for auto-generated step views and storage are optional keyword arguments to that call.
+Calling `.configure(...)` is optional and only needed when overriding default runtime configuration. A `WizardViewSet` can receive a plain `Wizard` declaration and will configure it automatically with defaults.
 
-In the common case, call `.configure()` with no arguments and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
+In the common case, declare the wizard steps and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
 
 In other words, storage customization:
 

@@ -9,7 +9,7 @@ from .forms import FirstStepForm, SecondStepForm
 
 class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm).configure()
+    wizard = Wizard().step(FirstStepForm)
 
     def get_wizard_url(self, run_id):
         return reverse(
@@ -25,7 +25,7 @@ class SingleStepWizardViewSet(WizardViewSet):
 
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm).configure()
+    wizard = Wizard().step(FirstStepForm)
 
     def get_wizard_url(self, run_id):
         return reverse(
@@ -38,7 +38,7 @@ class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
 
 class SingleStepWizardDoneDataViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm).configure()
+    wizard = Wizard().step(FirstStepForm)
 
     def get_wizard_url(self, run_id):
         return reverse(
@@ -63,7 +63,6 @@ class LinearWizardViewSet(WizardViewSet):
         .step(
             SecondStepForm,
         )
-        .configure()
     )
 
     def get_wizard_url(self, run_id):
@@ -85,7 +84,6 @@ class OtherLinearWizardViewSet(WizardViewSet):
         .step(
             SecondStepForm,
         )
-        .configure()
     )
 
     def get_wizard_url(self, run_id):
@@ -107,7 +105,6 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
         .step(
             SecondStepForm,
         )
-        .configure()
     )
 
     def get_wizard_url(self, run_id):

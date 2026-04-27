@@ -6,8 +6,12 @@ import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizards import Wizard
+from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+
+
+class _Session(dict):
+    modified = False
 
 
 @pytest.fixture
@@ -159,6 +163,21 @@ def test_single_step_wizard_valid_post_returns_done_response(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_single_step_wizard_get_after_valid_post_returns_done_response(
+    client,
+    single_step_wizard_url,
+    single_step_wizard_run_url,
+):
+    client.get(single_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
+
+    response = client.get(single_step_wizard_run_url(run_id))
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
@@ -335,8 +354,8 @@ def test_linear_wizard_submissions_survive_recreated_declaration(
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_wizard_viewset_rejects_unconfigured_wizard(rf):
-    class UnconfiguredWizardViewSet(WizardViewSet):
+def test_wizard_viewset_configures_plain_wizard(rf):
+    class PlainWizardViewSet(WizardViewSet):
         wizard = Wizard().step(FirstStepForm)
         template_name = "testapp/single_step_wizard.html"
 
@@ -344,28 +363,49 @@ def test_wizard_viewset_rejects_unconfigured_wizard(rf):
             return f"/wizard/{run_id}/"
 
     request = rf.get("/wizard/")
+    request.session = _Session()
+
+    response = PlainWizardViewSet.as_view()(request)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert isinstance(PlainWizardViewSet().get_wizard(), ConfiguredWizard)
+
+
+def test_wizard_viewset_uses_configured_wizard():
+    configured_wizard = Wizard().step(FirstStepForm).configure()
+
+    class ConfiguredWizardViewSet(WizardViewSet):
+        wizard = configured_wizard
+
+    wizard = ConfiguredWizardViewSet().get_wizard()
+
+    assert wizard is configured_wizard
+
+
+def test_wizard_viewset_rejects_invalid_wizard_type():
+    class InvalidWizardViewSet(WizardViewSet):
+        wizard = object()
 
     with pytest.raises(
         TypeError,
-        match="WizardViewSet.wizard must be a ConfiguredWizard",
+        match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
     ):
-        UnconfiguredWizardViewSet.as_view()(request)
+        InvalidWizardViewSet().get_wizard()
 
 
-def test_wizard_viewset_rejects_unconfigured_wizard_from_get_wizard(rf):
-    class UnconfiguredWizardFromGetterViewSet(WizardViewSet):
+def test_wizard_viewset_uses_configured_wizard_from_get_wizard(rf):
+    class ConfiguredWizardFromGetterViewSet(WizardViewSet):
         template_name = "testapp/single_step_wizard.html"
 
         def get_wizard(self):
-            return Wizard().step(FirstStepForm)
+            return Wizard().step(FirstStepForm).configure()
 
         def get_wizard_url(self, run_id):
             return f"/wizard/{run_id}/"
 
     request = rf.get("/wizard/")
+    request.session = _Session()
 
-    with pytest.raises(
-        TypeError,
-        match="WizardViewSet.wizard must be a ConfiguredWizard",
-    ):
-        UnconfiguredWizardFromGetterViewSet.as_view()(request)
+    response = ConfiguredWizardFromGetterViewSet.as_view()(request)
+
+    assert response.status_code == HTTPStatus.FOUND
