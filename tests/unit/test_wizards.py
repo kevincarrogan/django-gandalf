@@ -6,7 +6,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 import gandalf.wizards
-from gandalf.wizards import ConfiguredWizard, Step, Wizard
+from gandalf.wizards import Branch, ConfiguredWizard, Sequence, Step, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -78,6 +78,49 @@ def test_step_builder_allows_independent_variants():
         FirstStepForm,
         FirstStepForm,
     ]
+
+
+def test_wizard_stores_declarations_as_ast():
+    wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
+
+    assert wizard.root == Sequence(
+        children=(
+            Step(declaration=FirstStepForm),
+            Step(declaration=SecondStepForm),
+        ),
+    )
+
+
+def test_branch_builder_stores_branch_as_ast_node():
+    def always_matches(request):
+        return True
+
+    branch_target = Wizard().step(SecondStepForm)
+    default_target = Wizard().step(FirstStepForm)
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .branch(
+            gandalf.wizards.condition(always_matches, branch_target),
+            default=default_target,
+        )
+    )
+
+    assert wizard.root == Sequence(
+        children=(
+            Step(declaration=FirstStepForm),
+            Branch(
+                conditions=(
+                    gandalf.wizards.Condition(
+                        predicate=always_matches,
+                        target=branch_target.root,
+                    ),
+                ),
+                default=default_target.root,
+            ),
+        ),
+    )
 
 
 def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
@@ -313,7 +356,6 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
 def test_bound_wizard_renders_first_step_in_matching_branch(
     request_with_session_factory,
 ):
@@ -349,7 +391,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
             default=Wizard().step(PersonalDetailsForm),
         )
         .step(ReviewForm)
-        .configure()
+        .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
         session={

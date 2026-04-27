@@ -95,6 +95,10 @@ Branch selection is **first-match-wins**. Gandalf evaluates branch conditions in
 the order you declare them and short-circuits on the first truthy condition,
 then routes into only that branch for the active execution path.
 
+Internally, the declaration is represented as an AST rooted at `Wizard.root`.
+Linear chains are stored as `Sequence` nodes, individual forms are stored as
+`Step` nodes, and conditional subflows are stored as `Branch` nodes.
+
 Why this is better in this project’s sweet spot (complex branching):
 
 - Branch condition and target flow stay together (no separate lookup table).
