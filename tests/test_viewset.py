@@ -368,7 +368,7 @@ def test_wizard_viewset_configures_plain_wizard(rf):
     response = PlainWizardViewSet.as_view()(request)
 
     assert response.status_code == HTTPStatus.FOUND
-    assert isinstance(PlainWizardViewSet().get_wizard(), ConfiguredWizard)
+    assert isinstance(PlainWizardViewSet().get_configured_wizard(), ConfiguredWizard)
 
 
 def test_wizard_viewset_uses_configured_wizard():
@@ -390,15 +390,15 @@ def test_wizard_viewset_rejects_invalid_wizard_type():
         TypeError,
         match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
     ):
-        InvalidWizardViewSet().get_wizard()
+        InvalidWizardViewSet().get_configured_wizard()
 
 
-def test_wizard_viewset_uses_configured_wizard_from_get_wizard(rf):
-    class ConfiguredWizardFromGetterViewSet(WizardViewSet):
+def test_wizard_viewset_configures_plain_wizard_from_get_wizard(rf):
+    class PlainWizardFromGetterViewSet(WizardViewSet):
         template_name = "testapp/single_step_wizard.html"
 
         def get_wizard(self):
-            return Wizard().step(FirstStepForm).configure()
+            return Wizard().step(FirstStepForm)
 
         def get_wizard_url(self, run_id):
             return f"/wizard/{run_id}/"
@@ -406,6 +406,21 @@ def test_wizard_viewset_uses_configured_wizard_from_get_wizard(rf):
     request = rf.get("/wizard/")
     request.session = _Session()
 
-    response = ConfiguredWizardFromGetterViewSet.as_view()(request)
+    response = PlainWizardFromGetterViewSet.as_view()(request)
 
     assert response.status_code == HTTPStatus.FOUND
+
+
+def test_wizard_viewset_allows_get_configured_wizard_override():
+    class ConfiguringWizardViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm)
+        configured_wizard = None
+
+        def get_configured_wizard(self):
+            self.__class__.configured_wizard = super().get_configured_wizard()
+            return self.__class__.configured_wizard
+
+    configured_wizard = ConfiguringWizardViewSet().get_configured_wizard()
+
+    assert configured_wizard is ConfiguringWizardViewSet.configured_wizard
+    assert isinstance(ConfiguringWizardViewSet.configured_wizard, ConfiguredWizard)

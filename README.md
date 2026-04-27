@@ -211,6 +211,10 @@ class SignupWizardViewSet(WizardViewSet):
         return wizard.step(ConfirmStepView)
 ```
 
+When `get_wizard()` returns a plain `Wizard`, the viewset configures it with
+defaults before executing it. Override `get_configured_wizard()` when you need
+to customize that runtime configuration per request.
+
 You can also build a dynamic *range* of auto-generated steps from a previous
 answer. For example, ask how many household members to collect, then append one
 generated step per member:

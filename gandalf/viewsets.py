@@ -6,7 +6,14 @@ from gandalf.wizards import ConfiguredWizard, Wizard
 
 class WizardViewSet(View):
     def get_wizard(self):
-        wizard = self.wizard
+        return self.wizard
+
+    def get_configured_wizard(self):
+        wizard = self.get_wizard()
+
+        return self.configure_wizard(wizard)
+
+    def configure_wizard(self, wizard):
         if isinstance(wizard, ConfiguredWizard):
             return wizard
 
@@ -16,7 +23,7 @@ class WizardViewSet(View):
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
     def get(self, request, *args, run_id=None, **kwargs):
-        wizard = self.get_wizard()
+        wizard = self.configure_wizard(self.get_wizard())
         bound_wizard = wizard.get_bound_wizard(request)
         if run_id is None:
             bound_wizard.initialise()
@@ -31,7 +38,7 @@ class WizardViewSet(View):
         return response
 
     def post(self, request, *args, run_id, **kwargs):
-        wizard = self.get_wizard()
+        wizard = self.configure_wizard(self.get_configured_wizard())
         bound_wizard = wizard.get_bound_wizard(request)
         bound_wizard.retrieve(run_id)
         bound_wizard.submit(
