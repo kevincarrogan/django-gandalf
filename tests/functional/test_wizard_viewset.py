@@ -309,6 +309,24 @@ def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_ste
     ]
 
 
+def test_linear_wizard_done_can_read_submitted_form_data_from_each_step(
+    client,
+    done_linear_wizard_url,
+    done_linear_wizard_run_url,
+):
+    client.get(done_linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        done_linear_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed Ada at ada@example.com"
+
+
 def test_linear_wizard_does_not_append_submission_after_done(
     client,
     done_linear_wizard_url,
@@ -325,7 +343,7 @@ def test_linear_wizard_does_not_append_submission_after_done(
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == f"completed {run_id}".encode()
+    assert response.content == b"completed Ada at ada@example.com"
     assert client.session["gandalf_runs"][run_id]["submissions"] == [
         {"name": "Ada"},
         {"email": "ada@example.com"},

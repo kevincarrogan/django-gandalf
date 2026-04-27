@@ -113,7 +113,11 @@ class DoneLinearWizardViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+        name_submission, email_submission = bound_wizard.get_submissions()
+        return HttpResponse(
+            f"completed {name_submission.get('name')} "
+            f"at {email_submission.get('email')}"
+        )
 
 
 class OtherLinearWizardViewSet(WizardViewSet):
