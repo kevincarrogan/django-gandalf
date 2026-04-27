@@ -144,10 +144,15 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(rf):
 
 
 def test_wizard_viewset_uses_configured_wizard():
-    configured_wizard = Wizard().step(FirstStepForm).configure()
+    configured_wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
 
     class ConfiguredWizardViewSet(WizardViewSet):
         wizard = configured_wizard
+        template_name = "testapp/single_step_wizard.html"
 
     wizard = ConfiguredWizardViewSet().get_wizard()
 
@@ -187,6 +192,7 @@ def test_wizard_viewset_allows_get_configured_wizard_override():
     class ConfiguringWizardViewSet(WizardViewSet):
         wizard = Wizard().step(FirstStepForm)
         configured_wizard = None
+        template_name = "testapp/single_step_wizard.html"
 
         def get_configured_wizard(self):
             self.__class__.configured_wizard = super().get_configured_wizard()

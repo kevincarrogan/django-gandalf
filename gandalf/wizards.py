@@ -3,6 +3,7 @@ from copy import copy
 from http import HTTPStatus
 
 from django import forms
+from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 from gandalf.storage import SessionStorage
@@ -27,7 +28,6 @@ def form_view_factory(form_class, *, template_name=None):
     GeneratedFormView.__module__ = form_class.__module__
     GeneratedFormView.__name__ = f"{form_name}View"
     GeneratedFormView.__qualname__ = GeneratedFormView.__name__
-    GeneratedFormView.gandalf_generated = True
 
     return GeneratedFormView
 
@@ -40,17 +40,12 @@ class Wizard:
         self.steps = list(steps)
 
     def step(self, form_class_or_form_view_class, context=None):
-        if issubclass(form_class_or_form_view_class, forms.Form):  # pragma: no branch
-            form_class = form_class_or_form_view_class
-            form_view = form_view_factory(form_class)
-            return self.__class__(
-                steps=[
-                    *self.steps,
-                    form_view,
-                ],
-            )
-
-        return self.__class__(steps=self.steps)  # pragma: no cover
+        return self.__class__(
+            steps=[
+                *self.steps,
+                form_class_or_form_view_class,
+            ],
+        )
 
     def branch(self, *conditions, default=None):
         return self.__class__(steps=self.steps)
@@ -81,15 +76,19 @@ class ConfiguredWizard:
 
     def _configure_steps(self, steps):
         template_name = self.configuration.get("template_name")
-        if template_name is None:
-            return steps
 
         configured_steps = []
 
         for step in steps:
-            if getattr(step, "gandalf_generated", False):
+            if issubclass(step, forms.Form):
+                if template_name is None:
+                    raise ImproperlyConfigured(
+                        "Wizard.configure() must receive template_name when "
+                        "generating FormView steps from Form classes."
+                    )
+
                 step = form_view_factory(
-                    step.form_class,
+                    step,
                     template_name=template_name,
                 )
 

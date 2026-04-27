@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 from django import forms
+from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 import gandalf.wizards
@@ -40,17 +41,14 @@ def linear_wizard():
     )
 
 
-def test_declared_form_step_creates_generated_form_view():
+def test_declared_form_step_stores_form_class():
     wizard = Wizard()
 
     returned_wizard = wizard.step(FirstStepForm)
 
-    current_form_view = returned_wizard.steps[0]
-
     assert returned_wizard is not wizard
     assert wizard.steps == []
-    assert issubclass(current_form_view, FormView)
-    assert current_form_view.form_class is FirstStepForm
+    assert returned_wizard.steps == [FirstStepForm]
 
 
 def test_step_builder_does_not_mutate_source_wizard():
@@ -59,10 +57,10 @@ def test_step_builder_does_not_mutate_source_wizard():
     derived_wizard = base_wizard.step(SecondStepForm)
 
     assert len(base_wizard.steps) == 1
-    assert base_wizard.steps[0].form_class is FirstStepForm
+    assert base_wizard.steps[0] is FirstStepForm
     assert len(derived_wizard.steps) == 2
-    assert derived_wizard.steps[0].form_class is FirstStepForm
-    assert derived_wizard.steps[1].form_class is SecondStepForm
+    assert derived_wizard.steps[0] is FirstStepForm
+    assert derived_wizard.steps[1] is SecondStepForm
 
 
 def test_step_builder_allows_independent_variants():
@@ -72,11 +70,11 @@ def test_step_builder_allows_independent_variants():
     second_variant = base_wizard.step(FirstStepForm)
 
     assert len(base_wizard.steps) == 1
-    assert [step.form_class for step in first_variant.steps] == [
+    assert first_variant.steps == [
         FirstStepForm,
         SecondStepForm,
     ]
-    assert [step.form_class for step in second_variant.steps] == [
+    assert second_variant.steps == [
         FirstStepForm,
         FirstStepForm,
     ]
@@ -112,13 +110,36 @@ def test_get_bound_wizard_uses_configured_storage_class(request_with_session_fac
 
 
 def test_wizard_configure_returns_configured_wizard():
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard()
 
     configured_wizard = wizard.configure()
 
     assert isinstance(configured_wizard, ConfiguredWizard)
-    assert configured_wizard.steps == wizard.steps
     assert configured_wizard.configuration == {}
+
+
+def test_wizard_configure_requires_template_for_form_steps():
+    wizard = Wizard().step(FirstStepForm)
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=(
+            "Wizard.configure\\(\\) must receive template_name when generating "
+            "FormView steps from Form classes."
+        ),
+    ):
+        wizard.configure()
+
+
+def test_wizard_configure_generates_form_views_for_form_steps():
+    wizard = Wizard().step(FirstStepForm)
+
+    configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
+
+    assert issubclass(configured_wizard.steps[0], FormView)
+    assert configured_wizard.steps[0].form_class is FirstStepForm
+    assert configured_wizard.steps[0].template_name == "testapp/linear_wizard.html"
+    assert wizard.steps == [FirstStepForm]
 
 
 def test_wizard_configure_applies_template_to_generated_form_views():
@@ -128,7 +149,19 @@ def test_wizard_configure_applies_template_to_generated_form_views():
 
     assert configured_wizard.steps[0].form_class is FirstStepForm
     assert configured_wizard.steps[0].template_name == "testapp/linear_wizard.html"
-    assert wizard.steps[0].template_name is None
+    assert wizard.steps == [FirstStepForm]
+
+
+def test_wizard_configure_preserves_explicit_form_view_steps():
+    class ExplicitStepView(FormView):
+        form_class = FirstStepForm
+        template_name = "testapp/explicit_step.html"
+
+    wizard = Wizard().step(ExplicitStepView)
+
+    configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
+
+    assert configured_wizard.steps == [ExplicitStepView]
 
 
 def test_bound_wizard_initialise_creates_session_run(
