@@ -16,7 +16,7 @@ def condition(predicate, target):
     return predicate, target
 
 
-def form_view_factory(form_class, *, template_name=None):
+def form_view_factory(form_class, *, template_name):
     form_name = form_class.__name__
 
     class GeneratedFormView(FormView):
