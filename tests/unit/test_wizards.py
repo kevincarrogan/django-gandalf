@@ -6,7 +6,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 import gandalf.wizards
-from gandalf.wizards import ConfiguredWizard, Wizard
+from gandalf.wizards import Branch, ConfiguredWizard, Sequence, Step, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -48,7 +48,7 @@ def test_declared_form_step_stores_form_class():
 
     assert returned_wizard is not wizard
     assert wizard.steps == []
-    assert returned_wizard.steps == [FirstStepForm]
+    assert returned_wizard.steps == [Step(declaration=FirstStepForm)]
 
 
 def test_step_builder_does_not_mutate_source_wizard():
@@ -57,10 +57,10 @@ def test_step_builder_does_not_mutate_source_wizard():
     derived_wizard = base_wizard.step(SecondStepForm)
 
     assert len(base_wizard.steps) == 1
-    assert base_wizard.steps[0] is FirstStepForm
+    assert base_wizard.steps[0].declaration is FirstStepForm
     assert len(derived_wizard.steps) == 2
-    assert derived_wizard.steps[0] is FirstStepForm
-    assert derived_wizard.steps[1] is SecondStepForm
+    assert derived_wizard.steps[0].declaration is FirstStepForm
+    assert derived_wizard.steps[1].declaration is SecondStepForm
 
 
 def test_step_builder_allows_independent_variants():
@@ -70,14 +70,57 @@ def test_step_builder_allows_independent_variants():
     second_variant = base_wizard.step(FirstStepForm)
 
     assert len(base_wizard.steps) == 1
-    assert first_variant.steps == [
+    assert [step.declaration for step in first_variant.steps] == [
         FirstStepForm,
         SecondStepForm,
     ]
-    assert second_variant.steps == [
+    assert [step.declaration for step in second_variant.steps] == [
         FirstStepForm,
         FirstStepForm,
     ]
+
+
+def test_wizard_stores_declarations_as_ast():
+    wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
+
+    assert wizard.root == Sequence(
+        children=(
+            Step(declaration=FirstStepForm),
+            Step(declaration=SecondStepForm),
+        ),
+    )
+
+
+def test_branch_builder_stores_branch_as_ast_node():
+    def always_matches(request):
+        return True
+
+    branch_target = Wizard().step(SecondStepForm)
+    default_target = Wizard().step(FirstStepForm)
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .branch(
+            gandalf.wizards.condition(always_matches, branch_target),
+            default=default_target,
+        )
+    )
+
+    assert wizard.root == Sequence(
+        children=(
+            Step(declaration=FirstStepForm),
+            Branch(
+                conditions=(
+                    gandalf.wizards.Condition(
+                        predicate=always_matches,
+                        target=branch_target.root,
+                    ),
+                ),
+                default=default_target.root,
+            ),
+        ),
+    )
 
 
 def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
@@ -118,6 +161,16 @@ def test_wizard_configure_returns_configured_wizard():
     assert configured_wizard.configuration == {}
 
 
+def test_configured_wizard_configure_raises_useful_error():
+    configured_wizard = Wizard().configure()
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="ConfiguredWizard instances cannot be configured.",
+    ):
+        configured_wizard.configure(template_name="testapp/linear_wizard.html")
+
+
 def test_wizard_configure_requires_template_for_form_steps():
     wizard = Wizard().step(FirstStepForm)
 
@@ -136,10 +189,12 @@ def test_wizard_configure_generates_form_views_for_form_steps():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    assert issubclass(configured_wizard.steps[0], FormView)
-    assert configured_wizard.steps[0].form_class is FirstStepForm
-    assert configured_wizard.steps[0].template_name == "testapp/linear_wizard.html"
-    assert wizard.steps == [FirstStepForm]
+    configured_step = configured_wizard.steps[0]
+    assert configured_step.declaration is FirstStepForm
+    assert issubclass(configured_step.form_view, FormView)
+    assert configured_step.form_view.form_class is FirstStepForm
+    assert configured_step.form_view.template_name == "testapp/linear_wizard.html"
+    assert wizard.steps == [Step(declaration=FirstStepForm)]
 
 
 def test_wizard_configure_applies_template_to_generated_form_views():
@@ -147,9 +202,11 @@ def test_wizard_configure_applies_template_to_generated_form_views():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    assert configured_wizard.steps[0].form_class is FirstStepForm
-    assert configured_wizard.steps[0].template_name == "testapp/linear_wizard.html"
-    assert wizard.steps == [FirstStepForm]
+    configured_step = configured_wizard.steps[0]
+    assert configured_step.declaration is FirstStepForm
+    assert configured_step.form_view.form_class is FirstStepForm
+    assert configured_step.form_view.template_name == "testapp/linear_wizard.html"
+    assert wizard.steps == [Step(declaration=FirstStepForm)]
 
 
 def test_wizard_configure_preserves_explicit_form_view_steps():
@@ -161,7 +218,9 @@ def test_wizard_configure_preserves_explicit_form_view_steps():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    assert configured_wizard.steps == [ExplicitStepView]
+    assert configured_wizard.steps == [
+        Step(declaration=ExplicitStepView, form_view=ExplicitStepView)
+    ]
 
 
 def test_bound_wizard_initialise_creates_session_run(
@@ -297,7 +356,6 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
 def test_bound_wizard_renders_first_step_in_matching_branch(
     request_with_session_factory,
 ):
@@ -333,7 +391,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
             default=Wizard().step(PersonalDetailsForm),
         )
         .step(ReviewForm)
-        .configure()
+        .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
         session={
@@ -544,7 +602,12 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
             self.__class__.form_valid_call_count += 1
             return super().form_valid(form)
 
-    linear_wizard.steps[0] = TrackingFirstStepFormView
+    linear_wizard = (
+        Wizard()
+        .step(TrackingFirstStepFormView)
+        .step(SecondStepForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
     request = request_with_session_factory(
         session={
             "gandalf_runs": {

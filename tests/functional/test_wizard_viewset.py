@@ -381,7 +381,6 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     assertContains(response, '<input type="email" name="email"')
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
 def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
     client,
     branching_wizard_url,

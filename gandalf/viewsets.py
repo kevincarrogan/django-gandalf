@@ -19,7 +19,7 @@ class WizardViewSet(View):
             configuration["template_name"] = self.template_name
 
         if isinstance(wizard, ConfiguredWizard):
-            return wizard.configure(**configuration)
+            return wizard
 
         if isinstance(wizard, Wizard):
             return wizard.configure(**configuration)
@@ -42,7 +42,7 @@ class WizardViewSet(View):
         return response
 
     def post(self, request, *args, run_id, **kwargs):
-        wizard = self.configure_wizard(self.get_configured_wizard())
+        wizard = self.get_configured_wizard()
         bound_wizard = wizard.get_bound_wizard(request)
         bound_wizard.retrieve(run_id)
         bound_wizard.submit(
