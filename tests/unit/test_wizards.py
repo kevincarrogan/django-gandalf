@@ -349,7 +349,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
             default=Wizard().step(PersonalDetailsForm),
         )
         .step(ReviewForm)
-        .configure()
+        .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
         session={
