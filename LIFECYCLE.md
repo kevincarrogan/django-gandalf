@@ -151,7 +151,6 @@ historical or inactive branch state after a user changes an earlier answer.
 Each node in `wizard.tree` should be a `Step`. A `Step` represents one form
 interaction and can carry:
 
-- a stable step key
 - declared or resolved context
 - the underlying form class or `FormView` class
 - whether the step is on the currently active route, if Gandalf records that
@@ -278,9 +277,9 @@ wizard.tree.walk(serializer)
 storage.save(serializer.build())
 ```
 
-The saved data should be plain JSON-compatible state keyed by stable step key.
-It should not include live `Form`, `FormView`, request, response, or tree
-objects.
+The saved data should be a plain JSON-compatible positional list in execution
+order. It should not include live `Form`, `FormView`, request, response, or
+tree objects.
 
 On the next request, `WizardStateDeserializer` applies that saved state back
 onto a freshly built runtime tree.

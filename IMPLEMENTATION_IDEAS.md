@@ -180,11 +180,11 @@ steps and still reuse the same finder.
 class WizardStateDeserializer(WizardTreeVisitor):
     """Apply persisted storage data to runtime Step nodes."""
 
-    def __init__(self, data: dict):
+    def __init__(self, data: list):
         ...
 
     def enter(self, step) -> None:
-        step.apply_state(self.data.get(step.key))
+        step.apply_state(...)
 ```
 
 ## `WizardStateSerializer`
@@ -194,14 +194,19 @@ class WizardStateSerializer(WizardTreeVisitor):
     """Collect runtime Step state into plain storage data."""
 
     def __init__(self):
-        self.data = {}
+        self.data = []
 
     def enter(self, step) -> None:
-        self.data[step.key] = step.to_state()
+        self.data.append(step.to_state())
 
-    def build(self) -> dict:
+    def build(self) -> list:
         return self.data
 ```
+
+Submissions are stored as a positional list in execution order. Branch
+traversal happens during replay by walking the wizard tree and evaluating
+branch conditions using the data seen so far. The storage format does not need
+to change to support branching.
 
 Saving wizard state can then use the same traversal pattern:
 
@@ -296,7 +301,6 @@ execution history rather than only the current active route.
 
 ```python
 class Step:
-    key: str
     context: dict
 
     def to_state(self) -> dict:
