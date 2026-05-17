@@ -21,6 +21,19 @@ def single_step_wizard_run_url():
 
 
 @pytest.fixture
+def form_view_step_wizard_url():
+    return reverse("form-view-step-wizard")
+
+
+@pytest.fixture
+def form_view_step_wizard_run_url():
+    def build_url(run_id):
+        return reverse("form-view-step-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
 def single_step_wizard_without_done_url():
     return reverse("single-step-wizard-without-done")
 
@@ -215,6 +228,55 @@ def test_single_step_wizard_get_after_valid_post_returns_done_response(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
+
+
+def test_form_view_step_wizard_delegates_run_get_to_declared_form_view(
+    client,
+    form_view_step_wizard_url,
+    form_view_step_wizard_run_url,
+):
+    client.get(form_view_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.get(form_view_step_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/single_step_wizard.html")
+    assert isinstance(response.context["form"], FirstStepForm)
+    assertContains(response, '<input type="text" name="name"')
+
+
+def test_form_view_step_wizard_valid_post_returns_done_response(
+    client,
+    form_view_step_wizard_url,
+    form_view_step_wizard_run_url,
+):
+    client.get(form_view_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        form_view_step_wizard_run_url(run_id), data={"name": "Ada"}
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_form_view_step_wizard_invalid_post_redelivers_declared_form_view(
+    client,
+    form_view_step_wizard_url,
+    form_view_step_wizard_run_url,
+):
+    client.get(form_view_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(form_view_step_wizard_run_url(run_id), data={"name": ""})
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+    assert response.context["form"].errors == {
+        "name": ["This field is required."],
+    }
 
 
 def test_single_step_wizard_done_can_read_submitted_form_data(

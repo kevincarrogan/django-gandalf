@@ -15,6 +15,16 @@ urlpatterns = [
         name="single-step-wizard-run",
     ),
     path(
+        "form-view-step-wizard/",
+        views.FormViewStepWizardViewSet.as_view(),
+        name="form-view-step-wizard",
+    ),
+    path(
+        "form-view-step-wizard/<uuid:run_id>/",
+        views.FormViewStepWizardViewSet.as_view(),
+        name="form-view-step-wizard-run",
+    ),
+    path(
         "wizard-without-done/",
         views.SingleStepWizardWithoutDoneViewSet.as_view(),
         name="single-step-wizard-without-done",

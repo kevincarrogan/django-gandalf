@@ -3,6 +3,7 @@ from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
 from django.urls import reverse
+from django.views.generic.edit import FormView
 
 from .forms import (
     AccountTypeForm,
@@ -19,6 +20,14 @@ def is_business_account(request):
     return account_type_submission["account_type"] == "business"
 
 
+class FirstStepFormView(FormView):
+    form_class = FirstStepForm
+    template_name = "testapp/single_step_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+
 class SingleStepWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
@@ -26,6 +35,21 @@ class SingleStepWizardViewSet(WizardViewSet):
     def get_wizard_url(self, run_id):
         return reverse(
             "single-step-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class FormViewStepWizardViewSet(WizardViewSet):
+    wizard = Wizard().step(FirstStepFormView)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "form-view-step-wizard-run",
             kwargs={
                 "run_id": run_id,
             },
