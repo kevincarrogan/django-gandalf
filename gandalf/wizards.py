@@ -2,11 +2,12 @@ from django.core.exceptions import ImproperlyConfigured
 
 from gandalf.form_views import form_view_factory
 from gandalf.runtime import BoundWizard
-from gandalf.steps import Step
+from gandalf.steps import Branch, Step
 from gandalf.storage import SessionStorage
 
 
 __all__ = [
+    "Branch",
     "BoundWizard",
     "ConfiguredWizard",
     "Step",

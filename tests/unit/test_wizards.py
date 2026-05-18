@@ -6,7 +6,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 import gandalf.wizards
-from gandalf.wizards import ConfiguredWizard, Step, Wizard
+from gandalf.wizards import Branch, ConfiguredWizard, Step, Wizard, condition
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -77,6 +77,29 @@ def test_step_builder_allows_independent_variants():
     assert [step.declaration for step in second_variant.steps] == [
         FirstStepForm,
         FirstStepForm,
+    ]
+
+
+def test_declared_branch_stores_conditions_and_default():
+    def is_business_account(request):
+        return True
+
+    wizard = Wizard()
+    business_flow = Wizard().step(FirstStepForm)
+    personal_flow = Wizard().step(SecondStepForm)
+
+    returned_wizard = wizard.branch(
+        condition(is_business_account, business_flow),
+        default=personal_flow,
+    )
+
+    assert returned_wizard is not wizard
+    assert wizard.steps == []
+    assert returned_wizard.steps == [
+        Branch(
+            conditions=((is_business_account, business_flow),),
+            default=personal_flow,
+        )
     ]
 
 

@@ -29,3 +29,9 @@ class Step:
             )
 
         return replace(self, form_view=self.declaration)
+
+
+@dataclass(frozen=True)
+class Branch:
+    conditions: tuple
+    default: object = None
