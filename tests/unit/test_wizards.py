@@ -7,11 +7,25 @@ from django.views.generic.edit import FormView
 
 import gandalf.wizards
 from gandalf.wizards import ConfiguredWizard, Step, Wizard
-from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.testapp.forms import (
+    AccountTypeForm,
+    BusinessDetailsForm,
+    FirstStepForm,
+    PersonalDetailsForm,
+    ReviewForm,
+    SecondStepForm,
+)
 
 
 class _Session(dict):
     modified = False
+
+
+def is_business_account(request):
+    submissions = request.wizard.get_submissions()
+    if not submissions:
+        return False
+    return submissions[0].get("account_type") == "business"
 
 
 @pytest.fixture
@@ -37,6 +51,23 @@ def linear_wizard():
         .step(
             SecondStepForm,
         )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+
+@pytest.fixture
+def branching_wizard():
+    return (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
         .configure(template_name="testapp/linear_wizard.html")
     )
 
@@ -313,43 +344,130 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
+def test_branch_returns_new_wizard_instance():
+    base_wizard = Wizard().step(FirstStepForm)
+
+    branched_wizard = base_wizard.branch(
+        gandalf.wizards.condition(
+            lambda request: True,
+            Wizard().step(SecondStepForm),
+        ),
+    )
+
+    assert branched_wizard is not base_wizard
+    assert len(base_wizard.steps) == 1
+
+
 def test_bound_wizard_renders_first_step_in_matching_branch(
     request_with_session_factory,
+    branching_wizard,
 ):
-    class AccountTypeForm(forms.Form):
-        account_type = forms.ChoiceField(
-            choices=[
-                ("personal", "Personal"),
-                ("business", "Business"),
-            ],
-        )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {},
+            },
+        },
+    )
+    bound_wizard = branching_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
-    class BusinessDetailsForm(forms.Form):
-        business_name = forms.CharField()
+    bound_wizard.submit({"account_type": "business"})
+    response = bound_wizard.replay()
 
-    class PersonalDetailsForm(forms.Form):
-        preferred_name = forms.CharField()
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is BusinessDetailsForm
 
-    class ReviewForm(forms.Form):
-        confirmed = forms.BooleanField()
 
-    def is_business_account(request):
-        account_type_submission = request.wizard.get_submissions()[0]
-        return account_type_submission["account_type"] == "business"
+def test_bound_wizard_renders_default_branch_when_no_condition_matches(
+    request_with_session_factory,
+    branching_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {},
+            },
+        },
+    )
+    bound_wizard = branching_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
+    bound_wizard.submit({"account_type": "personal"})
+    response = bound_wizard.replay()
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is PersonalDetailsForm
+
+
+def test_bound_wizard_continues_to_step_after_branch_on_complete_branch_path(
+    request_with_session_factory,
+    branching_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [
+                        {"account_type": "business"},
+                        {"business_name": "Acme"},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = branching_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.replay()
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is ReviewForm
+    assert response.context_data["form"].errors == {}
+
+
+def test_bound_wizard_replay_returns_none_after_complete_branched_path(
+    request_with_session_factory,
+    branching_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "submissions": [
+                        {"account_type": "personal"},
+                        {"preferred_name": "Ada"},
+                        {"confirmed": True},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = branching_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.replay()
+
+    assert response is None
+
+
+def test_bound_wizard_evaluates_branch_conditions_in_declaration_order(
+    request_with_session_factory,
+):
     wizard = (
         Wizard()
         .step(AccountTypeForm)
         .branch(
             gandalf.wizards.condition(
-                is_business_account,
+                lambda request: True,
                 Wizard().step(BusinessDetailsForm),
             ),
-            default=Wizard().step(PersonalDetailsForm),
+            gandalf.wizards.condition(
+                lambda request: True,
+                Wizard().step(PersonalDetailsForm),
+            ),
         )
-        .step(ReviewForm)
-        .configure()
+        .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
         session={
@@ -366,6 +484,38 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is BusinessDetailsForm
+
+
+def test_bound_wizard_skips_branch_when_no_condition_matches_and_no_default(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+        )
+        .step(ReviewForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {},
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit({"account_type": "personal"})
+    response = bound_wizard.replay()
+
+    assert response.status_code == 200
+    assert response.context_data["form"].__class__ is ReviewForm
 
 
 def test_bound_wizard_replay_returns_invalid_stored_step_response(

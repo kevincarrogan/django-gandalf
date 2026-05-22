@@ -4,7 +4,13 @@ from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from tests.testapp.forms import BusinessDetailsForm, FirstStepForm, SecondStepForm
+from tests.testapp.forms import (
+    BusinessDetailsForm,
+    FirstStepForm,
+    PersonalDetailsForm,
+    ReviewForm,
+    SecondStepForm,
+)
 
 
 @pytest.fixture
@@ -381,7 +387,6 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     assertContains(response, '<input type="email" name="email"')
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
 def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
     client,
     branching_wizard_url,
@@ -402,6 +407,53 @@ def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
     assertContains(response, '<input type="text" name="business_name"')
     assert client.session["gandalf_runs"][run_id]["submissions"] == [
         {"account_type": "business"},
+    ]
+
+
+def test_branching_wizard_default_branch_renders_first_default_step(
+    client,
+    branching_wizard_url,
+    branching_wizard_run_url,
+):
+    client.get(branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        branching_wizard_run_url(run_id),
+        data={"account_type": "personal"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], PersonalDetailsForm)
+    assert response.context["form"].errors == {}
+    assertContains(response, '<input type="text" name="preferred_name"')
+
+
+def test_branching_wizard_continues_to_step_after_branch(
+    client,
+    branching_wizard_url,
+    branching_wizard_run_url,
+):
+    client.get(branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    response = client.post(
+        branching_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], ReviewForm)
+    assert response.context["form"].errors == {}
+    assert client.session["gandalf_runs"][run_id]["submissions"] == [
+        {"account_type": "business"},
+        {"business_name": "Acme"},
     ]
 
 
