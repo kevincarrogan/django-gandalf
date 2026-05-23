@@ -1,3 +1,7 @@
+import dataclasses
+
+import pytest
+
 from gandalf import tree
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
@@ -71,22 +75,15 @@ def test_nested_branch_repr():
     )
 
 
-def test_nodes_are_frozen():
-    import dataclasses
-
+def test_step_is_frozen():
     step = tree.Step(FirstStepForm)
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        step.declaration = SecondStepForm
+
+
+def test_branch_is_frozen():
     branch = tree.Branch(arms=((_is_business, tree.Step(FirstStepForm)),))
 
-    try:
-        step.declaration = SecondStepForm
-    except dataclasses.FrozenInstanceError:
-        pass
-    else:
-        raise AssertionError("Step should be frozen")
-
-    try:
+    with pytest.raises(dataclasses.FrozenInstanceError):
         branch.default = tree.Step(FirstStepForm)
-    except dataclasses.FrozenInstanceError:
-        pass
-    else:
-        raise AssertionError("Branch should be frozen")
