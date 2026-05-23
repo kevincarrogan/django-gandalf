@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
@@ -498,3 +499,55 @@ def test_wizard_viewset_rejects_invalid_wizard_type(client):
         match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
     ):
         client.get(reverse("invalid-wizard"))
+
+
+def test_wizard_viewset_accepts_form_view_step(client):
+    start_url = reverse("form-view-step-wizard")
+    response = client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("form-view-step-wizard-run", kwargs={"run_id": run_id})
+
+    assertRedirects(response, run_url, fetch_redirect_response=False)
+
+    response = client.get(run_url)
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/single_step_wizard.html")
+    assert isinstance(response.context["form"], FirstStepForm)
+
+    response = client.post(run_url, data={"name": "Ada"})
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_wizard_viewset_raises_when_form_step_has_no_template_name(client):
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="template_name",
+    ):
+        client.get(reverse("missing-template-wizard"))
+
+
+def test_wizard_viewset_accepts_pre_configured_wizard(client):
+    start_url = reverse("pre-configured-wizard")
+    response = client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("pre-configured-wizard-run", kwargs={"run_id": run_id})
+
+    assertRedirects(response, run_url, fetch_redirect_response=False)
+
+    response = client.get(run_url)
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/single_step_wizard.html")
+    assert isinstance(response.context["form"], FirstStepForm)
+
+    response = client.post(run_url, data={"name": "Ada"})
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_wizard_viewset_rejects_reconfiguring_configured_wizard(client):
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="ConfiguredWizard instances cannot be configured.",
+    ):
+        client.get(reverse("double-configured-wizard"))

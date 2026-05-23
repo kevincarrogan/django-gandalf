@@ -99,4 +99,44 @@ urlpatterns = [
         views.InvalidWizardViewSet.as_view(),
         name="invalid-wizard",
     ),
+    path(
+        "form-view-step-wizard/",
+        views.FormViewStepWizardViewSet.as_view(),
+        name="form-view-step-wizard",
+    ),
+    path(
+        "form-view-step-wizard/<uuid:run_id>/",
+        views.FormViewStepWizardViewSet.as_view(),
+        name="form-view-step-wizard-run",
+    ),
+    path(
+        "missing-template-wizard/",
+        views.MissingTemplateWizardViewSet.as_view(),
+        name="missing-template-wizard",
+    ),
+    path(
+        "missing-template-wizard/<uuid:run_id>/",
+        views.MissingTemplateWizardViewSet.as_view(),
+        name="missing-template-wizard-run",
+    ),
+    path(
+        "pre-configured-wizard/",
+        views.PreConfiguredWizardViewSet.as_view(),
+        name="pre-configured-wizard",
+    ),
+    path(
+        "pre-configured-wizard/<uuid:run_id>/",
+        views.PreConfiguredWizardViewSet.as_view(),
+        name="pre-configured-wizard-run",
+    ),
+    path(
+        "double-configured-wizard/",
+        views.DoubleConfiguredWizardViewSet.as_view(),
+        name="double-configured-wizard",
+    ),
+    path(
+        "double-configured-wizard/<uuid:run_id>/",
+        views.DoubleConfiguredWizardViewSet.as_view(),
+        name="double-configured-wizard-run",
+    ),
 ]
