@@ -110,7 +110,7 @@ def test_wizard_viewset_get_returns_done_response_after_complete_path(rf):
         {
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         }

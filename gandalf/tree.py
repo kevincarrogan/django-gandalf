@@ -87,3 +87,10 @@ def build(declarations: list[Node]) -> Node | None:
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
+
+
+def walk_with_state(tree: Node | None, state: list[dict]):
+    if tree is None:
+        return
+    for node, entry in zip(tree.walk(), state):
+        yield node, entry["step"]

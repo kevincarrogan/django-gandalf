@@ -216,7 +216,7 @@ def test_bound_wizard_replays_submissions_from_url_run_id(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -239,7 +239,7 @@ def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
         session={
             "gandalf_runs": {
                 str(run_id): {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -279,7 +279,7 @@ def test_bound_wizard_get_run_data_returns_current_run_data(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -290,8 +290,35 @@ def test_bound_wizard_get_run_data_returns_current_run_data(
     run_data = bound_wizard.get_run_data()
 
     assert run_data == {
-        "submissions": [{"name": "Ada"}],
+        "state": [{"step": {"name": "Ada"}}],
     }
+
+
+def test_bound_wizard_get_submissions_unwraps_step_entries(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    submissions = bound_wizard.get_submissions()
+
+    assert submissions == [
+        {"name": "Ada"},
+        {"email": "ada@example.com"},
+    ]
 
 
 def test_bound_wizard_replays_submissions_to_render_next_form_view(
@@ -377,7 +404,7 @@ def test_bound_wizard_replay_returns_invalid_stored_step_response(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": ""}],
+                    "state": [{"step": {"name": ""}}],
                 },
             },
         },
@@ -412,7 +439,7 @@ def test_bound_wizard_persists_submissions_by_url_run_id(
 
     assert request.session["gandalf_runs"] == {
         "existing-run": {
-            "submissions": [{"name": "Ada"}],
+            "state": [{"step": {"name": "Ada"}}],
         },
     }
 
@@ -450,7 +477,7 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -461,9 +488,9 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
     bound_wizard.submit({"email": "ada@example.com"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
-        "submissions": [
-            {"name": "Ada"},
-            {"email": "ada@example.com"},
+        "state": [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
         ],
     }
 
@@ -476,7 +503,7 @@ def test_bound_wizard_replaces_invalid_stored_submission(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": ""}],
+                    "state": [{"step": {"name": ""}}],
                 },
             },
         },
@@ -487,8 +514,8 @@ def test_bound_wizard_replaces_invalid_stored_submission(
     bound_wizard.submit({"name": "Ada"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
-        "submissions": [
-            {"name": "Ada"},
+        "state": [
+            {"step": {"name": "Ada"}},
         ],
     }
 
@@ -501,9 +528,9 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [
-                        {"name": "Ada"},
-                        {"email": "ada@example.com"},
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
                     ],
                 },
             },
@@ -515,9 +542,9 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
     bound_wizard.submit({"email": "grace@example.com"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
-        "submissions": [
-            {"name": "Ada"},
-            {"email": "ada@example.com"},
+        "state": [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
         ],
     }
 
@@ -530,9 +557,9 @@ def test_bound_wizard_replay_returns_none_after_complete_path(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [
-                        {"name": "Ada"},
-                        {"email": "ada@example.com"},
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
                     ],
                 },
             },
@@ -571,7 +598,7 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },

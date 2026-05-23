@@ -80,7 +80,7 @@ class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         run_data = bound_wizard.get_run_data()
-        submission = run_data["submissions"][0]
+        submission = run_data["state"][0]["step"]
         return HttpResponse(f"completed {submission.get('name')}")
 
 

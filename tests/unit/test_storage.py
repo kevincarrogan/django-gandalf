@@ -70,7 +70,7 @@ def test_session_storage_get_run_data_uses_url_run_id():
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -80,7 +80,7 @@ def test_session_storage_get_run_data_uses_url_run_id():
     run_data = storage.get_run_data("existing-run")
 
     assert run_data == {
-        "submissions": [{"name": "Ada"}],
+        "state": [{"step": {"name": "Ada"}}],
     }
 
 
@@ -90,7 +90,7 @@ def test_session_storage_get_run_data_accepts_uuid_run_id():
         session={
             "gandalf_runs": {
                 str(run_id): {
-                    "submissions": [{"name": "Ada"}],
+                    "state": [{"step": {"name": "Ada"}}],
                 },
             },
         },
@@ -100,11 +100,11 @@ def test_session_storage_get_run_data_accepts_uuid_run_id():
     run_data = storage.get_run_data(run_id)
 
     assert run_data == {
-        "submissions": [{"name": "Ada"}],
+        "state": [{"step": {"name": "Ada"}}],
     }
 
 
-def test_session_storage_get_submissions_defaults_to_empty_list():
+def test_session_storage_get_state_defaults_to_empty_list():
     request = _Request(
         session={
             "gandalf_runs": {
@@ -114,12 +114,12 @@ def test_session_storage_get_submissions_defaults_to_empty_list():
     )
     storage = SessionStorage(request)
 
-    submissions = storage.get_submissions("existing-run")
+    state = storage.get_state("existing-run")
 
-    assert submissions == []
+    assert state == []
 
 
-def test_session_storage_set_submissions_persists_by_url_run_id():
+def test_session_storage_set_state_persists_by_url_run_id():
     request = _Request(
         session={
             "gandalf_runs": {
@@ -129,16 +129,16 @@ def test_session_storage_set_submissions_persists_by_url_run_id():
     )
     storage = SessionStorage(request)
 
-    storage.set_submissions("existing-run", [{"name": "Ada"}])
+    storage.set_state("existing-run", [{"step": {"name": "Ada"}}])
 
     assert request.session["gandalf_runs"] == {
         "existing-run": {
-            "submissions": [{"name": "Ada"}],
+            "state": [{"step": {"name": "Ada"}}],
         },
     }
 
 
-def test_session_storage_set_submissions_marks_session_modified():
+def test_session_storage_set_state_marks_session_modified():
     request = _Request(
         session={
             "gandalf_runs": {
@@ -148,6 +148,6 @@ def test_session_storage_set_submissions_marks_session_modified():
     )
     storage = SessionStorage(request)
 
-    storage.set_submissions("existing-run", [{"name": "Ada"}])
+    storage.set_state("existing-run", [{"step": {"name": "Ada"}}])
 
     assert request.session.modified is True

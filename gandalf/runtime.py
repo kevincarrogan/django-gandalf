@@ -2,6 +2,8 @@ import logging
 from copy import copy
 from http import HTTPStatus
 
+from gandalf import tree
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,51 +26,56 @@ class BoundWizard:
     def get_run_data(self):
         return self.storage.get_run_data(self.run_id)
 
+    def get_state(self):
+        return self.storage.get_state(self.run_id)
+
     def get_submissions(self):
-        return self.storage.get_submissions(self.run_id)
+        return [entry["step"] for entry in self.get_state()]
 
     def submit(self, submission, *args, **kwargs):
-        self.storage.set_submissions(
+        self.storage.set_state(
             self.run_id,
-            self._build_updated_submissions(
+            self._build_updated_state(
                 submission,
                 *args,
                 **kwargs,
             ),
         )
 
-    def _build_updated_submissions(self, submission, *args, **kwargs):
-        updated_submissions = []
-        steps = list(self.wizard.tree.walk()) if self.wizard.tree is not None else []
+    def _build_updated_state(self, submission, *args, **kwargs):
+        updated_state = []
 
-        for step, stored_submission in zip(steps, self.get_submissions()):
+        for step, stored_data in tree.walk_with_state(
+            self.wizard.tree, self.get_state()
+        ):
             response = self._dispatch_step(
                 step,
-                self._build_step_request("POST", submission=stored_submission),
+                self._build_step_request("POST", submission=stored_data),
                 *args,
                 **kwargs,
             )
 
             if self._response_satisfies_step(response):
-                updated_submissions.append(stored_submission)
+                updated_state.append({"step": stored_data})
                 continue
 
-            updated_submissions.append(submission)
-            return updated_submissions
+            updated_state.append({"step": submission})
+            return updated_state
 
-        if len(updated_submissions) < len(steps):
-            updated_submissions.append(submission)
+        steps = list(self.wizard.tree.walk()) if self.wizard.tree is not None else []
+        if len(updated_state) < len(steps):
+            updated_state.append({"step": submission})
 
-        return updated_submissions
+        return updated_state
 
     def replay(self, *args, **kwargs):
-        submissions = self.get_submissions()
+        state = self.get_state()
         steps = list(self.wizard.tree.walk()) if self.wizard.tree is not None else []
 
-        for step, submission in zip(steps, submissions):
+        for step, stored_data in tree.walk_with_state(self.wizard.tree, state):
             response = self._dispatch_step(
                 step,
-                self._build_step_request("POST", submission=submission),
+                self._build_step_request("POST", submission=stored_data),
                 *args,
                 **kwargs,
             )
@@ -76,7 +83,7 @@ class BoundWizard:
             if not self._response_satisfies_step(response):
                 return response
 
-        remaining_steps = steps[len(submissions) :]
+        remaining_steps = steps[len(state) :]
         if remaining_steps:
             return self._dispatch_step(
                 remaining_steps[0],

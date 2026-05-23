@@ -225,3 +225,19 @@ def test_branch_walk_yields_only_self_when_next_is_none():
     node = tree.Branch(arms=((_is_business, tree.Step(FirstStepForm)),))
 
     assert list(node.walk()) == [node]
+
+
+def test_walk_with_state_yields_nothing_for_none_tree():
+    assert list(tree.walk_with_state(None, [])) == []
+
+
+def test_walk_with_state_zips_tree_and_state():
+    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+    state = [{"step": {"name": "Ada"}}, {"step": {"email": "ada@..."}}]
+
+    pairs = list(tree.walk_with_state(root, state))
+
+    assert pairs == [
+        (root, {"name": "Ada"}),
+        (root.next, {"email": "ada@..."}),
+    ]
