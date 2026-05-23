@@ -151,7 +151,6 @@ historical or inactive branch state after a user changes an earlier answer.
 Each node in `wizard.tree` should be a `Step`. A `Step` represents one form
 interaction and can carry:
 
-- a stable step key
 - declared or resolved context
 - the underlying form class or `FormView` class
 - whether the step is on the currently active route, if Gandalf records that
@@ -163,8 +162,17 @@ interaction and can carry:
 - the response returned by the step
 - serialized runtime metadata
 
-Storage should not save the tree object itself. It should save plain step state
-collected by walking the tree with `WizardStateSerializer`.
+A `Step` does not carry a stable identity key. Steps are identified by their
+position in the wizard AST: persisted state is shaped to mirror that AST, and
+loading state walks declaration and stored structure in lockstep so each step
+receives its own state by virtue of being visited at the same point.
+
+Storage should not save the tree object itself. It should save plain step
+state collected by walking the tree with `WizardStateSerializer`. The saved
+data is a structural projection of the tree (nested lists for sequences,
+per-arm substructure for branches) so that a later request can rebuild the
+tree, walk both structures together, and hand each step its prior state by
+position.
 
 ## Runtime Path
 
@@ -278,12 +286,15 @@ wizard.tree.walk(serializer)
 storage.save(serializer.build())
 ```
 
-The saved data should be plain JSON-compatible state keyed by stable step key.
-It should not include live `Form`, `FormView`, request, response, or tree
-objects.
+The saved data should be plain JSON-compatible state shaped to mirror the
+wizard AST, so a lockstep walk of declaration and saved structure maps each
+state entry onto its step by position. It should not include live `Form`,
+`FormView`, request, response, or tree objects.
 
-On the next request, `WizardStateDeserializer` applies that saved state back
-onto a freshly built runtime tree.
+On the next request, `WizardStateDeserializer` walks the freshly built runtime
+tree and the saved structure together, applying each state entry to the step
+visited at the same position. Steps that have no corresponding state entry
+(for example, newly appended steps in a dynamic wizard) receive `None`.
 
 ## Completion
 
