@@ -253,6 +253,22 @@ class PreConfiguredWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
+class EmptyWizardViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard()
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "empty-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 class DoubleConfiguredWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
 
