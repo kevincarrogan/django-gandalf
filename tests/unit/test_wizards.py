@@ -57,8 +57,8 @@ def test_step_builder_does_not_mutate_source_wizard():
 
     derived_wizard = base_wizard.step(SecondStepForm)
 
-    base_nodes = list(tree.walk(base_wizard.tree))
-    derived_nodes = list(tree.walk(derived_wizard.tree))
+    base_nodes = list(base_wizard.tree.walk())
+    derived_nodes = list(derived_wizard.tree.walk())
 
     assert len(base_nodes) == 1
     assert base_nodes[0].declaration is FirstStepForm
@@ -73,9 +73,9 @@ def test_step_builder_allows_independent_variants():
     first_variant = base_wizard.step(SecondStepForm)
     second_variant = base_wizard.step(FirstStepForm)
 
-    base_nodes = list(tree.walk(base_wizard.tree))
-    first_nodes = list(tree.walk(first_variant.tree))
-    second_nodes = list(tree.walk(second_variant.tree))
+    base_nodes = list(base_wizard.tree.walk())
+    first_nodes = list(first_variant.tree.walk())
+    second_nodes = list(second_variant.tree.walk())
 
     assert len(base_nodes) == 1
     assert [node.declaration for node in first_nodes] == [

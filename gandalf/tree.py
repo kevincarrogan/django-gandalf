@@ -49,6 +49,11 @@ class Step:
 
         return replace(self, form_view=form_view, next=configured_next)
 
+    def walk(self):
+        yield self
+        if self.next is not None:
+            yield from self.next.walk()
+
 
 @dataclass(frozen=True)
 class Branch:
@@ -71,15 +76,14 @@ class Branch:
             lines.extend(self.next.lines(indent))
         return lines
 
+    def walk(self):  # pragma: no cover
+        yield self
+        if self.next is not None:
+            yield from self.next.walk()
+
 
 def build(declarations: list[Node]) -> Node | None:
     head: Node | None = None
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
-
-
-def walk(node: Node | None):
-    while node is not None:
-        yield node
-        node = node.next
