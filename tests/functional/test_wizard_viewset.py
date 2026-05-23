@@ -127,6 +127,19 @@ def branching_wizard_run_url():
     return build_url
 
 
+@pytest.fixture
+def empty_wizard_url():
+    return reverse("empty-wizard")
+
+
+@pytest.fixture
+def empty_wizard_run_url():
+    def build_url(run_id):
+        return reverse("empty-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
 def get_only_run_info_from_session(session):
     gandalf_runs = session["gandalf_runs"]
     assert len(gandalf_runs) == 1
@@ -551,3 +564,19 @@ def test_wizard_viewset_rejects_reconfiguring_configured_wizard(client):
         match="ConfiguredWizard instances cannot be configured.",
     ):
         client.get(reverse("double-configured-wizard"))
+
+
+def test_empty_wizard_run_returns_done_response_immediately(
+    client,
+    empty_wizard_url,
+    empty_wizard_run_url,
+):
+    response = client.get(empty_wizard_url)
+
+    run_id, _ = get_only_run_info_from_session(client.session)
+    assertRedirects(response, empty_wizard_run_url(run_id), fetch_redirect_response=False)
+
+    response = client.get(empty_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
