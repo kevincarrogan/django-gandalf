@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 
@@ -43,3 +43,10 @@ class Branch:
         if self.next is not None:
             lines.extend(self.next.lines(indent))
         return lines
+
+
+def build(declarations: list[Node]) -> Node | None:
+    head: Node | None = None
+    for declaration in reversed(declarations):
+        head = replace(declaration, next=head)
+    return head
