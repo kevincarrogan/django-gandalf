@@ -1,15 +1,14 @@
 from django.core.exceptions import ImproperlyConfigured
 
+from gandalf import tree
 from gandalf.form_views import form_view_factory
 from gandalf.runtime import BoundWizard
-from gandalf.steps import Step
 from gandalf.storage import SessionStorage
 
 
 __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
-    "Step",
     "Wizard",
     "condition",
     "form_view_factory",
@@ -21,26 +20,20 @@ def condition(predicate, target):
 
 
 class Wizard:
-    def __init__(self, *, steps=None):
-        if steps is None:
-            steps = []
-
-        self.steps = list(steps)
+    def __init__(self, *, tree=None):
+        self.tree = tree
 
     def step(self, form_class_or_form_view_class, context=None):
-        return self.__class__(
-            steps=[
-                *self.steps,
-                Step(declaration=form_class_or_form_view_class),
-            ],
-        )
+        declarations = list(tree.walk(self.tree))
+        declarations.append(tree.Step(declaration=form_class_or_form_view_class))
+        return self.__class__(tree=tree.build(declarations))
 
     def branch(self, *conditions, default=None):
-        return self.__class__(steps=self.steps)
+        return self.__class__(tree=self.tree)
 
     def configure(self, **configuration):
         return ConfiguredWizard(
-            steps=self.steps,
+            tree=self.tree,
             configuration=configuration,
         )
 
@@ -48,23 +41,19 @@ class Wizard:
 class ConfiguredWizard:
     storage_class = SessionStorage
 
-    def __init__(self, *, steps, configuration):
+    def __init__(self, *, tree, configuration):
         self.configuration = configuration
-        self.steps = self._configure_steps(steps)
+        self.tree = self._configure_tree(tree)
         self.storage_class = configuration.get("storage_class", self.storage_class)
 
     def configure(self, **configuration):
         raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
 
-    def _configure_steps(self, steps):
+    def _configure_tree(self, root):
+        if root is None:
+            return None
         template_name = self.configuration.get("template_name")
-
-        configured_steps = []
-
-        for step in steps:
-            configured_steps.append(step.configure(template_name=template_name))
-
-        return configured_steps
+        return root.configure(template_name=template_name)
 
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
