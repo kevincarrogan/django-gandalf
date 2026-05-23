@@ -63,12 +63,13 @@ active step. Step execution should happen later, when the active `FormView`
 receives a wizard-shaped request and returns a response.
 
 The important abstraction is that the runtime wizard is a tree of `Step` nodes
-that can be walked. Storage should persist serialized step state, while
-serializer and visitor objects apply behavior to each step during traversal.
+that can be walked. Storage persists a state structure whose shape mirrors the
+wizard AST, so a lockstep walk of declaration and state maps each stored entry
+onto its step by position rather than by any identity key.
 
 Serialization and deserialization should use the same traversal API. Storage
-loads and saves plain data, while tree visitors translate between that data and
-runtime step state.
+loads and saves plain data shaped like the AST, while tree visitors translate
+between that structural data and runtime step state during traversal.
 
 Building the runtime tree is significant enough to be its own named
 collaborator. Visitors operate on a tree that already exists; `WizardTreeBuilder`
@@ -178,38 +179,52 @@ steps and still reuse the same finder.
 
 ```python
 class WizardStateDeserializer(WizardTreeVisitor):
-    """Apply persisted storage data to runtime Step nodes."""
+    """Apply persisted storage data to runtime Step nodes by walking the AST
+    and the saved state structure in lockstep."""
 
-    def __init__(self, data: dict):
+    def __init__(self, data):
         ...
 
     def enter(self, step) -> None:
-        step.apply_state(self.data.get(step.key))
+        step.apply_state(self._next_state_node_for(step))
 ```
+
+The deserializer does not look state up by a step identifier. It walks the
+saved state structure alongside the runtime tree and hands each step the state
+node that lives at the same position in the structure. Steps with no
+corresponding state node (for example, steps appended in this request that did
+not exist when state was saved) receive `None`.
 
 ## `WizardStateSerializer`
 
 ```python
 class WizardStateSerializer(WizardTreeVisitor):
-    """Collect runtime Step state into plain storage data."""
+    """Collect runtime Step state into a tree-shaped storage structure."""
 
     def __init__(self):
-        self.data = {}
+        ...
 
     def enter(self, step) -> None:
-        self.data[step.key] = step.to_state()
+        self._record_state_for(step, step.to_state())
 
-    def build(self) -> dict:
-        return self.data
+    def build(self):
+        """Return a state structure whose shape mirrors the wizard AST."""
+        ...
 ```
 
-Saving wizard state can then use the same traversal pattern:
+Saving wizard state then uses the same traversal pattern:
 
 ```python
 serializer = WizardStateSerializer()
 wizard.tree.walk(serializer)
 storage.save(serializer.build())
 ```
+
+The serialized output is a structural projection of the tree (a nested
+list-of-lists for plain step sequences, with branch nodes recording per-arm
+substructure) rather than a flat dict keyed by step identity. Reloading
+reconstitutes runtime state by walking declaration and saved structure in
+lockstep.
 
 ## `ContextResolver`
 
@@ -296,7 +311,6 @@ execution history rather than only the current active route.
 
 ```python
 class Step:
-    key: str
     context: dict
 
     def to_state(self) -> dict:
@@ -311,6 +325,12 @@ class Step:
             for key, value in context.items()
         )
 ```
+
+`Step` does not carry a stable identity key. Step state is addressed
+positionally by walking the wizard AST and the stored state structure in
+lockstep. `context` is metadata for developer-facing lookups via
+`find_one_by_context` / `filter_by_context` and for request-aware behavior
+through `ContextResolver`; it is not how stored state finds its home.
 
 ## `MultipleStepsReturned`
 
