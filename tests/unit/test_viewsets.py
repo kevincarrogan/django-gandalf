@@ -173,7 +173,7 @@ def test_wizard_viewset_does_not_reconfigure_configured_wizard():
     wizard = ConfiguredWizardViewSet().get_configured_wizard()
 
     assert wizard is configured_wizard
-    assert wizard.steps[0].form_view.template_name == "testapp/single_step_wizard.html"
+    assert wizard.tree.form_view.template_name == "testapp/single_step_wizard.html"
 
 
 def test_wizard_viewset_rejects_invalid_wizard_type():

@@ -2,6 +2,8 @@ import logging
 from copy import copy
 from http import HTTPStatus
 
+from gandalf import tree
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +41,9 @@ class BoundWizard:
 
     def _build_updated_submissions(self, submission, *args, **kwargs):
         updated_submissions = []
+        steps = list(tree.walk(self.wizard.tree))
 
-        for step, stored_submission in zip(self.wizard.steps, self.get_submissions()):
+        for step, stored_submission in zip(steps, self.get_submissions()):
             response = self._dispatch_step(
                 step,
                 self._build_step_request("POST", submission=stored_submission),
@@ -55,14 +58,16 @@ class BoundWizard:
             updated_submissions.append(submission)
             return updated_submissions
 
-        if len(updated_submissions) < len(self.wizard.steps):
+        if len(updated_submissions) < len(steps):
             updated_submissions.append(submission)
 
         return updated_submissions
 
     def replay(self, *args, **kwargs):
         submissions = self.get_submissions()
-        for step, submission in zip(self.wizard.steps, submissions):
+        steps = list(tree.walk(self.wizard.tree))
+
+        for step, submission in zip(steps, submissions):
             response = self._dispatch_step(
                 step,
                 self._build_step_request("POST", submission=submission),
@@ -73,7 +78,7 @@ class BoundWizard:
             if not self._response_satisfies_step(response):
                 return response
 
-        remaining_steps = self.wizard.steps[len(submissions) :]
+        remaining_steps = steps[len(submissions) :]
         if remaining_steps:
             return self._dispatch_step(
                 remaining_steps[0],
