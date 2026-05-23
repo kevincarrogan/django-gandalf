@@ -19,7 +19,7 @@ class Step:
 
 @dataclass(frozen=True)
 class Branch:
-    arms: tuple[tuple[Callable[..., bool], Node | None], ...] = ()
+    arms: tuple[tuple[Callable, Node], ...]
     default: Node | None = None
     next: Node | None = None
 

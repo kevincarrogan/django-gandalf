@@ -75,7 +75,7 @@ def test_nodes_are_frozen():
     import dataclasses
 
     step = tree.Step(FirstStepForm)
-    branch = tree.Branch()
+    branch = tree.Branch(arms=((_is_business, tree.Step(FirstStepForm)),))
 
     try:
         step.declaration = SecondStepForm
