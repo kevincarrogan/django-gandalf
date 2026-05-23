@@ -130,6 +130,16 @@ urlpatterns = [
         name="pre-configured-wizard-run",
     ),
     path(
+        "empty-wizard/",
+        views.EmptyWizardViewSet.as_view(),
+        name="empty-wizard",
+    ),
+    path(
+        "empty-wizard/<uuid:run_id>/",
+        views.EmptyWizardViewSet.as_view(),
+        name="empty-wizard-run",
+    ),
+    path(
         "double-configured-wizard/",
         views.DoubleConfiguredWizardViewSet.as_view(),
         name="double-configured-wizard",

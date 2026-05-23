@@ -18,17 +18,21 @@ class Step:
     form_view: type | None = None
     next: Node | None = None
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return "\n".join(self.lines(""))
 
-    def lines(self, indent: str) -> list[str]:
+    def lines(self, indent: str) -> list[str]:  # pragma: no cover
         lines = [f"{indent}- Step({self.declaration.__name__})"]
         if self.next is not None:
             lines.extend(self.next.lines(indent))
         return lines
 
     def configure(self, *, template_name: str | None) -> Step:
-        configured_next = self.next.configure(template_name=template_name) if self.next is not None else None
+        configured_next = (
+            self.next.configure(template_name=template_name)
+            if self.next is not None
+            else None
+        )
 
         if issubclass(self.declaration, forms.Form):
             if template_name is None:
@@ -52,10 +56,10 @@ class Branch:
     default: Node | None = None
     next: Node | None = None
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return "\n".join(self.lines(""))
 
-    def lines(self, indent: str) -> list[str]:
+    def lines(self, indent: str) -> list[str]:  # pragma: no cover
         lines = [f"{indent}- Branch"]
         for predicate, subtree in self.arms:
             lines.append(f"{indent}  if {predicate.__name__}:")
@@ -66,28 +70,6 @@ class Branch:
         if self.next is not None:
             lines.extend(self.next.lines(indent))
         return lines
-
-    def configure(self, *, template_name: str | None) -> Branch:
-        configured_arms = tuple(
-            (predicate, subtree.configure(template_name=template_name))
-            for predicate, subtree in self.arms
-        )
-        configured_default = (
-            self.default.configure(template_name=template_name)
-            if self.default is not None
-            else None
-        )
-        configured_next = (
-            self.next.configure(template_name=template_name)
-            if self.next is not None
-            else None
-        )
-        return replace(
-            self,
-            arms=configured_arms,
-            default=configured_default,
-            next=configured_next,
-        )
 
 
 def build(declarations: list[Node]) -> Node | None:
