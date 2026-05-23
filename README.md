@@ -742,6 +742,13 @@ particular, it should provide a single-node lookup like
 `find_one_by_context(...)` that returns `None` when no step matches and raises
 an error when the provided context is too broad and matches more than one node.
 
+`context` is metadata for these developer-facing lookups and for request-aware
+behavior; it is not how Gandalf maps stored state back onto steps. Persisted
+state is shaped to mirror the wizard AST, and a lockstep walk of declaration
+and saved structure aligns each state entry with its step by position. That
+means two steps with identical context never collide in storage, and a step
+needs no context at all in order to have its state persisted and replayed.
+
 and a `Step` node can hold things like:
 
 - its position in the tree,
