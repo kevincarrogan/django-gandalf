@@ -1,3 +1,4 @@
+from gandalf.form_views import form_view_factory
 from gandalf.wizards import Wizard, condition
 from gandalf.viewsets import WizardViewSet
 
@@ -200,3 +201,73 @@ class BranchingWizardViewSet(WizardViewSet):
 
 class InvalidWizardViewSet(WizardViewSet):
     wizard = object()
+
+
+FirstStepFormView = form_view_factory(
+    FirstStepForm,
+    template_name="testapp/single_step_wizard.html",
+)
+
+
+class FormViewStepWizardViewSet(WizardViewSet):
+    wizard = Wizard().step(FirstStepFormView)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "form-view-step-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class MissingTemplateWizardViewSet(WizardViewSet):
+    wizard = Wizard().step(FirstStepForm)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "missing-template-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+
+class PreConfiguredWizardViewSet(WizardViewSet):
+    wizard = Wizard().step(FirstStepForm).configure(
+        template_name="testapp/single_step_wizard.html",
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "pre-configured-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class DoubleConfiguredWizardViewSet(WizardViewSet):
+    template_name = "testapp/single_step_wizard.html"
+
+    def get_wizard(self):
+        return Wizard().step(FirstStepForm).configure(
+            template_name=self.template_name,
+        )
+
+    def configure_wizard(self, wizard):
+        return wizard.configure(template_name=self.template_name)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "double-configured-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
