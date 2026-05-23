@@ -296,7 +296,9 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(
     assert isinstance(response.context["form"], SecondStepForm)
     assert response.context["form"].errors == {}
     assertContains(response, '<input type="email" name="email"')
-    assert client.session["gandalf_runs"][run_id]["submissions"] == [{"name": "Ada"}]
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+    ]
 
 
 def test_linear_wizard_replaces_invalid_submission_on_next_post(
@@ -312,7 +314,9 @@ def test_linear_wizard_replaces_invalid_submission_on_next_post(
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
-    assert client.session["gandalf_runs"][run_id]["submissions"] == [{"name": "Ada"}]
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+    ]
 
 
 def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_step(
@@ -330,9 +334,9 @@ def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_ste
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert client.session["gandalf_runs"][run_id]["submissions"] == [
-        {"name": "Ada"},
-        {"email": "ada@example.com"},
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
     ]
 
 
@@ -371,9 +375,9 @@ def test_linear_wizard_does_not_append_submission_after_done(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"completed Ada at ada@example.com"
-    assert client.session["gandalf_runs"][run_id]["submissions"] == [
-        {"name": "Ada"},
-        {"email": "ada@example.com"},
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
     ]
 
 
@@ -414,8 +418,8 @@ def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
     assert isinstance(response.context["form"], BusinessDetailsForm)
     assert response.context["form"].errors == {}
     assertContains(response, '<input type="text" name="business_name"')
-    assert client.session["gandalf_runs"][run_id]["submissions"] == [
-        {"account_type": "business"},
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"account_type": "business"}},
     ]
 
 

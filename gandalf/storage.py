@@ -23,11 +23,11 @@ class SessionStorage:
         gandalf_runs = self.request.session[self.SESSION_KEY]
         return gandalf_runs[str(run_id)]
 
-    def get_submissions(self, run_id):
+    def get_state(self, run_id):
         run_data = self.get_run_data(run_id)
-        return run_data.get("submissions", [])
+        return run_data.get("state", [])
 
-    def set_submissions(self, run_id, submissions):
+    def set_state(self, run_id, state):
         run_data = self.get_run_data(run_id)
-        run_data["submissions"] = submissions
+        run_data["state"] = state
         self.request.session.modified = True
