@@ -14,7 +14,13 @@ class Step:
     next: Node | None = None
 
     def __repr__(self) -> str:
-        return "\n".join(_render(self))
+        return "\n".join(self.lines(""))
+
+    def lines(self, indent: str) -> list[str]:
+        lines = [f"{indent}- Step({self.declaration.__name__})"]
+        if self.next is not None:
+            lines.extend(self.next.lines(indent))
+        return lines
 
 
 @dataclass(frozen=True)
@@ -24,22 +30,16 @@ class Branch:
     next: Node | None = None
 
     def __repr__(self) -> str:
-        return "\n".join(_render(self))
+        return "\n".join(self.lines(""))
 
-
-def _render(node: Node | None, indent: str = "") -> list[str]:
-    lines: list[str] = []
-    current = node
-    while current is not None:
-        if isinstance(current, Step):
-            lines.append(f"{indent}- Step({current.declaration.__name__})")
-        else:
-            lines.append(f"{indent}- Branch")
-            for predicate, subtree in current.arms:
-                lines.append(f"{indent}  if {predicate.__name__}:")
-                lines.extend(_render(subtree, indent + "    "))
-            if current.default is not None:
-                lines.append(f"{indent}  default:")
-                lines.extend(_render(current.default, indent + "    "))
-        current = current.next
-    return lines
+    def lines(self, indent: str) -> list[str]:
+        lines = [f"{indent}- Branch"]
+        for predicate, subtree in self.arms:
+            lines.append(f"{indent}  if {predicate.__name__}:")
+            lines.extend(subtree.lines(indent + "    "))
+        if self.default is not None:
+            lines.append(f"{indent}  default:")
+            lines.extend(self.default.lines(indent + "    "))
+        if self.next is not None:
+            lines.extend(self.next.lines(indent))
+        return lines
