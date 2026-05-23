@@ -68,3 +68,13 @@ class ConfiguredWizard:
 
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
+
+    def __repr__(self):
+        configuration = ", ".join(
+            f"{key}={value!r}" for key, value in self.configuration.items()
+        )
+        header = f"{self.__class__.__name__}({configuration}):"
+        lines = [header]
+        for index, step in enumerate(self.steps):
+            lines.append(f"    step_{index} = {step.declaration.__name__}")
+        return "\n".join(lines)
