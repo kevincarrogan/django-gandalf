@@ -87,3 +87,69 @@ def test_branch_is_frozen():
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         branch.default = tree.Step(FirstStepForm)
+
+
+def test_build_returns_none_for_empty_declarations():
+    assert tree.build([]) is None
+
+
+def test_build_single_step():
+    result = tree.build([tree.Step(FirstStepForm)])
+
+    assert result == tree.Step(FirstStepForm)
+
+
+def test_build_threads_next_across_step_chain():
+    result = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    assert result == tree.Step(
+        FirstStepForm,
+        next=tree.Step(SecondStepForm),
+    )
+
+
+def test_build_threads_next_across_branch():
+    inner = tree.Step(SecondStepForm)
+
+    result = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Branch(arms=((_is_business, inner),)),
+            tree.Step(FirstStepForm),
+        ]
+    )
+
+    assert result == tree.Step(
+        FirstStepForm,
+        next=tree.Branch(
+            arms=((_is_business, inner),),
+            next=tree.Step(FirstStepForm),
+        ),
+    )
+
+
+def test_build_does_not_touch_subtree_next_pointers():
+    inner = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+
+    result = tree.build([tree.Branch(arms=((_is_business, inner),))])
+
+    assert result.arms[0][1] is inner
+
+
+def test_build_overwrites_existing_next_on_declarations():
+    result = tree.build(
+        [
+            tree.Step(FirstStepForm, next=tree.Step(SecondStepForm)),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    assert result == tree.Step(
+        FirstStepForm,
+        next=tree.Step(SecondStepForm),
+    )
