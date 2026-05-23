@@ -24,7 +24,7 @@ class Wizard:
         self.tree = tree
 
     def step(self, form_class_or_form_view_class, context=None):
-        declarations = list(tree.walk(self.tree))
+        declarations = list(self.tree.walk()) if self.tree is not None else []
         declarations.append(tree.Step(declaration=form_class_or_form_view_class))
         return self.__class__(tree=tree.build(declarations))
 
