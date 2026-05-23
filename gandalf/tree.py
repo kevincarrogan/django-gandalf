@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Callable
 
+from django import forms
+from django.core.exceptions import ImproperlyConfigured
+
+from gandalf.form_views import form_view_factory
+
 
 Node = "Step | Branch"
 
@@ -21,6 +26,24 @@ class Step:
         if self.next is not None:
             lines.extend(self.next.lines(indent))
         return lines
+
+    def configure(self, *, template_name: str | None) -> Step:
+        configured_next = self.next.configure(template_name=template_name) if self.next is not None else None
+
+        if issubclass(self.declaration, forms.Form):
+            if template_name is None:
+                raise ImproperlyConfigured(
+                    "Wizard.configure() must receive template_name when "
+                    "generating FormView steps from Form classes."
+                )
+            form_view = form_view_factory(
+                self.declaration,
+                template_name=template_name,
+            )
+        else:
+            form_view = self.declaration
+
+        return replace(self, form_view=form_view, next=configured_next)
 
 
 @dataclass(frozen=True)
@@ -44,9 +67,37 @@ class Branch:
             lines.extend(self.next.lines(indent))
         return lines
 
+    def configure(self, *, template_name: str | None) -> Branch:
+        configured_arms = tuple(
+            (predicate, subtree.configure(template_name=template_name))
+            for predicate, subtree in self.arms
+        )
+        configured_default = (
+            self.default.configure(template_name=template_name)
+            if self.default is not None
+            else None
+        )
+        configured_next = (
+            self.next.configure(template_name=template_name)
+            if self.next is not None
+            else None
+        )
+        return replace(
+            self,
+            arms=configured_arms,
+            default=configured_default,
+            next=configured_next,
+        )
+
 
 def build(declarations: list[Node]) -> Node | None:
     head: Node | None = None
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
+
+
+def walk(node: Node | None):
+    while node is not None:
+        yield node
+        node = node.next

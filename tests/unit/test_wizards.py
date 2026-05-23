@@ -6,7 +6,8 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
 import gandalf.wizards
-from gandalf.wizards import ConfiguredWizard, Step, Wizard
+from gandalf import tree
+from gandalf.wizards import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -47,8 +48,8 @@ def test_declared_form_step_stores_form_class():
     returned_wizard = wizard.step(FirstStepForm)
 
     assert returned_wizard is not wizard
-    assert wizard.steps == []
-    assert returned_wizard.steps == [Step(declaration=FirstStepForm)]
+    assert wizard.tree is None
+    assert returned_wizard.tree == tree.Step(declaration=FirstStepForm)
 
 
 def test_step_builder_does_not_mutate_source_wizard():
@@ -56,11 +57,14 @@ def test_step_builder_does_not_mutate_source_wizard():
 
     derived_wizard = base_wizard.step(SecondStepForm)
 
-    assert len(base_wizard.steps) == 1
-    assert base_wizard.steps[0].declaration is FirstStepForm
-    assert len(derived_wizard.steps) == 2
-    assert derived_wizard.steps[0].declaration is FirstStepForm
-    assert derived_wizard.steps[1].declaration is SecondStepForm
+    base_nodes = list(tree.walk(base_wizard.tree))
+    derived_nodes = list(tree.walk(derived_wizard.tree))
+
+    assert len(base_nodes) == 1
+    assert base_nodes[0].declaration is FirstStepForm
+    assert len(derived_nodes) == 2
+    assert derived_nodes[0].declaration is FirstStepForm
+    assert derived_nodes[1].declaration is SecondStepForm
 
 
 def test_step_builder_allows_independent_variants():
@@ -69,12 +73,16 @@ def test_step_builder_allows_independent_variants():
     first_variant = base_wizard.step(SecondStepForm)
     second_variant = base_wizard.step(FirstStepForm)
 
-    assert len(base_wizard.steps) == 1
-    assert [step.declaration for step in first_variant.steps] == [
+    base_nodes = list(tree.walk(base_wizard.tree))
+    first_nodes = list(tree.walk(first_variant.tree))
+    second_nodes = list(tree.walk(second_variant.tree))
+
+    assert len(base_nodes) == 1
+    assert [node.declaration for node in first_nodes] == [
         FirstStepForm,
         SecondStepForm,
     ]
-    assert [step.declaration for step in second_variant.steps] == [
+    assert [node.declaration for node in second_nodes] == [
         FirstStepForm,
         FirstStepForm,
     ]
@@ -85,14 +93,6 @@ def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
 
     assert not hasattr(wizard, "initialise")
     assert not hasattr(wizard, "bind")
-
-
-def test_wizards_do_not_expose_runtime_tree_placeholder():
-    wizard = Wizard()
-    configured_wizard = wizard.configure()
-
-    assert not hasattr(wizard, "tree")
-    assert not hasattr(configured_wizard, "tree")
 
 
 def test_get_bound_wizard_uses_configured_storage_class(request_with_session_factory):
@@ -146,12 +146,12 @@ def test_wizard_configure_generates_form_views_for_form_steps():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    configured_step = configured_wizard.steps[0]
+    configured_step = configured_wizard.tree
     assert configured_step.declaration is FirstStepForm
     assert issubclass(configured_step.form_view, FormView)
     assert configured_step.form_view.form_class is FirstStepForm
     assert configured_step.form_view.template_name == "testapp/linear_wizard.html"
-    assert wizard.steps == [Step(declaration=FirstStepForm)]
+    assert wizard.tree == tree.Step(declaration=FirstStepForm)
 
 
 def test_wizard_configure_applies_template_to_generated_form_views():
@@ -159,11 +159,11 @@ def test_wizard_configure_applies_template_to_generated_form_views():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    configured_step = configured_wizard.steps[0]
+    configured_step = configured_wizard.tree
     assert configured_step.declaration is FirstStepForm
     assert configured_step.form_view.form_class is FirstStepForm
     assert configured_step.form_view.template_name == "testapp/linear_wizard.html"
-    assert wizard.steps == [Step(declaration=FirstStepForm)]
+    assert wizard.tree == tree.Step(declaration=FirstStepForm)
 
 
 def test_wizard_configure_preserves_explicit_form_view_steps():
@@ -175,9 +175,10 @@ def test_wizard_configure_preserves_explicit_form_view_steps():
 
     configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
 
-    assert configured_wizard.steps == [
-        Step(declaration=ExplicitStepView, form_view=ExplicitStepView)
-    ]
+    assert configured_wizard.tree == tree.Step(
+        declaration=ExplicitStepView,
+        form_view=ExplicitStepView,
+    )
 
 
 def test_bound_wizard_initialise_creates_session_run(

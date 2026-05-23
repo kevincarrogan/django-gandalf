@@ -1,6 +1,8 @@
 import dataclasses
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
+from django.views.generic.edit import FormView
 
 from gandalf import tree
 from tests.testapp.forms import FirstStepForm, SecondStepForm
@@ -153,3 +155,45 @@ def test_build_overwrites_existing_next_on_declarations():
         FirstStepForm,
         next=tree.Step(SecondStepForm),
     )
+
+
+def test_step_configure_generates_form_view_for_form_class():
+    step = tree.Step(FirstStepForm)
+
+    configured = step.configure(template_name="testapp/linear_wizard.html")
+
+    assert configured.declaration is FirstStepForm
+    assert issubclass(configured.form_view, FormView)
+    assert configured.form_view.form_class is FirstStepForm
+    assert configured.form_view.template_name == "testapp/linear_wizard.html"
+
+
+def test_step_configure_uses_explicit_form_view_unchanged():
+    class ExplicitView(FormView):
+        form_class = FirstStepForm
+        template_name = "testapp/explicit.html"
+
+    step = tree.Step(ExplicitView)
+
+    configured = step.configure(template_name="testapp/linear_wizard.html")
+
+    assert configured.form_view is ExplicitView
+
+
+def test_step_configure_requires_template_name_for_form_class():
+    step = tree.Step(FirstStepForm)
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="Wizard.configure\\(\\) must receive template_name",
+    ):
+        step.configure(template_name=None)
+
+
+def test_step_configure_recurses_through_next():
+    step = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+
+    configured = step.configure(template_name="testapp/linear_wizard.html")
+
+    assert configured.form_view.form_class is FirstStepForm
+    assert configured.next.form_view.form_class is SecondStepForm
