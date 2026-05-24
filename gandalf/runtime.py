@@ -35,47 +35,53 @@ class BoundWizard:
     def submit(self, submission, *args, **kwargs):
         self.storage.set_state(
             self.run_id,
-            self._build_updated_state(
-                submission,
-                *args,
-                **kwargs,
-            ),
+            self._build_updated_state(submission, *args, **kwargs),
         )
 
     def _build_updated_state(self, submission, *args, **kwargs):
+        stored_submissions = self.get_submissions()
+        path = list(self._resolved_path(stored_submissions))
         updated_state = []
 
-        for step, stored_data in tree.walk_with_state(
-            self.wizard.tree, self.get_state()
-        ):
+        for index, step in enumerate(path):
+            if index >= len(stored_submissions):
+                updated_state.append({"step": submission})
+                return updated_state
+
+            stored = stored_submissions[index]
             response = self._dispatch_step(
                 step,
-                self._build_step_request("POST", submission=stored_data),
+                self._build_step_request("POST", submission=stored),
                 *args,
                 **kwargs,
             )
 
             if self._response_satisfies_step(response):
-                updated_state.append({"step": stored_data})
+                updated_state.append({"step": stored})
                 continue
 
             updated_state.append({"step": submission})
             return updated_state
 
-        steps = list(self.wizard.tree.walk()) if self.wizard.tree is not None else []
-        if len(updated_state) < len(steps):
-            updated_state.append({"step": submission})
-
         return updated_state
 
     def replay(self, *args, **kwargs):
-        state = self.get_state()
-        steps = list(self.wizard.tree.walk()) if self.wizard.tree is not None else []
+        stored_submissions = self.get_submissions()
+        path = list(self._resolved_path(stored_submissions))
 
-        for step, stored_data in tree.walk_with_state(self.wizard.tree, state):
+        for index, step in enumerate(path):
+            if index >= len(stored_submissions):
+                return self._dispatch_step(
+                    step,
+                    self._build_step_request("GET"),
+                    *args,
+                    **kwargs,
+                )
+
+            stored = stored_submissions[index]
             response = self._dispatch_step(
                 step,
-                self._build_step_request("POST", submission=stored_data),
+                self._build_step_request("POST", submission=stored),
                 *args,
                 **kwargs,
             )
@@ -83,16 +89,32 @@ class BoundWizard:
             if not self._response_satisfies_step(response):
                 return response
 
-        remaining_steps = steps[len(state) :]
-        if remaining_steps:
-            return self._dispatch_step(
-                remaining_steps[0],
-                self._build_step_request("GET"),
-                *args,
-                **kwargs,
-            )
-
         return None
+
+    def _resolved_path(self, submissions):
+        consumed = [0]
+        yield from self._iter_resolved(self.wizard.tree, submissions, consumed)
+
+    def _iter_resolved(self, node, submissions, consumed):
+        while node is not None:
+            if isinstance(node, tree.Step):
+                yield node
+                consumed[0] += 1
+                node = node.next
+            else:
+                if consumed[0] > len(submissions):
+                    return
+                arm = self._select_branch_arm(node, submissions[: consumed[0]])
+                yield from self._iter_resolved(arm, submissions, consumed)
+                node = node.next
+
+    def _select_branch_arm(self, branch_node, submissions):
+        request = self._build_step_request("GET")
+        request.wizard = _BranchView(submissions)
+        for predicate, subtree in branch_node.arms:
+            if predicate(request):
+                return subtree
+        return branch_node.default
 
     def _response_satisfies_step(self, response):
         return (
@@ -111,3 +133,11 @@ class BoundWizard:
             request.POST = submission
 
         return request
+
+
+class _BranchView:
+    def __init__(self, submissions):
+        self._submissions = submissions
+
+    def get_submissions(self):
+        return self._submissions

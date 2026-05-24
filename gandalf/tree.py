@@ -76,7 +76,34 @@ class Branch:
             lines.extend(self.next.lines(indent))
         return lines
 
-    def walk(self):  # pragma: no cover
+    def configure(self, *, template_name: str | None) -> Branch:
+        configured_arms = tuple(
+            (
+                predicate,
+                subtree.configure(template_name=template_name)
+                if subtree is not None
+                else None,
+            )
+            for predicate, subtree in self.arms
+        )
+        configured_default = (
+            self.default.configure(template_name=template_name)
+            if self.default is not None
+            else None
+        )
+        configured_next = (
+            self.next.configure(template_name=template_name)
+            if self.next is not None
+            else None
+        )
+        return replace(
+            self,
+            arms=configured_arms,
+            default=configured_default,
+            next=configured_next,
+        )
+
+    def walk(self):
         yield self
         if self.next is not None:
             yield from self.next.walk()
