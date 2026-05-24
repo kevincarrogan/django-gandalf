@@ -341,7 +341,6 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-@pytest.mark.xfail(reason="Branch traversal is not implemented yet.")
 def test_bound_wizard_renders_first_step_in_matching_branch(
     request_with_session_factory,
 ):
