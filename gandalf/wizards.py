@@ -29,7 +29,13 @@ class Wizard:
         return self.__class__(tree=tree.build(declarations))
 
     def branch(self, *conditions, default=None):
-        return self.__class__(tree=self.tree)
+        declarations = list(self.tree.walk()) if self.tree is not None else []
+        arms = tuple(
+            (predicate, sub_wizard.tree) for predicate, sub_wizard in conditions
+        )
+        default_tree = default.tree if default is not None else None
+        declarations.append(tree.Branch(arms=arms, default=default_tree))
+        return self.__class__(tree=tree.build(declarations))
 
     def configure(self, **configuration):
         return ConfiguredWizard(
