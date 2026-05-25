@@ -373,6 +373,24 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
     assert calls[0] == ("init", {"name": "Ada"})
 
 
+def test_configured_wizard_uses_configured_form_view_factory():
+    sentinel = type("SentinelView", (FormView,), {"form_class": FirstStepForm})
+
+    def fake_factory(form_class, *, template_name):
+        return sentinel
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            form_view_factory=fake_factory,
+        )
+    )
+
+    assert wizard.tree.form_view is sentinel
+
+
 def test_configured_wizard_uses_configured_state_serializer_class(
     request_with_session_factory,
 ):

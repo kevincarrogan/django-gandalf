@@ -193,13 +193,20 @@ def _format_tree(root) -> str:  # pragma: no cover
 class Configurer(Transformer):
     """Transforms a declaration tree by attaching `form_view` classes to each
     Step. For Steps declared with a plain `forms.Form`, generates a `FormView`
-    via `form_view_factory`. For Steps declared with an explicit `FormView`
-    subclass, uses it directly. Branches are rebuilt with their arms, default,
-    and next configured.
+    via the supplied `form_view_factory` callable (defaults to
+    `gandalf.form_views.form_view_factory`). For Steps declared with an
+    explicit `FormView` subclass, uses it directly. Branches are rebuilt with
+    their arms, default, and next configured.
     """
 
-    def __init__(self, *, template_name: str | None):
+    def __init__(
+        self,
+        *,
+        template_name: str | None,
+        form_view_factory=form_view_factory,
+    ):
         self.template_name = template_name
+        self.form_view_factory = form_view_factory
 
     def visit_step(self, step, next_result):
         if issubclass(step.declaration, forms.Form):
@@ -208,7 +215,7 @@ class Configurer(Transformer):
                     "Wizard.configure() must receive template_name when "
                     "generating FormView steps from Form classes."
                 )
-            form_view = form_view_factory(
+            form_view = self.form_view_factory(
                 step.declaration,
                 template_name=self.template_name,
             )

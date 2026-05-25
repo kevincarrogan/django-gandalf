@@ -59,9 +59,13 @@ class ConfiguredWizard:
     runtime_tree_builder_class = RuntimeTreeBuilder
     cursor_walker_class = CursorWalker
     state_serializer_class = StateSerializer
+    form_view_factory = staticmethod(form_view_factory)
 
     def __init__(self, *, tree, configuration):
         self.configuration = configuration
+        self.form_view_factory = configuration.get(
+            "form_view_factory", self.form_view_factory
+        )
         self.tree = self._configure_tree(tree)
         self.storage_class = configuration.get(
             "storage_class", self.storage_class
@@ -81,7 +85,10 @@ class ConfiguredWizard:
 
     def _configure_tree(self, root):
         template_name = self.configuration.get("template_name")
-        return tree.Configurer(template_name=template_name).transform(root)
+        return tree.Configurer(
+            template_name=template_name,
+            form_view_factory=self.form_view_factory,
+        ).transform(root)
 
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
