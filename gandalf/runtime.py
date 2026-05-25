@@ -3,6 +3,7 @@ from copy import copy
 from http import HTTPStatus
 
 from gandalf import tree
+from gandalf.storage import WizardState
 
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class BoundWizard:
         return self.storage.get_state(self.run_id)
 
     def get_submissions(self):
-        return [entry["step"] for entry in self.get_state()]
+        return WizardState(self.get_state()).submissions()
 
     def submit(self, submission, *args, **kwargs):
         self.storage.set_state(
@@ -39,74 +40,87 @@ class BoundWizard:
         )
 
     def _build_updated_state(self, submission, *args, **kwargs):
-        stored_submissions = self.get_submissions()
-        path = list(self._resolved_path(stored_submissions))
-        updated_state = []
+        consumed = [False]
+        return self._rebuild_at(
+            self.wizard.tree,
+            self.get_state(),
+            submission,
+            [],
+            consumed,
+            *args,
+            **kwargs,
+        )
 
-        for index, step in enumerate(path):
-            if index >= len(stored_submissions):
-                updated_state.append({"step": submission})
-                return updated_state
-
-            stored = stored_submissions[index]
-            response = self._dispatch_step(
-                step,
-                self._build_step_request("POST", submission=stored),
-                *args,
-                **kwargs,
-            )
-
-            if self._response_satisfies_step(response):
-                updated_state.append({"step": stored})
-                continue
-
-            updated_state.append({"step": submission})
-            return updated_state
-
-        return updated_state
+    def _rebuild_at(
+        self,
+        node,
+        entries,
+        submission,
+        submissions,
+        consumed,
+        *args,
+        **kwargs,
+    ):
+        new_entries = []
+        entry_iter = iter(entries)
+        while node is not None and not consumed[0]:
+            if isinstance(node, tree.Step):
+                entry = next(entry_iter, None)
+                stored = entry["step"] if entry is not None else None
+                if stored is None:
+                    new_entries.append({"step": submission})
+                    consumed[0] = True
+                    return new_entries
+                response = self._dispatch_step(
+                    node,
+                    self._build_step_request("POST", submission=stored),
+                    *args,
+                    **kwargs,
+                )
+                if self._response_satisfies_step(response):
+                    new_entries.append({"step": stored})
+                    submissions.append(stored)
+                    node = node.next
+                else:
+                    new_entries.append({"step": submission})
+                    consumed[0] = True
+                    return new_entries
+            else:
+                entry = next(entry_iter, None)
+                sub_entries = entry["branch"] if entry is not None else []
+                arm = self._select_branch_arm(node, submissions)
+                sub_new = self._rebuild_at(
+                    arm,
+                    sub_entries,
+                    submission,
+                    submissions,
+                    consumed,
+                    *args,
+                    **kwargs,
+                )
+                new_entries.append({"branch": sub_new})
+                node = node.next
+        return new_entries
 
     def replay(self, *args, **kwargs):
-        stored_submissions = self.get_submissions()
-        path = list(self._resolved_path(stored_submissions))
-
-        for index, step in enumerate(path):
-            if index >= len(stored_submissions):
+        state = WizardState(self.get_state())
+        for step, stored in state.walk(self.wizard.tree, self._select_branch_arm):
+            if stored is None:
                 return self._dispatch_step(
                     step,
                     self._build_step_request("GET"),
                     *args,
                     **kwargs,
                 )
-
-            stored = stored_submissions[index]
             response = self._dispatch_step(
                 step,
                 self._build_step_request("POST", submission=stored),
                 *args,
                 **kwargs,
             )
-
             if not self._response_satisfies_step(response):
                 return response
-
         return None
-
-    def _resolved_path(self, submissions):
-        consumed = [0]
-        yield from self._iter_resolved(self.wizard.tree, submissions, consumed)
-
-    def _iter_resolved(self, node, submissions, consumed):
-        while node is not None:
-            if isinstance(node, tree.Step):
-                yield node
-                consumed[0] += 1
-                node = node.next
-            else:
-                if consumed[0] > len(submissions):
-                    return
-                arm = self._select_branch_arm(node, submissions[: consumed[0]])
-                yield from self._iter_resolved(arm, submissions, consumed)
-                node = node.next
 
     def _select_branch_arm(self, branch_node, submissions):
         request = self._build_step_request("GET")
