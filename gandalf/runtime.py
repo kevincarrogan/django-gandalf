@@ -5,7 +5,6 @@ from http import HTTPStatus
 from typing import Any
 
 from gandalf import tree
-from gandalf.storage import WizardState
 
 
 logger = logging.getLogger(__name__)
@@ -73,6 +72,7 @@ class BoundWizard:
         self.request = request
         self.storage = storage
         self.run_id = None
+        self._predicate_runtime_tree = None
 
     def initialise(self):
         self.run_id = self.storage.initialise_run()
@@ -88,23 +88,25 @@ class BoundWizard:
     def get_state(self):
         return self.storage.get_state(self.run_id)
 
-    def get_submissions(self):
-        return WizardState(self.get_state()).submissions()
-
     @property
     def runtime_tree(self):
         builder = self.wizard.runtime_tree_builder_class(self, self.get_state())
         builder.walk(self.wizard.tree)
         return builder.head
 
+    def _current_runtime_tree(self):
+        if self._predicate_runtime_tree is not None:
+            return self._predicate_runtime_tree
+        return self.runtime_tree
+
     def find_step(self, **context):
         finder = tree.ContextFinder(context)
-        finder.visit(self.runtime_tree)
+        finder.visit(self._current_runtime_tree())
         return finder.one()
 
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
-        finder.visit(self.runtime_tree)
+        finder.visit(self._current_runtime_tree())
         return finder.all()
 
     def submit(self, submission, *args, **kwargs):
@@ -133,13 +135,17 @@ class BoundWizard:
             **kwargs,
         )
 
-    def _select_branch_arm(self, branch_node):
+    def _select_branch_arm(self, branch_node, partial_runtime_head=None):
         request = self._build_step_request("GET")
         request.wizard = self
-        for predicate, subtree in branch_node.arms:
-            if predicate(request):
-                return subtree
-        return branch_node.default
+        self._predicate_runtime_tree = partial_runtime_head
+        try:
+            for predicate, subtree in branch_node.arms:
+                if predicate(request):
+                    return subtree
+            return branch_node.default
+        finally:
+            self._predicate_runtime_tree = None
 
     def _response_satisfies_step(self, response):
         return (
@@ -198,7 +204,7 @@ class CursorWalker(tree.Interpreter):
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
         sub_entries = entry["branch"] if entry is not None else []
-        arm = self._bound_wizard._select_branch_arm(branch)
+        arm = self._bound_wizard._select_branch_arm(branch, self._head)
         sub = type(self)(
             self._bound_wizard,
             sub_entries,
@@ -224,9 +230,7 @@ class CursorWalker(tree.Interpreter):
 
     def _place_pending(self, step):
         if self._pending_submission is not None:
-            self._append(
-                RuntimeStep(declaration=step, data=self._pending_submission)
-            )
+            self._append(RuntimeStep(declaration=step, data=self._pending_submission))
 
     def _append(self, node):
         if self._head is None:
@@ -267,7 +271,7 @@ class RuntimeTreeBuilder(tree.Interpreter):
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
         sub_entries = entry["branch"] if entry is not None else []
-        selected_decl = self._bound_wizard._select_branch_arm(branch)
+        selected_decl = self._bound_wizard._select_branch_arm(branch, self.head)
 
         sub_builder = type(self)(self._bound_wizard, sub_entries)
         sub_builder.walk(selected_decl)

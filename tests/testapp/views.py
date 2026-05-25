@@ -48,8 +48,8 @@ class IndexView(TemplateView):
 
 
 def is_business_account(request):
-    account_type_submission = request.wizard.get_submissions()[0]
-    return account_type_submission["account_type"] == "business"
+    account_step = request.wizard.find_step(step_name="account_type")
+    return account_step.data["account_type"] == "business"
 
 
 class SingleStepWizardViewSet(WizardViewSet):
@@ -84,7 +84,9 @@ class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
 
 
 class SingleStepWizardDoneDataViewSet(WizardViewSet):
-    description = "Single-step wizard; done() reads the submitted form data via get_submissions()."
+    description = (
+        "Single-step wizard; done() reads the submitted form data via the runtime tree."
+    )
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
@@ -97,7 +99,7 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
-        submission = bound_wizard.get_submissions()[0]
+        submission = bound_wizard.runtime_tree.data
         return HttpResponse(f"completed {submission.get('name')}")
 
 
@@ -160,10 +162,10 @@ class DoneLinearWizardViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
-        name_submission, email_submission = bound_wizard.get_submissions()
+        first = bound_wizard.runtime_tree
+        second = first.next
         return HttpResponse(
-            f"completed {name_submission.get('name')} "
-            f"at {email_submission.get('email')}"
+            f"completed {first.data.get('name')} at {second.data.get('email')}"
         )
 
 
@@ -223,7 +225,7 @@ class BranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             condition(
                 is_business_account,
@@ -251,7 +253,7 @@ class DoneBranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account"})
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             condition(
                 is_business_account,
@@ -277,16 +279,16 @@ class DoneBranchingWizardViewSet(WizardViewSet):
     def done(self, bound_wizard):
         from gandalf import tree as tree_module
 
-        submissions = bound_wizard.get_submissions()
+        all_steps = bound_wizard.filter_steps()
         review_step = bound_wizard.find_step(step_name="review")
         missing_step = bound_wizard.find_step(step_name="nonexistent")
-        account_steps = bound_wizard.filter_steps(step_name="account")
+        account_steps = bound_wizard.filter_steps(step_name="account_type")
 
         declared_finder = tree_module.ContextFinder({})
         declared_finder.visit(bound_wizard.wizard.tree)
 
         return HttpResponse(
-            f"completed {len(submissions)} via "
+            f"completed {len(all_steps)} via "
             f"{review_step.declaration.declaration.__name__} "
             f"missing={missing_step} account_count={len(account_steps)} "
             f"declared_count={len(declared_finder.all())}"

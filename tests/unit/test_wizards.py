@@ -130,9 +130,7 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(
-                    BusinessDetailsForm, context={"step_name": "business"}
-                ),
+                Wizard().step(BusinessDetailsForm, context={"step_name": "business"}),
             ),
             default=Wizard().step(
                 PersonalDetailsForm, context={"step_name": "personal"}
@@ -165,9 +163,7 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(
-                    BusinessDetailsForm, context={"step_name": "business"}
-                ),
+                Wizard().step(BusinessDetailsForm, context={"step_name": "business"}),
             ),
             default=Wizard().step(
                 PersonalDetailsForm, context={"step_name": "personal"}
@@ -435,9 +431,7 @@ def test_configured_wizard_uses_configured_state_serializer_class(
 
     bound_wizard.submit({"name": "Ada"})
 
-    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
-        "fake-entry"
-    ]
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == ["fake-entry"]
 
 
 def test_wizard_configure_returns_configured_wizard():
@@ -625,33 +619,6 @@ def test_bound_wizard_get_run_data_returns_current_run_data(
     }
 
 
-def test_bound_wizard_get_submissions_unwraps_step_entries(
-    request_with_session_factory,
-    linear_wizard,
-):
-    request = request_with_session_factory(
-        session={
-            "gandalf_runs": {
-                "existing-run": {
-                    "state": [
-                        {"step": {"name": "Ada"}},
-                        {"step": {"email": "ada@example.com"}},
-                    ],
-                },
-            },
-        },
-    )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
-    bound_wizard.retrieve("existing-run")
-
-    submissions = bound_wizard.get_submissions()
-
-    assert submissions == [
-        {"name": "Ada"},
-        {"email": "ada@example.com"},
-    ]
-
-
 def test_bound_wizard_replays_submissions_to_render_next_form_view(
     request_with_session_factory,
     linear_wizard,
@@ -693,12 +660,12 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
         confirmed = forms.BooleanField()
 
     def is_business_account(request):
-        account_type_submission = request.wizard.get_submissions()[0]
-        return account_type_submission["account_type"] == "business"
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -730,11 +697,12 @@ def test_bound_wizard_renders_first_step_in_default_branch(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        return request.wizard.get_submissions()[0]["account_type"] == "business"
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -766,11 +734,12 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        return request.wizard.get_submissions()[0]["account_type"] == "business"
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -807,11 +776,12 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        return request.wizard.get_submissions()[0]["account_type"] == "business"
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account_type"})
         .branch(
             gandalf.wizard.condition(
                 is_business_account,

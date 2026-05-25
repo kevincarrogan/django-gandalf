@@ -1,24 +1,6 @@
 import uuid
 
 
-class WizardState:
-    def __init__(self, entries=None):
-        entries = entries if entries is not None else []
-        self.entries = list(entries)
-
-    def submissions(self):
-        result = []
-        self._collect(self.entries, result)
-        return result
-
-    def _collect(self, entries, result):
-        for entry in entries:
-            if "step" in entry:
-                result.append(entry["step"])
-            else:
-                self._collect(entry["branch"], result)
-
-
 class SessionStorage:
     SESSION_KEY = "gandalf_runs"
 

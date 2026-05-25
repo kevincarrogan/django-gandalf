@@ -1,6 +1,6 @@
 import uuid
 
-from gandalf.storage import SessionStorage, WizardState
+from gandalf.storage import SessionStorage
 
 
 class _Session(dict):
@@ -151,19 +151,3 @@ def test_session_storage_set_state_marks_session_modified():
     storage.set_state("existing-run", [{"step": {"name": "Ada"}}])
 
     assert request.session.modified is True
-
-
-def test_wizard_state_submissions_flattens_branch_substate():
-    state = WizardState(
-        [
-            {"step": {"account_type": "business"}},
-            {"branch": [{"step": {"business_name": "Acme"}}]},
-            {"step": {"confirmed": True}},
-        ],
-    )
-
-    assert state.submissions() == [
-        {"account_type": "business"},
-        {"business_name": "Acme"},
-        {"confirmed": True},
-    ]

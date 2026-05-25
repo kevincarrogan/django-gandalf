@@ -490,7 +490,7 @@ def test_branching_wizard_post_inside_arm_records_nested_state(
     ]
 
 
-def test_done_branching_wizard_complete_flow_calls_get_submissions(
+def test_done_branching_wizard_complete_flow_uses_runtime_tree(
     client,
     done_branching_wizard_url,
     done_branching_wizard_run_url,
@@ -498,7 +498,9 @@ def test_done_branching_wizard_complete_flow_calls_get_submissions(
     client.get(done_branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(done_branching_wizard_run_url(run_id), data={"account_type": "business"})
+    client.post(
+        done_branching_wizard_run_url(run_id), data={"account_type": "business"}
+    )
     client.post(done_branching_wizard_run_url(run_id), data={"business_name": "Acme"})
     client.post(done_branching_wizard_run_url(run_id), data={"confirmed": "on"})
     response = client.post(
@@ -508,8 +510,7 @@ def test_done_branching_wizard_complete_flow_calls_get_submissions(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == (
-        b"completed 4 via ReviewForm missing=None account_count=1 "
-        b"declared_count=5"
+        b"completed 4 via ReviewForm missing=None account_count=1 declared_count=5"
     )
 
 
@@ -517,9 +518,7 @@ def test_branch_entry_wizard_renders_default_arm_first_step(client):
     start_url = reverse("branch-entry-wizard")
     client.get(start_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "branch-entry-wizard-run", kwargs={"run_id": run_id}
-    )
+    run_url = reverse("branch-entry-wizard-run", kwargs={"run_id": run_id})
 
     response = client.get(run_url)
 
@@ -531,9 +530,7 @@ def test_find_step_raises_when_multiple_steps_share_context(client):
     start_url = reverse("duplicate-context-wizard")
     client.get(start_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "duplicate-context-wizard-run", kwargs={"run_id": run_id}
-    )
+    run_url = reverse("duplicate-context-wizard-run", kwargs={"run_id": run_id})
 
     client.post(run_url, data={"name": "Ada"})
     response = client.post(run_url, data={"email": "ada@example.com"})
@@ -697,7 +694,9 @@ def test_empty_wizard_run_returns_done_response_immediately(
     response = client.get(empty_wizard_url)
 
     run_id, _ = get_only_run_info_from_session(client.session)
-    assertRedirects(response, empty_wizard_run_url(run_id), fetch_redirect_response=False)
+    assertRedirects(
+        response, empty_wizard_run_url(run_id), fetch_redirect_response=False
+    )
 
     response = client.get(empty_wizard_run_url(run_id))
 
