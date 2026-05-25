@@ -238,6 +238,26 @@ class DoneBranchingWizardViewSet(WizardViewSet):
         )
 
 
+def _always_false(request):
+    return False
+
+
+class BranchEntryWizardViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = wizard.branch(
+        condition(_always_false, wizard.step(FirstStepForm)),
+        default=wizard.step(SecondStepForm),
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "branch-entry-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+
 class DuplicateContextWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (

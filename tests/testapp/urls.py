@@ -105,6 +105,16 @@ urlpatterns = [
         name="done-branching-wizard-run",
     ),
     path(
+        "branch-entry-wizard/",
+        views.BranchEntryWizardViewSet.as_view(),
+        name="branch-entry-wizard",
+    ),
+    path(
+        "branch-entry-wizard/<uuid:run_id>/",
+        views.BranchEntryWizardViewSet.as_view(),
+        name="branch-entry-wizard-run",
+    ),
+    path(
         "duplicate-context-wizard/",
         views.DuplicateContextWizardViewSet.as_view(),
         name="duplicate-context-wizard",

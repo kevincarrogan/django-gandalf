@@ -513,6 +513,20 @@ def test_done_branching_wizard_complete_flow_calls_get_submissions(
     )
 
 
+def test_branch_entry_wizard_renders_default_arm_first_step(client):
+    start_url = reverse("branch-entry-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "branch-entry-wizard-run", kwargs={"run_id": run_id}
+    )
+
+    response = client.get(run_url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], SecondStepForm)
+
+
 def test_find_step_raises_when_multiple_steps_share_context(client):
     start_url = reverse("duplicate-context-wizard")
     client.get(start_url)

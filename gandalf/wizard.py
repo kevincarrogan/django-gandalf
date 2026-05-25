@@ -15,6 +15,7 @@ __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
     "Wizard",
+    "branch",
     "condition",
     "form_view_factory",
     "step",
@@ -28,6 +29,11 @@ def condition(predicate, target):
 def step(form_class_or_form_view_class, context=None):
     """Module-level entry point: returns a Wizard starting with one step."""
     return Wizard().step(form_class_or_form_view_class, context=context)
+
+
+def branch(*conditions, default=None):
+    """Module-level entry point: returns a Wizard starting with one branch."""
+    return Wizard().branch(*conditions, default=default)
 
 
 class Wizard:

@@ -69,6 +69,17 @@ def test_module_step_entry_point_returns_wizard_with_first_step():
     )
 
 
+def test_module_branch_entry_point_returns_wizard_with_first_branch():
+    sub_wizard = gandalf.wizard.step(FirstStepForm)
+    returned = gandalf.wizard.branch(
+        gandalf.wizard.condition(lambda request: True, sub_wizard),
+        default=gandalf.wizard.step(SecondStepForm),
+    )
+
+    assert isinstance(returned, Wizard)
+    assert isinstance(returned.tree, tree.Branch)
+
+
 def test_declared_form_step_stores_context():
     wizard = Wizard()
 
