@@ -53,11 +53,23 @@ class BoundWizard:
         return WizardState(self.get_state()).submissions()
 
     def submit(self, submission, *args, **kwargs):
-        cursor = self._find_cursor(submission, *args, **kwargs)
+        cursor = self._walk_for_cursor(
+            self.wizard.tree,
+            self.get_state(),
+            submission,
+            *args,
+            **kwargs,
+        )
         self.storage.set_state(self.run_id, cursor.state)
 
     def replay(self, *args, **kwargs):
-        cursor = self._find_cursor(None, *args, **kwargs)
+        cursor = self._walk_for_cursor(
+            self.wizard.tree,
+            self.get_state(),
+            None,
+            *args,
+            **kwargs,
+        )
         if cursor.node is None:
             return None
         if cursor.response is not None:
@@ -68,16 +80,6 @@ class BoundWizard:
             *args,
             **kwargs,
         )
-
-    def _find_cursor(self, pending_submission, *args, **kwargs):
-        state, cursor_node, response = self._walk_for_cursor(
-            self.wizard.tree,
-            self.get_state(),
-            pending_submission,
-            *args,
-            **kwargs,
-        )
-        return Cursor(node=cursor_node, state=state, response=response)
 
     def _walk_for_cursor(
         self,
@@ -96,7 +98,7 @@ class BoundWizard:
                 if stored is None:
                     if pending_submission is not None:
                         new_entries.append({"step": pending_submission})
-                    return new_entries, node, None
+                    return Cursor(node=node, state=new_entries)
                 response = self._dispatch_step(
                     node,
                     self._build_step_request("POST", submission=stored),
@@ -106,25 +108,29 @@ class BoundWizard:
                 if not self._response_satisfies_step(response):
                     if pending_submission is not None:
                         new_entries.append({"step": pending_submission})
-                    return new_entries, node, response
+                    return Cursor(node=node, state=new_entries, response=response)
                 new_entries.append({"step": stored})
                 node = node.next
             else:
                 entry = next(entry_iter, None)
                 sub_entries = entry["branch"] if entry is not None else []
                 arm = self._select_branch_arm(node)
-                sub_new, sub_cursor, sub_response = self._walk_for_cursor(
+                sub_cursor = self._walk_for_cursor(
                     arm,
                     sub_entries,
                     pending_submission,
                     *args,
                     **kwargs,
                 )
-                new_entries.append({"branch": sub_new})
-                if sub_cursor is not None:
-                    return new_entries, sub_cursor, sub_response
+                new_entries.append({"branch": sub_cursor.state})
+                if sub_cursor.node is not None:
+                    return Cursor(
+                        node=sub_cursor.node,
+                        state=new_entries,
+                        response=sub_cursor.response,
+                    )
                 node = node.next
-        return new_entries, None, None
+        return Cursor(node=None, state=new_entries)
 
     def _select_branch_arm(self, branch_node):
         request = self._build_step_request("GET")
