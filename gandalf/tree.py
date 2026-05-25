@@ -30,28 +30,6 @@ class Step:
         own = self.context or {}
         return all(own.get(key) == value for key, value in context.items())
 
-    def configure(self, *, template_name: str | None) -> Step:
-        configured_next = (
-            self.next.configure(template_name=template_name)
-            if self.next is not None
-            else None
-        )
-
-        if issubclass(self.declaration, forms.Form):
-            if template_name is None:
-                raise ImproperlyConfigured(
-                    "Wizard.configure() must receive template_name when "
-                    "generating FormView steps from Form classes."
-                )
-            form_view = form_view_factory(
-                self.declaration,
-                template_name=template_name,
-            )
-        else:
-            form_view = self.declaration
-
-        return replace(self, form_view=form_view, next=configured_next)
-
     def __iter__(self):
         yield self
         if self.next is not None:
@@ -63,6 +41,10 @@ class Step:
     def accept_interpret(self, interpreter):
         return interpreter.visit_step(self)
 
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_step(self, next_result)
+
 
 @dataclass(frozen=True)
 class Branch:
@@ -72,33 +54,6 @@ class Branch:
 
     def __repr__(self) -> str:  # pragma: no cover
         return _format_tree(self)
-
-    def configure(self, *, template_name: str | None) -> Branch:
-        configured_arms = tuple(
-            (
-                predicate,
-                subtree.configure(template_name=template_name)
-                if subtree is not None
-                else None,
-            )
-            for predicate, subtree in self.arms
-        )
-        configured_default = (
-            self.default.configure(template_name=template_name)
-            if self.default is not None
-            else None
-        )
-        configured_next = (
-            self.next.configure(template_name=template_name)
-            if self.next is not None
-            else None
-        )
-        return replace(
-            self,
-            arms=configured_arms,
-            default=configured_default,
-            next=configured_next,
-        )
 
     def __iter__(self):
         yield self
@@ -113,6 +68,17 @@ class Branch:
 
     def accept_interpret(self, interpreter):
         return interpreter.visit_branch(self)
+
+    def accept_transform(self, transformer):
+        transformed_arms = tuple(
+            (predicate, transformer.transform(subtree))
+            for predicate, subtree in self.arms
+        )
+        transformed_default = transformer.transform(self.default)
+        next_result = transformer.transform(self.next)
+        return transformer.visit_branch(
+            self, transformed_arms, transformed_default, next_result
+        )
 
 
 def build(declarations: list[Node]) -> Node | None:
@@ -132,6 +98,24 @@ class Visitor:
         while node is not None:
             node.accept_visit(self)
             node = node.next
+
+
+class Transformer:
+    """Bottom-up tree transformer (lark-style). Recurses into each node's
+    children first, then calls `visit_step` / `visit_branch` with the
+    transformed children as extra arguments. Returns whatever the visit
+    method returns — the framework does no combining, so subclasses can
+    produce a new tree, a value, or any shape they like.
+
+    Signatures subclasses must define (for declaration trees):
+        visit_step(step, next_result)
+        visit_branch(branch, transformed_arms, transformed_default, next_result)
+    """
+
+    def transform(self, root):
+        if root is None:
+            return None
+        return root.accept_transform(self)
 
 
 class Reducer:
@@ -204,6 +188,43 @@ def _format_tree(root) -> str:  # pragma: no cover
     formatter = Formatter()
     formatter.walk(root)
     return "\n".join(formatter.lines)
+
+
+class Configurer(Transformer):
+    """Transforms a declaration tree by attaching `form_view` classes to each
+    Step. For Steps declared with a plain `forms.Form`, generates a `FormView`
+    via `form_view_factory`. For Steps declared with an explicit `FormView`
+    subclass, uses it directly. Branches are rebuilt with their arms, default,
+    and next configured.
+    """
+
+    def __init__(self, *, template_name: str | None):
+        self.template_name = template_name
+
+    def visit_step(self, step, next_result):
+        if issubclass(step.declaration, forms.Form):
+            if self.template_name is None:
+                raise ImproperlyConfigured(
+                    "Wizard.configure() must receive template_name when "
+                    "generating FormView steps from Form classes."
+                )
+            form_view = form_view_factory(
+                step.declaration,
+                template_name=self.template_name,
+            )
+        else:
+            form_view = step.declaration
+        return replace(step, form_view=form_view, next=next_result)
+
+    def visit_branch(
+        self, branch, transformed_arms, transformed_default, next_result
+    ):
+        return replace(
+            branch,
+            arms=transformed_arms,
+            default=transformed_default,
+            next=next_result,
+        )
 
 
 class ContextFinder(Visitor):
