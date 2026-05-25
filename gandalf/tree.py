@@ -24,13 +24,7 @@ class Step:
     context: dict | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
-        return "\n".join(self.lines(""))
-
-    def lines(self, indent: str) -> list[str]:  # pragma: no cover
-        lines = [f"{indent}- Step({self.declaration.__name__})"]
-        if self.next is not None:
-            lines.extend(self.next.lines(indent))
-        return lines
+        return _format_tree(self)
 
     def matches_context(self, **context) -> bool:
         own = self.context or {}
@@ -77,19 +71,7 @@ class Branch:
     next: Node | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
-        return "\n".join(self.lines(""))
-
-    def lines(self, indent: str) -> list[str]:  # pragma: no cover
-        lines = [f"{indent}- Branch"]
-        for predicate, subtree in self.arms:
-            lines.append(f"{indent}  if {predicate.__name__}:")
-            lines.extend(subtree.lines(indent + "    "))
-        if self.default is not None:
-            lines.append(f"{indent}  default:")
-            lines.extend(self.default.lines(indent + "    "))
-        if self.next is not None:
-            lines.extend(self.next.lines(indent))
-        return lines
+        return _format_tree(self)
 
     def configure(self, *, template_name: str | None) -> Branch:
         configured_arms = tuple(
@@ -190,6 +172,38 @@ class Interpreter:
             if node.accept_interpret(self) is False:
                 return
             node = node.next
+
+
+class Formatter(Interpreter):  # pragma: no cover
+    """Interpreter that formats a tree as indented lines for debugging.
+    Each level of branch descent adds four spaces of indentation.
+    """
+
+    def __init__(self, indent: str = ""):
+        self._indent = indent
+        self.lines: list[str] = []
+
+    def visit_step(self, step):
+        self.lines.append(f"{self._indent}- Step({step.declaration.__name__})")
+
+    def visit_branch(self, branch):
+        self.lines.append(f"{self._indent}- Branch")
+        for predicate, arm in branch.arms:
+            self.lines.append(f"{self._indent}  if {predicate.__name__}:")
+            sub = Formatter(self._indent + "    ")
+            sub.walk(arm)
+            self.lines.extend(sub.lines)
+        if branch.default is not None:
+            self.lines.append(f"{self._indent}  default:")
+            sub = Formatter(self._indent + "    ")
+            sub.walk(branch.default)
+            self.lines.extend(sub.lines)
+
+
+def _format_tree(root) -> str:  # pragma: no cover
+    formatter = Formatter()
+    formatter.walk(root)
+    return "\n".join(formatter.lines)
 
 
 class ContextFinder(Visitor):
