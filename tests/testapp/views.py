@@ -203,15 +203,18 @@ class DoneBranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm)
+        .step(AccountTypeForm, context={"step_name": "account"})
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm),
+                Wizard().step(BusinessDetailsForm, context={"step_name": "business"}),
             ),
-            default=Wizard().step(PersonalDetailsForm),
+            default=Wizard().step(
+                PersonalDetailsForm,
+                context={"step_name": "personal"},
+            ),
         )
-        .step(ReviewForm)
+        .step(ReviewForm, context={"step_name": "review"})
         .step(SecondStepForm)
     )
 
@@ -225,7 +228,37 @@ class DoneBranchingWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         submissions = bound_wizard.get_submissions()
-        return HttpResponse(f"completed {len(submissions)}")
+        review_step = bound_wizard.find_step(step_name="review")
+        missing_step = bound_wizard.find_step(step_name="nonexistent")
+        account_steps = bound_wizard.filter_steps(step_name="account")
+        return HttpResponse(
+            f"completed {len(submissions)} via {review_step.declaration.__name__} "
+            f"missing={missing_step} account_count={len(account_steps)}"
+        )
+
+
+class DuplicateContextWizardViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "duplicate"})
+        .step(SecondStepForm, context={"step_name": "duplicate"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "duplicate-context-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        try:
+            bound_wizard.find_step(step_name="duplicate")
+        except Exception as exc:
+            return HttpResponse(f"raised {type(exc).__name__}")
+        return HttpResponse("no raise")
 
 
 class InvalidWizardViewSet(WizardViewSet):

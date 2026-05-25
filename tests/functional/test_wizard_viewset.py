@@ -507,7 +507,24 @@ def test_done_branching_wizard_complete_flow_calls_get_submissions(
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"completed 4"
+    assert response.content == (
+        b"completed 4 via ReviewForm missing=None account_count=1"
+    )
+
+
+def test_find_step_raises_when_multiple_steps_share_context(client):
+    start_url = reverse("duplicate-context-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "duplicate-context-wizard-run", kwargs={"run_id": run_id}
+    )
+
+    client.post(run_url, data={"name": "Ada"})
+    response = client.post(run_url, data={"email": "ada@example.com"})
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"raised MultipleStepsReturned"
 
 
 def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(

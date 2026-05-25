@@ -12,11 +12,16 @@ from gandalf.form_views import form_view_factory
 Node = "Step | Branch"
 
 
+class MultipleStepsReturned(ValueError):
+    """Raised when a context-based step lookup matches more than one step."""
+
+
 @dataclass(frozen=True)
 class Step:
     declaration: type
     form_view: type | None = None
     next: Node | None = None
+    context: dict | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
         return "\n".join(self.lines(""))
@@ -26,6 +31,10 @@ class Step:
         if self.next is not None:
             lines.extend(self.next.lines(indent))
         return lines
+
+    def matches_context(self, **context) -> bool:
+        own = self.context or {}
+        return all(own.get(key) == value for key, value in context.items())
 
     def configure(self, *, template_name: str | None) -> Step:
         configured_next = (
@@ -131,3 +140,36 @@ def walk(root, visitor):
         if node.accept(visitor) is False:
             return
         node = node.next
+
+
+class ContextFinder:
+    """Visitor that collects every Step whose context matches the provided kwargs.
+
+    Descends into all branch arms and defaults so the search covers the full
+    declared tree, regardless of which arm a runtime would select.
+    """
+
+    def __init__(self, context: dict):
+        self._context = context
+        self.matches: list[Step] = []
+
+    def visit_step(self, step: Step):
+        if step.matches_context(**self._context):
+            self.matches.append(step)
+
+    def visit_branch(self, branch: Branch):
+        for _, arm in branch.arms:
+            walk(arm, self)
+        walk(branch.default, self)
+
+    def one(self) -> Step | None:
+        if len(self.matches) > 1:
+            raise MultipleStepsReturned(
+                f"Expected one matching step, found {len(self.matches)}."
+            )
+        if not self.matches:
+            return None
+        return self.matches[0]
+
+    def all(self) -> list[Step]:
+        return list(self.matches)

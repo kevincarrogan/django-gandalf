@@ -225,3 +225,113 @@ def test_branch_iter_yields_only_self_when_next_is_none():
     node = tree.Branch(arms=((_is_business, tree.Step(FirstStepForm)),))
 
     assert list(node) == [node]
+
+
+def test_step_matches_context_returns_true_when_all_kwargs_match():
+    step = tree.Step(FirstStepForm, context={"step_name": "first", "kind": "form"})
+
+    assert step.matches_context(step_name="first") is True
+    assert step.matches_context(step_name="first", kind="form") is True
+
+
+def test_step_matches_context_returns_false_when_value_differs():
+    step = tree.Step(FirstStepForm, context={"step_name": "first"})
+
+    assert step.matches_context(step_name="second") is False
+
+
+def test_step_matches_context_returns_false_when_key_missing():
+    step = tree.Step(FirstStepForm, context={"step_name": "first"})
+
+    assert step.matches_context(kind="form") is False
+
+
+def test_step_matches_context_returns_true_when_no_kwargs_given():
+    step = tree.Step(FirstStepForm)
+
+    assert step.matches_context() is True
+
+
+def test_step_matches_context_returns_false_when_step_has_no_context():
+    step = tree.Step(FirstStepForm)
+
+    assert step.matches_context(step_name="first") is False
+
+
+def test_context_finder_collects_matching_steps():
+    root = tree.Step(
+        FirstStepForm,
+        context={"step_name": "first"},
+        next=tree.Step(SecondStepForm, context={"step_name": "second"}),
+    )
+    finder = tree.ContextFinder({"step_name": "second"})
+
+    tree.walk(root, finder)
+
+    assert finder.matches == [tree.Step(SecondStepForm, context={"step_name": "second"})]
+
+
+def test_context_finder_descends_into_branch_arms():
+    arm_step = tree.Step(FirstStepForm, context={"step_name": "business"})
+    default_step = tree.Step(SecondStepForm, context={"step_name": "personal"})
+    root = tree.Branch(
+        arms=((_is_business, arm_step),),
+        default=default_step,
+    )
+    finder = tree.ContextFinder({"step_name": "personal"})
+
+    tree.walk(root, finder)
+
+    assert finder.matches == [default_step]
+
+
+def test_context_finder_one_returns_single_match():
+    root = tree.Step(FirstStepForm, context={"step_name": "first"})
+    finder = tree.ContextFinder({"step_name": "first"})
+
+    tree.walk(root, finder)
+
+    assert finder.one() == root
+
+
+def test_context_finder_one_returns_none_when_no_match():
+    root = tree.Step(FirstStepForm, context={"step_name": "first"})
+    finder = tree.ContextFinder({"step_name": "missing"})
+
+    tree.walk(root, finder)
+
+    assert finder.one() is None
+
+
+def test_context_finder_one_raises_when_multiple_matches():
+    root = tree.Step(
+        FirstStepForm,
+        context={"step_name": "shared"},
+        next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+    )
+    finder = tree.ContextFinder({"step_name": "shared"})
+
+    tree.walk(root, finder)
+
+    with pytest.raises(tree.MultipleStepsReturned):
+        finder.one()
+
+
+def test_context_finder_all_returns_matches_in_walk_order():
+    root = tree.Step(
+        FirstStepForm,
+        context={"step_name": "shared"},
+        next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+    )
+    finder = tree.ContextFinder({"step_name": "shared"})
+
+    tree.walk(root, finder)
+
+    assert finder.all() == [
+        tree.Step(
+            FirstStepForm,
+            context={"step_name": "shared"},
+            next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+        ),
+        tree.Step(SecondStepForm, context={"step_name": "shared"}),
+    ]

@@ -52,6 +52,16 @@ class BoundWizard:
     def get_submissions(self):
         return WizardState(self.get_state()).submissions()
 
+    def find_step(self, **context):
+        finder = tree.ContextFinder(context)
+        tree.walk(self.wizard.tree, finder)
+        return finder.one()
+
+    def filter_steps(self, **context):
+        finder = tree.ContextFinder(context)
+        tree.walk(self.wizard.tree, finder)
+        return finder.all()
+
     def submit(self, submission, *args, **kwargs):
         walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
         tree.walk(self.wizard.tree, walker)
