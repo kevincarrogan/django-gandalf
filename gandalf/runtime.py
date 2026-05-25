@@ -93,7 +93,7 @@ class BoundWizard:
 
     @property
     def runtime_tree(self):
-        builder = RuntimeTreeBuilder(self, self.get_state())
+        builder = self.wizard.runtime_tree_builder_class(self, self.get_state())
         builder.walk(self.wizard.tree)
         return builder.head
 
@@ -108,14 +108,18 @@ class BoundWizard:
         return finder.all()
 
     def submit(self, submission, *args, **kwargs):
-        walker = CursorWalker(self, self.get_state(), submission, args, kwargs)
+        walker = self.wizard.cursor_walker_class(
+            self, self.get_state(), submission, args, kwargs
+        )
         walker.walk(self.wizard.tree)
-        serializer = StateSerializer()
+        serializer = self.wizard.state_serializer_class()
         entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
 
     def replay(self, *args, **kwargs):
-        walker = CursorWalker(self, self.get_state(), None, args, kwargs)
+        walker = self.wizard.cursor_walker_class(
+            self, self.get_state(), None, args, kwargs
+        )
         walker.walk(self.wizard.tree)
         cursor = walker.cursor()
         if cursor.node is None:
@@ -195,7 +199,7 @@ class CursorWalker(tree.Interpreter):
         entry = next(self._entries_iter, None)
         sub_entries = entry["branch"] if entry is not None else []
         arm = self._bound_wizard._select_branch_arm(branch)
-        sub = CursorWalker(
+        sub = type(self)(
             self._bound_wizard,
             sub_entries,
             self._pending_submission,
@@ -265,7 +269,7 @@ class RuntimeTreeBuilder(tree.Interpreter):
         sub_entries = entry["branch"] if entry is not None else []
         selected_decl = self._bound_wizard._select_branch_arm(branch)
 
-        sub_builder = RuntimeTreeBuilder(self._bound_wizard, sub_entries)
+        sub_builder = type(self)(self._bound_wizard, sub_entries)
         sub_builder.walk(selected_decl)
 
         self._append(
