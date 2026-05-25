@@ -25,7 +25,6 @@ class Cursor:
 
     node: tree.Step | None
     state: list
-    submissions: list
     response: Any = None
 
 
@@ -71,27 +70,19 @@ class BoundWizard:
         )
 
     def _find_cursor(self, pending_submission, *args, **kwargs):
-        submissions = []
         state, cursor_node, response = self._walk_for_cursor(
             self.wizard.tree,
             self.get_state(),
-            submissions,
             pending_submission,
             *args,
             **kwargs,
         )
-        return Cursor(
-            node=cursor_node,
-            state=state,
-            submissions=submissions,
-            response=response,
-        )
+        return Cursor(node=cursor_node, state=state, response=response)
 
     def _walk_for_cursor(
         self,
         node,
         entries,
-        submissions,
         pending_submission,
         *args,
         **kwargs,
@@ -117,16 +108,14 @@ class BoundWizard:
                         new_entries.append({"step": pending_submission})
                     return new_entries, node, response
                 new_entries.append({"step": stored})
-                submissions.append(stored)
                 node = node.next
             else:
                 entry = next(entry_iter, None)
                 sub_entries = entry["branch"] if entry is not None else []
-                arm = self._select_branch_arm(node, submissions)
+                arm = self._select_branch_arm(node)
                 sub_new, sub_cursor, sub_response = self._walk_for_cursor(
                     arm,
                     sub_entries,
-                    submissions,
                     pending_submission,
                     *args,
                     **kwargs,
@@ -137,9 +126,9 @@ class BoundWizard:
                 node = node.next
         return new_entries, None, None
 
-    def _select_branch_arm(self, branch_node, submissions):
+    def _select_branch_arm(self, branch_node):
         request = self._build_step_request("GET")
-        request.wizard = _BranchView(submissions)
+        request.wizard = self
         for predicate, subtree in branch_node.arms:
             if predicate(request):
                 return subtree
@@ -162,11 +151,3 @@ class BoundWizard:
             request.POST = submission
 
         return request
-
-
-class _BranchView:
-    def __init__(self, submissions):
-        self._submissions = submissions
-
-    def get_submissions(self):
-        return self._submissions
