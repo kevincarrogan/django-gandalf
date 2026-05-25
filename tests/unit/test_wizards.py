@@ -103,6 +103,29 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
     assert bound_wizard.find_step(step_name="missing") is None
 
 
+def test_reducer_visits_runtime_chain_and_collects_per_node_values():
+    from gandalf.runtime import RuntimeBranch, RuntimeStep
+
+    arm_step = RuntimeStep(declaration=tree.Step(FirstStepForm), data={"b": 2})
+    step1 = RuntimeStep(declaration=tree.Step(FirstStepForm), data={"a": 1})
+    branch = RuntimeBranch(declaration=tree.Branch(arms=()), selected_arm=arm_step)
+    step1.next = branch
+
+    class DictReducer(tree.Reducer):
+        def visit_step(self, step):
+            return {"step": step.data}
+
+        def visit_branch(self, branch, sub_result):
+            return {"branch": sub_result}
+
+    result = DictReducer().reduce(step1)
+
+    assert result == [
+        {"step": {"a": 1}},
+        {"branch": [{"step": {"b": 2}}]},
+    ]
+
+
 def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
     request_with_session_factory,
 ):
