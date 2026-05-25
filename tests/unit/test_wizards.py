@@ -308,6 +308,99 @@ def test_get_bound_wizard_uses_configured_storage_class(request_with_session_fac
     assert bound_wizard.storage.request is request
 
 
+def test_configured_wizard_uses_configured_runtime_tree_builder_class(
+    request_with_session_factory,
+):
+    sentinel = object()
+
+    class FakeBuilder:
+        def __init__(self, bound_wizard, entries):
+            self.head = sentinel
+
+        def walk(self, root):
+            pass
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            runtime_tree_builder_class=FakeBuilder,
+        )
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.runtime_tree is sentinel
+
+
+def test_configured_wizard_uses_configured_cursor_walker_class(
+    request_with_session_factory,
+):
+    from gandalf.runtime import Cursor
+
+    calls = []
+
+    class FakeWalker:
+        def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
+            calls.append(("init", pending_submission))
+
+        def walk(self, root):
+            calls.append(("walk", root))
+
+        def cursor(self):
+            return Cursor(node=None, state=None)
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            cursor_walker_class=FakeWalker,
+        )
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit({"name": "Ada"})
+
+    assert calls[0] == ("init", {"name": "Ada"})
+
+
+def test_configured_wizard_uses_configured_state_serializer_class(
+    request_with_session_factory,
+):
+    class FakeSerializer:
+        def reduce(self, root):
+            return ["fake-entry"]
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            state_serializer_class=FakeSerializer,
+        )
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit({"name": "Ada"})
+
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        "fake-entry"
+    ]
+
+
 def test_wizard_configure_returns_configured_wizard():
     wizard = Wizard()
 
