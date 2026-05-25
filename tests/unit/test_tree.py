@@ -258,6 +258,67 @@ def test_step_matches_context_returns_false_when_step_has_no_context():
     assert step.matches_context(step_name="first") is False
 
 
+def test_visitor_visit_walks_a_step_chain():
+    class Collector(tree.Visitor):
+        def __init__(self):
+            self.steps = []
+
+        def visit_step(self, step):
+            self.steps.append(step)
+
+        def visit_branch(self, branch):
+            pass
+
+    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+    collector = Collector()
+    collector.visit(root)
+
+    assert [step.declaration for step in collector.steps] == [
+        FirstStepForm,
+        SecondStepForm,
+    ]
+
+
+def test_interpreter_walk_traverses_chain():
+    class Collector(tree.Interpreter):
+        def __init__(self):
+            self.steps = []
+
+        def visit_step(self, step):
+            self.steps.append(step)
+
+        def visit_branch(self, branch):
+            pass
+
+    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+    collector = Collector()
+    collector.walk(root)
+
+    assert [step.declaration for step in collector.steps] == [
+        FirstStepForm,
+        SecondStepForm,
+    ]
+
+
+def test_interpreter_walk_stops_when_visit_returns_false():
+    class Stopper(tree.Interpreter):
+        def __init__(self):
+            self.steps = []
+
+        def visit_step(self, step):
+            self.steps.append(step)
+            return False
+
+        def visit_branch(self, branch):
+            pass
+
+    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
+    stopper = Stopper()
+    stopper.walk(root)
+
+    assert len(stopper.steps) == 1
+
+
 def test_context_finder_collects_matching_steps():
     root = tree.Step(
         FirstStepForm,
@@ -266,7 +327,7 @@ def test_context_finder_collects_matching_steps():
     )
     finder = tree.ContextFinder({"step_name": "second"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     assert finder.matches == [tree.Step(SecondStepForm, context={"step_name": "second"})]
 
@@ -280,7 +341,7 @@ def test_context_finder_descends_into_branch_arms():
     )
     finder = tree.ContextFinder({"step_name": "personal"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     assert finder.matches == [default_step]
 
@@ -289,7 +350,7 @@ def test_context_finder_one_returns_single_match():
     root = tree.Step(FirstStepForm, context={"step_name": "first"})
     finder = tree.ContextFinder({"step_name": "first"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     assert finder.one() == root
 
@@ -298,7 +359,7 @@ def test_context_finder_one_returns_none_when_no_match():
     root = tree.Step(FirstStepForm, context={"step_name": "first"})
     finder = tree.ContextFinder({"step_name": "missing"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     assert finder.one() is None
 
@@ -311,7 +372,7 @@ def test_context_finder_one_raises_when_multiple_matches():
     )
     finder = tree.ContextFinder({"step_name": "shared"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     with pytest.raises(tree.MultipleStepsReturned):
         finder.one()
@@ -325,7 +386,7 @@ def test_context_finder_all_returns_matches_in_walk_order():
     )
     finder = tree.ContextFinder({"step_name": "shared"})
 
-    tree.walk(root, finder)
+    finder.visit(root)
 
     assert finder.all() == [
         tree.Step(
