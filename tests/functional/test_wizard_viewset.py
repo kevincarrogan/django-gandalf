@@ -508,7 +508,8 @@ def test_done_branching_wizard_complete_flow_calls_get_submissions(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == (
-        b"completed 4 via ReviewForm missing=None account_count=1"
+        b"completed 4 via ReviewForm missing=None account_count=1 "
+        b"declared_count=5"
     )
 
 
