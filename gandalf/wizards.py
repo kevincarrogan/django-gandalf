@@ -61,10 +61,8 @@ class ConfiguredWizard:
         raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
 
     def _configure_tree(self, root):
-        if root is None:
-            return None
         template_name = self.configuration.get("template_name")
-        return root.configure(template_name=template_name)
+        return tree.Configurer(template_name=template_name).transform(root)
 
     def get_bound_wizard(self, request):
         return BoundWizard(self, request, self.storage_class(request))
