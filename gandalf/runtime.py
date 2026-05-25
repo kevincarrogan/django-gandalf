@@ -11,6 +11,30 @@ from gandalf.storage import WizardState
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class RuntimeStep:
+    """Runtime mirror of a declared `tree.Step`, carrying per-request state."""
+
+    declaration: tree.Step
+    data: dict | None = None
+    next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def accept(self, visitor):
+        return visitor.visit_step(self)
+
+
+@dataclass
+class RuntimeBranch:
+    """Runtime mirror of a declared `tree.Branch`, recording which arm was taken."""
+
+    declaration: tree.Branch
+    selected_arm: "RuntimeStep | RuntimeBranch | None" = None
+    next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def accept(self, visitor):
+        return visitor.visit_branch(self)
+
+
 @dataclass(frozen=True)
 class Cursor:
     """Position in the wizard where the user currently is — the first step
@@ -19,12 +43,12 @@ class Cursor:
     `node` is None when every stored submission validates and there is no
     next step. `response` carries the rendered form when stored data was
     invalid; otherwise the cursor is at an empty slot ready for a GET render.
-    `state` is the tree-shaped state with a pending submission (if any)
-    already placed at the cursor's slot.
+    `state` is the runtime tree built up to (and including) the cursor, with
+    a pending submission already placed at the cursor's slot.
     """
 
     node: tree.Step | None
-    state: list
+    state: RuntimeStep | RuntimeBranch | None
     response: Any = None
 
 
@@ -65,7 +89,9 @@ class BoundWizard:
     def submit(self, submission, *args, **kwargs):
         walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
         tree.walk(self.wizard.tree, walker)
-        self.storage.set_state(self.run_id, walker.cursor().state)
+        serializer = _StateSerializer()
+        tree.walk(walker.cursor().state, serializer)
+        self.storage.set_state(self.run_id, serializer.entries)
 
     def replay(self, *args, **kwargs):
         walker = _CursorWalker(self, self.get_state(), None, args, kwargs)
@@ -110,9 +136,9 @@ class BoundWizard:
 
 
 class _CursorWalker:
-    """Tree visitor that locates the wizard cursor and builds the tree-shaped
-    state up to that point. Validates stored entries by dispatching POSTs;
-    when given a pending submission, places it at the cursor's slot."""
+    """Visitor that locates the wizard cursor and builds the runtime tree up
+    to that point. Validates stored entries by dispatching POSTs; when given
+    a pending submission, places it at the cursor's slot."""
 
     def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
         self._bound_wizard = bound_wizard
@@ -120,15 +146,16 @@ class _CursorWalker:
         self._pending_submission = pending_submission
         self._args = args
         self._kwargs = kwargs
-        self.state = []
+        self._head: RuntimeStep | RuntimeBranch | None = None
+        self._tail: RuntimeStep | RuntimeBranch | None = None
         self._cursor = None
 
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         if stored is None:
-            self._place_pending()
-            self._cursor = Cursor(node=step, state=self.state)
+            self._place_pending(step)
+            self._cursor = Cursor(node=step, state=self._head)
             return False
         response = self._bound_wizard._dispatch_step(
             step,
@@ -137,10 +164,10 @@ class _CursorWalker:
             **self._kwargs,
         )
         if not self._bound_wizard._response_satisfies_step(response):
-            self._place_pending()
-            self._cursor = Cursor(node=step, state=self.state, response=response)
+            self._place_pending(step)
+            self._cursor = Cursor(node=step, state=self._head, response=response)
             return False
-        self.state.append({"step": stored})
+        self._append(RuntimeStep(declaration=step, data=stored))
         return True
 
     def visit_branch(self, branch):
@@ -155,11 +182,11 @@ class _CursorWalker:
             self._kwargs,
         )
         tree.walk(arm, sub)
-        self.state.append({"branch": sub.state})
+        self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
         if sub._cursor is not None:
             self._cursor = Cursor(
                 node=sub._cursor.node,
-                state=self.state,
+                state=self._head,
                 response=sub._cursor.response,
             )
             return False
@@ -168,8 +195,33 @@ class _CursorWalker:
     def cursor(self):
         if self._cursor is not None:
             return self._cursor
-        return Cursor(node=None, state=self.state)
+        return Cursor(node=None, state=self._head)
 
-    def _place_pending(self):
+    def _place_pending(self, step):
         if self._pending_submission is not None:
-            self.state.append({"step": self._pending_submission})
+            self._append(
+                RuntimeStep(declaration=step, data=self._pending_submission)
+            )
+
+    def _append(self, node):
+        if self._head is None:
+            self._head = node
+        else:
+            self._tail.next = node
+        self._tail = node
+
+
+class _StateSerializer:
+    """Visitor that flattens a runtime tree into the dict-shaped state stored
+    in `request.session`."""
+
+    def __init__(self):
+        self.entries: list = []
+
+    def visit_step(self, runtime_step):
+        self.entries.append({"step": runtime_step.data})
+
+    def visit_branch(self, runtime_branch):
+        sub = _StateSerializer()
+        tree.walk(runtime_branch.selected_arm, sub)
+        self.entries.append({"branch": sub.entries})
