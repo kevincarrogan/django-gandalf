@@ -17,11 +17,17 @@ __all__ = [
     "Wizard",
     "condition",
     "form_view_factory",
+    "step",
 ]
 
 
 def condition(predicate, target):
     return predicate, target
+
+
+def step(form_class_or_form_view_class, context=None):
+    """Module-level entry point: returns a Wizard starting with one step."""
+    return Wizard().step(form_class_or_form_view_class, context=context)
 
 
 class Wizard:

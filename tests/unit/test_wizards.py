@@ -5,9 +5,9 @@ from django import forms
 from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.edit import FormView
 
-import gandalf.wizards
+import gandalf.wizard
 from gandalf import tree
-from gandalf.wizards import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
@@ -59,6 +59,16 @@ def test_declared_form_step_stores_form_class():
     assert returned_wizard.tree == tree.Step(declaration=FirstStepForm)
 
 
+def test_module_step_entry_point_returns_wizard_with_first_step():
+    returned = gandalf.wizard.step(FirstStepForm, context={"step_name": "first"})
+
+    assert isinstance(returned, Wizard)
+    assert returned.tree == tree.Step(
+        declaration=FirstStepForm,
+        context={"step_name": "first"},
+    )
+
+
 def test_declared_form_step_stores_context():
     wizard = Wizard()
 
@@ -107,7 +117,7 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
         Wizard()
         .step(AccountTypeForm, context={"step_name": "account"})
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(
                     BusinessDetailsForm, context={"step_name": "business"}
@@ -142,7 +152,7 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
         Wizard()
         .step(AccountTypeForm, context={"step_name": "account"})
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(
                     BusinessDetailsForm, context={"step_name": "business"}
@@ -679,7 +689,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
         Wizard()
         .step(AccountTypeForm)
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(BusinessDetailsForm),
             ),
@@ -715,7 +725,7 @@ def test_bound_wizard_renders_first_step_in_default_branch(
         Wizard()
         .step(AccountTypeForm)
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(BusinessDetailsForm),
             ),
@@ -751,7 +761,7 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
         Wizard()
         .step(AccountTypeForm)
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(BusinessDetailsForm),
             ),
@@ -792,7 +802,7 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
         Wizard()
         .step(AccountTypeForm)
         .branch(
-            gandalf.wizards.condition(
+            gandalf.wizard.condition(
                 is_business_account,
                 Wizard().step(BusinessDetailsForm),
             ),

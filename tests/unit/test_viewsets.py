@@ -3,7 +3,7 @@ from http import HTTPStatus
 import pytest
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizards import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import FirstStepForm
 
 

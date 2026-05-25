@@ -1,5 +1,6 @@
+from gandalf import wizard
 from gandalf.form_views import form_view_factory
-from gandalf.wizards import Wizard, condition
+from gandalf.wizard import Wizard, condition
 from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
@@ -86,15 +87,7 @@ class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
 
 class LinearWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
-    wizard = (
-        Wizard()
-        .step(
-            FirstStepForm,
-        )
-        .step(
-            SecondStepForm,
-        )
-    )
+    wizard = wizard.step(FirstStepForm).step(SecondStepForm)
 
     def get_wizard_url(self, run_id):
         return reverse(
