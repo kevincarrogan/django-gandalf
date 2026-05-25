@@ -95,7 +95,7 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
     assert found.declaration.context == {"step_name": "second"}
 
 
-def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_inactive_arm(
+def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
     request_with_session_factory,
 ):
     from gandalf.runtime import RuntimeStep
@@ -126,10 +126,42 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_inactive_arm(
     bound_wizard = wizard.get_bound_wizard(request)
     bound_wizard.retrieve("existing-run")
 
-    business_step = bound_wizard.find_step(step_name="business")
+    personal_step = bound_wizard.find_step(step_name="personal")
 
-    assert isinstance(business_step, RuntimeStep)
-    assert business_step.declaration.declaration is BusinessDetailsForm
+    assert isinstance(personal_step, RuntimeStep)
+    assert personal_step.declaration.declaration is PersonalDetailsForm
+
+
+def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
+    request_with_session_factory,
+):
+    def is_business_account(request):
+        return False
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account"})
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(
+                    BusinessDetailsForm, context={"step_name": "business"}
+                ),
+            ),
+            default=Wizard().step(
+                PersonalDetailsForm, context={"step_name": "personal"}
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.find_step(step_name="business") is None
 
 
 def test_bound_wizard_find_step_returns_none_when_no_match(
