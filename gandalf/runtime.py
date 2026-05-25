@@ -275,17 +275,8 @@ class RuntimeTreeBuilder(tree.Interpreter):
         runtime_default = self._build_subtree(
             branch.default, sub_entries, selected_decl
         )
-
-        runtime_selected = next(
-            (
-                runtime_arm
-                for _, runtime_arm in runtime_arms
-                if runtime_arm is not None
-                and runtime_arm.declaration is selected_decl
-            ),
-            runtime_default
-            if branch.default is selected_decl
-            else None,
+        runtime_selected = self._find_selected_arm(
+            branch, runtime_arms, runtime_default, selected_decl
         )
 
         self._append(
@@ -302,6 +293,16 @@ class RuntimeTreeBuilder(tree.Interpreter):
         sub_builder = RuntimeTreeBuilder(self._bound_wizard, entries)
         sub_builder.walk(decl_node)
         return sub_builder.head
+
+    def _find_selected_arm(self, branch, runtime_arms, runtime_default, selected_decl):
+        return next(
+            (
+                arm
+                for _, arm in runtime_arms
+                if arm is not None and arm.declaration is selected_decl
+            ),
+            runtime_default if branch.default is selected_decl else None,
+        )
 
     def _append(self, node):
         if self.head is None:
