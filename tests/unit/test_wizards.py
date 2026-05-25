@@ -59,6 +59,67 @@ def test_declared_form_step_stores_form_class():
     assert returned_wizard.tree == tree.Step(declaration=FirstStepForm)
 
 
+def test_declared_form_step_stores_context():
+    wizard = Wizard()
+
+    returned_wizard = wizard.step(FirstStepForm, context={"step_name": "first"})
+
+    assert returned_wizard.tree == tree.Step(
+        declaration=FirstStepForm,
+        context={"step_name": "first"},
+    )
+
+
+def test_bound_wizard_find_step_returns_matching_step(
+    request_with_session_factory,
+    linear_wizard,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .step(SecondStepForm, context={"step_name": "second"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory()
+    bound_wizard = wizard.get_bound_wizard(request)
+
+    found = bound_wizard.find_step(step_name="second")
+
+    assert found.declaration is SecondStepForm
+    assert found.context == {"step_name": "second"}
+
+
+def test_bound_wizard_find_step_returns_none_when_no_match(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory()
+    bound_wizard = wizard.get_bound_wizard(request)
+
+    assert bound_wizard.find_step(step_name="missing") is None
+
+
+def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"kind": "data"})
+        .step(SecondStepForm, context={"kind": "data"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory()
+    bound_wizard = wizard.get_bound_wizard(request)
+
+    matches = bound_wizard.filter_steps(kind="data")
+
+    assert [step.declaration for step in matches] == [FirstStepForm, SecondStepForm]
+
+
 def test_step_builder_does_not_mutate_source_wizard():
     base_wizard = Wizard().step(FirstStepForm)
 
