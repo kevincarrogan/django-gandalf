@@ -5,6 +5,7 @@ from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
 from django.urls import reverse
+from django.views.generic import TemplateView
 
 from .forms import (
     AccountTypeForm,
@@ -16,12 +17,43 @@ from .forms import (
 )
 
 
+class IndexView(TemplateView):
+    template_name = "testapp/index.html"
+
+    def get_context_data(self, **kwargs):
+        from django.urls import get_resolver
+
+        context = super().get_context_data(**kwargs)
+        entries = []
+        for pattern in get_resolver(None).url_patterns:
+            if "run_id" in pattern.pattern.converters:
+                continue
+            if pattern.name == "index":
+                continue
+            callback = pattern.callback
+            view_class = getattr(callback, "view_class", None)
+            if view_class is None:
+                continue
+            entries.append(
+                {
+                    "name": pattern.name,
+                    "url": reverse(pattern.name),
+                    "view_name": view_class.__name__,
+                    "description": getattr(view_class, "description", ""),
+                }
+            )
+        entries.sort(key=lambda e: e["view_name"])
+        context["entries"] = entries
+        return context
+
+
 def is_business_account(request):
     account_type_submission = request.wizard.get_submissions()[0]
     return account_type_submission["account_type"] == "business"
 
 
 class SingleStepWizardViewSet(WizardViewSet):
+    description = "A single-step wizard with a custom done() returning the run id."
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
@@ -38,6 +70,7 @@ class SingleStepWizardViewSet(WizardViewSet):
 
 
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
+    description = "Single-step wizard with no done() override (falls back to default)."
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
@@ -51,6 +84,7 @@ class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
 
 
 class SingleStepWizardDoneDataViewSet(WizardViewSet):
+    description = "Single-step wizard; done() reads the submitted form data via get_submissions()."
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
@@ -68,6 +102,9 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
 
 
 class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
+    description = (
+        "Single-step wizard; done() reads raw stored state via get_run_data()."
+    )
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard().step(FirstStepForm)
 
@@ -86,6 +123,9 @@ class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
 
 
 class LinearWizardViewSet(WizardViewSet):
+    description = (
+        "Two-step linear wizard built from the module-level `wizard` instance."
+    )
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.step(FirstStepForm).step(SecondStepForm)
 
@@ -99,6 +139,7 @@ class LinearWizardViewSet(WizardViewSet):
 
 
 class DoneLinearWizardViewSet(WizardViewSet):
+    description = "Two-step linear wizard with a done() that combines both submissions."
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -127,6 +168,9 @@ class DoneLinearWizardViewSet(WizardViewSet):
 
 
 class OtherLinearWizardViewSet(WizardViewSet):
+    description = (
+        "Same two-step shape as the linear wizard, rendered with a different template."
+    )
     template_name = "testapp/other_linear_wizard.html"
     wizard = (
         Wizard()
@@ -148,6 +192,9 @@ class OtherLinearWizardViewSet(WizardViewSet):
 
 
 class RecreatedLinearWizardViewSet(WizardViewSet):
+    description = (
+        "Two-step linear wizard rendered with the recreated_linear_wizard template."
+    )
     template_name = "testapp/recreated_linear_wizard.html"
     wizard = (
         Wizard()
@@ -169,6 +216,10 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
 
 
 class BranchingWizardViewSet(WizardViewSet):
+    description = (
+        "Branches on the first step's account type: business -> business details, "
+        "otherwise personal details, then a shared review step."
+    )
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -193,6 +244,10 @@ class BranchingWizardViewSet(WizardViewSet):
 
 
 class DoneBranchingWizardViewSet(WizardViewSet):
+    description = (
+        "Branching wizard exercising step_name context, find_step / filter_steps, "
+        "and ContextFinder over the declared tree."
+    )
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -243,6 +298,7 @@ def _always_false(request):
 
 
 class BranchEntryWizardViewSet(WizardViewSet):
+    description = "Wizard whose very first node is a branch (no preceding step)."
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.branch(
         condition(_always_false, wizard.step(FirstStepForm)),
@@ -259,6 +315,7 @@ class BranchEntryWizardViewSet(WizardViewSet):
 
 
 class DuplicateContextWizardViewSet(WizardViewSet):
+    description = "Two steps sharing the same step_name; done() shows find_step raising on ambiguity."
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -283,6 +340,7 @@ class DuplicateContextWizardViewSet(WizardViewSet):
 
 
 class InvalidWizardViewSet(WizardViewSet):
+    description = "Wizard attribute is not a Wizard instance; visiting should error."
     wizard = object()
 
 
@@ -293,6 +351,9 @@ FirstStepFormView = form_view_factory(
 
 
 class FormViewStepWizardViewSet(WizardViewSet):
+    description = (
+        "Step backed by a form_view_factory FormView rather than a bare Form class."
+    )
     wizard = Wizard().step(FirstStepFormView)
 
     def get_wizard_url(self, run_id):
@@ -308,6 +369,9 @@ class FormViewStepWizardViewSet(WizardViewSet):
 
 
 class MissingTemplateWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard with neither template_name nor configured template (expect failure)."
+    )
     wizard = Wizard().step(FirstStepForm)
 
     def get_wizard_url(self, run_id):
@@ -320,8 +384,15 @@ class MissingTemplateWizardViewSet(WizardViewSet):
 
 
 class PreConfiguredWizardViewSet(WizardViewSet):
-    wizard = Wizard().step(FirstStepForm).configure(
-        template_name="testapp/single_step_wizard.html",
+    description = (
+        "Wizard whose template_name comes from Wizard.configure() rather than the view."
+    )
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/single_step_wizard.html",
+        )
     )
 
     def get_wizard_url(self, run_id):
@@ -337,6 +408,7 @@ class PreConfiguredWizardViewSet(WizardViewSet):
 
 
 class EmptyWizardViewSet(WizardViewSet):
+    description = "Wizard with no steps; should immediately reach done()."
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard()
 
@@ -353,11 +425,16 @@ class EmptyWizardViewSet(WizardViewSet):
 
 
 class DoubleConfiguredWizardViewSet(WizardViewSet):
+    description = "Wizard configured both via get_wizard() and configure_wizard() to test layering."
     template_name = "testapp/single_step_wizard.html"
 
     def get_wizard(self):
-        return Wizard().step(FirstStepForm).configure(
-            template_name=self.template_name,
+        return (
+            Wizard()
+            .step(FirstStepForm)
+            .configure(
+                template_name=self.template_name,
+            )
         )
 
     def configure_wizard(self, wizard):
