@@ -199,6 +199,35 @@ class BranchingWizardViewSet(WizardViewSet):
         )
 
 
+class DoneBranchingWizardViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .step(SecondStepForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "done-branching-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        submissions = bound_wizard.get_submissions()
+        return HttpResponse(f"completed {len(submissions)}")
+
+
 class InvalidWizardViewSet(WizardViewSet):
     wizard = object()
 

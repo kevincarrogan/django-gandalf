@@ -95,6 +95,16 @@ urlpatterns = [
         name="branching-wizard-run",
     ),
     path(
+        "done-branching-wizard/",
+        views.DoneBranchingWizardViewSet.as_view(),
+        name="done-branching-wizard",
+    ),
+    path(
+        "done-branching-wizard/<uuid:run_id>/",
+        views.DoneBranchingWizardViewSet.as_view(),
+        name="done-branching-wizard-run",
+    ),
+    path(
         "invalid-wizard/",
         views.InvalidWizardViewSet.as_view(),
         name="invalid-wizard",
