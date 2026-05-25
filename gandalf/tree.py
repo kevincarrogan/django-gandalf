@@ -152,17 +152,17 @@ class Visitor:
             node = node.next
 
 
-class Transformer:
-    """Bottom-up tree transformer. Recurses into branch children first,
-    then calls `visit_branch` with the transformed sub-result. Returns a
-    flat list of per-node transformed values. Subclasses must define
-    `visit_step` and `visit_branch`."""
+class Reducer:
+    """Bottom-up tree reducer. Recurses into branch children first, then
+    calls `visit_branch` with the reduced sub-result. Returns a flat list of
+    per-node values — one entry per node in the top-level chain. Subclasses
+    must define `visit_step` and `visit_branch`."""
 
-    def transform(self, root):
+    def reduce(self, root):
         results = []
         node = root
         while node is not None:
-            results.append(node.accept_transform(self))
+            results.append(node.accept_reduce(self))
             node = node.next
         return results
 

@@ -19,8 +19,8 @@ class RuntimeStep:
     data: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
-    def accept_transform(self, transformer):
-        return transformer.visit_step(self)
+    def accept_reduce(self, reducer):
+        return reducer.visit_step(self)
 
 
 @dataclass
@@ -31,9 +31,9 @@ class RuntimeBranch:
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
-    def accept_transform(self, transformer):
-        sub_result = transformer.transform(self.selected_arm)
-        return transformer.visit_branch(self, sub_result)
+    def accept_reduce(self, reducer):
+        sub_result = reducer.reduce(self.selected_arm)
+        return reducer.visit_branch(self, sub_result)
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ class BoundWizard:
         walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
         walker.walk(self.wizard.tree)
         serializer = _StateSerializer()
-        entries = serializer.transform(walker.cursor().state)
+        entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
 
     def replay(self, *args, **kwargs):
@@ -212,8 +212,8 @@ class _CursorWalker(tree.Interpreter):
         self._tail = node
 
 
-class _StateSerializer(tree.Transformer):
-    """Bottom-up transformer that flattens a runtime tree into the dict-shaped
+class _StateSerializer(tree.Reducer):
+    """Bottom-up reducer that flattens a runtime tree into the dict-shaped
     state stored in `request.session`."""
 
     def visit_step(self, runtime_step):
