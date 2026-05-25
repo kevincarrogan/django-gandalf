@@ -49,10 +49,13 @@ class Step:
 
         return replace(self, form_view=form_view, next=configured_next)
 
-    def walk(self):
+    def __iter__(self):
         yield self
         if self.next is not None:
-            yield from self.next.walk()
+            yield from self.next
+
+    def accept(self, visitor):
+        return visitor.visit_step(self)
 
 
 @dataclass(frozen=True)
@@ -103,10 +106,13 @@ class Branch:
             next=configured_next,
         )
 
-    def walk(self):
+    def __iter__(self):
         yield self
         if self.next is not None:
-            yield from self.next.walk()
+            yield from self.next
+
+    def accept(self, visitor):
+        return visitor.visit_branch(self)
 
 
 def build(declarations: list[Node]) -> Node | None:
@@ -114,3 +120,14 @@ def build(declarations: list[Node]) -> Node | None:
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
+
+
+def walk(root, visitor):
+    """Walk the linked tree starting at `root`, dispatching to `visitor.visit_step`
+    or `visitor.visit_branch` for each node. A visit method returning `False`
+    stops the walk; any other return value (including `None`) continues."""
+    node = root
+    while node is not None:
+        if node.accept(visitor) is False:
+            return
+        node = node.next

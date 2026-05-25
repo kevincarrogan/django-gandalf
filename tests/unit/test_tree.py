@@ -199,29 +199,29 @@ def test_step_configure_recurses_through_next():
     assert configured.next.form_view.form_class is SecondStepForm
 
 
-def test_step_walk_yields_chain():
+def test_step_iter_yields_chain():
     node = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
 
-    assert list(node.walk()) == [
+    assert list(node) == [
         tree.Step(FirstStepForm, next=tree.Step(SecondStepForm)),
         tree.Step(SecondStepForm),
     ]
 
 
-def test_branch_walk_yields_branch_then_next():
+def test_branch_iter_yields_branch_then_next():
     inner = tree.Step(FirstStepForm)
     node = tree.Branch(
         arms=((_is_business, inner),),
         next=tree.Step(SecondStepForm),
     )
 
-    walked = list(node.walk())
+    walked = list(node)
 
     assert walked[0] is node
     assert walked[1] == tree.Step(SecondStepForm)
 
 
-def test_branch_walk_yields_only_self_when_next_is_none():
+def test_branch_iter_yields_only_self_when_next_is_none():
     node = tree.Branch(arms=((_is_business, tree.Step(FirstStepForm)),))
 
-    assert list(node.walk()) == [node]
+    assert list(node) == [node]

@@ -24,12 +24,12 @@ class Wizard:
         self.tree = tree
 
     def step(self, form_class_or_form_view_class, context=None):
-        declarations = list(self.tree.walk()) if self.tree is not None else []
+        declarations = list(self.tree) if self.tree is not None else []
         declarations.append(tree.Step(declaration=form_class_or_form_view_class))
         return self.__class__(tree=tree.build(declarations))
 
     def branch(self, *conditions, default=None):
-        declarations = list(self.tree.walk()) if self.tree is not None else []
+        declarations = list(self.tree) if self.tree is not None else []
         arms = tuple(
             (predicate, sub_wizard.tree) for predicate, sub_wizard in conditions
         )
