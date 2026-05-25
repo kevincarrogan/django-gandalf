@@ -31,22 +31,19 @@ class RuntimeStep:
 
 @dataclass
 class RuntimeBranch:
-    """Runtime mirror of a declared `tree.Branch`, recording which arm was
-    taken alongside mirrors of every arm and the default so the full declared
-    structure remains inspectable.
+    """Runtime mirror of a declared `tree.Branch` along the active path —
+    records the selected arm only. Inactive arms are not mirrored in the
+    runtime tree; inspect `bound_wizard.wizard.tree` for the full declared
+    structure.
     """
 
     declaration: tree.Branch
-    arms: tuple = ()
-    default: "RuntimeStep | RuntimeBranch | None" = None
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
     def accept_visit(self, visitor):
         visitor.visit_branch(self)
-        for _, arm in self.arms:
-            visitor.visit(arm)
-        visitor.visit(self.default)
+        visitor.visit(self.selected_arm)
 
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
@@ -268,40 +265,14 @@ class RuntimeTreeBuilder(tree.Interpreter):
         sub_entries = entry["branch"] if entry is not None else []
         selected_decl = self._bound_wizard._select_branch_arm(branch)
 
-        runtime_arms = tuple(
-            (predicate, self._build_subtree(decl_arm, sub_entries, selected_decl))
-            for predicate, decl_arm in branch.arms
-        )
-        runtime_default = self._build_subtree(
-            branch.default, sub_entries, selected_decl
-        )
-        runtime_selected = self._find_selected_arm(
-            branch, runtime_arms, runtime_default, selected_decl
-        )
+        sub_builder = RuntimeTreeBuilder(self._bound_wizard, sub_entries)
+        sub_builder.walk(selected_decl)
 
         self._append(
             RuntimeBranch(
                 declaration=branch,
-                arms=runtime_arms,
-                default=runtime_default,
-                selected_arm=runtime_selected,
+                selected_arm=sub_builder.head,
             )
-        )
-
-    def _build_subtree(self, decl_node, parent_entries, selected_decl):
-        entries = parent_entries if decl_node is selected_decl else []
-        sub_builder = RuntimeTreeBuilder(self._bound_wizard, entries)
-        sub_builder.walk(decl_node)
-        return sub_builder.head
-
-    def _find_selected_arm(self, branch, runtime_arms, runtime_default, selected_decl):
-        return next(
-            (
-                arm
-                for _, arm in runtime_arms
-                if arm is not None and arm.declaration is selected_decl
-            ),
-            runtime_default if branch.default is selected_decl else None,
         )
 
     def _append(self, node):
