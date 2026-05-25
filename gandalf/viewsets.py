@@ -1,7 +1,7 @@
 from django.shortcuts import redirect
 from django.views import View
 
-from gandalf.wizards import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, Wizard
 
 
 class WizardViewSet(View):
