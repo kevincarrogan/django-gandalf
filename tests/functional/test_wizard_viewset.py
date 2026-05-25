@@ -9,6 +9,7 @@ from tests.testapp.forms import (
     BusinessDetailsForm,
     FirstStepForm,
     PersonalDetailsForm,
+    ReviewForm,
     SecondStepForm,
 )
 
@@ -447,6 +448,32 @@ def test_branching_wizard_valid_step_renders_first_step_in_default_branch(
     assertContains(response, '<input type="text" name="preferred_name"')
     assert client.session["gandalf_runs"][run_id]["state"] == [
         {"step": {"account_type": "personal"}},
+    ]
+
+
+def test_branching_wizard_post_inside_arm_records_nested_state(
+    client,
+    branching_wizard_url,
+    branching_wizard_run_url,
+):
+    client.get(branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+
+    response = client.post(
+        branching_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], ReviewForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"account_type": "business"}},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
     ]
 
 

@@ -52,13 +52,19 @@ wrapping.
   defaults instead of shortened expressions such as `value or []`. When the
   value is transformed after defaulting, assign the default to the local
   parameter first and then perform the final assignment once.
-- Submissions are stored as a positional list in execution order. Branch
-  traversal happens during replay by walking the wizard tree and evaluating
-  branch conditions using the data seen so far — the storage format does not
-  need to change to support branching. Step context (e.g.
-  `context={"step_name": "account"}`) is user-space metadata for lookup and
-  introspection, not a storage key mechanism. Gandalf does not need to generate
-  or assign stable step keys.
+- Stored state mirrors the shape of the wizard tree. Each entry in a state
+  list is either `{"step": <form_data>}` for a `tree.Step` node or
+  `{"branch": [<sub-state entries>, ...]}` for a `tree.Branch` node, with
+  the sub-state recording the taken arm's state recursively. The
+  `WizardState` class in `gandalf/storage.py` owns the walk: a single
+  lockstep traversal of the wizard tree and the state list yields
+  `(step, stored_or_none)` pairs, descending into the matching branch arm
+  (re-derived from submissions-so-far at walk time, not stored). Branch
+  decisions are never persisted; they are always recomputed from the
+  preceding step submissions. Step context (e.g.
+  `context={"step_name": "account"}`) is user-space metadata for lookup
+  and introspection, not a storage key mechanism. Gandalf does not need
+  to generate or assign stable step keys.
 
 ## Implementation Ownership
 
