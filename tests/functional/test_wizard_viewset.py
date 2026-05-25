@@ -121,6 +121,19 @@ def recreated_linear_wizard_run_url():
 
 
 @pytest.fixture
+def done_branching_wizard_url():
+    return reverse("done-branching-wizard")
+
+
+@pytest.fixture
+def done_branching_wizard_run_url():
+    def build_url(run_id):
+        return reverse("done-branching-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
 def branching_wizard_url():
     return reverse("branching-wizard")
 
@@ -475,6 +488,26 @@ def test_branching_wizard_post_inside_arm_records_nested_state(
         {"step": {"account_type": "business"}},
         {"branch": [{"step": {"business_name": "Acme"}}]},
     ]
+
+
+def test_done_branching_wizard_complete_flow_calls_get_submissions(
+    client,
+    done_branching_wizard_url,
+    done_branching_wizard_run_url,
+):
+    client.get(done_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(done_branching_wizard_run_url(run_id), data={"account_type": "business"})
+    client.post(done_branching_wizard_run_url(run_id), data={"business_name": "Acme"})
+    client.post(done_branching_wizard_run_url(run_id), data={"confirmed": "on"})
+    response = client.post(
+        done_branching_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed 4"
 
 
 def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
