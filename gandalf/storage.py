@@ -1,39 +1,10 @@
 import uuid
 
-from gandalf import tree
-
 
 class WizardState:
     def __init__(self, entries=None):
         entries = entries if entries is not None else []
         self.entries = list(entries)
-
-    def walk(self, tree_root, select_arm):
-        submissions = []
-        return iter(self._collect_walk(tree_root, self.entries, select_arm, submissions))
-
-    def _collect_walk(self, node, entries, select_arm, submissions):
-        results = []
-        entry_iter = iter(entries)
-        while node is not None:
-            if isinstance(node, tree.Step):
-                entry = next(entry_iter, None)
-                stored = entry["step"] if entry is not None else None
-                results.append((node, stored))
-                if stored is None:
-                    return results
-                submissions.append(stored)
-                node = node.next
-            else:
-                entry = next(entry_iter, None)
-                sub_entries = entry["branch"] if entry is not None else []
-                arm = select_arm(node, submissions)
-                arm_results = self._collect_walk(arm, sub_entries, select_arm, submissions)
-                results.extend(arm_results)
-                if arm_results and arm_results[-1][1] is None:
-                    return results
-                node = node.next
-        return results
 
     def submissions(self):
         result = []

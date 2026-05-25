@@ -1,12 +1,32 @@
 import logging
 from copy import copy
+from dataclasses import dataclass
 from http import HTTPStatus
+from typing import Any
 
 from gandalf import tree
 from gandalf.storage import WizardState
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Cursor:
+    """Position in the wizard where the user currently is — the first step
+    whose stored data does not satisfy the step (no data, or invalid data).
+
+    `node` is None when every stored submission validates and there is no
+    next step. `response` carries the rendered form when stored data was
+    invalid; otherwise the cursor is at an empty slot ready for a GET render.
+    `state` is the tree-shaped state with a pending submission (if any)
+    already placed at the cursor's slot.
+    """
+
+    node: tree.Step | None
+    state: list
+    submissions: list
+    response: Any = None
 
 
 class BoundWizard:
@@ -34,93 +54,88 @@ class BoundWizard:
         return WizardState(self.get_state()).submissions()
 
     def submit(self, submission, *args, **kwargs):
-        self.storage.set_state(
-            self.run_id,
-            self._build_updated_state(submission, *args, **kwargs),
-        )
+        cursor = self._find_cursor(submission, *args, **kwargs)
+        self.storage.set_state(self.run_id, cursor.state)
 
-    def _build_updated_state(self, submission, *args, **kwargs):
-        consumed = [False]
-        return self._rebuild_at(
-            self.wizard.tree,
-            self.get_state(),
-            submission,
-            [],
-            consumed,
+    def replay(self, *args, **kwargs):
+        cursor = self._find_cursor(None, *args, **kwargs)
+        if cursor.node is None:
+            return None
+        if cursor.response is not None:
+            return cursor.response
+        return self._dispatch_step(
+            cursor.node,
+            self._build_step_request("GET"),
             *args,
             **kwargs,
         )
 
-    def _rebuild_at(
+    def _find_cursor(self, pending_submission, *args, **kwargs):
+        submissions = []
+        state, cursor_node, response = self._walk_for_cursor(
+            self.wizard.tree,
+            self.get_state(),
+            submissions,
+            pending_submission,
+            *args,
+            **kwargs,
+        )
+        return Cursor(
+            node=cursor_node,
+            state=state,
+            submissions=submissions,
+            response=response,
+        )
+
+    def _walk_for_cursor(
         self,
         node,
         entries,
-        submission,
         submissions,
-        consumed,
+        pending_submission,
         *args,
         **kwargs,
     ):
         new_entries = []
         entry_iter = iter(entries)
-        while node is not None and not consumed[0]:
+        while node is not None:
             if isinstance(node, tree.Step):
                 entry = next(entry_iter, None)
                 stored = entry["step"] if entry is not None else None
                 if stored is None:
-                    new_entries.append({"step": submission})
-                    consumed[0] = True
-                    return new_entries
+                    if pending_submission is not None:
+                        new_entries.append({"step": pending_submission})
+                    return new_entries, node, None
                 response = self._dispatch_step(
                     node,
                     self._build_step_request("POST", submission=stored),
                     *args,
                     **kwargs,
                 )
-                if self._response_satisfies_step(response):
-                    new_entries.append({"step": stored})
-                    submissions.append(stored)
-                    node = node.next
-                else:
-                    new_entries.append({"step": submission})
-                    consumed[0] = True
-                    return new_entries
+                if not self._response_satisfies_step(response):
+                    if pending_submission is not None:
+                        new_entries.append({"step": pending_submission})
+                    return new_entries, node, response
+                new_entries.append({"step": stored})
+                submissions.append(stored)
+                node = node.next
             else:
                 entry = next(entry_iter, None)
                 sub_entries = entry["branch"] if entry is not None else []
                 arm = self._select_branch_arm(node, submissions)
-                sub_new = self._rebuild_at(
+                sub_new, sub_cursor, sub_response = self._walk_for_cursor(
                     arm,
                     sub_entries,
-                    submission,
                     submissions,
-                    consumed,
+                    pending_submission,
                     *args,
                     **kwargs,
                 )
                 new_entries.append({"branch": sub_new})
+                if sub_cursor is not None:
+                    return new_entries, sub_cursor, sub_response
                 node = node.next
-        return new_entries
-
-    def replay(self, *args, **kwargs):
-        state = WizardState(self.get_state())
-        for step, stored in state.walk(self.wizard.tree, self._select_branch_arm):
-            if stored is None:
-                return self._dispatch_step(
-                    step,
-                    self._build_step_request("GET"),
-                    *args,
-                    **kwargs,
-                )
-            response = self._dispatch_step(
-                step,
-                self._build_step_request("POST", submission=stored),
-                *args,
-                **kwargs,
-            )
-            if not self._response_satisfies_step(response):
-                return response
-        return None
+        return new_entries, None, None
 
     def _select_branch_arm(self, branch_node, submissions):
         request = self._build_step_request("GET")

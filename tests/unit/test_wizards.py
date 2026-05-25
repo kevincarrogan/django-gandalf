@@ -479,6 +479,51 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
     }
 
 
+def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
+    request_with_session_factory,
+):
+    def is_business_account(request):
+        return request.wizard.get_submissions()[0]["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [{"step": {"business_name": "Acme"}}]},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.submit({"confirmed": "on"})
+
+    assert request.session["gandalf_runs"]["existing-run"] == {
+        "state": [
+            {"step": {"account_type": "business"}},
+            {"branch": [{"step": {"business_name": "Acme"}}]},
+            {"step": {"confirmed": "on"}},
+        ],
+    }
+
+
 def test_bound_wizard_replay_returns_invalid_stored_step_response(
     request_with_session_factory,
     linear_wizard,
