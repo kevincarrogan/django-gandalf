@@ -149,6 +149,30 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
     assert bound_wizard.find_step(step_name="missing") is None
 
 
+def test_reducer_supports_custom_initial_and_combine_for_non_list_folds():
+    from gandalf.runtime import RuntimeStep
+
+    step2 = RuntimeStep(declaration=tree.Step(FirstStepForm), data={"value": 2})
+    step1 = RuntimeStep(
+        declaration=tree.Step(FirstStepForm), data={"value": 1}, next=step2
+    )
+
+    class SumReducer(tree.Reducer):
+        def initial(self):
+            return 0
+
+        def combine(self, accumulator, value):
+            return accumulator + value
+
+        def visit_step(self, step):
+            return step.data["value"]
+
+        def visit_branch(self, branch, sub_result):
+            return sub_result
+
+    assert SumReducer().reduce(step1) == 3
+
+
 def test_reducer_visits_runtime_chain_and_collects_per_node_values():
     from gandalf.runtime import RuntimeBranch, RuntimeStep
 

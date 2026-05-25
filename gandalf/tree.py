@@ -153,18 +153,29 @@ class Visitor:
 
 
 class Reducer:
-    """Bottom-up tree reducer. Recurses into branch children first, then
-    calls `visit_branch` with the reduced sub-result. Returns a flat list of
-    per-node values — one entry per node in the top-level chain. Subclasses
-    must define `visit_step` and `visit_branch`."""
+    """Bottom-up tree fold. Each node's `visit_*` method returns a value
+    which is folded into the running accumulator via `combine`. The default
+    `initial` / `combine` produce a list of per-node values, but subclasses
+    can override them to fold into any shape — a sum, a dict, a string, etc.
+
+    Subclasses must define `visit_step` and `visit_branch`.
+    """
 
     def reduce(self, root):
-        results = []
+        accumulator = self.initial()
         node = root
         while node is not None:
-            results.append(node.accept_reduce(self))
+            accumulator = self.combine(
+                accumulator, node.accept_reduce(self)
+            )
             node = node.next
-        return results
+        return accumulator
+
+    def initial(self):
+        return []
+
+    def combine(self, accumulator, value):
+        return [*accumulator, value]
 
 
 class Interpreter:
