@@ -53,23 +53,14 @@ class BoundWizard:
         return WizardState(self.get_state()).submissions()
 
     def submit(self, submission, *args, **kwargs):
-        cursor = self._walk_for_cursor(
-            self.wizard.tree,
-            self.get_state(),
-            submission,
-            *args,
-            **kwargs,
-        )
-        self.storage.set_state(self.run_id, cursor.state)
+        walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
+        tree.walk(self.wizard.tree, walker)
+        self.storage.set_state(self.run_id, walker.cursor().state)
 
     def replay(self, *args, **kwargs):
-        cursor = self._walk_for_cursor(
-            self.wizard.tree,
-            self.get_state(),
-            None,
-            *args,
-            **kwargs,
-        )
+        walker = _CursorWalker(self, self.get_state(), None, args, kwargs)
+        tree.walk(self.wizard.tree, walker)
+        cursor = walker.cursor()
         if cursor.node is None:
             return None
         if cursor.response is not None:
@@ -80,57 +71,6 @@ class BoundWizard:
             *args,
             **kwargs,
         )
-
-    def _walk_for_cursor(
-        self,
-        node,
-        entries,
-        pending_submission,
-        *args,
-        **kwargs,
-    ):
-        new_entries = []
-        entry_iter = iter(entries)
-        while node is not None:
-            if isinstance(node, tree.Step):
-                entry = next(entry_iter, None)
-                stored = entry["step"] if entry is not None else None
-                if stored is None:
-                    if pending_submission is not None:
-                        new_entries.append({"step": pending_submission})
-                    return Cursor(node=node, state=new_entries)
-                response = self._dispatch_step(
-                    node,
-                    self._build_step_request("POST", submission=stored),
-                    *args,
-                    **kwargs,
-                )
-                if not self._response_satisfies_step(response):
-                    if pending_submission is not None:
-                        new_entries.append({"step": pending_submission})
-                    return Cursor(node=node, state=new_entries, response=response)
-                new_entries.append({"step": stored})
-                node = node.next
-            else:
-                entry = next(entry_iter, None)
-                sub_entries = entry["branch"] if entry is not None else []
-                arm = self._select_branch_arm(node)
-                sub_cursor = self._walk_for_cursor(
-                    arm,
-                    sub_entries,
-                    pending_submission,
-                    *args,
-                    **kwargs,
-                )
-                new_entries.append({"branch": sub_cursor.state})
-                if sub_cursor.node is not None:
-                    return Cursor(
-                        node=sub_cursor.node,
-                        state=new_entries,
-                        response=sub_cursor.response,
-                    )
-                node = node.next
-        return Cursor(node=None, state=new_entries)
 
     def _select_branch_arm(self, branch_node):
         request = self._build_step_request("GET")
@@ -157,3 +97,69 @@ class BoundWizard:
             request.POST = submission
 
         return request
+
+
+class _CursorWalker:
+    """Tree visitor that locates the wizard cursor and builds the tree-shaped
+    state up to that point. Validates stored entries by dispatching POSTs;
+    when given a pending submission, places it at the cursor's slot."""
+
+    def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
+        self._bound_wizard = bound_wizard
+        self._entries_iter = iter(entries)
+        self._pending_submission = pending_submission
+        self._args = args
+        self._kwargs = kwargs
+        self.state = []
+        self._cursor = None
+
+    def visit_step(self, step):
+        entry = next(self._entries_iter, None)
+        stored = entry["step"] if entry is not None else None
+        if stored is None:
+            self._place_pending()
+            self._cursor = Cursor(node=step, state=self.state)
+            return False
+        response = self._bound_wizard._dispatch_step(
+            step,
+            self._bound_wizard._build_step_request("POST", submission=stored),
+            *self._args,
+            **self._kwargs,
+        )
+        if not self._bound_wizard._response_satisfies_step(response):
+            self._place_pending()
+            self._cursor = Cursor(node=step, state=self.state, response=response)
+            return False
+        self.state.append({"step": stored})
+        return True
+
+    def visit_branch(self, branch):
+        entry = next(self._entries_iter, None)
+        sub_entries = entry["branch"] if entry is not None else []
+        arm = self._bound_wizard._select_branch_arm(branch)
+        sub = _CursorWalker(
+            self._bound_wizard,
+            sub_entries,
+            self._pending_submission,
+            self._args,
+            self._kwargs,
+        )
+        tree.walk(arm, sub)
+        self.state.append({"branch": sub.state})
+        if sub._cursor is not None:
+            self._cursor = Cursor(
+                node=sub._cursor.node,
+                state=self.state,
+                response=sub._cursor.response,
+            )
+            return False
+        return True
+
+    def cursor(self):
+        if self._cursor is not None:
+            return self._cursor
+        return Cursor(node=None, state=self.state)
+
+    def _place_pending(self):
+        if self._pending_submission is not None:
+            self.state.append({"step": self._pending_submission})
