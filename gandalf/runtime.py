@@ -19,8 +19,8 @@ class RuntimeStep:
     data: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
-    def accept(self, visitor):
-        return visitor.visit_step(self)
+    def accept_transform(self, transformer):
+        return transformer.visit_step(self)
 
 
 @dataclass
@@ -31,8 +31,9 @@ class RuntimeBranch:
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
-    def accept(self, visitor):
-        return visitor.visit_branch(self)
+    def accept_transform(self, transformer):
+        sub_result = transformer.transform(self.selected_arm)
+        return transformer.visit_branch(self, sub_result)
 
 
 @dataclass(frozen=True)
@@ -78,24 +79,24 @@ class BoundWizard:
 
     def find_step(self, **context):
         finder = tree.ContextFinder(context)
-        tree.walk(self.wizard.tree, finder)
+        finder.visit(self.wizard.tree)
         return finder.one()
 
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
-        tree.walk(self.wizard.tree, finder)
+        finder.visit(self.wizard.tree)
         return finder.all()
 
     def submit(self, submission, *args, **kwargs):
         walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
-        tree.walk(self.wizard.tree, walker)
+        walker.walk(self.wizard.tree)
         serializer = _StateSerializer()
-        tree.walk(walker.cursor().state, serializer)
-        self.storage.set_state(self.run_id, serializer.entries)
+        entries = serializer.transform(walker.cursor().state)
+        self.storage.set_state(self.run_id, entries)
 
     def replay(self, *args, **kwargs):
         walker = _CursorWalker(self, self.get_state(), None, args, kwargs)
-        tree.walk(self.wizard.tree, walker)
+        walker.walk(self.wizard.tree)
         cursor = walker.cursor()
         if cursor.node is None:
             return None
@@ -135,10 +136,10 @@ class BoundWizard:
         return request
 
 
-class _CursorWalker:
-    """Visitor that locates the wizard cursor and builds the runtime tree up
-    to that point. Validates stored entries by dispatching POSTs; when given
-    a pending submission, places it at the cursor's slot."""
+class _CursorWalker(tree.Interpreter):
+    """Interpreter that locates the wizard cursor and builds the runtime tree
+    up to that point. Validates stored entries by dispatching POSTs; when
+    given a pending submission, places it at the cursor's slot."""
 
     def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
         self._bound_wizard = bound_wizard
@@ -181,7 +182,7 @@ class _CursorWalker:
             self._args,
             self._kwargs,
         )
-        tree.walk(arm, sub)
+        sub.walk(arm)
         self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
         if sub._cursor is not None:
             self._cursor = Cursor(
@@ -211,17 +212,12 @@ class _CursorWalker:
         self._tail = node
 
 
-class _StateSerializer:
-    """Visitor that flattens a runtime tree into the dict-shaped state stored
-    in `request.session`."""
-
-    def __init__(self):
-        self.entries: list = []
+class _StateSerializer(tree.Transformer):
+    """Bottom-up transformer that flattens a runtime tree into the dict-shaped
+    state stored in `request.session`."""
 
     def visit_step(self, runtime_step):
-        self.entries.append({"step": runtime_step.data})
+        return {"step": runtime_step.data}
 
-    def visit_branch(self, runtime_branch):
-        sub = _StateSerializer()
-        tree.walk(runtime_branch.selected_arm, sub)
-        self.entries.append({"branch": sub.entries})
+    def visit_branch(self, runtime_branch, sub_result):
+        return {"branch": sub_result}

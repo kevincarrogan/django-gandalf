@@ -63,8 +63,11 @@ class Step:
         if self.next is not None:
             yield from self.next
 
-    def accept(self, visitor):
+    def accept_visit(self, visitor):
         return visitor.visit_step(self)
+
+    def accept_interpret(self, interpreter):
+        return interpreter.visit_step(self)
 
 
 @dataclass(frozen=True)
@@ -120,8 +123,14 @@ class Branch:
         if self.next is not None:
             yield from self.next
 
-    def accept(self, visitor):
-        return visitor.visit_branch(self)
+    def accept_visit(self, visitor):
+        visitor.visit_branch(self)
+        for _, arm in self.arms:
+            visitor.visit(arm)
+        visitor.visit(self.default)
+
+    def accept_interpret(self, interpreter):
+        return interpreter.visit_branch(self)
 
 
 def build(declarations: list[Node]) -> Node | None:
@@ -131,22 +140,52 @@ def build(declarations: list[Node]) -> Node | None:
     return head
 
 
-def walk(root, visitor):
-    """Walk the linked tree starting at `root`, dispatching to `visitor.visit_step`
-    or `visitor.visit_branch` for each node. A visit method returning `False`
-    stops the walk; any other return value (including `None`) continues."""
-    node = root
-    while node is not None:
-        if node.accept(visitor) is False:
-            return
-        node = node.next
+class Visitor:
+    """Top-down, read-only tree traversal. Auto-descends into branch arms
+    (all arms and default for declaration branches; the selected arm for
+    runtime branches). Subclasses must define `visit_step` and `visit_branch`."""
+
+    def visit(self, root):
+        node = root
+        while node is not None:
+            node.accept_visit(self)
+            node = node.next
 
 
-class ContextFinder:
+class Transformer:
+    """Bottom-up tree transformer. Recurses into branch children first,
+    then calls `visit_branch` with the transformed sub-result. Returns a
+    flat list of per-node transformed values. Subclasses must define
+    `visit_step` and `visit_branch`."""
+
+    def transform(self, root):
+        results = []
+        node = root
+        while node is not None:
+            results.append(node.accept_transform(self))
+            node = node.next
+        return results
+
+
+class Interpreter:
+    """Top-down traversal where the visitor controls descent into branch
+    arms manually (typically by calling `self.walk(arm)` inside
+    `visit_branch`). Subclasses must define `visit_step` and `visit_branch`;
+    return `False` from a visit method to stop the walk."""
+
+    def walk(self, root):
+        node = root
+        while node is not None:
+            if node.accept_interpret(self) is False:
+                return
+            node = node.next
+
+
+class ContextFinder(Visitor):
     """Visitor that collects every Step whose context matches the provided kwargs.
 
-    Descends into all branch arms and defaults so the search covers the full
-    declared tree, regardless of which arm a runtime would select.
+    Inherits Visitor's auto-descent, so the search covers the full declared
+    tree (all arms and default), regardless of which arm a runtime would select.
     """
 
     def __init__(self, context: dict):
@@ -158,9 +197,7 @@ class ContextFinder:
             self.matches.append(step)
 
     def visit_branch(self, branch: Branch):
-        for _, arm in branch.arms:
-            walk(arm, self)
-        walk(branch.default, self)
+        pass
 
     def one(self) -> Step | None:
         if len(self.matches) > 1:
