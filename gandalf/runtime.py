@@ -19,17 +19,34 @@ class RuntimeStep:
     data: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
+    def matches_context(self, **context):
+        return self.declaration.matches_context(**context)
+
+    def accept_visit(self, visitor):
+        visitor.visit_step(self)
+
     def accept_reduce(self, reducer):
         return reducer.visit_step(self)
 
 
 @dataclass
 class RuntimeBranch:
-    """Runtime mirror of a declared `tree.Branch`, recording which arm was taken."""
+    """Runtime mirror of a declared `tree.Branch`, recording which arm was
+    taken alongside mirrors of every arm and the default so the full declared
+    structure remains inspectable.
+    """
 
     declaration: tree.Branch
+    arms: tuple = ()
+    default: "RuntimeStep | RuntimeBranch | None" = None
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def accept_visit(self, visitor):
+        visitor.visit_branch(self)
+        for _, arm in self.arms:
+            visitor.visit(arm)
+        visitor.visit(self.default)
 
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
@@ -77,25 +94,31 @@ class BoundWizard:
     def get_submissions(self):
         return WizardState(self.get_state()).submissions()
 
+    @property
+    def runtime_tree(self):
+        builder = RuntimeTreeBuilder(self, self.get_state())
+        builder.walk(self.wizard.tree)
+        return builder.head
+
     def find_step(self, **context):
         finder = tree.ContextFinder(context)
-        finder.visit(self.wizard.tree)
+        finder.visit(self.runtime_tree)
         return finder.one()
 
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
-        finder.visit(self.wizard.tree)
+        finder.visit(self.runtime_tree)
         return finder.all()
 
     def submit(self, submission, *args, **kwargs):
-        walker = _CursorWalker(self, self.get_state(), submission, args, kwargs)
+        walker = CursorWalker(self, self.get_state(), submission, args, kwargs)
         walker.walk(self.wizard.tree)
-        serializer = _StateSerializer()
+        serializer = StateSerializer()
         entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
 
     def replay(self, *args, **kwargs):
-        walker = _CursorWalker(self, self.get_state(), None, args, kwargs)
+        walker = CursorWalker(self, self.get_state(), None, args, kwargs)
         walker.walk(self.wizard.tree)
         cursor = walker.cursor()
         if cursor.node is None:
@@ -136,7 +159,7 @@ class BoundWizard:
         return request
 
 
-class _CursorWalker(tree.Interpreter):
+class CursorWalker(tree.Interpreter):
     """Interpreter that locates the wizard cursor and builds the runtime tree
     up to that point. Validates stored entries by dispatching POSTs; when
     given a pending submission, places it at the cursor's slot."""
@@ -175,7 +198,7 @@ class _CursorWalker(tree.Interpreter):
         entry = next(self._entries_iter, None)
         sub_entries = entry["branch"] if entry is not None else []
         arm = self._bound_wizard._select_branch_arm(branch)
-        sub = _CursorWalker(
+        sub = CursorWalker(
             self._bound_wizard,
             sub_entries,
             self._pending_submission,
@@ -212,7 +235,7 @@ class _CursorWalker(tree.Interpreter):
         self._tail = node
 
 
-class _StateSerializer(tree.Reducer):
+class StateSerializer(tree.Reducer):
     """Bottom-up reducer that flattens a runtime tree into the dict-shaped
     state stored in `request.session`."""
 
@@ -221,3 +244,68 @@ class _StateSerializer(tree.Reducer):
 
     def visit_branch(self, runtime_branch, sub_result):
         return {"branch": sub_result}
+
+
+class RuntimeTreeBuilder(tree.Interpreter):
+    """Builds a runtime tree mirroring the declaration tree, applying stored
+    state data to runtime steps along the active path. All arms of every
+    branch are mirrored (without state) so the runtime tree preserves the
+    full declared structure for introspection."""
+
+    def __init__(self, bound_wizard, entries):
+        self._bound_wizard = bound_wizard
+        self._entries_iter = iter(entries)
+        self.head: RuntimeStep | RuntimeBranch | None = None
+        self._tail: RuntimeStep | RuntimeBranch | None = None
+
+    def visit_step(self, step):
+        entry = next(self._entries_iter, None)
+        data = entry["step"] if entry is not None else None
+        self._append(RuntimeStep(declaration=step, data=data))
+
+    def visit_branch(self, branch):
+        entry = next(self._entries_iter, None)
+        sub_entries = entry["branch"] if entry is not None else []
+        selected_decl = self._bound_wizard._select_branch_arm(branch)
+
+        runtime_arms = tuple(
+            (predicate, self._build_subtree(decl_arm, sub_entries, selected_decl))
+            for predicate, decl_arm in branch.arms
+        )
+        runtime_default = self._build_subtree(
+            branch.default, sub_entries, selected_decl
+        )
+
+        runtime_selected = next(
+            (
+                runtime_arm
+                for _, runtime_arm in runtime_arms
+                if runtime_arm is not None
+                and runtime_arm.declaration is selected_decl
+            ),
+            runtime_default
+            if branch.default is selected_decl
+            else None,
+        )
+
+        self._append(
+            RuntimeBranch(
+                declaration=branch,
+                arms=runtime_arms,
+                default=runtime_default,
+                selected_arm=runtime_selected,
+            )
+        )
+
+    def _build_subtree(self, decl_node, parent_entries, selected_decl):
+        entries = parent_entries if decl_node is selected_decl else []
+        sub_builder = RuntimeTreeBuilder(self._bound_wizard, entries)
+        sub_builder.walk(decl_node)
+        return sub_builder.head
+
+    def _append(self, node):
+        if self.head is None:
+            self.head = node
+        else:
+            self._tail.next = node
+        self._tail = node

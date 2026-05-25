@@ -227,13 +227,21 @@ class DoneBranchingWizardViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
+        from gandalf import tree as tree_module
+
         submissions = bound_wizard.get_submissions()
         review_step = bound_wizard.find_step(step_name="review")
         missing_step = bound_wizard.find_step(step_name="nonexistent")
         account_steps = bound_wizard.filter_steps(step_name="account")
+
+        declared_finder = tree_module.ContextFinder({})
+        declared_finder.visit(bound_wizard.wizard.tree)
+
         return HttpResponse(
-            f"completed {len(submissions)} via {review_step.declaration.__name__} "
-            f"missing={missing_step} account_count={len(account_steps)}"
+            f"completed {len(submissions)} via "
+            f"{review_step.declaration.declaration.__name__} "
+            f"missing={missing_step} account_count={len(account_steps)} "
+            f"declared_count={len(declared_finder.all())}"
         )
 
 

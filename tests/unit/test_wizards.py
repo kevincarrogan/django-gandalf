@@ -70,23 +70,66 @@ def test_declared_form_step_stores_context():
     )
 
 
-def test_bound_wizard_find_step_returns_matching_step(
+def test_bound_wizard_find_step_returns_matching_runtime_step(
     request_with_session_factory,
     linear_wizard,
 ):
+    from gandalf.runtime import RuntimeStep
+
     wizard = (
         Wizard()
         .step(FirstStepForm, context={"step_name": "first"})
         .step(SecondStepForm, context={"step_name": "second"})
         .configure(template_name="testapp/linear_wizard.html")
     )
-    request = request_with_session_factory()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
     bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     found = bound_wizard.find_step(step_name="second")
 
-    assert found.declaration is SecondStepForm
-    assert found.context == {"step_name": "second"}
+    assert isinstance(found, RuntimeStep)
+    assert found.declaration.declaration is SecondStepForm
+    assert found.declaration.context == {"step_name": "second"}
+
+
+def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_inactive_arm(
+    request_with_session_factory,
+):
+    from gandalf.runtime import RuntimeStep
+
+    def is_business_account(request):
+        return False
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account"})
+        .branch(
+            gandalf.wizards.condition(
+                is_business_account,
+                Wizard().step(
+                    BusinessDetailsForm, context={"step_name": "business"}
+                ),
+            ),
+            default=Wizard().step(
+                PersonalDetailsForm, context={"step_name": "personal"}
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    business_step = bound_wizard.find_step(step_name="business")
+
+    assert isinstance(business_step, RuntimeStep)
+    assert business_step.declaration.declaration is BusinessDetailsForm
 
 
 def test_bound_wizard_find_step_returns_none_when_no_match(
@@ -97,8 +140,11 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
         .step(FirstStepForm, context={"step_name": "first"})
         .configure(template_name="testapp/linear_wizard.html")
     )
-    request = request_with_session_factory()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
     bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     assert bound_wizard.find_step(step_name="missing") is None
 
@@ -135,12 +181,18 @@ def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
         .step(SecondStepForm, context={"kind": "data"})
         .configure(template_name="testapp/linear_wizard.html")
     )
-    request = request_with_session_factory()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
     bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
 
     matches = bound_wizard.filter_steps(kind="data")
 
-    assert [step.declaration for step in matches] == [FirstStepForm, SecondStepForm]
+    assert [step.declaration.declaration for step in matches] == [
+        FirstStepForm,
+        SecondStepForm,
+    ]
 
 
 def test_step_builder_does_not_mutate_source_wizard():
