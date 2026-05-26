@@ -3,12 +3,87 @@ from http import HTTPStatus
 import pytest
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, StepNameEditResolver, Wizard
 from tests.testapp.forms import FirstStepForm
 
 
 class _Session(dict):
     modified = False
+
+
+def test_step_name_edit_resolver_returns_step_name_context_from_get(rf):
+    resolver = StepNameEditResolver()
+    request = rf.get("/wizard/", {"gandalf_edit_step": "account_type"})
+
+    assert resolver.resolve(request) == {"step_name": "account_type"}
+
+
+def test_step_name_edit_resolver_returns_step_name_context_from_post(rf):
+    resolver = StepNameEditResolver()
+    request = rf.post("/wizard/", {"gandalf_edit_step": "account_type"})
+
+    assert resolver.resolve(request) == {"step_name": "account_type"}
+
+
+def test_step_name_edit_resolver_returns_none_when_no_field(rf):
+    resolver = StepNameEditResolver()
+    request = rf.get("/wizard/")
+
+    assert resolver.resolve(request) is None
+
+
+def test_step_name_edit_resolver_returns_none_when_field_is_empty(rf):
+    resolver = StepNameEditResolver()
+    request = rf.get("/wizard/", {"gandalf_edit_step": ""})
+
+    assert resolver.resolve(request) is None
+
+
+def test_step_name_edit_resolver_clean_submission_removes_marker():
+    resolver = StepNameEditResolver()
+    submission = {"gandalf_edit_step": "account_type", "account_type": "business"}
+
+    cleaned = resolver.clean_submission(submission)
+
+    assert cleaned == {"account_type": "business"}
+
+
+def test_wizard_configure_overrides_edit_resolver_class():
+    class FakeResolver:
+        pass
+
+    wizard = Wizard().configure(edit_resolver_class=FakeResolver)
+
+    assert wizard.edit_resolver_class is FakeResolver
+
+
+def test_wizard_viewset_uses_configured_edit_resolver_class(rf):
+    captured = {}
+
+    class CustomResolver:
+        def resolve(self, request):
+            captured["called"] = True
+            return None
+
+    class CustomViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm)
+            .configure(
+                template_name="testapp/single_step_wizard.html",
+                edit_resolver_class=CustomResolver,
+            )
+        )
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+    request = rf.get("/wizard/abc/")
+    request.session = _Session(gandalf_runs={"abc": {}})
+
+    CustomViewSet.as_view()(request, run_id="abc")
+
+    assert captured == {"called": True}
 
 
 def test_wizard_viewset_configures_plain_wizard(rf):

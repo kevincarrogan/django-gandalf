@@ -16,12 +16,41 @@ __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
     "MergeCleanedData",
+    "StepNameEditResolver",
     "Wizard",
     "branch",
     "condition",
     "form_view_factory",
+    "named",
     "step",
 ]
+
+
+def named(name, form_class_or_form_view_class):
+    """Shorthand for declaring a step with `context={"step_name": name}`.
+    Pass the result to `Wizard().step(...)`.
+    """
+    return form_class_or_form_view_class, {"step_name": name}
+
+
+class StepNameEditResolver:
+    """Resolves an edit cycle from a single `gandalf_edit_step` field whose
+    value is looked up against the wizard's runtime tree via `step_name=`
+    context matching. The default `edit_resolver_class` on `ConfiguredWizard`.
+    """
+
+    field_name = "gandalf_edit_step"
+    context_key = "step_name"
+
+    def resolve(self, request):
+        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
+        if not value:
+            return None
+        return {self.context_key: value}
+
+    def clean_submission(self, submission):
+        submission.pop(self.field_name, None)
+        return submission
 
 
 def condition(predicate, target):
@@ -43,6 +72,9 @@ class Wizard:
         self.tree = tree
 
     def step(self, form_class_or_form_view_class, context=None):
+        if isinstance(form_class_or_form_view_class, tuple):
+            form_class_or_form_view_class, base_context = form_class_or_form_view_class
+            context = {**base_context, **(context or {})}
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(
@@ -74,6 +106,7 @@ class ConfiguredWizard:
     cursor_walker_class = CursorWalker
     state_serializer_class = StateSerializer
     form_view_factory = staticmethod(form_view_factory)
+    edit_resolver_class = StepNameEditResolver
 
     def __init__(self, *, tree, configuration):
         self.configuration = configuration
@@ -81,9 +114,7 @@ class ConfiguredWizard:
             "form_view_factory", self.form_view_factory
         )
         self.tree = self._configure_tree(tree)
-        self.storage_class = configuration.get(
-            "storage_class", self.storage_class
-        )
+        self.storage_class = configuration.get("storage_class", self.storage_class)
         self.runtime_tree_builder_class = configuration.get(
             "runtime_tree_builder_class", self.runtime_tree_builder_class
         )
@@ -92,6 +123,9 @@ class ConfiguredWizard:
         )
         self.state_serializer_class = configuration.get(
             "state_serializer_class", self.state_serializer_class
+        )
+        self.edit_resolver_class = configuration.get(
+            "edit_resolver_class", self.edit_resolver_class
         )
 
     def configure(self, **configuration):

@@ -74,6 +74,42 @@ def test_module_step_entry_point_returns_wizard_with_first_step():
     )
 
 
+def test_named_sets_step_name_context():
+    wizard = Wizard().step(gandalf.wizard.named("first", FirstStepForm))
+
+    assert wizard.tree == tree.Step(
+        declaration=FirstStepForm,
+        context={"step_name": "first"},
+    )
+
+
+def test_named_merges_with_explicit_context():
+    wizard = Wizard().step(
+        gandalf.wizard.named("first", FirstStepForm),
+        context={"analytics_key": "x"},
+    )
+
+    assert wizard.tree.context == {"step_name": "first", "analytics_key": "x"}
+
+
+def test_named_explicit_context_step_name_overrides_named():
+    wizard = Wizard().step(
+        gandalf.wizard.named("first", FirstStepForm),
+        context={"step_name": "override"},
+    )
+
+    assert wizard.tree.context == {"step_name": "override"}
+
+
+def test_module_step_entry_point_accepts_named():
+    wizard = gandalf.wizard.step(gandalf.wizard.named("first", FirstStepForm))
+
+    assert wizard.tree == tree.Step(
+        declaration=FirstStepForm,
+        context={"step_name": "first"},
+    )
+
+
 def test_module_branch_entry_point_returns_wizard_with_first_branch():
     sub_wizard = gandalf.wizard.step(FirstStepForm)
     returned = gandalf.wizard.branch(
