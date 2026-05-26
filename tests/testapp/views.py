@@ -249,6 +249,41 @@ class BranchingWizardViewSet(WizardViewSet):
         )
 
 
+class EditingBranchingWizardViewSet(WizardViewSet):
+    description = (
+        "Branching wizard whose review template renders edit links for each prior "
+        "step (account type and the active arm's detail step)."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(
+                    BusinessDetailsForm, context={"step_name": "business_name"}
+                ),
+            ),
+            default=Wizard().step(
+                PersonalDetailsForm, context={"step_name": "preferred_name"}
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "editing-branching-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 class DoneBranchingWizardViewSet(WizardViewSet):
     description = (
         "Branching wizard exercising step_name context, find_step / filter_steps, "

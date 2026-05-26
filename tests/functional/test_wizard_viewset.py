@@ -514,6 +514,127 @@ def test_done_branching_wizard_complete_flow_uses_runtime_tree(
     )
 
 
+@pytest.fixture
+def editing_branching_wizard_url():
+    return reverse("editing-branching-wizard")
+
+
+@pytest.fixture
+def editing_branching_wizard_run_url():
+    def build_url(run_id):
+        return reverse("editing-branching-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_editing_branching_wizard_get_with_edit_param_renders_form_with_initial(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    from tests.testapp.forms import AccountTypeForm
+
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.get(
+        editing_branching_wizard_run_url(run_id) + "?gandalf_edit_step=account_type",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    form = response.context["form"]
+    assert isinstance(form, AccountTypeForm)
+    assert form.is_bound is False
+    assert form.initial == {"account_type": "business"}
+
+
+def test_editing_branching_wizard_post_edit_keeping_arm_preserves_downstream(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"gandalf_edit_step": "account_type", "account_type": "business"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], ReviewForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"account_type": "business"}},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
+    ]
+
+
+def test_editing_branching_wizard_post_edit_changing_arm_truncates_downstream(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"gandalf_edit_step": "account_type", "account_type": "personal"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], PersonalDetailsForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"account_type": "personal"}},
+        {"branch": []},
+    ]
+
+
+def test_editing_branching_wizard_post_edit_strips_marker_from_submission(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+
+    client.post(
+        editing_branching_wizard_run_url(run_id),
+        data={"gandalf_edit_step": "account_type", "account_type": "business"},
+    )
+
+    stored = client.session["gandalf_runs"][run_id]["state"][0]["step"]
+    assert "gandalf_edit_step" not in stored
+
+
 def test_branch_entry_wizard_renders_default_arm_first_step(client):
     start_url = reverse("branch-entry-wizard")
     client.get(start_url)

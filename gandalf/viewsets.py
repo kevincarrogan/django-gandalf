@@ -6,6 +6,9 @@ from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
 
+EDIT_STEP_FIELD = "gandalf_edit_step"
+
+
 class WizardViewSet(View):
     storage_class = SessionStorage
 
@@ -52,6 +55,10 @@ class WizardViewSet(View):
         bound_wizard.retrieve(run_id)
         self._resolve_wizard(bound_wizard)
 
+        edit_step = request.GET.get(EDIT_STEP_FIELD)
+        if edit_step:
+            return bound_wizard.render_edit(step_name=edit_step)
+
         response = bound_wizard.replay(*args, **kwargs)
         if response is None:
             return self.done(bound_wizard)
@@ -62,11 +69,12 @@ class WizardViewSet(View):
         bound_wizard = self._make_bound_wizard(request)
         bound_wizard.retrieve(run_id)
         self._resolve_wizard(bound_wizard)
-        bound_wizard.submit(
-            request.POST.dict(),
-            *args,
-            **kwargs,
-        )
+        submission = request.POST.dict()
+        edit_step = submission.pop(EDIT_STEP_FIELD, None)
+        if edit_step:
+            bound_wizard.edit(submission, step_name=edit_step)
+        else:
+            bound_wizard.submit(submission, *args, **kwargs)
         response = bound_wizard.replay(*args, **kwargs)
 
         if response is None:

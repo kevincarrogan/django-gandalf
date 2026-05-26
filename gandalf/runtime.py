@@ -12,6 +12,11 @@ from gandalf import tree
 logger = logging.getLogger(__name__)
 
 
+class StepNotFound(LookupError):
+    """Raised when a context-based edit targets a step that is not on the
+    active runtime path or has no stored submission."""
+
+
 @dataclass
 class RuntimeStep:
     """Runtime mirror of a declared `tree.Step`, carrying per-request state."""
@@ -167,6 +172,85 @@ class BoundWizard:
             **kwargs,
         )
 
+    def render_edit(self, *args, **context):
+        path, runtime_step = self._resolve_step(**context)
+        return self._dispatch_step(
+            runtime_step.declaration,
+            self._build_step_request("GET"),
+            *args,
+            initial=runtime_step.data,
+        )
+
+    def edit(self, submission, *args, **context):
+        path, runtime_step = self._resolve_step(**context)
+        leaf_step = runtime_step.declaration
+        spliced = self._splice_entry(self.get_state(), path, submission)
+        walker = self.wizard.cursor_walker_class(self, spliced, None, args, kwargs={})
+        walker.walk(self.wizard.tree)
+        cursor = walker.cursor()
+        if cursor.response is not None and cursor.node is leaf_step:
+            entries = self._truncate_after_path(spliced, path)
+        else:
+            serializer = self.wizard.state_serializer_class()
+            entries = serializer.reduce(cursor.state)
+        self.storage.set_state(self.run_id, entries)
+
+    def _resolve_step(self, **context):
+        matches = []
+        self._collect_matching_paths(self.runtime_tree, context, (), matches)
+        if len(matches) > 1:
+            raise tree.MultipleStepsReturned(
+                f"Expected one matching step, found {len(matches)}."
+            )
+        if not matches:
+            raise StepNotFound(context)
+        return matches[0]
+
+    def _collect_matching_paths(self, head, context, prefix, matches):
+        index = 0
+        node = head
+        while node is not None:
+            if isinstance(node, RuntimeStep):
+                if (
+                    node.declaration.matches_context(**context)
+                    and node.data is not None
+                ):
+                    matches.append((prefix + (index,), node))
+            else:
+                self._collect_matching_paths(
+                    node.selected_arm, context, prefix + (index,), matches
+                )
+            index += 1
+            node = node.next
+
+    @staticmethod
+    def _splice_entry(entries, path, submission):
+        new_entries = list(entries)
+        cursor = new_entries
+        for index in path[:-1]:
+            new_entry = dict(cursor[index])
+            new_entry["branch"] = list(new_entry["branch"])
+            cursor[index] = new_entry
+            cursor = new_entry["branch"]
+        leaf_index = path[-1]
+        cursor[leaf_index] = {"step": submission}
+        return new_entries
+
+    @staticmethod
+    def _truncate_after_path(entries, path):
+        new_entries = list(entries)
+        parent = new_entries
+        for depth, index in enumerate(path):
+            if depth == len(path) - 1:
+                del parent[index + 1 :]
+            else:
+                new_entry = dict(parent[index])
+                new_entry["branch"] = list(new_entry["branch"])
+                parent[index] = new_entry
+                del parent[index + 1 :]
+                parent = new_entry["branch"]
+        return new_entries
+
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
         request = self._build_step_request("GET")
         request.wizard = self
@@ -184,9 +268,10 @@ class BoundWizard:
             HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
         )
 
-    def _dispatch_step(self, step, request, *args, **kwargs):
+    def _dispatch_step(self, step, request, *args, initial=None, **kwargs):
         request.wizard = self
-        step_view = step.form_view.as_view()
+        view_kwargs = {} if initial is None else {"initial": initial}
+        step_view = step.form_view.as_view(**view_kwargs)
         return step_view(request, *args, **kwargs)
 
     def _build_step_request(self, method, submission=None):
