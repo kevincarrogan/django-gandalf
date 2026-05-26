@@ -131,9 +131,7 @@ class Reducer:
         accumulator = self.initial()
         node = root
         while node is not None:
-            accumulator = self.combine(
-                accumulator, node.accept_reduce(self)
-            )
+            accumulator = self.combine(accumulator, node.accept_reduce(self))
             node = node.next
         return accumulator
 
@@ -223,9 +221,7 @@ class Configurer(Transformer):
             form_view = step.declaration
         return replace(step, form_view=form_view, next=next_result)
 
-    def visit_branch(
-        self, branch, transformed_arms, transformed_default, next_result
-    ):
+    def visit_branch(self, branch, transformed_arms, transformed_default, next_result):
         return replace(
             branch,
             arms=transformed_arms,
@@ -234,25 +230,53 @@ class Configurer(Transformer):
         )
 
 
-class ContextFinder(Visitor):
-    """Visitor that collects every Step whose context matches the provided kwargs.
+class ContextFinder:
+    """Locates steps in a tree (declaration or runtime) matching a context,
+    tracking the path of indices to each match. For runtime trees, only the
+    active arm is traversed. For declaration trees, every arm is.
 
-    Inherits Visitor's auto-descent, so the search covers the full declared
-    tree (all arms and default), regardless of which arm a runtime would select.
+    Use `one()` / `all()` for the bare matches, or `one_with_path()` /
+    `all_with_paths()` to also get the position tuple.
+
+    Pass `require_data=True` to skip matches whose `data` attribute is None
+    (only meaningful on runtime trees).
     """
 
-    def __init__(self, context: dict):
+    def __init__(self, context: dict, *, require_data: bool = False):
         self._context = context
-        self.matches: list[Step] = []
+        self._require_data = require_data
+        self.matches: list[tuple[tuple[int, ...], object]] = []
 
-    def visit_step(self, step: Step):
-        if step.matches_context(**self._context):
-            self.matches.append(step)
+    def visit(self, root) -> None:
+        self._walk(root, ())
 
-    def visit_branch(self, branch: Branch):
-        pass
+    def _walk(self, node, prefix: tuple[int, ...]) -> None:
+        index = 0
+        while node is not None:
+            path = prefix + (index,)
+            if hasattr(node, "matches_context"):
+                if node.matches_context(**self._context):
+                    if (
+                        not self._require_data
+                        or getattr(node, "data", None) is not None
+                    ):
+                        self.matches.append((path, node))
+            elif hasattr(node, "selected_arm"):
+                if node.selected_arm is not None:
+                    self._walk(node.selected_arm, path)
+            else:
+                for _, arm in node.arms:
+                    self._walk(arm, path)
+                if node.default is not None:
+                    self._walk(node.default, path)
+            index += 1
+            node = node.next
 
-    def one(self) -> Step | None:
+    def one(self):
+        path_and_node = self.one_with_path()
+        return None if path_and_node is None else path_and_node[1]
+
+    def one_with_path(self):
         if len(self.matches) > 1:
             raise MultipleStepsReturned(
                 f"Expected one matching step, found {len(self.matches)}."
@@ -261,5 +285,8 @@ class ContextFinder(Visitor):
             return None
         return self.matches[0]
 
-    def all(self) -> list[Step]:
+    def all(self) -> list:
+        return [match[1] for match in self.matches]
+
+    def all_with_paths(self) -> list:
         return list(self.matches)

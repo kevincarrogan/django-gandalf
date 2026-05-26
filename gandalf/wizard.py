@@ -8,6 +8,7 @@ from gandalf.runtime import (
     MergeCleanedData,
     RuntimeTreeBuilder,
     StateSerializer,
+    StepDispatcher,
 )
 from gandalf.storage import SessionStorage
 
@@ -104,6 +105,7 @@ class ConfiguredWizard:
     storage_class = SessionStorage
     runtime_tree_builder_class = RuntimeTreeBuilder
     cursor_walker_class = CursorWalker
+    step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
     form_view_factory = staticmethod(form_view_factory)
     edit_resolver_class = StepNameEditResolver
@@ -120,6 +122,9 @@ class ConfiguredWizard:
         )
         self.cursor_walker_class = configuration.get(
             "cursor_walker_class", self.cursor_walker_class
+        )
+        self.step_dispatcher_class = configuration.get(
+            "step_dispatcher_class", self.step_dispatcher_class
         )
         self.state_serializer_class = configuration.get(
             "state_serializer_class", self.state_serializer_class

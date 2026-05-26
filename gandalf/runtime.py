@@ -40,9 +40,6 @@ class RuntimeStep:
     def matches_context(self, **context):
         return self.declaration.matches_context(**context)
 
-    def accept_visit(self, visitor):
-        visitor.visit_step(self)
-
     def accept_reduce(self, reducer):
         return reducer.visit_step(self)
 
@@ -63,20 +60,14 @@ class RuntimeBranch:
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
-    def accept_visit(self, visitor):
-        visitor.visit_branch(self)
-        visitor.visit(self.selected_arm)
-
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
         return reducer.visit_branch(self, sub_result)
 
     def accept_transform(self, transformer):
-        transformed_selected_arm = transformer.transform(self.selected_arm)
+        transformed_arm = transformer.transform(self.selected_arm)
         next_result = transformer.transform(self.next)
-        return transformer.visit_branch(
-            self, transformed_selected_arm, next_result
-        )
+        return transformer.visit_branch(self, transformed_arm, next_result)
 
 
 @dataclass(frozen=True)
@@ -96,6 +87,44 @@ class Cursor:
     response: Any = None
 
 
+class StepDispatcher:
+    """HTTP adapter: builds request snapshots, dispatches step form views,
+    decides whether a step's response represents a valid submission, and
+    renders a cursor as an HTTP response.
+    """
+
+    def __init__(self, bound_wizard):
+        self._bound_wizard = bound_wizard
+
+    def dispatch(self, step, request, *args, initial=None, **kwargs):
+        request.wizard = self._bound_wizard
+        view_kwargs = {} if initial is None else {"initial": initial}
+        step_view = step.form_view.as_view(**view_kwargs)
+        return step_view(request, *args, **kwargs)
+
+    def build_request(self, method, submission=None):
+        request = copy(self._bound_wizard.request)
+        request.method = method
+        if method == "POST":
+            request.POST = submission
+        return request
+
+    def response_satisfies_step(self, response):
+        return (
+            HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
+        )
+
+    def render_cursor(self, cursor, *args, **kwargs):
+        if cursor.response is not None:
+            return cursor.response
+        return self.dispatch(
+            cursor.node,
+            self.build_request("GET"),
+            *args,
+            **kwargs,
+        )
+
+
 class BoundWizard:
     def __init__(self, request, storage, wizard=None):
         self.wizard = wizard
@@ -103,6 +132,13 @@ class BoundWizard:
         self.storage = storage
         self.run_id = None
         self._predicate_runtime_tree = None
+        self._dispatcher = None
+
+    @property
+    def dispatcher(self):
+        if self._dispatcher is None:
+            self._dispatcher = self.wizard.step_dispatcher_class(self)
+        return self._dispatcher
 
     def bind(self, wizard):
         self.wizard = wizard
@@ -148,7 +184,7 @@ class BoundWizard:
 
     def submit(self, submission, *args, **kwargs):
         walker = self.wizard.cursor_walker_class(
-            self, self.get_state(), submission, args, kwargs
+            self.dispatcher, self.get_state(), submission, args, kwargs, self
         )
         walker.walk(self.wizard.tree)
         serializer = self.wizard.state_serializer_class()
@@ -157,102 +193,60 @@ class BoundWizard:
 
     def replay(self, *args, **kwargs):
         walker = self.wizard.cursor_walker_class(
-            self, self.get_state(), None, args, kwargs
+            self.dispatcher, self.get_state(), None, args, kwargs, self
         )
         walker.walk(self.wizard.tree)
         cursor = walker.cursor()
         if cursor.node is None:
             return None
-        if cursor.response is not None:
-            return cursor.response
-        return self._dispatch_step(
-            cursor.node,
-            self._build_step_request("GET"),
-            *args,
-            **kwargs,
-        )
+        return self.dispatcher.render_cursor(cursor, *args, **kwargs)
 
     def render_edit(self, *args, **context):
-        path, runtime_step = self._resolve_step(**context)
-        return self._dispatch_step(
+        runtime_step = self._resolve_edit_target(context)
+        return self.dispatcher.dispatch(
             runtime_step.declaration,
-            self._build_step_request("GET"),
+            self.dispatcher.build_request("GET"),
             *args,
             initial=runtime_step.data,
         )
 
     def edit(self, submission, *args, **context):
-        path, runtime_step = self._resolve_step(**context)
-        leaf_step = runtime_step.declaration
-        spliced = self._splice_entry(self.get_state(), path, submission)
-        walker = self.wizard.cursor_walker_class(self, spliced, None, args, kwargs={})
+        runtime = self.runtime_tree
+        runtime_step = self._resolve_edit_target(context, runtime=runtime)
+        leaf_decl = runtime_step.declaration
+        spliced = SpliceSubmission(runtime_step, submission).transform(runtime)
+        serializer = self.wizard.state_serializer_class()
+        rebuilt_entries = serializer.reduce(spliced)
+        walker = self.wizard.cursor_walker_class(
+            self.dispatcher, rebuilt_entries, None, args, {}, self
+        )
         walker.walk(self.wizard.tree)
         cursor = walker.cursor()
-        if cursor.response is not None and cursor.node is leaf_step:
-            entries = self._truncate_after_path(spliced, path)
+        if cursor.response is not None and cursor.node is leaf_decl:
+            rebuilt_runtime = self._build_runtime_tree(entries=rebuilt_entries)
+            entries = serializer.reduce(truncate_after(rebuilt_runtime, leaf_decl))
         else:
-            serializer = self.wizard.state_serializer_class()
             entries = serializer.reduce(cursor.state)
         self.storage.set_state(self.run_id, entries)
 
-    def _resolve_step(self, **context):
-        matches = []
-        self._collect_matching_paths(self.runtime_tree, context, (), matches)
-        if len(matches) > 1:
-            raise tree.MultipleStepsReturned(
-                f"Expected one matching step, found {len(matches)}."
-            )
-        if not matches:
+    def _resolve_edit_target(self, context, runtime=None):
+        if runtime is None:
+            runtime = self.runtime_tree
+        finder = tree.ContextFinder(context, require_data=True)
+        finder.visit(runtime)
+        match = finder.one_with_path()
+        if match is None:
             raise StepNotFound(context)
-        return matches[0]
+        _, runtime_step = match
+        return runtime_step
 
-    def _collect_matching_paths(self, head, context, prefix, matches):
-        index = 0
-        node = head
-        while node is not None:
-            if isinstance(node, RuntimeStep):
-                if (
-                    node.declaration.matches_context(**context)
-                    and node.data is not None
-                ):
-                    matches.append((prefix + (index,), node))
-            else:
-                self._collect_matching_paths(
-                    node.selected_arm, context, prefix + (index,), matches
-                )
-            index += 1
-            node = node.next
-
-    @staticmethod
-    def _splice_entry(entries, path, submission):
-        new_entries = list(entries)
-        cursor = new_entries
-        for index in path[:-1]:
-            new_entry = dict(cursor[index])
-            new_entry["branch"] = list(new_entry["branch"])
-            cursor[index] = new_entry
-            cursor = new_entry["branch"]
-        leaf_index = path[-1]
-        cursor[leaf_index] = {"step": submission}
-        return new_entries
-
-    @staticmethod
-    def _truncate_after_path(entries, path):
-        new_entries = list(entries)
-        parent = new_entries
-        for depth, index in enumerate(path):
-            if depth == len(path) - 1:
-                del parent[index + 1 :]
-            else:
-                new_entry = dict(parent[index])
-                new_entry["branch"] = list(new_entry["branch"])
-                parent[index] = new_entry
-                del parent[index + 1 :]
-                parent = new_entry["branch"]
-        return new_entries
+    def _build_runtime_tree(self, entries):
+        builder = self.wizard.runtime_tree_builder_class(self, entries)
+        builder.walk(self.wizard.tree)
+        return builder.head
 
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
-        request = self._build_step_request("GET")
+        request = self.dispatcher.build_request("GET")
         request.wizard = self
         self._predicate_runtime_tree = partial_runtime_head
         try:
@@ -263,33 +257,17 @@ class BoundWizard:
         finally:
             self._predicate_runtime_tree = None
 
-    def _response_satisfies_step(self, response):
-        return (
-            HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
-        )
-
-    def _dispatch_step(self, step, request, *args, initial=None, **kwargs):
-        request.wizard = self
-        view_kwargs = {} if initial is None else {"initial": initial}
-        step_view = step.form_view.as_view(**view_kwargs)
-        return step_view(request, *args, **kwargs)
-
-    def _build_step_request(self, method, submission=None):
-        request = copy(self.request)
-        request.method = method
-
-        if method == "POST":
-            request.POST = submission
-
-        return request
-
 
 class CursorWalker(tree.Interpreter):
     """Interpreter that locates the wizard cursor and builds the runtime tree
-    up to that point. Validates stored entries by dispatching POSTs; when
-    given a pending submission, places it at the cursor's slot."""
+    up to that point. Validates stored entries by dispatching POSTs through
+    the StepDispatcher; when given a pending submission, places it at the
+    cursor's slot."""
 
-    def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
+    def __init__(
+        self, dispatcher, entries, pending_submission, args, kwargs, bound_wizard
+    ):
+        self._dispatcher = dispatcher
         self._bound_wizard = bound_wizard
         self._entries_iter = iter(entries)
         self._pending_submission = pending_submission
@@ -306,13 +284,13 @@ class CursorWalker(tree.Interpreter):
             self._place_pending(step)
             self._cursor = Cursor(node=step, state=self._head)
             return False
-        response = self._bound_wizard._dispatch_step(
+        response = self._dispatcher.dispatch(
             step,
-            self._bound_wizard._build_step_request("POST", submission=stored),
+            self._dispatcher.build_request("POST", submission=stored),
             *self._args,
             **self._kwargs,
         )
-        if not self._bound_wizard._response_satisfies_step(response):
+        if not self._dispatcher.response_satisfies_step(response):
             self._place_pending(step)
             self._cursor = Cursor(node=step, state=self._head, response=response)
             return False
@@ -324,11 +302,12 @@ class CursorWalker(tree.Interpreter):
         sub_entries = entry["branch"] if entry is not None else []
         arm = self._bound_wizard._select_branch_arm(branch, self._head)
         sub = type(self)(
-            self._bound_wizard,
+            self._dispatcher,
             sub_entries,
             self._pending_submission,
             self._args,
             self._kwargs,
+            self._bound_wizard,
         )
         sub.walk(arm)
         self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
@@ -416,9 +395,7 @@ class MergeCleanedData(tree.Reducer):
 
 class RuntimeTreeBuilder(tree.Interpreter):
     """Builds a runtime tree mirroring the declaration tree, applying stored
-    state data to runtime steps along the active path. All arms of every
-    branch are mirrored (without state) so the runtime tree preserves the
-    full declared structure for introspection."""
+    state data to runtime steps along the active path."""
 
     def __init__(self, bound_wizard, entries):
         self._bound_wizard = bound_wizard
@@ -452,3 +429,63 @@ class RuntimeTreeBuilder(tree.Interpreter):
         else:
             self._tail.next = node
         self._tail = node
+
+
+class SpliceSubmission(tree.Transformer):
+    """Transformer over a runtime tree that replaces the `data` on a target
+    RuntimeStep (identified by identity) with a new submission. All other
+    nodes are structurally cloned."""
+
+    def __init__(self, target, submission):
+        self._target = target
+        self._submission = submission
+
+    def visit_step(self, runtime_step, next_result):
+        data = self._submission if runtime_step is self._target else runtime_step.data
+        return RuntimeStep(
+            declaration=runtime_step.declaration,
+            data=data,
+            next=next_result,
+        )
+
+    def visit_branch(self, runtime_branch, transformed_arm, next_result):
+        return RuntimeBranch(
+            declaration=runtime_branch.declaration,
+            selected_arm=transformed_arm,
+            next=next_result,
+        )
+
+
+def truncate_after(runtime_tree, target_decl):
+    """Returns a new runtime tree where the RuntimeStep with
+    `declaration is target_decl` is preserved (with `next=None`) and
+    everything after it is dropped."""
+    new_tree, _ = _truncate_after_recurse(runtime_tree, target_decl)
+    return new_tree
+
+
+def _truncate_after_recurse(node, target_decl):
+    if node is None:
+        return None, False
+    if isinstance(node, RuntimeStep):
+        if node.declaration is target_decl:
+            return (
+                RuntimeStep(node.declaration, data=node.data, next=None),
+                True,
+            )
+        new_next, found = _truncate_after_recurse(node.next, target_decl)
+        return (
+            RuntimeStep(node.declaration, data=node.data, next=new_next),
+            found,
+        )
+    new_arm, found_in_arm = _truncate_after_recurse(node.selected_arm, target_decl)
+    if found_in_arm:
+        return (
+            RuntimeBranch(node.declaration, selected_arm=new_arm, next=None),
+            True,
+        )
+    new_next, found_in_next = _truncate_after_recurse(node.next, target_decl)
+    return (
+        RuntimeBranch(node.declaration, selected_arm=new_arm, next=new_next),
+        found_in_next,
+    )

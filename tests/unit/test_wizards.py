@@ -395,6 +395,89 @@ def test_configured_wizard_uses_configured_runtime_tree_builder_class(
     assert bound_wizard.runtime_tree is sentinel
 
 
+def test_configured_wizard_uses_configured_step_dispatcher_class(
+    request_with_session_factory,
+):
+    captured = {}
+
+    class FakeDispatcher:
+        def __init__(self, bound_wizard):
+            captured["bound_wizard"] = bound_wizard
+
+        def dispatch(self, *args, **kwargs):
+            raise AssertionError("dispatch should not be called by this test")
+
+        def build_request(self, method, submission=None):
+            raise AssertionError("build_request should not be called by this test")
+
+        def response_satisfies_step(self, response):
+            return True
+
+        def render_cursor(self, cursor, *args, **kwargs):
+            return cursor
+
+    request = request_with_session_factory()
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=FakeDispatcher,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+
+    assert isinstance(bound_wizard.dispatcher, FakeDispatcher)
+    assert captured["bound_wizard"] is bound_wizard
+
+
+def test_bound_wizard_edit_with_invalid_submission_past_branch_truncates(
+    request_with_session_factory,
+):
+    import gandalf.wizard
+
+    def is_business_account(request):
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            gandalf.wizard.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [{"step": {"business_name": "Acme"}}]},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    bound_wizard.edit({}, step_name="review")
+
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"account_type": "business"}},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
+        {"step": {}},
+    ]
+
+
 def test_configured_wizard_uses_configured_cursor_walker_class(
     request_with_session_factory,
 ):
@@ -403,7 +486,9 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
     calls = []
 
     class FakeWalker:
-        def __init__(self, bound_wizard, entries, pending_submission, args, kwargs):
+        def __init__(
+            self, dispatcher, entries, pending_submission, args, kwargs, bound_wizard
+        ):
             calls.append(("init", pending_submission))
 
         def walk(self, root):
