@@ -49,7 +49,7 @@ class IndexView(TemplateView):
 
 def is_business_account(request):
     account_step = request.wizard.find_step(step_name="account_type")
-    return account_step.data["account_type"] == "business"
+    return account_step.form.cleaned_data["account_type"] == "business"
 
 
 class SingleStepWizardViewSet(WizardViewSet):
@@ -99,8 +99,8 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
         )
 
     def done(self, bound_wizard):
-        submission = bound_wizard.runtime_tree.data
-        return HttpResponse(f"completed {submission.get('name')}")
+        cleaned_data = bound_wizard.runtime_tree.form.cleaned_data
+        return HttpResponse(f"completed {cleaned_data['name']}")
 
 
 class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
@@ -165,7 +165,8 @@ class DoneLinearWizardViewSet(WizardViewSet):
         first = bound_wizard.runtime_tree
         second = first.next
         return HttpResponse(
-            f"completed {first.data.get('name')} at {second.data.get('email')}"
+            f"completed {first.form.cleaned_data['name']} "
+            f"at {second.form.cleaned_data['email']}"
         )
 
 

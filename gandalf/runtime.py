@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
 
+from django import forms
+
 from gandalf import tree
 
 
@@ -17,6 +19,20 @@ class RuntimeStep:
     declaration: tree.Step
     data: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
+
+    @property
+    def form(self):
+        if self.data is None:
+            return None
+        form_class = self.declaration.declaration
+        if not issubclass(form_class, forms.Form):
+            raise NotImplementedError(
+                "RuntimeStep.form is currently only defined for steps "
+                "declared with a plain forms.Form subclass."
+            )
+        form = form_class(self.data)
+        form.is_valid()
+        return form
 
     def matches_context(self, **context):
         return self.declaration.matches_context(**context)
