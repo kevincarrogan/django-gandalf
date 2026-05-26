@@ -1033,3 +1033,76 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is SecondStepForm
     assert TrackingFirstStepFormView.form_valid_call_count == 1
+
+
+def test_runtime_step_form_exposes_cleaned_data_for_completed_step(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    first_step = bound_wizard.runtime_tree
+
+    assert isinstance(first_step.form, FirstStepForm)
+    assert first_step.form.is_valid()
+    assert first_step.form.cleaned_data == {"name": "Ada"}
+
+
+def test_runtime_step_data_still_exposes_raw_submission(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    first_step = bound_wizard.runtime_tree
+
+    assert first_step.data == {"name": "Ada"}
+
+
+def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
+    request_with_session_factory,
+):
+    class CoercingForm(forms.Form):
+        count = forms.IntegerField()
+
+    wizard = (
+        Wizard()
+        .step(CoercingForm)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"count": "42"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    first_step = bound_wizard.runtime_tree
+
+    assert first_step.data == {"count": "42"}
+    assert first_step.form.cleaned_data == {"count": 42}

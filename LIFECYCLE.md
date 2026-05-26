@@ -352,3 +352,8 @@ class CheckoutWizardViewSet(WizardViewSet):
 - What metadata belongs in serialized state versus runtime-only step state?
 - How should historical branch state be exposed when a changed answer makes a
   previous branch inactive?
+- How should `RuntimeStep.form` resolve the form class for a step backed by a
+  user-supplied `FormView` rather than a plain `Form`? Initial implementation
+  covers plain-form steps only; FormView-backed steps need a decision on
+  whether `.form` reads `declaration.declaration.form_class`, instantiates the
+  FormView and asks it for a form, or something else.
