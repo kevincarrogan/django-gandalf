@@ -55,8 +55,9 @@ class SignupWizard(SessionWizardView):
 ```python
 from django import forms
 from django.http import HttpResponse
+from gandalf import wizard
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard
+from gandalf.wizard import MergeCleanedData
 
 
 class NameForm(forms.Form):
@@ -70,8 +71,7 @@ class EmailForm(forms.Form):
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
     wizard = (
-        Wizard()
-        .step(NameForm)
+        wizard.step(NameForm)
         .step(EmailForm)
     )
 
@@ -146,13 +146,11 @@ class OnboardingWizard(SessionWizardView):
 
 ```python
 international_flow = (
-    Wizard()
-    .step(IntlTaxForm)
+    wizard.step(IntlTaxForm)
     .step(IntlKYCForm)
 )
 business_flow = (
-    Wizard()
-    .step(BizDetailsForm)
+    wizard.step(BizDetailsForm)
     .step(BizComplianceForm)
     .branch(
         condition(needs_international_checks, international_flow),
@@ -160,8 +158,7 @@ business_flow = (
     )
 )
 personal_flow = (
-    Wizard()
-    .branch(
+    wizard.branch(
         condition(needs_international_checks, international_flow),
         default=None,
     )
@@ -169,8 +166,7 @@ personal_flow = (
 )
 
 onboarding_wizard = (
-    Wizard()
-    .step(AccountTypeForm)
+    wizard.step(AccountTypeForm)
     .branch(
         condition(is_business_account, business_flow),
         default=personal_flow,
@@ -223,16 +219,14 @@ together, see [LIFECYCLE.md](LIFECYCLE.md).
 From the prototype examples, flow construction follows this style:
 
 ```python
-wizard = (
-    Wizard()
-    .step(FirstForm)
+signup_wizard = (
+    wizard.step(FirstForm)
     .step(SecondForm)
     .branch(
         condition(
             is_this,
             (
-                Wizard()
-                .step(AForm)
+                wizard.step(AForm)
                 .step(BForm)
             ),
         ),
@@ -261,8 +255,7 @@ unexpected side effects:
 
 ```python
 base_wizard = (
-    Wizard()
-    .step(AccountForm)
+    wizard.step(AccountForm)
 )
 
 staff_wizard = base_wizard.step(InternalReviewForm)
@@ -287,17 +280,14 @@ builds or selects the wizard at runtime:
 ```python
 class SignupWizardViewSet(WizardViewSet):
     def get_wizard(self):
-        wizard = (
-            Wizard()
-            .step(AccountStepView)
-        )
+        flow = wizard.step(AccountStepView)
 
         if self.request.user.is_staff:
-            wizard = wizard.step(InternalReviewStepView)
+            flow = flow.step(InternalReviewStepView)
         else:
-            wizard = wizard.step(ProfileStepView)
+            flow = flow.step(ProfileStepView)
 
-        return wizard.step(ConfirmStepView)
+        return flow.step(ConfirmStepView)
 ```
 
 When `get_wizard()` returns a plain `Wizard`, the viewset configures it with
@@ -327,8 +317,7 @@ def build_member_form_view(member_number):
 class HouseholdWizardViewSet(WizardViewSet):
     def get_wizard(self):
         declared_wizard = (
-            Wizard()
-            .step(
+            wizard.step(
                 HouseholdCountForm,
                 context={"step_name": "household_count"},
             )  # asks for `member_count`
@@ -345,12 +334,12 @@ class HouseholdWizardViewSet(WizardViewSet):
         )
         member_count = int(household_count_data["member_count"])
 
-        wizard = declared_wizard
+        flow = declared_wizard
 
         for index in range(member_count):
-            wizard = wizard.step(build_member_form_view(index + 1))
+            flow = flow.step(build_member_form_view(index + 1))
 
-        return wizard.step(ConfirmStepView)
+        return flow.step(ConfirmStepView)
 ```
 
 This allows flow shape to change by tenant, permissions, feature flags, locale,
@@ -362,9 +351,8 @@ point.
 The default, easy case is to pass a Django `Form` directly:
 
 ```python
-wizard = (
-    Wizard()
-    .step(AccountForm)
+signup_wizard = (
+    wizard.step(AccountForm)
     .step(ProfileForm)
     .step(ConfirmForm)
 )
@@ -399,9 +387,8 @@ class AccountStepView(FormView):
         return {"email": self.request.user.email}
 
 
-wizard = (
-    Wizard()
-    .step(AccountStepView)
+signup_wizard = (
+    wizard.step(AccountStepView)
     .step(ProfileForm)
     .step(ConfirmForm)
 )
@@ -412,14 +399,12 @@ to compose inline:
 
 ```python
 address_flow = (
-    Wizard()
-    .step(AddressForm)
+    wizard.step(AddressForm)
     .step(PostcodeLookupForm)
 )
 
 checkout_wizard = (
-    Wizard()
-    .step(CustomerForm)
+    wizard.step(CustomerForm)
     .step(address_flow)
     .step(ConfirmForm)
 )
@@ -463,8 +448,7 @@ class BillingProfileStepView(FormView):
 
 
 onboarding_wizard = (
-    Wizard()
-    .step(AccountForm)
+    wizard.step(AccountForm)
     .step(BillingProfileStepView)  # same configured view
     .step(ConfirmForm)
 )
@@ -489,8 +473,7 @@ renders:
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
     wizard = (
-        Wizard()
-        .step(AccountForm)
+        wizard.step(AccountForm)
     )
 ```
 
@@ -509,8 +492,7 @@ class ProfileStepView(FormView):
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
     wizard = (
-        Wizard()
-        .step(AccountForm)
+        wizard.step(AccountForm)
         .step(ProfileStepView)
     )
 ```
@@ -531,8 +513,7 @@ auto-generated `FormView`:
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
     wizard = (
-        Wizard()
-        .step(AccountForm)
+        wizard.step(AccountForm)
     )
 
     def get_context_data(self, **kwargs):
@@ -561,8 +542,7 @@ class AccountStepView(FormView):
 class SignupWizardViewSet(WizardViewSet):
     template_name = "signup/step.html"
     wizard = (
-        Wizard()
-        .step(AccountStepView)
+        wizard.step(AccountStepView)
     )
 
     def get_context_data(self, **kwargs):
@@ -610,8 +590,7 @@ For example, a project can choose to attach a step name explicitly:
 
 ```python
 signup_wizard = (
-    Wizard()
-    .step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
+    wizard.step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
     .step(ProfileForm, context={"step_name": "profile", "analytics_key": "signup-profile"})
     .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
 )
@@ -625,8 +604,7 @@ should also provide a helper like `named` so the declaration stays concise:
 
 ```python
 signup_wizard = (
-    Wizard()
-    .step(named("account", AccountForm))
+    wizard.step(named("account", AccountForm))
     .step(named("profile", ProfileForm))
     .step(named("confirm", ConfirmForm))
 )
@@ -659,8 +637,7 @@ def build_profile_context(request):
 
 
 signup_wizard = (
-    Wizard()
-    .step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
+    wizard.step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
     .step(ProfileForm, context=build_profile_context)
     .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
 )
@@ -681,9 +658,8 @@ In the common case, declare the wizard steps and rely on Gandalf defaults (for e
 In other words, storage customization:
 
 ```python
-wizard = (
-    Wizard()
-    .step(AccountForm)
+signup_wizard = (
+    wizard.step(AccountForm)
     .configure(storage_class=CustomSessionStorage)
 )
 ```
@@ -691,9 +667,8 @@ wizard = (
 and auto FormView generation customization:
 
 ```python
-wizard = (
-    Wizard()
-    .step(AccountForm)
+signup_wizard = (
+    wizard.step(AccountForm)
     .configure(form_view_factory_class=CustomFormViewFactory)
 )
 ```
@@ -755,8 +730,7 @@ def is_weekend(_request):
 
 
 weekday_or_weekend_wizard = (
-    Wizard()
-    .branch(
+    wizard.branch(
         condition(is_weekend, WeekendForm),
         default=WeekdayForm,
     )
@@ -786,18 +760,15 @@ For example:
 
 ```python
 business_flow = (
-    Wizard()
-    .step(BizDetailsForm)
+    wizard.step(BizDetailsForm)
     .step(BizComplianceForm)
 )
 personal_flow = (
-    Wizard()
-    .step(ProfileForm)
+    wizard.step(ProfileForm)
 )
 
 onboarding_wizard = (
-    Wizard()
-    .step(AccountTypeForm, context={"step_name": "account_type"})
+    wizard.step(AccountTypeForm, context={"step_name": "account_type"})
     .branch(
         condition(is_business_account, business_flow),
         default=personal_flow,
@@ -1026,8 +997,7 @@ class CheckoutWizard(SessionWizardView):
 
 ```python
 checkout_wizard = (
-    Wizard()
-    .step(CustomerForm, context={"step_name": "customer"})
+    wizard.step(CustomerForm, context={"step_name": "customer"})
     .step(AddressForm, context={"step_name": "address"})
     .step(ConfirmForm, context={"step_name": "confirm"})
 )
@@ -1074,8 +1044,7 @@ def needs_vat(request):
 
 
 company_wizard = (
-    Wizard()
-    .step(CompanyForm, context={"step_name": "company"})
+    wizard.step(CompanyForm, context={"step_name": "company"})
     .branch(
         condition(needs_vat, VATForm),
         default=None,  # skip VAT if condition is false
@@ -1112,18 +1081,15 @@ class OnboardingWizard(SessionWizardView):
 
 ```python
 business_flow = (
-    Wizard()
-    .step(BizAForm)
+    wizard.step(BizAForm)
     .step(BizBForm)
 )
 personal_flow = (
-    Wizard()
-    .step(PersonAForm)
+    wizard.step(PersonAForm)
 )
 
 onboarding_wizard = (
-    Wizard()
-    .step(AccountTypeForm)
+    wizard.step(AccountTypeForm)
     .branch(
         condition(is_business_account, business_flow),
         default=personal_flow,
@@ -1150,8 +1116,7 @@ In `django-formtools`, condition callables receive the wizard view. In Gandalf, 
 
 ```python
 that_wizard = (
-    Wizard()
-    .step(BWizardFirstForm)
+    wizard.step(BWizardFirstForm)
     .branch(
         condition(is_this, BWizardSecondForm),
         default=BWizardThirdForm,
@@ -1159,16 +1124,14 @@ that_wizard = (
 )
 
 main_wizard = (
-    Wizard()
-    .step(FirstForm)
+    wizard.step(FirstForm)
     .step(SecondForm)
     .step(ThirdForm)
     .branch(
         condition(
             is_this,
             (
-                Wizard()
-                .step(AWizardFirstForm)
+                wizard.step(AWizardFirstForm)
                 .step(AWizardSecondForm)
             ),
         ),
@@ -1293,8 +1256,7 @@ class PortableProfileStepView(FormView):
 
 
 view_based = (
-    Wizard()
-    .step(AccountStepView, context={"step_name": "account"})
+    wizard.step(AccountStepView, context={"step_name": "account"})
     .step(ProfileStepView, context={"step_name": "profile"})
     .step(ConfirmStepView, context={"step_name": "confirm"})
 )
