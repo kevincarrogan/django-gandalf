@@ -12,6 +12,95 @@ It is built for the point where your journey stops being a straight line and sta
 
 Instead of stitching this together with scattered step conditions and navigation overrides, `django-gandalf` aims to let you describe the flow as one explicit tree.
 
+## The simplest case: a linear wizard with a merged-payload `done()`
+
+Before the branching examples, here is the shortest end-to-end flow:
+a linear two-step signup wizard that collects form data and dispatches a
+merged payload from `done()`. This is the shape you start with; the
+branching examples below show how the same declarations grow.
+
+### formtools style
+
+```python
+from django import forms
+from django.http import HttpResponse
+from formtools.wizard.views import SessionWizardView
+
+
+class NameForm(forms.Form):
+    name = forms.CharField()
+
+
+class EmailForm(forms.Form):
+    email = forms.EmailField()
+
+
+class SignupWizard(SessionWizardView):
+    form_list = [
+        ("name", NameForm),
+        ("email", EmailForm),
+    ]
+    template_name = "signup/step.html"
+
+    def done(self, form_list, **kwargs):
+        payload = {}
+        for form in form_list:
+            payload.update(form.cleaned_data)
+        create_account(**payload)
+        return HttpResponse("Thanks!")
+```
+
+### django-gandalf style
+
+```python
+from django import forms
+from django.http import HttpResponse
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import MergeCleanedData, Wizard
+
+
+class NameForm(forms.Form):
+    name = forms.CharField()
+
+
+class EmailForm(forms.Form):
+    email = forms.EmailField()
+
+
+class SignupWizardViewSet(WizardViewSet):
+    template_name = "signup/step.html"
+    wizard = (
+        Wizard()
+        .step(NameForm)
+        .step(EmailForm)
+    )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        create_account(**payload)
+        return HttpResponse("Thanks!")
+```
+
+A few things to notice:
+
+- The wizard is declared as a chained builder rather than a list of
+  `(name, form)` tuples. Each `.step(...)` returns a new `Wizard`; nothing
+  mutates in place.
+- `bound_wizard.path` is the linked chain of completed steps for the
+  current run, in execution order.
+- `MergeCleanedData` is a `tree.Reducer` that folds each step's
+  `form.cleaned_data` into a single dict using last-write-wins. The merge
+  policy lives in the reducer, not in the wizard — subclass
+  `MergeCleanedData` (or write your own `tree.Reducer`) for a different
+  policy.
+- `done()` receives the `BoundWizard` itself rather than a list of forms,
+  so it can also inspect the path, look up steps by context, or read the
+  raw storage state as needed.
+
+Gandalf is not dramatically shorter for the linear case. The point is
+that the same declaration grows naturally into the tree-shaped flows
+shown below; you do not switch APIs when the flow gets complex.
+
 ## The core aim (up front): model branching flows cleanly
 
 Here is the same branching onboarding idea in both styles.
