@@ -105,4 +105,4 @@ class ConfiguredWizard:
         ).transform(root)
 
     def get_bound_wizard(self, request):
-        return BoundWizard(self, request, self.storage_class(request))
+        return BoundWizard(request, self.storage_class(request), wizard=self)

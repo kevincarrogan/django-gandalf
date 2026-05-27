@@ -28,3 +28,11 @@ class PersonalDetailsForm(forms.Form):
 
 class ReviewForm(forms.Form):
     confirmed = forms.BooleanField()
+
+
+class ItemCountForm(forms.Form):
+    count = forms.IntegerField(min_value=1, max_value=5)
+
+
+class ItemForm(forms.Form):
+    name = forms.CharField()

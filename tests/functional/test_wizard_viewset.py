@@ -686,6 +686,50 @@ def test_wizard_viewset_rejects_reconfiguring_configured_wizard(client):
         client.get(reverse("double-configured-wizard"))
 
 
+def test_dynamic_wizard_generates_step_per_chosen_count(client):
+    start_url = reverse("dynamic-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("dynamic-wizard-run", kwargs={"run_id": run_id})
+
+    first_response = client.get(run_url)
+    assert first_response.status_code == HTTPStatus.OK
+    assert "count" in first_response.context["form"].fields
+
+    client.post(run_url, data={"count": "3"})
+
+    for name in ("Ada", "Grace", "Mary"):
+        response = client.get(run_url)
+        assert response.status_code == HTTPStatus.OK
+        assert "name" in response.context["form"].fields
+        client.post(run_url, data={"name": name})
+
+    done_response = client.get(run_url)
+    assert done_response.status_code == HTTPStatus.OK
+    assert done_response.content == b"completed Ada, Grace, Mary"
+
+
+def test_dynamic_wizard_regenerates_tree_from_current_stored_state(client):
+    start_url = reverse("dynamic-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("dynamic-wizard-run", kwargs={"run_id": run_id})
+
+    session = client.session
+    session["gandalf_runs"][run_id] = {
+        "state": [
+            {"step": {"count": "2"}},
+            {"step": {"name": "Ada"}},
+            {"step": {"name": "Grace"}},
+        ],
+    }
+    session.save()
+
+    done_response = client.get(run_url)
+    assert done_response.status_code == HTTPStatus.OK
+    assert done_response.content == b"completed Ada, Grace"
+
+
 def test_empty_wizard_run_returns_done_response_immediately(
     client,
     empty_wizard_url,
