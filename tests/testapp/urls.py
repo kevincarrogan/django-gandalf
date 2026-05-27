@@ -204,4 +204,44 @@ urlpatterns = [
         views.PathAwareLinearWizardViewSet.as_view(),
         name="path-aware-linear-wizard-run",
     ),
+    path(
+        "branching-merged-payload-wizard/",
+        views.BranchingMergedPayloadWizardViewSet.as_view(),
+        name="branching-merged-payload-wizard",
+    ),
+    path(
+        "branching-merged-payload-wizard/<uuid:run_id>/",
+        views.BranchingMergedPayloadWizardViewSet.as_view(),
+        name="branching-merged-payload-wizard-run",
+    ),
+    path(
+        "empty-branch-arm-merged-payload-wizard/",
+        views.EmptyBranchArmMergedPayloadWizardViewSet.as_view(),
+        name="empty-branch-arm-merged-payload-wizard",
+    ),
+    path(
+        "empty-branch-arm-merged-payload-wizard/<uuid:run_id>/",
+        views.EmptyBranchArmMergedPayloadWizardViewSet.as_view(),
+        name="empty-branch-arm-merged-payload-wizard-run",
+    ),
+    path(
+        "runtime-tree-branching-merge-wizard/",
+        views.RuntimeTreeBranchingMergeViewSet.as_view(),
+        name="runtime-tree-branching-merge-wizard",
+    ),
+    path(
+        "runtime-tree-branching-merge-wizard/<uuid:run_id>/",
+        views.RuntimeTreeBranchingMergeViewSet.as_view(),
+        name="runtime-tree-branching-merge-wizard-run",
+    ),
+    path(
+        "form-view-step-not-implemented/",
+        views.FormViewStepRaisesNotImplementedViewSet.as_view(),
+        name="form-view-step-not-implemented",
+    ),
+    path(
+        "form-view-step-not-implemented/<uuid:run_id>/",
+        views.FormViewStepRaisesNotImplementedViewSet.as_view(),
+        name="form-view-step-not-implemented-run",
+    ),
 ]
