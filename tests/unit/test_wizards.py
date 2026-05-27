@@ -7,7 +7,12 @@ from django.views.generic.edit import FormView
 
 import gandalf.wizard
 from gandalf import tree
+from gandalf.runtime import BoundWizard
 from gandalf.wizard import ConfiguredWizard, Wizard
+
+
+def _make_bound_wizard(wizard, request):
+    return BoundWizard(request, wizard.storage_class(request), wizard=wizard)
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
@@ -106,7 +111,7 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     found = bound_wizard.find_step(step_name="second")
@@ -142,7 +147,7 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     personal_step = bound_wizard.find_step(step_name="personal")
@@ -175,7 +180,7 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     assert bound_wizard.find_step(step_name="business") is None
@@ -192,7 +197,7 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     assert bound_wizard.find_step(step_name="missing") is None
@@ -257,7 +262,7 @@ def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     matches = bound_wizard.filter_steps(kind="data")
@@ -319,7 +324,7 @@ def test_get_bound_wizard_uses_configured_storage_class(request_with_session_fac
     request = request_with_session_factory()
     wizard = Wizard().configure(storage_class=FakeStorage)
 
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
 
     assert isinstance(bound_wizard.storage, FakeStorage)
     assert bound_wizard.storage.request is request
@@ -348,7 +353,7 @@ def test_configured_wizard_uses_configured_runtime_tree_builder_class(
             runtime_tree_builder_class=FakeBuilder,
         )
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     assert bound_wizard.runtime_tree is sentinel
@@ -382,7 +387,7 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
             cursor_walker_class=FakeWalker,
         )
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
@@ -426,7 +431,7 @@ def test_configured_wizard_uses_configured_state_serializer_class(
             state_serializer_class=FakeSerializer,
         )
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
@@ -511,7 +516,7 @@ def test_bound_wizard_initialise_creates_session_run(
     linear_wizard,
 ):
     request = request_with_session_factory()
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
 
     bound_wizard.initialise()
 
@@ -526,7 +531,7 @@ def test_bound_wizard_initialise_marks_session_modified(
     linear_wizard,
 ):
     request = request_with_session_factory()
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
 
     bound_wizard.initialise()
 
@@ -547,7 +552,7 @@ def test_bound_wizard_replays_submissions_from_url_run_id(
         },
     )
 
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
     response = bound_wizard.replay()
 
@@ -570,7 +575,7 @@ def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
         },
     )
 
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve(run_id)
     response = bound_wizard.replay()
 
@@ -590,7 +595,7 @@ def test_bound_wizard_retrieve_marks_session_modified(
         },
     )
 
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     assert request.session.modified is True
@@ -609,7 +614,7 @@ def test_bound_wizard_get_run_data_returns_current_run_data(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     run_data = bound_wizard.get_run_data()
@@ -630,7 +635,7 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
@@ -683,7 +688,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"account_type": "business"})
@@ -720,7 +725,7 @@ def test_bound_wizard_renders_first_step_in_default_branch(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"account_type": "personal"})
@@ -759,7 +764,7 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"business_name": "Acme"})
@@ -804,7 +809,7 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"confirmed": "on"})
@@ -831,7 +836,7 @@ def test_bound_wizard_replay_returns_invalid_stored_step_response(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     response = bound_wizard.replay()
@@ -854,7 +859,7 @@ def test_bound_wizard_persists_submissions_by_url_run_id(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
@@ -878,11 +883,11 @@ def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
             },
         },
     )
-    first_bound_wizard = linear_wizard.get_bound_wizard(request)
+    first_bound_wizard = _make_bound_wizard(linear_wizard, request)
     first_bound_wizard.retrieve("first-run")
 
     first_bound_wizard.submit({"name": "Ada"})
-    second_bound_wizard = linear_wizard.get_bound_wizard(request)
+    second_bound_wizard = _make_bound_wizard(linear_wizard, request)
     second_bound_wizard.retrieve("second-run")
     first_response = first_bound_wizard.replay()
     second_response = second_bound_wizard.replay()
@@ -904,7 +909,7 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"email": "ada@example.com"})
@@ -930,7 +935,7 @@ def test_bound_wizard_replaces_invalid_stored_submission(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
@@ -958,7 +963,7 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"email": "grace@example.com"})
@@ -987,7 +992,7 @@ def test_bound_wizard_replay_returns_none_after_complete_path(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     response = bound_wizard.replay()
@@ -1025,7 +1030,7 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     response = bound_wizard.replay()
@@ -1048,7 +1053,7 @@ def test_runtime_step_form_exposes_cleaned_data_for_completed_step(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     first_step = bound_wizard.runtime_tree
@@ -1071,7 +1076,7 @@ def test_runtime_step_data_still_exposes_raw_submission(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     first_step = bound_wizard.runtime_tree
@@ -1099,7 +1104,7 @@ def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     first_step = bound_wizard.runtime_tree
@@ -1115,7 +1120,7 @@ def test_bound_wizard_path_is_none_when_no_steps_complete(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     assert bound_wizard.path is None
@@ -1136,7 +1141,7 @@ def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     path = bound_wizard.path
@@ -1181,7 +1186,7 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     path = bound_wizard.path
@@ -1209,7 +1214,7 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     class MergeCleanedData(tree.Reducer):
@@ -1276,7 +1281,7 @@ def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     path = bound_wizard.path
@@ -1326,7 +1331,7 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     path = bound_wizard.path
@@ -1357,7 +1362,7 @@ def test_merge_cleaned_data_folds_path_into_dict(
             },
         },
     )
-    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
     payload = MergeCleanedData().reduce(bound_wizard.path)
@@ -1400,7 +1405,7 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
@@ -1443,7 +1448,7 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
             },
         },
     )
-    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
     response = bound_wizard.replay()

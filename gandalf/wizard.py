@@ -103,6 +103,3 @@ class ConfiguredWizard:
             template_name=template_name,
             form_view_factory=self.form_view_factory,
         ).transform(root)
-
-    def get_bound_wizard(self, request):
-        return BoundWizard(request, self.storage_class(request), wizard=self)
