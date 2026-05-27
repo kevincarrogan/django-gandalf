@@ -416,6 +416,35 @@ So the intended progression is:
 - let Gandalf create the `FormView`s automatically,
 - and only reach for a custom `FormView` when a step needs more configuration.
 
+#### What's automatic when you bring your own `FormView`
+
+When Gandalf needs to recover a completed step's `cleaned_data` — for
+`MergeCleanedData`, `request.wizard.path.form.cleaned_data`, or any other
+context-aware read — it does so by driving the step's `FormView` through its
+public composition API. That means the following overrides on your `FormView`
+are honored automatically:
+
+- `form_class` (static attribute)
+- `get_form_class()` (dynamic form-class selection)
+- `get_form_kwargs()` (extra kwargs like `user=self.request.user` or
+  `instance=obj`)
+- `get_initial()`, `get_prefix()`
+
+What's not automatic, because `.form` recovers cleaned data without running
+the full dispatch pipeline:
+
+- Side effects or data transformations performed in `form_valid()` — Gandalf
+  reads `cleaned_data` straight from `form.is_valid()`, not from anything
+  `form_valid()` does to it.
+- Overrides of `post()`, `dispatch()`, or `setup()` that change how the
+  request flows through the view.
+- `FormView`s that return non-redirect responses on success.
+
+The recovered request also uses the *current* request — so
+`self.request.user` reflects whoever is currently driving the wizard, not
+necessarily whoever originally submitted the step (relevant only for flows
+where one user edits another's run).
+
 ### Why standalone `FormView` + wizard step reuse matters
 
 One practical payoff of this design is that a configured `FormView` can be

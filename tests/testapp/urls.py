@@ -215,6 +215,16 @@ urlpatterns = [
         name="path-aware-linear-wizard-run",
     ),
     path(
+        "path-aware-form-view-first-step-wizard/",
+        views.PathAwareFormViewFirstStepWizardViewSet.as_view(),
+        name="path-aware-form-view-first-step-wizard",
+    ),
+    path(
+        "path-aware-form-view-first-step-wizard/<uuid:run_id>/",
+        views.PathAwareFormViewFirstStepWizardViewSet.as_view(),
+        name="path-aware-form-view-first-step-wizard-run",
+    ),
+    path(
         "branching-merged-payload-wizard/",
         views.BranchingMergedPayloadWizardViewSet.as_view(),
         name="branching-merged-payload-wizard",
@@ -243,16 +253,6 @@ urlpatterns = [
         "runtime-tree-branching-merge-wizard/<uuid:run_id>/",
         views.RuntimeTreeBranchingMergeViewSet.as_view(),
         name="runtime-tree-branching-merge-wizard-run",
-    ),
-    path(
-        "form-view-step-not-implemented/",
-        views.FormViewStepRaisesNotImplementedViewSet.as_view(),
-        name="form-view-step-not-implemented",
-    ),
-    path(
-        "form-view-step-not-implemented/<uuid:run_id>/",
-        views.FormViewStepRaisesNotImplementedViewSet.as_view(),
-        name="form-view-step-not-implemented-run",
     ),
     path(
         "dynamic-wizard/",

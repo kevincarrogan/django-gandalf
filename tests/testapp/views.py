@@ -457,29 +457,6 @@ class FormViewStepWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-class FormViewStepRaisesNotImplementedViewSet(WizardViewSet):
-    description = (
-        "FormView-backed step whose done() reads runtime_tree.form to surface "
-        "the NotImplementedError raised for FormView-declared steps."
-    )
-    wizard = Wizard().step(FirstStepFormView)
-
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "form-view-step-not-implemented-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
-
-    def done(self, bound_wizard):
-        try:
-            bound_wizard.runtime_tree.form
-        except NotImplementedError:
-            return HttpResponse(f"form_not_implemented {bound_wizard.run_id}")
-        return HttpResponse(f"completed {bound_wizard.run_id}")
-
-
 class MissingTemplateWizardViewSet(WizardViewSet):
     description = (
         "Wizard with neither template_name nor configured template (expect failure)."
@@ -567,6 +544,39 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
     def get_wizard_url(self, run_id):
         return reverse(
             "path-aware-linear-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class FirstStepFromFormView(FormView):
+    """User-supplied first-step FormView used to verify that path-aware reads
+    work when the upstream step is a FormView (Layer 2) rather than a plain
+    Form declaration."""
+
+    form_class = FirstStepForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+
+class PathAwareFormViewFirstStepWizardViewSet(WizardViewSet):
+    description = (
+        "Linear wizard whose first step is a user-supplied FormView; the "
+        "second step still pre-fills its initial value from "
+        "request.wizard.path mid-wizard."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = wizard.step(FirstStepFromFormView).step(EmailStepPrefilledFromPath)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "path-aware-form-view-first-step-wizard-run",
             kwargs={
                 "run_id": run_id,
             },
