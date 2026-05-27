@@ -1225,3 +1225,43 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
     payload = MergeCleanedData().reduce(bound_wizard.path)
 
     assert payload == {"name": "Ada", "email": "ada@example.com"}
+
+
+def test_step_view_can_read_request_wizard_path_mid_wizard(
+    request_with_session_factory,
+):
+    captured = {}
+
+    class CapturingSecondStepView(FormView):
+        form_class = SecondStepForm
+        template_name = "testapp/linear_wizard.html"
+
+        def get_initial(self):
+            path = self.request.wizard.path
+            captured["path_head_name"] = (
+                path.form.cleaned_data["name"] if path else None
+            )
+            return super().get_initial()
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .step(CapturingSecondStepView)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.replay()
+
+    assert response.status_code == 200
+    assert captured["path_head_name"] == "Ada"

@@ -733,3 +733,37 @@ def test_linear_wizard_done_can_merge_cleaned_data_across_path(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"completed name=Ada email=ada@example.com"
+
+
+@pytest.fixture
+def path_aware_linear_wizard_url():
+    return reverse("path-aware-linear-wizard")
+
+
+@pytest.fixture
+def path_aware_linear_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "path-aware-linear-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_step_view_can_pre_fill_initial_from_request_wizard_path(
+    client,
+    path_aware_linear_wizard_url,
+    path_aware_linear_wizard_run_url,
+):
+    client.get(path_aware_linear_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        path_aware_linear_wizard_run_url(run_id),
+        data={"name": "Ada"},
+    )
+    response = client.get(path_aware_linear_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'value="ada@example.com"')
