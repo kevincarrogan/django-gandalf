@@ -1127,6 +1127,73 @@ def test_form_view_step_done_raises_not_implemented_for_form_attribute(
 
 
 @pytest.fixture
+def section_editing_wizard_url():
+    return reverse("section-editing-wizard")
+
+
+@pytest.fixture
+def section_editing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("section-editing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_section_editing_wizard_uses_custom_edit_resolver_for_get(
+    client,
+    section_editing_wizard_url,
+    section_editing_wizard_run_url,
+):
+    from tests.testapp.forms import AccountTypeForm
+
+    client.get(section_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        section_editing_wizard_run_url(run_id),
+        data={"account_type": "personal"},
+    )
+    client.post(
+        section_editing_wizard_run_url(run_id),
+        data={"preferred_name": "Ada"},
+    )
+
+    response = client.get(
+        section_editing_wizard_run_url(run_id) + "?section=account",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    form = response.context["form"]
+    assert isinstance(form, AccountTypeForm)
+    assert form.initial == {"account_type": "personal"}
+
+
+def test_section_editing_wizard_uses_custom_edit_resolver_for_post(
+    client,
+    section_editing_wizard_url,
+    section_editing_wizard_run_url,
+):
+    client.get(section_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        section_editing_wizard_run_url(run_id),
+        data={"account_type": "personal"},
+    )
+    client.post(
+        section_editing_wizard_run_url(run_id),
+        data={"preferred_name": "Ada"},
+    )
+
+    client.post(
+        section_editing_wizard_run_url(run_id),
+        data={"section": "account", "account_type": "business"},
+    )
+
+    _, run_data = get_only_run_info_from_session(client.session)
+    assert run_data["state"][0]["step"] == {"account_type": "business"}
+    assert "section" not in run_data["state"][0]["step"]
+
+
+@pytest.fixture
 def file_uploading_wizard_url():
     return reverse("file-uploading-wizard")
 

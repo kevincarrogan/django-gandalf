@@ -99,7 +99,6 @@ class StepDispatcher:
         self._bound_wizard = bound_wizard
 
     def dispatch(self, step, request, *args, initial=None, **kwargs):
-        request.wizard = self._bound_wizard
         view_kwargs = {} if initial is None else {"initial": initial}
         step_view = step.form_view.as_view(**view_kwargs)
         return step_view(request, *args, **kwargs)
@@ -107,6 +106,7 @@ class StepDispatcher:
     def build_request(self, method, submission=None, files=None):
         request = copy(self._bound_wizard.request)
         request.method = method
+        request.wizard = self._bound_wizard
         if method == "POST":
             request.POST = submission
             if files is not None:
@@ -291,7 +291,6 @@ class BoundWizard:
 
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
         request = self.dispatcher.build_request("GET")
-        request.wizard = self
         self._predicate_runtime_tree = partial_runtime_head
         try:
             for predicate, subtree in branch_node.arms:

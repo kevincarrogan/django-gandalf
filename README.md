@@ -1024,8 +1024,123 @@ If a project wants a transformed payload, it can still build one from either
 `wizard.tree` or `wizard.path`. Gandalf only needs to guarantee that:
 
 - `wizard.tree` accurately represents the declared structure plus runtime state,
-- and `wizard.path` accurately represents the visited/completed route through
+  and `wizard.path` accurately represents the visited/completed route through
   that structure.
+
+---
+
+## Back-navigation: editing earlier steps
+
+A wizard often needs an "edit" affordance — a review screen with links back to
+each prior step, or a sidebar that lets the user revisit any completed section.
+Gandalf surfaces this as two operations on `BoundWizard`:
+
+- `render_edit(**context)` — GET-side. Resolves the targeted runtime step via
+  context matching, then dispatches its form view with the stored submission
+  pre-filled as `initial`. The user sees their earlier answer ready to amend.
+- `edit(submission, **context)` — POST-side. Splices the new submission into
+  the runtime tree at the target step, re-runs the cursor walker, and persists
+  the rebuilt state. Downstream steps that no longer fit (e.g. a branch arm
+  whose predicate now matches differently) are dropped from state automatically.
+
+You typically reach these via the viewset, which detects an edit cycle through
+a configurable resolver. The default is `StepNameEditResolver`: edit links
+include `?gandalf_edit_step=<step_name>` and edit POSTs include a
+`gandalf_edit_step` form field. The resolver looks the value up against each
+step's `context={"step_name": ...}`:
+
+```python
+from gandalf.wizard import Wizard, named
+
+wizard = (
+    Wizard()
+    .step(named("account", AccountForm))
+    .step(named("profile", ProfileForm))
+    .step(named("review", ReviewForm))
+    .configure(template_name="onboarding/wizard.html")
+)
+```
+
+A review template wires per-step edit links from the runtime path:
+
+```html
+<h1>Review your details</h1>
+<ul>
+  {% for step in wizard.path %}
+    <li>
+      <a href="?gandalf_edit_step={{ step.declaration.context.step_name }}">
+        Edit {{ step.declaration.context.step_name }}
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Confirm</button>
+</form>
+```
+
+Edit POSTs use the same field name as a hidden input on the per-step edit form
+(or arrive via the URL query if you redirect through GET first):
+
+```html
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="gandalf_edit_step" value="{{ step_name }}">
+  {{ form.as_p }}
+  <button type="submit">Save changes</button>
+</form>
+```
+
+### Customizing the edit resolver
+
+`edit_resolver_class` is configurable per wizard the same way `storage_class`
+is. Subclass the default to use a different field name, a different context
+key, or a composite lookup:
+
+```python
+class SectionEditResolver:
+    field_name = "section"
+    context_key = "section"
+
+    def resolve(self, request):
+        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
+        if not value:
+            return None
+        return {self.context_key: value}
+
+    def clean_submission(self, submission):
+        submission.pop(self.field_name, None)
+        return submission
+
+
+wizard = (
+    Wizard()
+    .step(AccountForm, context={"section": "account"})
+    .step(ProfileForm, context={"section": "profile"})
+    .configure(
+        template_name="onboarding/wizard.html",
+        edit_resolver_class=SectionEditResolver,
+    )
+)
+```
+
+A resolver needs two methods: `resolve(request)` returning either `None` (no
+edit) or a context dict that uniquely identifies a runtime step, and
+`clean_submission(submission)` stripping the resolver-owned field(s) out of
+the POST dict before the wizard treats it as form data.
+
+### Smart preservation on edit
+
+When an edit changes the answer to a step that other steps depended on, the
+wizard does the right thing automatically. Concretely: after `edit()` splices
+the new submission into the runtime tree, `CursorWalker` re-validates every
+downstream step against the new state. Any step whose stored data still
+validates is kept; any step whose stored data no longer fits (the branch arm
+changed, the dependent form now rejects the old input) parks the cursor and
+the trailing entries get truncated from state. The user re-runs the remainder
+of the wizard from that point.
 
 ---
 

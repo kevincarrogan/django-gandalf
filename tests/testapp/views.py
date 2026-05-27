@@ -250,6 +250,53 @@ class BranchingWizardViewSet(WizardViewSet):
         )
 
 
+class SectionEditResolver:
+    """Custom edit resolver that reads `?section=...` (or POST field) and
+    looks up steps by their `section` context key rather than `step_name`."""
+
+    field_name = "section"
+    context_key = "section"
+
+    def resolve(self, request):
+        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
+        if not value:
+            return None
+        return {self.context_key: value}
+
+    def clean_submission(self, submission):
+        submission.pop(self.field_name, None)
+        return submission
+
+
+class SectionEditingWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard configuring a custom `edit_resolver_class` that keys edit "
+        "lookups on a `section` context entry plus a `section=` form field."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"section": "account"})
+        .step(PersonalDetailsForm, context={"section": "details"})
+        .step(ReviewForm, context={"section": "review"})
+        .configure(
+            template_name="testapp/editing_wizard.html",
+            edit_resolver_class=SectionEditResolver,
+        )
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "section-editing-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 class EditingBranchingWizardViewSet(WizardViewSet):
     description = (
         "Branching wizard whose review template renders edit links for each prior "

@@ -284,4 +284,14 @@ urlpatterns = [
         views.FileUploadingWizardViewSet.as_view(),
         name="file-uploading-wizard-run",
     ),
+    path(
+        "section-editing-wizard/",
+        views.SectionEditingWizardViewSet.as_view(),
+        name="section-editing-wizard",
+    ),
+    path(
+        "section-editing-wizard/<uuid:run_id>/",
+        views.SectionEditingWizardViewSet.as_view(),
+        name="section-editing-wizard-run",
+    ),
 ]
