@@ -22,8 +22,6 @@ class RuntimeStep:
 
     @property
     def form(self):
-        if self.data is None:
-            return None
         form_class = self.declaration.declaration
         if not issubclass(form_class, forms.Form):
             raise NotImplementedError(
