@@ -2,29 +2,55 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>django-gandalf test wizards</title>
+    <title>django-gandalf examples</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+        body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #222; }
         h1 { margin-bottom: 0.25rem; }
         p.lead { color: #555; margin-top: 0; }
+        h2 { margin-top: 2rem; padding-bottom: 0.25rem; border-bottom: 1px solid #eee; font-size: 1.1rem; color: #333; }
         ul { list-style: none; padding: 0; }
-        li { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 6px; }
+        li { margin-bottom: 0.75rem; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 6px; }
         li a { font-weight: 600; text-decoration: none; }
         li .name { font-family: ui-monospace, monospace; color: #888; font-size: 0.85rem; margin-left: 0.5rem; }
         li p { margin: 0.25rem 0 0; color: #444; }
+        details summary { cursor: pointer; color: #666; font-size: 0.95rem; }
+        details { margin-top: 1.5rem; }
     </style>
 </head>
 <body>
-    <h1>django-gandalf test wizards</h1>
-    <p class="lead">Entry points exposed by the test app for manual smoke testing.</p>
-    <ul>
-        {% for entry in entries %}
-            <li>
-                <a href="{{ entry.url }}">{{ entry.view_name }}</a>
-                <span class="name">{{ entry.name }}</span>
-                <p>{{ entry.description|default:"(no description)" }}</p>
-            </li>
-        {% endfor %}
-    </ul>
+    <h1>django-gandalf examples</h1>
+    <p class="lead">
+        Worked, runnable scenarios. Each one is also a functional test in
+        <code>tests/functional/test_wizard_viewset.py</code> &mdash; what you
+        click here is exactly what the test suite asserts. See
+        <code>EXAMPLES.md</code> for a guided tour.
+    </p>
+    {% for category in entries_by_category %}
+        {% if category.name == "Other" %}
+            <details>
+                <summary>Other ({{ category.entries|length }} mechanics &amp; edge-case demos)</summary>
+                <ul>
+                    {% for entry in category.entries %}
+                        <li>
+                            <a href="{{ entry.url }}">{{ entry.view_name }}</a>
+                            <span class="name">{{ entry.name }}</span>
+                            <p>{{ entry.description|default:"(no description)" }}</p>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </details>
+        {% else %}
+            <h2>{{ category.name }}</h2>
+            <ul>
+                {% for entry in category.entries %}
+                    <li>
+                        <a href="{{ entry.url }}">{{ entry.view_name }}</a>
+                        <span class="name">{{ entry.name }}</span>
+                        <p>{{ entry.description|default:"(no description)" }}</p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endfor %}
 </body>
 </html>

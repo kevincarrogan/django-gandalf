@@ -23,6 +23,18 @@ from .forms import (
 )
 
 
+CATEGORY_ORDER = [
+    "Getting started",
+    "Branching",
+    "Editing",
+    "Dynamic flows",
+    "File uploads",
+    "Custom reducers & resolvers",
+    "Path-aware steps",
+    "Other",
+]
+
+
 class IndexView(TemplateView):
     template_name = "testapp/index.html"
 
@@ -46,10 +58,30 @@ class IndexView(TemplateView):
                     "url": reverse(pattern.name),
                     "view_name": view_class.__name__,
                     "description": getattr(view_class, "description", ""),
+                    "category": getattr(view_class, "category", None),
+                    "is_example": getattr(view_class, "example", False),
                 }
             )
         entries.sort(key=lambda e: e["view_name"])
+
+        example_entries = [entry for entry in entries if entry["is_example"]]
+        other_entries = [entry for entry in entries if not entry["is_example"]]
+
+        grouped = {category: [] for category in CATEGORY_ORDER}
+        for entry in example_entries:
+            category = entry["category"] or "Other"
+            grouped.setdefault(category, []).append(entry)
+        for entry in other_entries:
+            grouped.setdefault("Other", []).append(entry)
+
+        entries_by_category = [
+            {"name": category, "entries": items}
+            for category, items in grouped.items()
+            if items
+        ]
+        # Preserve a flat entries list for any caller that wants it.
         context["entries"] = entries
+        context["entries_by_category"] = entries_by_category
         return context
 
 
@@ -148,6 +180,8 @@ class LinearWizardViewSet(WizardViewSet):
 
 class DoneLinearWizardViewSet(WizardViewSet):
     description = "Two-step linear wizard with a done() that combines both submissions."
+    category = "Getting started"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -229,6 +263,8 @@ class BranchingWizardViewSet(WizardViewSet):
         "Branches on the first step's account type: business -> business details, "
         "otherwise personal details, then a shared review step."
     )
+    category = "Branching"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -275,6 +311,8 @@ class SectionEditingWizardViewSet(WizardViewSet):
         "Wizard configuring a custom `edit_resolver_class` that keys edit "
         "lookups on a `section` context entry plus a `section=` form field."
     )
+    category = "Custom reducers & resolvers"
+    example = True
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
@@ -304,6 +342,8 @@ class EditingBranchingWizardViewSet(WizardViewSet):
         "Branching wizard whose review template renders edit links for each prior "
         "step (account type and the active arm's detail step)."
     )
+    category = "Editing"
+    example = True
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
@@ -540,6 +580,8 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
         "Linear wizard whose second step pre-fills its initial value from "
         "request.wizard.path mid-wizard."
     )
+    category = "Path-aware steps"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.step(FirstStepForm).step(EmailStepPrefilledFromPath)
 
@@ -593,6 +635,8 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
         "Branching wizard with a two-step arm; done() merges cleaned data "
         "across the path via MergeCleanedData."
     )
+    category = "Branching"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = (
         wizard.step(AccountTypeForm, context={"step_name": "account_type"})
@@ -697,6 +741,8 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
         "Linear two-step wizard whose done() merges cleaned data across the "
         "path via MergeCleanedData and dispatches the merged payload."
     )
+    category = "Getting started"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
 
@@ -745,6 +791,8 @@ class DynamicWizardViewSet(WizardViewSet):
         "Dynamically-built wizard: pick a count, then the same view generates "
         "that many item-name steps from the stored count on each request."
     )
+    category = "Dynamic flows"
+    example = True
     template_name = "testapp/linear_wizard.html"
 
     def get_wizard(self, bound_wizard):
@@ -805,6 +853,8 @@ class FileUploadingWizardViewSet(WizardViewSet):
         "Two-step wizard whose first step accepts a file upload; done() echoes "
         "the stored filename and cleans up the run's files."
     )
+    category = "File uploads"
+    example = True
     template_name = "testapp/file_upload_wizard.html"
     wizard = (
         Wizard()
@@ -831,6 +881,8 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
         "Dynamic wizard whose generated item steps are condensed into a "
         "list under one key via a context-aware MergeCleanedData subclass."
     )
+    category = "Custom reducers & resolvers"
+    example = True
     template_name = "testapp/linear_wizard.html"
 
     def get_wizard(self, bound_wizard):
@@ -862,6 +914,8 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
 
 class NamedHelperWizardViewSet(WizardViewSet):
     description = "Wizard whose steps are declared via the `named()` helper."
+    category = "Getting started"
+    example = True
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -889,6 +943,8 @@ class FileEditingWizardViewSet(WizardViewSet):
         "Wizard whose first step is an optional-photo upload, supporting an "
         "edit cycle on that step (replace, add, or leave alone)."
     )
+    category = "File uploads"
+    example = True
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
