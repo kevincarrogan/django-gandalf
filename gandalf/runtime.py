@@ -60,13 +60,6 @@ class RuntimeStep:
         `post()`, `dispatch()`, or `setup()`) are not surfaced here — `.form`
         does not run the FormView's dispatch pipeline.
         """
-        if self.bound_wizard is None:
-            raise RuntimeError(
-                "RuntimeStep.form requires a bound_wizard backref; "
-                "construct RuntimeSteps through CursorWalker, "
-                "RuntimeTreeBuilder, or SpliceSubmission so the runtime "
-                "tree carries its request context."
-            )
         form_view_class = self.declaration.form_view
         request = self.bound_wizard.dispatcher.build_request(
             "POST",

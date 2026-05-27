@@ -294,4 +294,44 @@ urlpatterns = [
         views.SectionEditingWizardViewSet.as_view(),
         name="section-editing-wizard-run",
     ),
+    path(
+        "named-helper-wizard/",
+        views.NamedHelperWizardViewSet.as_view(),
+        name="named-helper-wizard",
+    ),
+    path(
+        "named-helper-wizard/<uuid:run_id>/",
+        views.NamedHelperWizardViewSet.as_view(),
+        name="named-helper-wizard-run",
+    ),
+    path(
+        "file-editing-wizard/",
+        views.FileEditingWizardViewSet.as_view(),
+        name="file-editing-wizard",
+    ),
+    path(
+        "file-editing-wizard/<uuid:run_id>/",
+        views.FileEditingWizardViewSet.as_view(),
+        name="file-editing-wizard-run",
+    ),
+    path(
+        "empty-branch-arm-context-finder-wizard/",
+        views.EmptyBranchArmContextFinderViewSet.as_view(),
+        name="empty-branch-arm-context-finder-wizard",
+    ),
+    path(
+        "empty-branch-arm-context-finder-wizard/<uuid:run_id>/",
+        views.EmptyBranchArmContextFinderViewSet.as_view(),
+        name="empty-branch-arm-context-finder-wizard-run",
+    ),
+    path(
+        "branch-truncate-wizard/",
+        views.BranchTruncateWizardViewSet.as_view(),
+        name="branch-truncate-wizard",
+    ),
+    path(
+        "branch-truncate-wizard/<uuid:run_id>/",
+        views.BranchTruncateWizardViewSet.as_view(),
+        name="branch-truncate-wizard-run",
+    ),
 ]

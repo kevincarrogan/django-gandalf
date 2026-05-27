@@ -35,9 +35,6 @@ class Step:
         if self.next is not None:
             yield from self.next
 
-    def accept_visit(self, visitor):
-        return visitor.visit_step(self)
-
     def accept_interpret(self, interpreter):
         return interpreter.visit_step(self)
 
@@ -60,12 +57,6 @@ class Branch:
         if self.next is not None:
             yield from self.next
 
-    def accept_visit(self, visitor):
-        visitor.visit_branch(self)
-        for _, arm in self.arms:
-            visitor.visit(arm)
-        visitor.visit(self.default)
-
     def accept_interpret(self, interpreter):
         return interpreter.visit_branch(self)
 
@@ -86,18 +77,6 @@ def build(declarations: list[Node]) -> Node | None:
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
-
-
-class Visitor:
-    """Top-down, read-only tree traversal. Auto-descends into branch arms
-    (all arms and default for declaration branches; the selected arm for
-    runtime branches). Subclasses must define `visit_step` and `visit_branch`."""
-
-    def visit(self, root):
-        node = root
-        while node is not None:
-            node.accept_visit(self)
-            node = node.next
 
 
 class Transformer:
@@ -235,8 +214,8 @@ class ContextFinder:
     tracking the path of indices to each match. For runtime trees, only the
     active arm is traversed. For declaration trees, every arm is.
 
-    Use `one()` / `all()` for the bare matches, or `one_with_path()` /
-    `all_with_paths()` to also get the position tuple.
+    Use `one()` / `all()` for the bare matches, or `one_with_path()` to also
+    get the position tuple alongside a single match.
 
     Pass `require_data=True` to skip matches whose `data` attribute is None
     (only meaningful on runtime trees).
@@ -287,6 +266,3 @@ class ContextFinder:
 
     def all(self) -> list:
         return [match[1] for match in self.matches]
-
-    def all_with_paths(self) -> list:
-        return list(self.matches)
