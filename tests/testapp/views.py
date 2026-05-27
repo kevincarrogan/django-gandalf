@@ -6,6 +6,7 @@ from gandalf.viewsets import WizardViewSet
 from django.http import HttpResponse
 from django.urls import reverse
 from django.views.generic import TemplateView
+from django.views.generic.edit import FormView
 
 from .forms import (
     AccountTypeForm,
@@ -418,6 +419,49 @@ class EmptyWizardViewSet(WizardViewSet):
     def get_wizard_url(self, run_id):
         return reverse(
             "empty-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class EmailStepPrefilledFromPath(FormView):
+    """Second-step view that pre-fills its email field from the
+    previous step's submitted name, by reading `request.wizard.path`
+    mid-wizard."""
+
+    form_class = SecondStepForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_initial(self):
+        initial = super().get_initial()
+        path = self.request.wizard.path
+        if path is not None:
+            name = path.form.cleaned_data["name"]
+            initial["email"] = f"{name.lower()}@example.com"
+        return initial
+
+
+class PathAwareLinearWizardViewSet(WizardViewSet):
+    description = (
+        "Linear wizard whose second step pre-fills its initial value from "
+        "request.wizard.path mid-wizard."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        wizard.step(FirstStepForm)
+        .step(EmailStepPrefilledFromPath)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "path-aware-linear-wizard-run",
             kwargs={
                 "run_id": run_id,
             },

@@ -182,6 +182,7 @@ class BoundWizard:
         )
 
     def _dispatch_step(self, step, request, *args, **kwargs):
+        request.wizard = self
         step_view = step.form_view.as_view()
         return step_view(request, *args, **kwargs)
 
