@@ -386,8 +386,3 @@ class CheckoutWizardViewSet(WizardViewSet):
 - Which management form fields are required for routing and tamper detection?
 - Should response interpretation be configured per step, per wizard, or both?
 - What metadata belongs in serialized state versus runtime-only step state?
-- How should `RuntimeStep.form` resolve the form class for a step backed by a
-  user-supplied `FormView` rather than a plain `Form`? Initial implementation
-  covers plain-form steps only; FormView-backed steps need a decision on
-  whether `.form` reads `declaration.declaration.form_class`, instantiates the
-  FormView and asks it for a form, or something else.
