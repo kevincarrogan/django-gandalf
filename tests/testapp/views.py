@@ -12,6 +12,8 @@ from .forms import (
     AccountTypeForm,
     BusinessDetailsForm,
     FirstStepForm,
+    ItemCountForm,
+    ItemForm,
     PersonalDetailsForm,
     ReviewForm,
     SecondStepForm,
@@ -629,7 +631,7 @@ class DoubleConfiguredWizardViewSet(WizardViewSet):
     description = "Wizard configured both via get_wizard() and configure_wizard() to test layering."
     template_name = "testapp/single_step_wizard.html"
 
-    def get_wizard(self):
+    def get_wizard(self, bound_wizard):
         return (
             Wizard()
             .step(FirstStepForm)
@@ -648,3 +650,36 @@ class DoubleConfiguredWizardViewSet(WizardViewSet):
                 "run_id": run_id,
             },
         )
+
+
+class DynamicWizardViewSet(WizardViewSet):
+    description = (
+        "Dynamically-built wizard: pick a count, then the same view generates "
+        "that many item-name steps from the stored count on each request."
+    )
+    template_name = "testapp/linear_wizard.html"
+
+    def get_wizard(self, bound_wizard):
+        state = bound_wizard.get_state()
+        wizard = Wizard().step(ItemCountForm, context={"step_name": "count"})
+        if state:
+            count = int(state[0]["step"]["count"])
+            for index in range(count):
+                wizard = wizard.step(ItemForm, context={"index": index})
+        return wizard
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "dynamic-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        node = bound_wizard.runtime_tree.next
+        names = []
+        while node is not None:
+            names.append(node.data["name"])
+            node = node.next
+        return HttpResponse(f"completed {', '.join(names)}")

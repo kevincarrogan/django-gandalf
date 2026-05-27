@@ -1,17 +1,24 @@
 from django.shortcuts import redirect
 from django.views import View
 
+from gandalf.runtime import BoundWizard
+from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
 
 class WizardViewSet(View):
-    def get_wizard(self):
+    storage_class = SessionStorage
+
+    def get_wizard(self, bound_wizard):
+        """Per-request hook returning the Wizard to use for this dispatch.
+
+        Default implementation returns the class-attribute `wizard` — the
+        declarative shortcut. Override to build the tree dynamically; the
+        passed `bound_wizard` exposes the current request and (after
+        `retrieve()`) the run's stored state via `get_run_data()` /
+        `get_state()`.
+        """
         return self.wizard
-
-    def get_configured_wizard(self):
-        wizard = self.get_wizard()
-
-        return self.configure_wizard(wizard)
 
     def configure_wizard(self, wizard):
         configuration = {}
@@ -26,14 +33,24 @@ class WizardViewSet(View):
 
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
+    def _make_bound_wizard(self, request):
+        storage = self.storage_class(request)
+        return BoundWizard(request, storage)
+
+    def _resolve_wizard(self, bound_wizard):
+        wizard = self.configure_wizard(self.get_wizard(bound_wizard))
+        bound_wizard.bind(wizard)
+        return bound_wizard
+
     def get(self, request, *args, run_id=None, **kwargs):
-        wizard = self.configure_wizard(self.get_wizard())
-        bound_wizard = wizard.get_bound_wizard(request)
+        bound_wizard = self._make_bound_wizard(request)
         if run_id is None:
             bound_wizard.initialise()
+            self._resolve_wizard(bound_wizard)
             return redirect(self.get_wizard_url(bound_wizard.run_id))
-        else:
-            bound_wizard.retrieve(run_id)
+
+        bound_wizard.retrieve(run_id)
+        self._resolve_wizard(bound_wizard)
 
         response = bound_wizard.replay(*args, **kwargs)
         if response is None:
@@ -42,9 +59,9 @@ class WizardViewSet(View):
         return response
 
     def post(self, request, *args, run_id, **kwargs):
-        wizard = self.get_configured_wizard()
-        bound_wizard = wizard.get_bound_wizard(request)
+        bound_wizard = self._make_bound_wizard(request)
         bound_wizard.retrieve(run_id)
+        self._resolve_wizard(bound_wizard)
         bound_wizard.submit(
             request.POST.dict(),
             *args,

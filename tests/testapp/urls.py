@@ -244,4 +244,14 @@ urlpatterns = [
         views.FormViewStepRaisesNotImplementedViewSet.as_view(),
         name="form-view-step-not-implemented-run",
     ),
+    path(
+        "dynamic-wizard/",
+        views.DynamicWizardViewSet.as_view(),
+        name="dynamic-wizard",
+    ),
+    path(
+        "dynamic-wizard/<uuid:run_id>/",
+        views.DynamicWizardViewSet.as_view(),
+        name="dynamic-wizard-run",
+    ),
 ]

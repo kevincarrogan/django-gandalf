@@ -92,12 +92,15 @@ class Cursor:
 
 
 class BoundWizard:
-    def __init__(self, wizard, request, storage):
+    def __init__(self, request, storage, wizard=None):
         self.wizard = wizard
         self.request = request
         self.storage = storage
         self.run_id = None
         self._predicate_runtime_tree = None
+
+    def bind(self, wizard):
+        self.wizard = wizard
 
     def initialise(self):
         self.run_id = self.storage.initialise_run()
