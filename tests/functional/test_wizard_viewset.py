@@ -767,3 +767,166 @@ def test_step_view_can_pre_fill_initial_from_request_wizard_path(
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="ada@example.com"')
+
+
+@pytest.fixture
+def branching_merged_payload_wizard_url():
+    return reverse("branching-merged-payload-wizard")
+
+
+@pytest.fixture
+def branching_merged_payload_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "branching-merged-payload-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_branching_wizard_done_merges_cleaned_data_across_multi_step_arm_path(
+    client,
+    branching_merged_payload_wizard_url,
+    branching_merged_payload_wizard_run_url,
+):
+    client.get(branching_merged_payload_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        branching_merged_payload_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    client.post(
+        branching_merged_payload_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+    client.post(
+        branching_merged_payload_wizard_run_url(run_id),
+        data={"email": "acme@example.com"},
+    )
+    response = client.post(
+        branching_merged_payload_wizard_run_url(run_id),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == (
+        b"account_type=business "
+        b"business_name=Acme "
+        b"email=acme@example.com "
+        b"confirmed=True"
+    )
+
+
+@pytest.fixture
+def empty_branch_arm_merged_payload_wizard_url():
+    return reverse("empty-branch-arm-merged-payload-wizard")
+
+
+@pytest.fixture
+def empty_branch_arm_merged_payload_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "empty-branch-arm-merged-payload-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_branching_wizard_with_unmatched_no_default_arm_drops_branch_from_path(
+    client,
+    empty_branch_arm_merged_payload_wizard_url,
+    empty_branch_arm_merged_payload_wizard_run_url,
+):
+    client.get(empty_branch_arm_merged_payload_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        empty_branch_arm_merged_payload_wizard_run_url(run_id),
+        data={"name": "Ada"},
+    )
+    response = client.post(
+        empty_branch_arm_merged_payload_wizard_run_url(run_id),
+        data={"account_type": "personal"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"name=Ada account_type=personal"
+
+
+@pytest.fixture
+def runtime_tree_branching_merge_wizard_url():
+    return reverse("runtime-tree-branching-merge-wizard")
+
+
+@pytest.fixture
+def runtime_tree_branching_merge_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "runtime-tree-branching-merge-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_branching_wizard_done_can_merge_cleaned_data_across_runtime_tree(
+    client,
+    runtime_tree_branching_merge_wizard_url,
+    runtime_tree_branching_merge_wizard_run_url,
+):
+    client.get(runtime_tree_branching_merge_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        runtime_tree_branching_merge_wizard_run_url(run_id),
+        data={"account_type": "business"},
+    )
+    client.post(
+        runtime_tree_branching_merge_wizard_run_url(run_id),
+        data={"business_name": "Acme"},
+    )
+    response = client.post(
+        runtime_tree_branching_merge_wizard_run_url(run_id),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == (
+        b"account_type=business business_name=Acme confirmed=True"
+    )
+
+
+@pytest.fixture
+def form_view_step_not_implemented_url():
+    return reverse("form-view-step-not-implemented")
+
+
+@pytest.fixture
+def form_view_step_not_implemented_run_url():
+    def build_url(run_id):
+        return reverse(
+            "form-view-step-not-implemented-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_form_view_step_done_raises_not_implemented_for_form_attribute(
+    client,
+    form_view_step_not_implemented_url,
+    form_view_step_not_implemented_run_url,
+):
+    client.get(form_view_step_not_implemented_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        form_view_step_not_implemented_run_url(run_id),
+        data={"name": "Ada"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"form_not_implemented {run_id}".encode()

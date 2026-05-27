@@ -1227,6 +1227,191 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
 
+def test_runtime_step_form_raises_not_implemented_for_form_view_declaration():
+    from gandalf.form_views import form_view_factory
+    from gandalf.runtime import RuntimeStep
+
+    generated_view = form_view_factory(
+        FirstStepForm,
+        template_name="testapp/single_step_wizard.html",
+    )
+    runtime_step = RuntimeStep(
+        declaration=tree.Step(declaration=generated_view),
+        data={"name": "Ada"},
+    )
+
+    with pytest.raises(NotImplementedError):
+        runtime_step.form
+
+
+def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
+    request_with_session_factory,
+):
+    from gandalf.runtime import RuntimeStep
+
+    def never(request):
+        return False
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .branch(
+            gandalf.wizard.condition(
+                never, Wizard().step(SecondStepForm)
+            ),
+        )
+        .step(AccountTypeForm, context={"step_name": "after_branch"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"branch": []},
+                        {"step": {"account_type": "personal"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    path = bound_wizard.path
+
+    assert isinstance(path, RuntimeStep)
+    assert path.declaration.declaration is FirstStepForm
+    assert isinstance(path.next, RuntimeStep)
+    assert path.next.declaration.declaration is AccountTypeForm
+    assert path.next.next is None
+
+
+def test_bound_wizard_path_walks_multi_step_branch_arm(
+    request_with_session_factory,
+):
+    from gandalf.runtime import RuntimeStep
+
+    def is_business(request):
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.form.cleaned_data["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            gandalf.wizard.condition(
+                is_business,
+                Wizard().step(BusinessDetailsForm).step(SecondStepForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [
+                            {"step": {"business_name": "Acme"}},
+                            {"step": {"email": "acme@example.com"}},
+                        ]},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    path = bound_wizard.path
+
+    assert isinstance(path, RuntimeStep)
+    assert path.declaration.declaration is AccountTypeForm
+    assert path.next.declaration.declaration is BusinessDetailsForm
+    assert path.next.next.declaration.declaration is SecondStepForm
+    assert path.next.next.next.declaration.declaration is ReviewForm
+    assert path.next.next.next.next is None
+
+
+def test_merge_cleaned_data_folds_path_into_dict(
+    request_with_session_factory,
+    linear_wizard,
+):
+    from gandalf.wizard import MergeCleanedData
+
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    payload = MergeCleanedData().reduce(bound_wizard.path)
+
+    assert payload == {"name": "Ada", "email": "ada@example.com"}
+
+
+def test_merge_cleaned_data_folds_runtime_tree_across_branch(
+    request_with_session_factory,
+):
+    from gandalf.wizard import MergeCleanedData
+
+    def is_business(request):
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.form.cleaned_data["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            gandalf.wizard.condition(
+                is_business,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [{"step": {"business_name": "Acme"}}]},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+
+    assert payload == {
+        "account_type": "business",
+        "business_name": "Acme",
+        "confirmed": True,
+    }
+
+
 def test_step_view_can_read_request_wizard_path_mid_wizard(
     request_with_session_factory,
 ):

@@ -372,6 +372,29 @@ class FormViewStepWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
+class FormViewStepRaisesNotImplementedViewSet(WizardViewSet):
+    description = (
+        "FormView-backed step whose done() reads runtime_tree.form to surface "
+        "the NotImplementedError raised for FormView-declared steps."
+    )
+    wizard = Wizard().step(FirstStepFormView)
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "form-view-step-not-implemented-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        try:
+            bound_wizard.runtime_tree.form
+        except NotImplementedError:
+            return HttpResponse(f"form_not_implemented {bound_wizard.run_id}")
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 class MissingTemplateWizardViewSet(WizardViewSet):
     description = (
         "Wizard with neither template_name nor configured template (expect failure)."
@@ -469,6 +492,110 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class BranchingMergedPayloadWizardViewSet(WizardViewSet):
+    description = (
+        "Branching wizard with a two-step arm; done() merges cleaned data "
+        "across the path via MergeCleanedData."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        wizard.step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            condition(
+                is_business_account,
+                wizard.step(BusinessDetailsForm).step(SecondStepForm),
+            ),
+            default=wizard.step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "branching-merged-payload-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(
+            f"account_type={payload['account_type']} "
+            f"business_name={payload['business_name']} "
+            f"email={payload['email']} "
+            f"confirmed={payload['confirmed']}"
+        )
+
+
+def _never_matches(request):
+    return False
+
+
+class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard with a branch whose condition never matches and which has no "
+        "default arm; done() shows the branch is dropped from the path."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        wizard.step(FirstStepForm)
+        .branch(
+            condition(_never_matches, wizard.step(SecondStepForm)),
+        )
+        .step(AccountTypeForm, context={"step_name": "skip_branch_account"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "empty-branch-arm-merged-payload-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(
+            f"name={payload['name']} account_type={payload['account_type']}"
+        )
+
+
+class RuntimeTreeBranchingMergeViewSet(WizardViewSet):
+    description = (
+        "Branching wizard whose done() merges cleaned data across the runtime "
+        "tree (not the path), exercising MergeCleanedData.visit_branch."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        wizard.step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            condition(
+                is_business_account,
+                wizard.step(BusinessDetailsForm),
+            ),
+            default=wizard.step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "runtime-tree-branching-merge-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+        return HttpResponse(
+            f"account_type={payload['account_type']} "
+            f"business_name={payload['business_name']} "
+            f"confirmed={payload['confirmed']}"
+        )
 
 
 class MergedPayloadLinearWizardViewSet(WizardViewSet):
