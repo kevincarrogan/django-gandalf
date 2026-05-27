@@ -69,10 +69,10 @@ class EmailForm(forms.Form):
 
 
 class SignupWizardViewSet(WizardViewSet):
-    template_name = "signup/step.html"
     wizard = (
         wizard.step(NameForm)
         .step(EmailForm)
+        .configure(template_name="signup/step.html")
     )
 
     def done(self, bound_wizard):
