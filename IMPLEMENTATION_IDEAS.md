@@ -299,13 +299,11 @@ class WizardPathBuilder(WizardTreeVisitor):
         return WizardPath(self.steps)
 ```
 
-`WizardPathBuilder` should not filter out completed steps solely because they
-are no longer on the active route after a later branch decision changes. If a
-user completes a business branch, goes back, and changes an earlier answer so
-the personal branch becomes active, the previous business steps should remain
-in `wizard.path` as historical visited/completed entries. Active-step selection
-can still decide which branch route should run next, but the path is an ordered
-execution history rather than only the current active route.
+`WizardPathBuilder` builds the current active route only. If a user goes
+back and changes an earlier answer that flips a branch decision, the path
+reevaluates from the root and reflects only the route the wizard would now
+run; steps from branches that are no longer selected do not appear. The
+path is the unambiguous active route, not an execution history.
 
 ## `Step`
 

@@ -136,17 +136,19 @@ During population:
    tree.
 
 The important ordering is that path building happens after context resolution
-so request-aware step metadata is available. The path should describe what has
-completed in execution order, including historical completed steps from
-branches that are no longer active.
+so request-aware step metadata is available. The path should describe the
+current active route in execution order — only steps on the branch the wizard
+would now run, reevaluated against the latest answers.
 
 ## Runtime Tree
 
 `wizard.tree` is the complete runtime representation of the declared flow.
 
-The tree should keep the full structure even when some branch steps are not on
-the currently active route. This matters because callers may need to inspect
-historical or inactive branch state after a user changes an earlier answer.
+The tree should keep the full declared structure even when some branch steps
+are not on the currently active route. This matters because callers may need
+to inspect the shape of inactive branches — for example, to render a flow
+overview or look up a form class by context — even though no runtime state
+is attached to steps outside the active route.
 
 Each node in `wizard.tree` should be a `Step`. A `Step` represents one form
 interaction and can carry:
@@ -190,14 +192,14 @@ account_step = wizard.path.find_one_by_context(step_name="account")
 account_data = account_step.form.cleaned_data if account_step else {}
 ```
 
-The path may include historical completed steps from branches that are no
-longer active after a user changes an earlier answer. Code that needs only the
-currently active route should use route-selection metadata or a route-specific
-tree/path projection once that design is settled.
+The path is the current active route only. If a user goes back and changes
+an earlier answer that flips a branch decision, the path reevaluates from
+the root and reflects only the route the wizard would now run; steps from
+branches that are no longer selected do not appear.
 
 Code that needs ordered submitted data will usually read from `wizard.path`.
-Code that needs structural or inactive branch information should walk
-`wizard.tree`.
+Code that needs the declared structure of branches that are not currently
+selected should walk `wizard.tree`.
 
 ## Active Step Selection
 
@@ -350,8 +352,6 @@ class CheckoutWizardViewSet(WizardViewSet):
 - Which management form fields are required for routing and tamper detection?
 - Should response interpretation be configured per step, per wizard, or both?
 - What metadata belongs in serialized state versus runtime-only step state?
-- How should historical branch state be exposed when a changed answer makes a
-  previous branch inactive?
 - How should `RuntimeStep.form` resolve the form class for a step backed by a
   user-supplied `FormView` rather than a plain `Form`? Initial implementation
   covers plain-form steps only; FormView-backed steps need a decision on
