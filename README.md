@@ -169,21 +169,21 @@ class OnboardingWizard(SessionWizardView):
 ### django-gandalf style (same flow, explicit as a tree)
 
 ```python
-international_flow = (
+international_wizard = (
     wizard.step(IntlTaxForm)
     .step(IntlKYCForm)
 )
-business_flow = (
+business_wizard = (
     wizard.step(BizDetailsForm)
     .step(BizComplianceForm)
     .branch(
-        condition(needs_international_checks, international_flow),
+        condition(needs_international_checks, international_wizard),
         default=None,
     )
 )
-personal_flow = (
+personal_wizard = (
     wizard.branch(
-        condition(needs_international_checks, international_flow),
+        condition(needs_international_checks, international_wizard),
         default=None,
     )
     .step(ProfileForm)
@@ -192,8 +192,8 @@ personal_flow = (
 onboarding_wizard = (
     wizard.step(AccountTypeForm)
     .branch(
-        condition(is_business_account, business_flow),
-        default=personal_flow,
+        condition(is_business_account, business_wizard),
+        default=personal_wizard,
     )
     .step(ReviewForm)
     .step(ConfirmationForm)
@@ -207,7 +207,7 @@ then routes into only that branch for the active execution path.
 Why this is better in this project’s sweet spot (complex branching):
 
 - Branch condition and target flow stay together (no separate lookup table).
-- Branch targets can be reusable subflows (`business_flow`, `international_flow`, etc.).
+- Branch targets can be reusable sub-wizards (`business_wizard`, `international_wizard`, etc.).
 - The overall journey is visible in one declaration as a tree.
 - You avoid growing custom step-navigation plumbing as branches multiply.
 
@@ -305,14 +305,14 @@ shape later steps:
 ```python
 class SignupWizardViewSet(WizardViewSet):
     def get_wizard(self, bound_wizard):
-        flow = wizard.step(AccountStepView)
+        signup_wizard = wizard.step(AccountStepView)
 
         if self.request.user.is_staff:
-            flow = flow.step(InternalReviewStepView)
+            signup_wizard = signup_wizard.step(InternalReviewStepView)
         else:
-            flow = flow.step(ProfileStepView)
+            signup_wizard = signup_wizard.step(ProfileStepView)
 
-        return flow.step(ConfirmStepView)
+        return signup_wizard.step(ConfirmStepView)
 ```
 
 When `get_wizard()` returns a plain `Wizard`, the viewset configures it with
@@ -372,14 +372,14 @@ signup_wizard = (
 to compose inline:
 
 ```python
-address_flow = (
+address_wizard = (
     wizard.step(AddressForm)
     .step(PostcodeLookupForm)
 )
 
 checkout_wizard = (
     wizard.step(CustomerForm)
-    .step(address_flow)
+    .step(address_wizard)
     .step(ConfirmForm)
 )
 ```
@@ -942,19 +942,19 @@ class OnboardingWizard(SessionWizardView):
 #### gandalf style
 
 ```python
-business_flow = (
+business_wizard = (
     wizard.step(BizAForm)
     .step(BizBForm)
 )
-personal_flow = (
+personal_wizard = (
     wizard.step(PersonAForm)
 )
 
 onboarding_wizard = (
     wizard.step(AccountTypeForm)
     .branch(
-        condition(is_business_account, business_flow),
-        default=personal_flow,
+        condition(is_business_account, business_wizard),
+        default=personal_wizard,
     )
     .step(FinalForm)
 )
