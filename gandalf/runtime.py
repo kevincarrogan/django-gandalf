@@ -1,6 +1,6 @@
 import logging
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http import HTTPStatus
 from typing import Any
 
@@ -43,6 +43,10 @@ class RuntimeStep:
     def accept_reduce(self, reducer):
         return reducer.visit_step(self)
 
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_step(self, next_result)
+
 
 @dataclass
 class RuntimeBranch:
@@ -63,6 +67,13 @@ class RuntimeBranch:
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
         return reducer.visit_branch(self, sub_result)
+
+    def accept_transform(self, transformer):
+        transformed_selected_arm = transformer.transform(self.selected_arm)
+        next_result = transformer.transform(self.next)
+        return transformer.visit_branch(
+            self, transformed_selected_arm, next_result
+        )
 
 
 @dataclass(frozen=True)
@@ -109,6 +120,10 @@ class BoundWizard:
         builder = self.wizard.runtime_tree_builder_class(self, self.get_state())
         builder.walk(self.wizard.tree)
         return builder.head
+
+    @property
+    def path(self):
+        return PathFlattener().transform(self.runtime_tree)
 
     def _current_runtime_tree(self):
         if self._predicate_runtime_tree is not None:
@@ -265,6 +280,51 @@ class StateSerializer(tree.Reducer):
 
     def visit_branch(self, runtime_branch, sub_result):
         return {"branch": sub_result}
+
+
+class PathFlattener(tree.Transformer):
+    """Transformer that turns a runtime tree into a linked chain of
+    completed RuntimeStep nodes (the active route). Steps whose `data`
+    is None are dropped; branches are spliced by inlining the
+    transformed selected arm before the branch's next."""
+
+    def visit_step(self, runtime_step, next_result):
+        if runtime_step.data is None:
+            return next_result
+        return replace(runtime_step, next=next_result)
+
+    def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
+        if transformed_selected_arm is None:
+            return next_result
+        tail = transformed_selected_arm
+        while tail.next is not None:
+            tail = tail.next
+        tail.next = next_result
+        return transformed_selected_arm
+
+
+class MergeCleanedData(tree.Reducer):
+    """Reducer that folds completed step cleaned_data into a single dict
+    using last-write-wins on key collisions.
+
+    Intended for `bound_wizard.path` but also works on
+    `bound_wizard.runtime_tree`; for each `RuntimeStep` it contributes
+    `step.form.cleaned_data`, and any branch sub-fold is merged into the
+    accumulator. Subclass and override `combine`, `visit_step`, or
+    `visit_branch` for a different merge policy.
+    """
+
+    def initial(self):
+        return {}
+
+    def combine(self, accumulator, value):
+        return {**accumulator, **value}
+
+    def visit_step(self, runtime_step):
+        return runtime_step.form.cleaned_data
+
+    def visit_branch(self, runtime_branch, sub_result):
+        return sub_result
 
 
 class RuntimeTreeBuilder(tree.Interpreter):

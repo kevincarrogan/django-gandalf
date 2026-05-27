@@ -1,6 +1,6 @@
 from gandalf import wizard
 from gandalf.form_views import form_view_factory
-from gandalf.wizard import Wizard, condition
+from gandalf.wizard import MergeCleanedData, Wizard, condition
 from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
@@ -425,6 +425,33 @@ class EmptyWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class MergedPayloadLinearWizardViewSet(WizardViewSet):
+    description = (
+        "Linear two-step wizard whose done() merges cleaned data across the "
+        "path via MergeCleanedData and dispatches the merged payload."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .step(SecondStepForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "merged-payload-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(
+            f"completed name={payload['name']} email={payload['email']}"
+        )
 
 
 class DoubleConfiguredWizardViewSet(WizardViewSet):

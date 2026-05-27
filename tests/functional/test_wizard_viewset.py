@@ -702,3 +702,34 @@ def test_empty_wizard_run_returns_done_response_immediately(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
+
+
+@pytest.fixture
+def merged_payload_wizard_url():
+    return reverse("merged-payload-wizard")
+
+
+@pytest.fixture
+def merged_payload_wizard_run_url():
+    def build_url(run_id):
+        return reverse("merged-payload-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_linear_wizard_done_can_merge_cleaned_data_across_path(
+    client,
+    merged_payload_wizard_url,
+    merged_payload_wizard_run_url,
+):
+    client.get(merged_payload_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(merged_payload_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        merged_payload_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed name=Ada email=ada@example.com"
