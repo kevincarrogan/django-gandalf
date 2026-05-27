@@ -1106,3 +1106,122 @@ def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
 
     assert first_step.data == {"count": "42"}
     assert first_step.form.cleaned_data == {"count": 42}
+
+
+def test_bound_wizard_path_is_none_when_no_steps_complete(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.path is None
+
+
+def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
+    request_with_session_factory,
+    linear_wizard,
+):
+    from gandalf.runtime import RuntimeStep
+
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    path = bound_wizard.path
+
+    assert isinstance(path, RuntimeStep)
+    assert path.declaration.declaration is FirstStepForm
+    assert path.data == {"name": "Ada"}
+    assert path.next is None
+
+
+def test_bound_wizard_path_inlines_completed_branch_arm_steps(
+    request_with_session_factory,
+):
+    from gandalf.runtime import RuntimeStep
+
+    def is_business(request):
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.form.cleaned_data["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            gandalf.wizard.condition(
+                is_business,
+                Wizard().step(BusinessDetailsForm),
+            ),
+            default=Wizard().step(PersonalDetailsForm),
+        )
+        .step(ReviewForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [{"step": {"business_name": "Acme"}}]},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    path = bound_wizard.path
+
+    assert isinstance(path, RuntimeStep)
+    assert path.declaration.declaration is AccountTypeForm
+    assert isinstance(path.next, RuntimeStep)
+    assert path.next.declaration.declaration is BusinessDetailsForm
+    assert path.next.next is None
+
+
+def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
+    request_with_session_factory,
+    linear_wizard,
+):
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = linear_wizard.get_bound_wizard(request)
+    bound_wizard.retrieve("existing-run")
+
+    class MergeCleanedData(tree.Reducer):
+        def initial(self):
+            return {}
+
+        def combine(self, accumulator, value):
+            return {**accumulator, **value}
+
+        def visit_step(self, runtime_step):
+            return runtime_step.form.cleaned_data
+
+    payload = MergeCleanedData().reduce(bound_wizard.path)
+
+    assert payload == {"name": "Ada", "email": "ada@example.com"}
