@@ -254,4 +254,14 @@ urlpatterns = [
         views.DynamicWizardViewSet.as_view(),
         name="dynamic-wizard-run",
     ),
+    path(
+        "dynamic-list-payload-wizard/",
+        views.DynamicListPayloadWizardViewSet.as_view(),
+        name="dynamic-list-payload-wizard",
+    ),
+    path(
+        "dynamic-list-payload-wizard/<uuid:run_id>/",
+        views.DynamicListPayloadWizardViewSet.as_view(),
+        name="dynamic-list-payload-wizard-run",
+    ),
 ]

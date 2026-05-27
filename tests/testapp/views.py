@@ -683,3 +683,64 @@ class DynamicWizardViewSet(WizardViewSet):
             names.append(node.data["name"])
             node = node.next
         return HttpResponse(f"completed {', '.join(names)}")
+
+
+class MergeWithLists(MergeCleanedData):
+    """MergeCleanedData variant that respects a `list_key` context entry.
+
+    Steps with `context={"list_key": "items"}` contribute their cleaned
+    data as `{"items": [cleaned]}`; combine concatenates lists under the
+    same key instead of overwriting. Steps without `list_key` behave like
+    the base reducer (last-write-wins merge).
+    """
+
+    def visit_step(self, runtime_step):
+        cleaned = runtime_step.form.cleaned_data
+        list_key = (runtime_step.declaration.context or {}).get("list_key")
+        if list_key is None:
+            return cleaned
+        return {list_key: [cleaned]}
+
+    def combine(self, accumulator, value):
+        merged = {**accumulator}
+        for key, incoming in value.items():
+            existing = merged.get(key)
+            if isinstance(existing, list) and isinstance(incoming, list):
+                merged[key] = existing + incoming
+            else:
+                merged[key] = incoming
+        return merged
+
+
+class DynamicListPayloadWizardViewSet(WizardViewSet):
+    description = (
+        "Dynamic wizard whose generated item steps are condensed into a "
+        "list under one key via a context-aware MergeCleanedData subclass."
+    )
+    template_name = "testapp/linear_wizard.html"
+
+    def get_wizard(self, bound_wizard):
+        state = bound_wizard.get_state()
+        wizard = Wizard().step(ItemCountForm, context={"step_name": "count"})
+        if state:
+            count = int(state[0]["step"]["count"])
+            for index in range(count):
+                wizard = wizard.step(
+                    ItemForm,
+                    context={"list_key": "items", "index": index},
+                )
+        return wizard
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "dynamic-list-payload-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        import json
+
+        payload = MergeWithLists().reduce(bound_wizard.path)
+        return HttpResponse(json.dumps(payload, sort_keys=True))

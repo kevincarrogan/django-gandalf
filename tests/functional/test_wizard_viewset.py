@@ -709,6 +709,32 @@ def test_dynamic_wizard_generates_step_per_chosen_count(client):
     assert done_response.content == b"completed Ada, Grace, Mary"
 
 
+def test_dynamic_list_payload_wizard_condenses_items_into_list(client):
+    import json
+
+    start_url = reverse("dynamic-list-payload-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("dynamic-list-payload-wizard-run", kwargs={"run_id": run_id})
+
+    client.post(run_url, data={"count": "3"})
+    client.post(run_url, data={"name": "Ada"})
+    client.post(run_url, data={"name": "Grace"})
+    client.post(run_url, data={"name": "Mary"})
+
+    response = client.get(run_url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert json.loads(response.content) == {
+        "count": 3,
+        "items": [
+            {"name": "Ada"},
+            {"name": "Grace"},
+            {"name": "Mary"},
+        ],
+    }
+
+
 def test_dynamic_wizard_regenerates_tree_from_current_stored_state(client):
     start_url = reverse("dynamic-wizard")
     client.get(start_url)
