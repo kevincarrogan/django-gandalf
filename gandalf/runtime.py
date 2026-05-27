@@ -1,10 +1,9 @@
 import logging
 from copy import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field as dataclass_field, replace
 from http import HTTPStatus
 from typing import Any
 
-from django import forms
 from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
@@ -18,6 +17,17 @@ class StepNotFound(LookupError):
     active runtime path or has no stored submission."""
 
 
+def _open_file_refs(bound_wizard, file_refs):
+    if not file_refs:
+        return None
+    return MultiValueDict(
+        {
+            field_name: [bound_wizard.file_storage.open(ref)]
+            for field_name, ref in file_refs.items()
+        }
+    )
+
+
 @dataclass
 class RuntimeStep:
     """Runtime mirror of a declared `tree.Step`, carrying per-request state."""
@@ -26,16 +36,46 @@ class RuntimeStep:
     data: dict | None = None
     files: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
+    bound_wizard: "BoundWizard | None" = dataclass_field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def form(self):
-        form_class = self.declaration.declaration
-        if not issubclass(form_class, forms.Form):
-            raise NotImplementedError(
-                "RuntimeStep.form is currently only defined for steps "
-                "declared with a plain forms.Form subclass."
+        """Reconstruct a bound, validated form for this step.
+
+        Drives the step's `FormView` through its public composition API:
+        instantiates the view, calls `view.setup()` with a synthetic POST
+        request carrying the stored submission, then returns `view.get_form()`
+        after calling `is_valid()` to populate `cleaned_data`. This honors
+        `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()`,
+        and `get_prefix()` overrides on the user's FormView.
+
+        Note: the synthetic request is built from `bound_wizard.request` — the
+        *current* request, not the request that originally submitted the step.
+        For typical single-user flows they're equivalent; for flows where one
+        user edits another's run, `request.user` reflects the editor.
+
+        Customizations beyond composition (overrides of `form_valid()`,
+        `post()`, `dispatch()`, or `setup()`) are not surfaced here — `.form`
+        does not run the FormView's dispatch pipeline.
+        """
+        if self.bound_wizard is None:
+            raise RuntimeError(
+                "RuntimeStep.form requires a bound_wizard backref; "
+                "construct RuntimeSteps through CursorWalker, "
+                "RuntimeTreeBuilder, or SpliceSubmission so the runtime "
+                "tree carries its request context."
             )
-        form = form_class(self.data)
+        form_view_class = self.declaration.form_view
+        request = self.bound_wizard.dispatcher.build_request(
+            "POST",
+            submission=self.data or {},
+            files=_open_file_refs(self.bound_wizard, self.files),
+        )
+        view = form_view_class()
+        view.setup(request)
+        form = view.get_form()
         form.is_valid()
         return form
 
@@ -350,7 +390,14 @@ class CursorWalker(tree.Interpreter):
             self._place_pending(step)
             self._cursor = Cursor(node=step, state=self._head, response=response)
             return False
-        self._append(RuntimeStep(declaration=step, data=stored, files=stored_files))
+        self._append(
+            RuntimeStep(
+                declaration=step,
+                data=stored,
+                files=stored_files,
+                bound_wizard=self._bound_wizard,
+            )
+        )
         return True
 
     def visit_branch(self, branch):
@@ -389,18 +436,12 @@ class CursorWalker(tree.Interpreter):
                     declaration=step,
                     data=self._pending_submission,
                     files=self._pending_files,
+                    bound_wizard=self._bound_wizard,
                 )
             )
 
     def _open_files(self, file_refs):
-        if not file_refs:
-            return None
-        return MultiValueDict(
-            {
-                field: [self._bound_wizard.file_storage.open(ref)]
-                for field, ref in file_refs.items()
-            }
-        )
+        return _open_file_refs(self._bound_wizard, file_refs)
 
     def _append(self, node):
         if self._head is None:
@@ -487,7 +528,14 @@ class RuntimeTreeBuilder(tree.Interpreter):
         else:
             data = entry["step"]
             files = entry.get("files")
-        self._append(RuntimeStep(declaration=step, data=data, files=files))
+        self._append(
+            RuntimeStep(
+                declaration=step,
+                data=data,
+                files=files,
+                bound_wizard=self._bound_wizard,
+            )
+        )
 
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
@@ -534,6 +582,7 @@ class SpliceSubmission(tree.Transformer):
             data=data,
             files=files,
             next=next_result,
+            bound_wizard=runtime_step.bound_wizard,
         )
 
     def visit_branch(self, runtime_branch, transformed_arm, next_result):
@@ -559,14 +608,22 @@ def _truncate_after_recurse(node, target_decl):
         if node.declaration is target_decl:
             return (
                 RuntimeStep(
-                    node.declaration, data=node.data, files=node.files, next=None
+                    node.declaration,
+                    data=node.data,
+                    files=node.files,
+                    next=None,
+                    bound_wizard=node.bound_wizard,
                 ),
                 True,
             )
         new_next, found = _truncate_after_recurse(node.next, target_decl)
         return (
             RuntimeStep(
-                node.declaration, data=node.data, files=node.files, next=new_next
+                node.declaration,
+                data=node.data,
+                files=node.files,
+                next=new_next,
+                bound_wizard=node.bound_wizard,
             ),
             found,
         )

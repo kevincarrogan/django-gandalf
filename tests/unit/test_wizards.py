@@ -1839,21 +1839,196 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
 
-def test_runtime_step_form_raises_not_implemented_for_form_view_declaration():
-    from gandalf.form_views import form_view_factory
+def test_runtime_step_form_reconstructs_cleaned_data_for_form_view_step(
+    request_with_session_factory,
+):
+    class FirstStepFormView(FormView):
+        form_class = FirstStepForm
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_success_url(self):
+            return self.request.path
+
+    wizard = (
+        Wizard()
+        .step(FirstStepFormView)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    runtime_step = bound_wizard.runtime_tree
+
+    assert runtime_step.form.cleaned_data == {"name": "Ada"}
+
+
+def test_runtime_step_form_honors_form_view_get_form_class_override(
+    request_with_session_factory,
+):
+    class TwoNameForm(forms.Form):
+        full_name = forms.CharField()
+
+    class FormClassPickingView(FormView):
+        template_name = "testapp/single_step_wizard.html"
+        use_two_name_form = True
+
+        def get_form_class(self):
+            return TwoNameForm if self.use_two_name_form else FirstStepForm
+
+        def get_success_url(self):
+            return self.request.path
+
+    wizard = (
+        Wizard()
+        .step(FormClassPickingView)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"full_name": "Ada Lovelace"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    form = bound_wizard.runtime_tree.form
+
+    assert isinstance(form, TwoNameForm)
+    assert form.cleaned_data == {"full_name": "Ada Lovelace"}
+
+
+def test_runtime_step_form_honors_form_view_get_form_kwargs_override(
+    request_with_session_factory,
+):
+    class GreetingForm(forms.Form):
+        greeting = forms.CharField()
+
+        def __init__(self, *args, salutation, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.salutation = salutation
+
+    class SalutationInjectingView(FormView):
+        form_class = GreetingForm
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_form_kwargs(self):
+            kwargs = super().get_form_kwargs()
+            kwargs["salutation"] = "Captain"
+            return kwargs
+
+        def get_success_url(self):
+            return self.request.path
+
+    wizard = (
+        Wizard()
+        .step(SalutationInjectingView)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"greeting": "Ahoy"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    form = bound_wizard.runtime_tree.form
+
+    assert form.cleaned_data == {"greeting": "Ahoy"}
+    assert form.salutation == "Captain"
+
+
+def test_runtime_step_form_merges_cleaned_data_across_form_and_form_view_steps(
+    request_with_session_factory,
+):
+    class SecondStepFormView(FormView):
+        form_class = SecondStepForm
+        template_name = "testapp/linear_wizard.html"
+
+        def get_success_url(self):
+            return self.request.path
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .step(SecondStepFormView)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    payload = gandalf.wizard.MergeCleanedData().reduce(bound_wizard.path)
+
+    assert payload == {"name": "Ada", "email": "ada@example.com"}
+
+
+def test_runtime_step_form_without_bound_wizard_raises_runtime_error():
     from gandalf.runtime import RuntimeStep
 
-    generated_view = form_view_factory(
-        FirstStepForm,
-        template_name="testapp/single_step_wizard.html",
-    )
     runtime_step = RuntimeStep(
-        declaration=tree.Step(declaration=generated_view),
+        declaration=tree.Step(declaration=FirstStepForm),
         data={"name": "Ada"},
     )
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError, match="bound_wizard backref"):
         runtime_step.form
+
+
+def test_splice_submission_preserves_bound_wizard_for_form_access(
+    request_with_session_factory,
+    linear_wizard,
+):
+    from gandalf.runtime import SpliceSubmission
+
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(linear_wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    runtime = bound_wizard.runtime_tree
+    spliced = SpliceSubmission(runtime, {"name": "Grace"}).transform(runtime)
+
+    assert spliced.bound_wizard is bound_wizard
+    assert spliced.form.cleaned_data == {"name": "Grace"}
 
 
 def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(

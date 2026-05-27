@@ -964,6 +964,40 @@ def test_step_view_can_pre_fill_initial_from_request_wizard_path(
 
 
 @pytest.fixture
+def path_aware_form_view_first_step_wizard_url():
+    return reverse("path-aware-form-view-first-step-wizard")
+
+
+@pytest.fixture
+def path_aware_form_view_first_step_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "path-aware-form-view-first-step-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_step_view_can_pre_fill_initial_from_path_with_form_view_upstream(
+    client,
+    path_aware_form_view_first_step_wizard_url,
+    path_aware_form_view_first_step_wizard_run_url,
+):
+    client.get(path_aware_form_view_first_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        path_aware_form_view_first_step_wizard_run_url(run_id),
+        data={"name": "Ada"},
+    )
+    response = client.get(path_aware_form_view_first_step_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'value="ada@example.com"')
+
+
+@pytest.fixture
 def branching_merged_payload_wizard_url():
     return reverse("branching-merged-payload-wizard")
 
@@ -1091,39 +1125,6 @@ def test_branching_wizard_done_can_merge_cleaned_data_across_runtime_tree(
     assert response.content == (
         b"account_type=business business_name=Acme confirmed=True"
     )
-
-
-@pytest.fixture
-def form_view_step_not_implemented_url():
-    return reverse("form-view-step-not-implemented")
-
-
-@pytest.fixture
-def form_view_step_not_implemented_run_url():
-    def build_url(run_id):
-        return reverse(
-            "form-view-step-not-implemented-run",
-            kwargs={"run_id": run_id},
-        )
-
-    return build_url
-
-
-def test_form_view_step_done_raises_not_implemented_for_form_attribute(
-    client,
-    form_view_step_not_implemented_url,
-    form_view_step_not_implemented_run_url,
-):
-    client.get(form_view_step_not_implemented_url)
-    run_id, _ = get_only_run_info_from_session(client.session)
-
-    response = client.post(
-        form_view_step_not_implemented_run_url(run_id),
-        data={"name": "Ada"},
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == f"form_not_implemented {run_id}".encode()
 
 
 @pytest.fixture
