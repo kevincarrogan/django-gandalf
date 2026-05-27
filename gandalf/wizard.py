@@ -1,6 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
+from gandalf.file_storage import WizardFileStorage
 from gandalf.form_views import form_view_factory
 from gandalf.runtime import (
     BoundWizard,
@@ -19,6 +20,7 @@ __all__ = [
     "MergeCleanedData",
     "StepNameEditResolver",
     "Wizard",
+    "WizardFileStorage",
     "branch",
     "condition",
     "form_view_factory",
@@ -103,6 +105,7 @@ class Wizard:
 
 class ConfiguredWizard:
     storage_class = SessionStorage
+    file_storage_class = WizardFileStorage
     runtime_tree_builder_class = RuntimeTreeBuilder
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
@@ -117,6 +120,9 @@ class ConfiguredWizard:
         )
         self.tree = self._configure_tree(tree)
         self.storage_class = configuration.get("storage_class", self.storage_class)
+        self.file_storage_class = configuration.get(
+            "file_storage_class", self.file_storage_class
+        )
         self.runtime_tree_builder_class = configuration.get(
             "runtime_tree_builder_class", self.runtime_tree_builder_class
         )

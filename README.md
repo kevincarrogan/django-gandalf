@@ -717,6 +717,59 @@ backend then handles the actual serialization and persistence.
 
 > This section describes the API direction; storage behavior internals are intentionally deferred.
 
+### File uploads
+
+Wizard steps may declare `forms.FileField` and friends. Uploaded files cannot
+live in `request.session` (session backends serialize to JSON or pickled bytes,
+neither is appropriate for binary blobs), so Gandalf persists them through a
+companion `WizardFileStorage` class. The wizard state in the session carries
+only string refs (a per-field dict capturing the storage key plus original
+`name`/`content_type`/`size`/`charset`); the actual bytes live behind whatever
+Django `Storage` backend you configure.
+
+The default `file_storage_class` wraps `django.core.files.storage.default_storage`
+and writes under a `gandalf/<run_id>/` prefix. Swap it via
+`Wizard.configure(file_storage_class=...)` — the same shape as `storage_class`.
+For example, to keep wizard uploads in their own backend (S3, encrypted store,
+per-tenant location), subclass `WizardFileStorage` and point its `backend` at
+a different `Storage` instance:
+
+```python
+from django.core.files.storage import FileSystemStorage
+from gandalf.wizard import WizardFileStorage
+
+
+class TenantFileStorage(WizardFileStorage):
+    def __init__(self):
+        super().__init__(backend=FileSystemStorage(location="/var/tenant-uploads"))
+
+
+wizard = wizard.configure(file_storage_class=TenantFileStorage)
+```
+
+**Replay semantics.** `CursorWalker.visit_step` re-runs form validation on
+every replay. For file steps it opens each stored ref via
+`file_storage.open(ref)`, rebuilds an `InMemoryUploadedFile` with the original
+filename, content-type, size, and charset, then injects it into `request.FILES`
+before dispatching the step view. Validators that inspect `uploaded_file.content_type`
+(image-only forms, MIME sniffing) see the same value on replay as on the
+original POST.
+
+**Edit semantics.** `bound_wizard.render_edit(...)` merges the opened files
+into the form's `initial`, so a `ClearableFileInput` widget displays the
+existing upload alongside the rest of the prior submission. `bound_wizard.edit`
+respects keep-vs-replace per field: a field with no new upload preserves its
+old ref; a field with a new upload saves the new file and deletes the old one
+from storage in a single step.
+
+**Cleanup.** `WizardViewSet` invokes `bound_wizard.cleanup_files()` automatically
+after `done()` returns — successful completion wipes everything under the
+run's prefix. Abandoned runs (the user closes the tab before finishing) leave
+their uploads in place; a periodic TTL sweep over the storage prefix is future
+work. If you need files to survive past `done()` (e.g. an asynchronous job
+that consumes them after the response renders), override `_finish()` or
+arrange the work to capture what it needs synchronously before returning.
+
 ### Branching from the beginning
 
 You can also branch immediately based on runtime context (for example, the current day of the week):

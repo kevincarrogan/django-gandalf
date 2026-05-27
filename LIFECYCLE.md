@@ -298,6 +298,40 @@ tree and the saved structure together, applying each state entry to the step
 visited at the same position. Steps that have no corresponding state entry
 (for example, newly appended steps in a dynamic wizard) receive `None`.
 
+## File Uploads
+
+Uploaded files cannot ride the session — `request.FILES` carries `UploadedFile`
+objects whose bytes live in temporary storage, and session backends serialize
+to JSON or pickled bytes (neither appropriate for arbitrary blobs). Gandalf
+moves files out of band through a `WizardFileStorage` companion:
+
+- On POST, `WizardViewSet` saves each `request.FILES` entry via
+  `bound_wizard.file_storage.save(run_id, uploaded_file)` and threads the
+  resulting refs (storage key plus original `name`/`content_type`/`size`/
+  `charset`) into `bound_wizard.submit` / `bound_wizard.edit`.
+- The runtime embeds the refs in the cursor's state entry as
+  `{"files": {field: ref}}` alongside the POST dict. The step↔file binding
+  lives in state structure; the storage path itself carries no step identity
+  (we don't know the step name at the storage boundary — the cursor walker
+  resolves which step a submission lands on).
+- On replay, `CursorWalker.visit_step` re-opens each ref to an
+  `InMemoryUploadedFile` and attaches it to `request.FILES` before
+  re-dispatching the step view. Form validation sees the same shape it did on
+  the original POST, including `content_type`.
+- `bound_wizard.render_edit` merges opened files into the form's `initial`,
+  so `ClearableFileInput` widgets render the existing upload.
+  `bound_wizard.edit` performs per-field keep-vs-replace: new uploads
+  overwrite (deleting the old storage key); fields without a new upload
+  preserve the existing ref.
+- `WizardViewSet` calls `bound_wizard.cleanup_files()` automatically after
+  `done()` returns, wiping the run's storage prefix. Abandoned runs (the
+  wizard never reaches `done()`) leave their uploads in place; a periodic
+  TTL sweep is future work.
+
+`file_storage_class` is configurable via `Wizard.configure()`, parallel to
+`storage_class`. The default wraps Django's `default_storage` under a
+`gandalf/<run_id>/` prefix.
+
 ## Completion
 
 When every step on the selected branch route is complete, the viewset should

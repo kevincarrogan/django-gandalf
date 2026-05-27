@@ -58,7 +58,7 @@ class WizardViewSet(View):
 
         response = bound_wizard.replay(*args, **kwargs)
         if response is None:
-            return self.done(bound_wizard)
+            return self._finish(bound_wizard)
 
         return response
 
@@ -69,17 +69,31 @@ class WizardViewSet(View):
         resolver = bound_wizard.wizard.edit_resolver_class()
         edit_context = resolver.resolve(request)
         submission = request.POST.dict()
+        files = self._store_uploads(bound_wizard, request.FILES)
         if edit_context is not None:
             resolver.clean_submission(submission)
-            bound_wizard.edit(submission, **edit_context)
+            bound_wizard.edit(submission, files=files, **edit_context)
         else:
-            bound_wizard.submit(submission, *args, **kwargs)
+            bound_wizard.submit(submission, *args, files=files, **kwargs)
         response = bound_wizard.replay(*args, **kwargs)
 
         if response is None:
-            return self.done(bound_wizard)
+            return self._finish(bound_wizard)
 
         return response
+
+    def _finish(self, bound_wizard):
+        response = self.done(bound_wizard)
+        bound_wizard.cleanup_files()
+        return response
+
+    def _store_uploads(self, bound_wizard, uploaded_files):
+        if not uploaded_files:
+            return None
+        return {
+            field: bound_wizard.file_storage.save(bound_wizard.run_id, uploaded_file)
+            for field, uploaded_file in uploaded_files.items()
+        }
 
     def done(self, bound_wizard):
         raise NotImplementedError("WizardViewSet subclasses must define done().")

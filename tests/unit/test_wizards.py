@@ -1,19 +1,25 @@
+import tempfile
 import uuid
 
 import pytest
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.storage import FileSystemStorage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.views.generic.edit import FormView
 
 import gandalf.wizard
 from gandalf import tree
+from gandalf.file_storage import WizardFileStorage
 from gandalf.runtime import BoundWizard
 from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
     FirstStepForm,
+    OptionalPhotoForm,
     PersonalDetailsForm,
+    ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
 )
@@ -21,6 +27,18 @@ from tests.testapp.forms import (
 
 def _make_bound_wizard(wizard, request):
     return BoundWizard(request, wizard.storage_class(request), wizard=wizard)
+
+
+@pytest.fixture
+def temp_file_storage_class():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        backend = FileSystemStorage(location=tmpdir)
+
+        class TempFileStorage(WizardFileStorage):
+            def __init__(self):
+                super().__init__(backend=backend)
+
+        yield TempFileStorage
 
 
 class _Session(dict):
@@ -487,7 +505,14 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
 
     class FakeWalker:
         def __init__(
-            self, dispatcher, entries, pending_submission, args, kwargs, bound_wizard
+            self,
+            dispatcher,
+            entries,
+            pending_submission,
+            args,
+            kwargs,
+            bound_wizard,
+            pending_files=None,
         ):
             calls.append(("init", pending_submission))
 
@@ -2037,3 +2062,261 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
 
     assert response.status_code == 200
     assert captured["path_head_name"] == "Ada"
+
+
+def test_bound_wizard_submit_with_files_persists_file_refs_in_state(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+
+    bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
+
+    state = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert state == [
+        {"step": {"photo": "avatar.jpg"}, "files": {"photo": file_key}},
+    ]
+
+
+def test_bound_wizard_replay_reconstitutes_uploaded_file_for_form_validation(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
+
+    response = bound_wizard.replay()
+
+    assert response.status_code == 200
+    response.render()
+    assert b"name" in response.content
+
+
+def test_bound_wizard_render_edit_passes_stored_file_as_initial(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    captured = {}
+
+    class CapturingProfileView(FormView):
+        form_class = ProfilePhotoForm
+        template_name = "testapp/linear_wizard.html"
+
+        def get_initial(self):
+            captured["initial"] = super().get_initial()
+            return captured["initial"]
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(CapturingProfileView, context={"step_name": "photo"})
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
+
+    bound_wizard.render_edit(step_name="photo")
+
+    assert captured["initial"]["photo"].read() == b"binary"
+
+
+def test_bound_wizard_edit_without_new_file_preserves_stored_ref(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm, context={"step_name": "photo"})
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
+
+    bound_wizard.edit({"photo": "avatar.jpg"}, step_name="photo")
+
+    state = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert state[0]["files"] == {"photo": file_key}
+    assert bound_wizard.file_storage.open(file_key).read() == b"binary"
+
+
+def test_bound_wizard_edit_adds_file_to_step_that_had_no_files(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(OptionalPhotoForm, context={"step_name": "photo"})
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    bound_wizard.submit({"label": "first"})
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    new_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+
+    bound_wizard.edit(
+        {"label": "first"},
+        files={"photo": new_key},
+        step_name="photo",
+    )
+
+    state = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert state[0]["files"] == {"photo": new_key}
+
+
+def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm, context={"step_name": "photo"})
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    old_photo = SimpleUploadedFile("v1.jpg", b"first")
+    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
+    bound_wizard.submit({"photo": "v1.jpg"}, files={"photo": old_ref})
+    new_photo = SimpleUploadedFile("v2.jpg", b"second")
+    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+
+    bound_wizard.edit(
+        {"photo": "v2.jpg"},
+        files={"photo": new_ref},
+        step_name="photo",
+    )
+
+    state = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert state[0]["files"] == {"photo": new_ref}
+    assert not bound_wizard.file_storage.backend.exists(old_ref["tmp_name"])
+    assert bound_wizard.file_storage.open(new_ref).read() == b"second"
+
+
+def test_bound_wizard_cleanup_files_wipes_run_prefix(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("avatar.jpg", b"binary")
+    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
+
+    bound_wizard.cleanup_files()
+
+    _, files = bound_wizard.file_storage.backend.listdir("gandalf/existing-run")
+    assert files == []
+
+
+def test_configured_wizard_uses_configured_file_storage_class(
+    request_with_session_factory,
+):
+    calls = []
+
+    class FakeFileStorage:
+        def __init__(self):
+            calls.append("init")
+
+        def save(self, run_id, uploaded_file):
+            calls.append(("save", run_id, uploaded_file.name))
+            return f"fake/{uploaded_file.name}"
+
+        def open(self, key):
+            calls.append(("open", key))
+            return SimpleUploadedFile(key.rsplit("/", 1)[-1], b"x")
+
+        def delete_run(self, run_id):
+            calls.append(("delete_run", run_id))
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=FakeFileStorage,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert isinstance(bound_wizard.file_storage, FakeFileStorage)
+    bound_wizard.cleanup_files()
+    assert ("delete_run", "existing-run") in calls

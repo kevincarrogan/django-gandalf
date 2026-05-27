@@ -36,3 +36,12 @@ class ItemCountForm(forms.Form):
 
 class ItemForm(forms.Form):
     name = forms.CharField()
+
+
+class ProfilePhotoForm(forms.Form):
+    photo = forms.FileField()
+
+
+class OptionalPhotoForm(forms.Form):
+    label = forms.CharField()
+    photo = forms.FileField(required=False)

@@ -1,6 +1,9 @@
+import tempfile
 from http import HTTPStatus
 
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
@@ -1121,3 +1124,95 @@ def test_form_view_step_done_raises_not_implemented_for_form_attribute(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"form_not_implemented {run_id}".encode()
+
+
+@pytest.fixture
+def file_uploading_wizard_url():
+    return reverse("file-uploading-wizard")
+
+
+@pytest.fixture
+def file_uploading_wizard_run_url():
+    def build_url(run_id):
+        return reverse("file-uploading-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def isolated_media_root():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            yield tmpdir
+
+
+def test_file_uploading_wizard_persists_upload_and_advances(
+    client,
+    file_uploading_wizard_url,
+    file_uploading_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(file_uploading_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        file_uploading_wizard_run_url(run_id),
+        data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, '<input type="text" name="name"')
+    _, run_data = get_only_run_info_from_session(client.session)
+    [photo_entry] = run_data["state"]
+    assert photo_entry["files"]["photo"]["tmp_name"] == (f"gandalf/{run_id}/avatar.jpg")
+    assert photo_entry["files"]["photo"]["name"] == "avatar.jpg"
+    assert os.path.exists(
+        os.path.join(isolated_media_root, "gandalf", run_id, "avatar.jpg")
+    )
+
+
+def test_file_uploading_wizard_done_cleans_up_files(
+    client,
+    file_uploading_wizard_url,
+    file_uploading_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(file_uploading_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_uploading_wizard_run_url(run_id),
+        data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+    )
+
+    response = client.post(
+        file_uploading_wizard_run_url(run_id),
+        data={"name": "Ada"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed avatar.jpg"
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert not os.path.exists(run_dir) or os.listdir(run_dir) == []
+
+
+def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
+    client,
+    file_uploading_wizard_url,
+    file_uploading_wizard_run_url,
+    isolated_media_root,
+):
+    client.get(file_uploading_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_uploading_wizard_run_url(run_id),
+        data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+    )
+
+    response = client.get(file_uploading_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, '<input type="text" name="name"')

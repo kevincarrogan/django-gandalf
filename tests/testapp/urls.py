@@ -274,4 +274,14 @@ urlpatterns = [
         views.DynamicListPayloadWizardViewSet.as_view(),
         name="dynamic-list-payload-wizard-run",
     ),
+    path(
+        "file-uploading-wizard/",
+        views.FileUploadingWizardViewSet.as_view(),
+        name="file-uploading-wizard",
+    ),
+    path(
+        "file-uploading-wizard/<uuid:run_id>/",
+        views.FileUploadingWizardViewSet.as_view(),
+        name="file-uploading-wizard-run",
+    ),
 ]

@@ -5,6 +5,7 @@ from http import HTTPStatus
 from typing import Any
 
 from django import forms
+from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
 
@@ -23,6 +24,7 @@ class RuntimeStep:
 
     declaration: tree.Step
     data: dict | None = None
+    files: dict | None = None
     next: "RuntimeStep | RuntimeBranch | None" = None
 
     @property
@@ -102,11 +104,13 @@ class StepDispatcher:
         step_view = step.form_view.as_view(**view_kwargs)
         return step_view(request, *args, **kwargs)
 
-    def build_request(self, method, submission=None):
+    def build_request(self, method, submission=None, files=None):
         request = copy(self._bound_wizard.request)
         request.method = method
         if method == "POST":
             request.POST = submission
+            if files is not None:
+                request._files = files
         return request
 
     def response_satisfies_step(self, response):
@@ -133,12 +137,19 @@ class BoundWizard:
         self.run_id = None
         self._predicate_runtime_tree = None
         self._dispatcher = None
+        self._file_storage = None
 
     @property
     def dispatcher(self):
         if self._dispatcher is None:
             self._dispatcher = self.wizard.step_dispatcher_class(self)
         return self._dispatcher
+
+    @property
+    def file_storage(self):
+        if self._file_storage is None:
+            self._file_storage = self.wizard.file_storage_class()
+        return self._file_storage
 
     def bind(self, wizard):
         self.wizard = wizard
@@ -182,9 +193,15 @@ class BoundWizard:
         finder.visit(self._current_runtime_tree())
         return finder.all()
 
-    def submit(self, submission, *args, **kwargs):
+    def submit(self, submission, *args, files=None, **kwargs):
         walker = self.wizard.cursor_walker_class(
-            self.dispatcher, self.get_state(), submission, args, kwargs, self
+            self.dispatcher,
+            self.get_state(),
+            submission,
+            args,
+            kwargs,
+            self,
+            pending_files=files,
         )
         walker.walk(self.wizard.tree)
         serializer = self.wizard.state_serializer_class()
@@ -203,18 +220,24 @@ class BoundWizard:
 
     def render_edit(self, *args, **context):
         runtime_step = self._resolve_edit_target(context)
+        initial = dict(runtime_step.data or {})
+        for field, ref in (runtime_step.files or {}).items():
+            initial[field] = self.file_storage.open(ref)
         return self.dispatcher.dispatch(
             runtime_step.declaration,
             self.dispatcher.build_request("GET"),
             *args,
-            initial=runtime_step.data,
+            initial=initial,
         )
 
-    def edit(self, submission, *args, **context):
+    def edit(self, submission, *args, files=None, **context):
         runtime = self.runtime_tree
         runtime_step = self._resolve_edit_target(context, runtime=runtime)
         leaf_decl = runtime_step.declaration
-        spliced = SpliceSubmission(runtime_step, submission).transform(runtime)
+        merged_files = self._merge_file_refs(runtime_step.files or {}, files or {})
+        spliced = SpliceSubmission(
+            runtime_step, submission, files=merged_files or None
+        ).transform(runtime)
         serializer = self.wizard.state_serializer_class()
         rebuilt_entries = serializer.reduce(spliced)
         walker = self.wizard.cursor_walker_class(
@@ -228,6 +251,27 @@ class BoundWizard:
         else:
             entries = serializer.reduce(cursor.state)
         self.storage.set_state(self.run_id, entries)
+
+    def _merge_file_refs(self, old_refs, new_refs):
+        merged = {}
+        for field, old_ref in old_refs.items():
+            if field in new_refs:
+                self.file_storage.delete(old_ref)
+                merged[field] = new_refs[field]
+            else:
+                merged[field] = old_ref
+        for field, new_ref in new_refs.items():
+            if field not in old_refs:
+                merged[field] = new_ref
+        return merged
+
+    def cleanup_files(self):
+        """Remove all files persisted under this run's prefix.
+
+        Intended to be called from `WizardViewSet.done()` overrides after the
+        final submission has been consumed. Idempotent on empty runs.
+        """
+        self.file_storage.delete_run(self.run_id)
 
     def _resolve_edit_target(self, context, runtime=None):
         if runtime is None:
@@ -265,12 +309,20 @@ class CursorWalker(tree.Interpreter):
     cursor's slot."""
 
     def __init__(
-        self, dispatcher, entries, pending_submission, args, kwargs, bound_wizard
+        self,
+        dispatcher,
+        entries,
+        pending_submission,
+        args,
+        kwargs,
+        bound_wizard,
+        pending_files=None,
     ):
         self._dispatcher = dispatcher
         self._bound_wizard = bound_wizard
         self._entries_iter = iter(entries)
         self._pending_submission = pending_submission
+        self._pending_files = pending_files
         self._args = args
         self._kwargs = kwargs
         self._head: RuntimeStep | RuntimeBranch | None = None
@@ -280,13 +332,18 @@ class CursorWalker(tree.Interpreter):
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
+        stored_files = entry.get("files") if entry is not None else None
         if stored is None:
             self._place_pending(step)
             self._cursor = Cursor(node=step, state=self._head)
             return False
         response = self._dispatcher.dispatch(
             step,
-            self._dispatcher.build_request("POST", submission=stored),
+            self._dispatcher.build_request(
+                "POST",
+                submission=stored,
+                files=self._open_files(stored_files),
+            ),
             *self._args,
             **self._kwargs,
         )
@@ -294,7 +351,7 @@ class CursorWalker(tree.Interpreter):
             self._place_pending(step)
             self._cursor = Cursor(node=step, state=self._head, response=response)
             return False
-        self._append(RuntimeStep(declaration=step, data=stored))
+        self._append(RuntimeStep(declaration=step, data=stored, files=stored_files))
         return True
 
     def visit_branch(self, branch):
@@ -308,6 +365,7 @@ class CursorWalker(tree.Interpreter):
             self._args,
             self._kwargs,
             self._bound_wizard,
+            pending_files=self._pending_files,
         )
         sub.walk(arm)
         self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
@@ -327,7 +385,23 @@ class CursorWalker(tree.Interpreter):
 
     def _place_pending(self, step):
         if self._pending_submission is not None:
-            self._append(RuntimeStep(declaration=step, data=self._pending_submission))
+            self._append(
+                RuntimeStep(
+                    declaration=step,
+                    data=self._pending_submission,
+                    files=self._pending_files,
+                )
+            )
+
+    def _open_files(self, file_refs):
+        if not file_refs:
+            return None
+        return MultiValueDict(
+            {
+                field: [self._bound_wizard.file_storage.open(ref)]
+                for field, ref in file_refs.items()
+            }
+        )
 
     def _append(self, node):
         if self._head is None:
@@ -342,7 +416,10 @@ class StateSerializer(tree.Reducer):
     state stored in `request.session`."""
 
     def visit_step(self, runtime_step):
-        return {"step": runtime_step.data}
+        entry = {"step": runtime_step.data}
+        if runtime_step.files:
+            entry["files"] = runtime_step.files
+        return entry
 
     def visit_branch(self, runtime_branch, sub_result):
         return {"branch": sub_result}
@@ -405,8 +482,13 @@ class RuntimeTreeBuilder(tree.Interpreter):
 
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
-        data = entry["step"] if entry is not None else None
-        self._append(RuntimeStep(declaration=step, data=data))
+        if entry is None:
+            data = None
+            files = None
+        else:
+            data = entry["step"]
+            files = entry.get("files")
+        self._append(RuntimeStep(declaration=step, data=data, files=files))
 
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
@@ -432,19 +514,26 @@ class RuntimeTreeBuilder(tree.Interpreter):
 
 
 class SpliceSubmission(tree.Transformer):
-    """Transformer over a runtime tree that replaces the `data` on a target
-    RuntimeStep (identified by identity) with a new submission. All other
-    nodes are structurally cloned."""
+    """Transformer over a runtime tree that replaces the `data` (and `files`)
+    on a target RuntimeStep (identified by identity) with a new submission.
+    All other nodes are structurally cloned."""
 
-    def __init__(self, target, submission):
+    def __init__(self, target, submission, files=None):
         self._target = target
         self._submission = submission
+        self._files = files
 
     def visit_step(self, runtime_step, next_result):
-        data = self._submission if runtime_step is self._target else runtime_step.data
+        if runtime_step is self._target:
+            data = self._submission
+            files = self._files
+        else:
+            data = runtime_step.data
+            files = runtime_step.files
         return RuntimeStep(
             declaration=runtime_step.declaration,
             data=data,
+            files=files,
             next=next_result,
         )
 
@@ -470,12 +559,16 @@ def _truncate_after_recurse(node, target_decl):
     if isinstance(node, RuntimeStep):
         if node.declaration is target_decl:
             return (
-                RuntimeStep(node.declaration, data=node.data, next=None),
+                RuntimeStep(
+                    node.declaration, data=node.data, files=node.files, next=None
+                ),
                 True,
             )
         new_next, found = _truncate_after_recurse(node.next, target_decl)
         return (
-            RuntimeStep(node.declaration, data=node.data, next=new_next),
+            RuntimeStep(
+                node.declaration, data=node.data, files=node.files, next=new_next
+            ),
             found,
         )
     new_arm, found_in_arm = _truncate_after_recurse(node.selected_arm, target_decl)

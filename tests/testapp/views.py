@@ -15,6 +15,7 @@ from .forms import (
     ItemCountForm,
     ItemForm,
     PersonalDetailsForm,
+    ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
 )
@@ -514,10 +515,7 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
         "request.wizard.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = (
-        wizard.step(FirstStepForm)
-        .step(EmailStepPrefilledFromPath)
-    )
+    wizard = wizard.step(FirstStepForm).step(EmailStepPrefilledFromPath)
 
     def get_wizard_url(self, run_id):
         return reverse(
@@ -641,11 +639,7 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
         "path via MergeCleanedData and dispatches the merged payload."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .step(SecondStepForm)
-    )
+    wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
 
     def get_wizard_url(self, run_id):
         return reverse(
@@ -745,6 +739,32 @@ class MergeWithLists(MergeCleanedData):
             else:
                 merged[key] = incoming
         return merged
+
+
+class FileUploadingWizardViewSet(WizardViewSet):
+    description = (
+        "Two-step wizard whose first step accepts a file upload; done() echoes "
+        "the stored filename and cleans up the run's files."
+    )
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm, context={"step_name": "photo"})
+        .step(FirstStepForm)
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "file-uploading-wizard-run",
+            kwargs={
+                "run_id": run_id,
+            },
+        )
+
+    def done(self, bound_wizard):
+        photo_step = bound_wizard.find_step(step_name="photo")
+        filename = photo_step.files["photo"]["name"]
+        return HttpResponse(f"completed {filename}")
 
 
 class DynamicListPayloadWizardViewSet(WizardViewSet):
