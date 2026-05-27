@@ -845,9 +845,11 @@ the execution path.
 should only be read through `step.form.cleaned_data`, keeping the bound form as
 the single data entry point.
 
-The path should include nodes that were visited and completed, including
-historical entries when the user changes earlier answers and causes a different
-branch to become active.
+The path describes the current active route through the wizard. If a user
+goes back to an earlier step and changes an answer that flips a branch
+decision, the path reevaluates from the root using the new answer and reflects
+only the route the wizard would now run. Steps from branches that are no
+longer selected do not appear in the path.
 
 So if a user does this:
 
@@ -861,23 +863,24 @@ then Gandalf should reevaluate the tree from the root using the new
 
 That means:
 
-- `BizDetailsForm` and `BizComplianceForm` are no longer on the current active path.
+- `BizDetailsForm` and `BizComplianceForm` are no longer on the path.
 - The next step should now be `ProfileForm`, not `BizDetailsForm`.
-- Any previously collected business-branch data can remain attached to those
-  nodes in the tree as historical runtime state.
-- Code consuming wizard state can use `wizard.path` for ordered visited/completed
-  steps, or walk `wizard.tree` when it needs the full structural and historical
-  picture.
+- `wizard.path` reflects only the personal-branch route the wizard would
+  now run; previously collected business-branch data is not retained as
+  history.
+- Code consuming wizard state can use `wizard.path` for the ordered active
+  route, or walk `wizard.tree` when it needs the full declared structure
+  including branch arms that are not currently selected.
 
 This keeps Gandalf honest about its core abstractions:
 
 - the flow is declared as a tree,
-- the runtime state is represented as a tree,
-- and Gandalf also exposes a path projection of visited/completed steps so
+- the runtime state is the active route through that tree,
+- and Gandalf exposes a path projection of that active route so
   consumers do not need to flatten the tree just to get execution order.
 
-In other words, Gandalf should not force one canonical interpretation of “all
-wizard data”. It should expose both the shaped runtime tree and the execution
+In other words, Gandalf should not force one canonical interpretation of "all
+wizard data". It should expose both the declared tree and the active-route
 path so callers can pick the structure that matches their use case.
 
 That also means Gandalf does not need a separate result-building abstraction.
