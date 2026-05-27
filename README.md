@@ -320,6 +320,9 @@ rendered inside a wizard step; no-op otherwise.
 
 ## More
 
+- [EXAMPLES.md](EXAMPLES.md) — guided tour of the runnable examples
+  gallery (`just examples`). Worked recipes for branching, editing,
+  file uploads, dynamic generation, and custom reducers.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — runtime structure and data flow.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — local setup, tests, commit
   conventions.
