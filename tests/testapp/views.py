@@ -1,6 +1,7 @@
+from gandalf import tree as tree_module
 from gandalf import wizard
 from gandalf.form_views import form_view_factory
-from gandalf.wizard import MergeCleanedData, Wizard, condition
+from gandalf.wizard import MergeCleanedData, Wizard, condition, named
 from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
@@ -14,6 +15,7 @@ from .forms import (
     FirstStepForm,
     ItemCountForm,
     ItemForm,
+    OptionalPhotoForm,
     PersonalDetailsForm,
     ProfilePhotoForm,
     ReviewForm,
@@ -856,3 +858,120 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
 
         payload = MergeWithLists().reduce(bound_wizard.path)
         return HttpResponse(json.dumps(payload, sort_keys=True))
+
+
+class NamedHelperWizardViewSet(WizardViewSet):
+    description = "Wizard whose steps are declared via the `named()` helper."
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(named("first", FirstStepForm))
+        .step(named("second", SecondStepForm))
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "named-helper-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def done(self, bound_wizard):
+        first = bound_wizard.find_step(step_name="first")
+        second = bound_wizard.find_step(step_name="second")
+        return HttpResponse(
+            f"completed first={first.form.cleaned_data['name']} "
+            f"second={second.form.cleaned_data['email']}"
+        )
+
+
+class FileEditingWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard whose first step is an optional-photo upload, supporting an "
+        "edit cycle on that step (replace, add, or leave alone)."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(OptionalPhotoForm, context={"step_name": "photo"})
+        .step(ReviewForm, context={"step_name": "review"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "file-editing-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def done(self, bound_wizard):
+        photo_step = bound_wizard.find_step(step_name="photo")
+        photo_ref = (photo_step.files or {}).get("photo")
+        filename = photo_ref["name"] if photo_ref else "no-photo"
+        return HttpResponse(f"completed {filename}")
+
+
+class EmptyBranchArmContextFinderViewSet(WizardViewSet):
+    description = (
+        "Wizard with an unmatched no-default branch; done() runs ContextFinder "
+        "over both the declared tree (covers the no-default branch arc) and "
+        "the runtime tree (covers the empty-selected-arm branch arc)."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(named("first", FirstStepForm))
+        .branch(
+            condition(_never_matches, Wizard().step(SecondStepForm)),
+        )
+        .step(named("review", ReviewForm))
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "empty-branch-arm-context-finder-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def done(self, bound_wizard):
+        declared_finder = tree_module.ContextFinder({})
+        declared_finder.visit(bound_wizard.wizard.tree)
+        runtime_finder = tree_module.ContextFinder({})
+        runtime_finder.visit(bound_wizard.runtime_tree)
+        return HttpResponse(
+            f"completed declared={len(declared_finder.all())} "
+            f"runtime={len(runtime_finder.all())}"
+        )
+
+
+def _always_true(_request):
+    return True
+
+
+class BranchTruncateWizardViewSet(WizardViewSet):
+    description = (
+        "Linear-via-branch wizard used to exercise the branch-handling path "
+        "of `_truncate_after_recurse` (truncating when an edited step that "
+        "lives after a branch fails validation), plus the require_data branch "
+        "arc when an edit targets a step that hasn't been visited yet."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .branch(
+            condition(
+                _always_true,
+                Wizard().step(SecondStepForm, context={"step_name": "second"}),
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+        .step(AccountTypeForm, context={"step_name": "tail"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "branch-truncate-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")

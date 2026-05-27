@@ -1,10 +1,13 @@
+import tempfile
 from http import HTTPStatus
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import ConfiguredWizard, StepNameEditResolver, Wizard
-from tests.testapp.forms import FirstStepForm
+from tests.testapp.forms import FirstStepForm, ProfilePhotoForm, SecondStepForm
 
 
 class _Session(dict):
@@ -315,3 +318,102 @@ def test_wizard_viewset_get_wizard_can_build_tree_from_run_state(rf):
 
     assert response.status_code == HTTPStatus.OK
     assert response.context_data["form"].__class__ is ItemForm
+
+
+def test_wizard_viewset_get_with_edit_context_calls_render_edit(rf):
+    class PlainWizardViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, context={"step_name": "first"})
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+    request = rf.get("/wizard/existing-run/?gandalf_edit_step=first")
+    request.session = _Session(
+        {
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        }
+    )
+
+    response = PlainWizardViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].__class__ is FirstStepForm
+    assert response.context_data["form"].initial == {"name": "Ada"}
+
+
+def test_wizard_viewset_post_with_edit_context_invokes_bound_wizard_edit(rf):
+    class PlainWizardViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, context={"step_name": "first"})
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+        def done(self, bound_wizard):
+            from django.http import HttpResponse
+
+            return HttpResponse(b"done")
+
+    request = rf.post(
+        "/wizard/existing-run/",
+        data={"gandalf_edit_step": "first", "name": "Grace"},
+    )
+    request.session = _Session(
+        {
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        }
+    )
+
+    response = PlainWizardViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.OK
+    stored = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert stored[0]["step"]["name"] == "Grace"
+    assert "gandalf_edit_step" not in stored[0]["step"]
+
+
+def test_wizard_viewset_post_with_files_stores_uploads_through_file_storage(rf):
+    class PlainWizardViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(ProfilePhotoForm, context={"step_name": "photo"})
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+    request = rf.post(
+        "/wizard/existing-run/",
+        data={"photo": SimpleUploadedFile("portrait.jpg", b"binary")},
+    )
+    request.session = _Session(
+        {
+            "gandalf_runs": {
+                "existing-run": {},
+            },
+        }
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            response = PlainWizardViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.OK
+    stored = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert stored[0]["files"]["photo"]["name"] == "portrait.jpg"

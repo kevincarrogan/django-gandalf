@@ -1284,3 +1284,308 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, '<input type="text" name="name"')
+
+
+@pytest.fixture
+def named_helper_wizard_url():
+    return reverse("named-helper-wizard")
+
+
+@pytest.fixture
+def named_helper_wizard_run_url():
+    def build_url(run_id):
+        return reverse("named-helper-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_named_helper_wizard_completes_with_context_lookups(
+    client,
+    named_helper_wizard_url,
+    named_helper_wizard_run_url,
+):
+    client.get(named_helper_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(named_helper_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        named_helper_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed first=Ada second=ada@example.com"
+
+
+@pytest.fixture
+def file_editing_wizard_url():
+    return reverse("file-editing-wizard")
+
+
+@pytest.fixture
+def file_editing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("file-editing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "label": "First",
+            "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
+        },
+    )
+
+    response = client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "gandalf_edit_step": "photo",
+            "label": "First",
+            "photo": SimpleUploadedFile("second.jpg", b"second-bytes"),
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    files = sorted(os.listdir(run_dir))
+    assert files == ["second.jpg"]
+
+
+def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={"label": "No photo yet"},
+    )
+
+    response = client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "gandalf_edit_step": "photo",
+            "label": "Now with photo",
+            "photo": SimpleUploadedFile("later.jpg", b"later-bytes"),
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert sorted(os.listdir(run_dir)) == ["later.jpg"]
+
+
+def test_file_editing_wizard_edit_get_renders_existing_photo(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "label": "Original",
+            "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
+        },
+    )
+
+    response = client.get(
+        file_editing_wizard_run_url(run_id) + "?gandalf_edit_step=photo",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"].initial.get("photo"), object)
+    assert "first.jpg" in response.context["form"].initial["photo"].name
+
+
+def test_file_editing_wizard_edit_with_invalid_submission_at_leaf_truncates(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "label": "Original",
+            "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
+        },
+    )
+
+    response = client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "gandalf_edit_step": "photo",
+            "label": "",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].errors == {"label": ["This field is required."]}
+
+
+def test_file_editing_wizard_edit_with_unknown_step_raises_step_not_found(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    from gandalf.runtime import StepNotFound
+
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={"label": "Only label"},
+    )
+
+    with pytest.raises(StepNotFound):
+        client.post(
+            file_editing_wizard_run_url(run_id),
+            data={
+                "gandalf_edit_step": "nonexistent",
+                "label": "ignored",
+            },
+        )
+
+
+@pytest.fixture
+def empty_branch_arm_context_finder_wizard_url():
+    return reverse("empty-branch-arm-context-finder-wizard")
+
+
+@pytest.fixture
+def empty_branch_arm_context_finder_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "empty-branch-arm-context-finder-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_empty_branch_arm_context_finder_walks_both_trees(
+    client,
+    empty_branch_arm_context_finder_wizard_url,
+    empty_branch_arm_context_finder_wizard_run_url,
+):
+    client.get(empty_branch_arm_context_finder_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        empty_branch_arm_context_finder_wizard_run_url(run_id),
+        data={"name": "Ada"},
+    )
+    response = client.post(
+        empty_branch_arm_context_finder_wizard_run_url(run_id),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    # Declared tree finder visits the unmatched-arm step (2) plus the two outer
+    # steps (first + review) = 3 matches. Runtime tree finder visits only the
+    # outer steps along the active path = 2 matches.
+    assert response.content == b"completed declared=3 runtime=2"
+
+
+@pytest.fixture
+def branch_truncate_wizard_url():
+    return reverse("branch-truncate-wizard")
+
+
+@pytest.fixture
+def branch_truncate_wizard_run_url():
+    def build_url(run_id):
+        return reverse("branch-truncate-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_branch_truncate_wizard_edit_post_branch_step_with_invalid_truncates(
+    client,
+    branch_truncate_wizard_url,
+    branch_truncate_wizard_run_url,
+):
+    client.get(branch_truncate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        branch_truncate_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+    client.post(branch_truncate_wizard_run_url(run_id), data={"confirmed": "on"})
+
+    response = client.post(
+        branch_truncate_wizard_run_url(run_id),
+        data={"gandalf_edit_step": "review", "confirmed": ""},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].errors == {
+        "confirmed": ["This field is required."]
+    }
+
+
+def test_branch_truncate_wizard_edit_unvisited_step_raises_step_not_found(
+    client,
+    branch_truncate_wizard_url,
+    branch_truncate_wizard_run_url,
+):
+    from gandalf.runtime import StepNotFound
+
+    client.get(branch_truncate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+
+    with pytest.raises(StepNotFound):
+        client.post(
+            branch_truncate_wizard_run_url(run_id),
+            data={"gandalf_edit_step": "review", "confirmed": "on"},
+        )
+
+
+def test_branch_truncate_wizard_edit_in_branch_arm_with_invalid_truncates(
+    client,
+    branch_truncate_wizard_url,
+    branch_truncate_wizard_run_url,
+):
+    client.get(branch_truncate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        branch_truncate_wizard_run_url(run_id),
+        data={"email": "ada@example.com"},
+    )
+    client.post(branch_truncate_wizard_run_url(run_id), data={"confirmed": "on"})
+
+    response = client.post(
+        branch_truncate_wizard_run_url(run_id),
+        data={"gandalf_edit_step": "second", "email": "not-an-email"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].errors == {
+        "email": ["Enter a valid email address."]
+    }

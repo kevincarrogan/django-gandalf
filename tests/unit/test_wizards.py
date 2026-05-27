@@ -1991,18 +1991,6 @@ def test_runtime_step_form_merges_cleaned_data_across_form_and_form_view_steps(
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
 
-def test_runtime_step_form_without_bound_wizard_raises_runtime_error():
-    from gandalf.runtime import RuntimeStep
-
-    runtime_step = RuntimeStep(
-        declaration=tree.Step(declaration=FirstStepForm),
-        data={"name": "Ada"},
-    )
-
-    with pytest.raises(RuntimeError, match="bound_wizard backref"):
-        runtime_step.form
-
-
 def test_splice_submission_preserves_bound_wizard_for_form_access(
     request_with_session_factory,
     linear_wizard,

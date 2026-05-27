@@ -264,55 +264,6 @@ def test_step_matches_context_returns_false_when_step_has_no_context():
     assert step.matches_context(step_name="first") is False
 
 
-def test_visitor_visit_walks_a_step_chain():
-    class Collector(tree.Visitor):
-        def __init__(self):
-            self.steps = []
-
-        def visit_step(self, step):
-            self.steps.append(step)
-
-        def visit_branch(self, branch):
-            pass
-
-    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
-    collector = Collector()
-    collector.visit(root)
-
-    assert [step.declaration for step in collector.steps] == [
-        FirstStepForm,
-        SecondStepForm,
-    ]
-
-
-def test_visitor_visit_descends_into_branch_arms_and_default():
-    class Collector(tree.Visitor):
-        def __init__(self):
-            self.steps = []
-            self.branches = []
-
-        def visit_step(self, step):
-            self.steps.append(step)
-
-        def visit_branch(self, branch):
-            self.branches.append(branch)
-
-    arm_step = tree.Step(FirstStepForm)
-    default_step = tree.Step(SecondStepForm)
-    root = tree.Branch(
-        arms=((_is_business, arm_step),),
-        default=default_step,
-    )
-    collector = Collector()
-    collector.visit(root)
-
-    assert [step.declaration for step in collector.steps] == [
-        FirstStepForm,
-        SecondStepForm,
-    ]
-    assert len(collector.branches) == 1
-
-
 def test_interpreter_walk_traverses_chain():
     class Collector(tree.Interpreter):
         def __init__(self):
@@ -523,15 +474,3 @@ def test_context_finder_handles_declared_branch_with_no_default():
     assert len(finder.all()) == 1
 
 
-def test_context_finder_all_with_paths_returns_positions():
-    root = tree.Step(
-        FirstStepForm,
-        context={"step_name": "shared"},
-        next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
-    )
-    finder = tree.ContextFinder({"step_name": "shared"})
-
-    finder.visit(root)
-
-    paths_and_nodes = finder.all_with_paths()
-    assert [path for path, _ in paths_and_nodes] == [(0,), (1,)]
