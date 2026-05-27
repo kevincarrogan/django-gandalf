@@ -30,7 +30,7 @@ This project follows a test-driven development approach for filling out the requ
 
 ## Current Implementation Direction
 
-- Wizard steps support three declaration tiers. Reach for the simplest one
+- Wizard steps support two declaration styles. Reach for the simplest one
   that fits the step:
   1. **Plain `forms.Form`** — Gandalf generates the corresponding `FormView`.
      Default for the common case.
@@ -39,12 +39,8 @@ This project follows a test-driven development approach for filling out the requ
      dynamic `get_form_class()`, etc.). Gandalf reconstructs `cleaned_data`
      through the FormView's composition API, so any of those overrides are
      honored automatically.
-  3. **(Deferred) FormCapturingMixin or gandalf base class** — for users
-     who customize beyond composition (`form_valid()` side effects, custom
-     `post()`/`dispatch()`). Not yet built; recover via `view.get_form()`
-     for now.
-- Prefer tier 1 in tests and documentation unless the scenario specifically
-  exercises tier 2 behavior.
+- Prefer style 1 in tests and documentation unless the scenario specifically
+  exercises style 2 behavior.
 - Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation when the declaration naturally spans multiple steps or arguments:
 
 ```python

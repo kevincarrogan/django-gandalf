@@ -209,8 +209,7 @@ Traditional wizard tooling is great for simple, linear steps, but it gets harder
 - **Django-friendly abstraction**: each step is still treated as a `FormView`-like unit under the hood.
 - **Advanced escape hatch**: pass a full `FormView` to `.step()` when a step needs extra configuration.
 
-For a request/response-level view of how the pieces are intended to fit
-together, see [LIFECYCLE.md](LIFECYCLE.md).
+For a runtime-level view of how the pieces fit together, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -275,11 +274,13 @@ class SignupWizardViewSet(WizardViewSet):
 ```
 
 But the viewset can also provide a request-aware `get_wizard()` hook that
-builds or selects the wizard at runtime:
+builds or selects the wizard at runtime. `get_wizard()` is called with the
+`BoundWizard` for the current request, so you can read prior wizard state to
+shape later steps:
 
 ```python
 class SignupWizardViewSet(WizardViewSet):
-    def get_wizard(self):
+    def get_wizard(self, bound_wizard):
         flow = wizard.step(AccountStepView)
 
         if self.request.user.is_staff:
@@ -291,56 +292,7 @@ class SignupWizardViewSet(WizardViewSet):
 ```
 
 When `get_wizard()` returns a plain `Wizard`, the viewset configures it with
-defaults before executing it. Override `get_configured_wizard()` when you need
-to customize that runtime configuration per request.
-
-You can also build a dynamic *range* of auto-generated steps from a previous
-answer. For example, ask how many household members to collect, then append one
-generated step per member:
-
-```python
-from django.views.generic.edit import FormView
-
-
-def build_member_form_view(member_number):
-    class GeneratedMemberFormView(FormView):
-        form_class = HouseholdMemberForm
-
-        def get_initial(self):
-            return {"member_number": member_number}
-
-    GeneratedMemberFormView.__name__ = f"HouseholdMember{member_number}FormView"
-    GeneratedMemberFormView.__qualname__ = GeneratedMemberFormView.__name__
-    return GeneratedMemberFormView
-
-
-class HouseholdWizardViewSet(WizardViewSet):
-    def get_wizard(self):
-        declared_wizard = (
-            wizard.step(
-                HouseholdCountForm,
-                context={"step_name": "household_count"},
-            )  # asks for `member_count`
-        )
-
-        populated_wizard = declared_wizard.populate(self.request)
-        household_count = populated_wizard.path.find_one_by_context(
-            step_name="household_count",
-        )
-        household_count_data = (
-            household_count.form.cleaned_data
-            if household_count
-            else {"member_count": 0}
-        )
-        member_count = int(household_count_data["member_count"])
-
-        flow = declared_wizard
-
-        for index in range(member_count):
-            flow = flow.step(build_member_form_view(index + 1))
-
-        return flow.step(ConfirmStepView)
-```
+defaults before executing it.
 
 This allows flow shape to change by tenant, permissions, feature flags, locale,
 or any other request context, while keeping the same `WizardViewSet` entry
@@ -371,8 +323,6 @@ When a step `FormView` chooses to return its own `HttpResponse`, the default beh
 That default can still be overridden on a per-step basis when a particular step needs different semantics, but the out-of-the-box rule should be that Gandalf remains in control of the boundary and interprets the step response rather than passing it straight through unchanged.
 
 Crucially, the wizard context is still available to the step view when it needs it. Even though the request seen by the step is a wizard-shaped request, `self.request.wizard` is still present, so an explicit `FormView` can tell that it is running inside Gandalf and can inspect wizard state when that is useful.
-
-And if a step needs the untouched incoming request, that is preserved on the wizard itself as `self.request.wizard.original_request`. So the shaped request keeps the step experience ergonomic, while the original request remains available for cases where the distinction matters.
 
 You only need to provide a full `FormView` yourself when you want extra per-step configuration, such as custom `get_initial()`, `form_valid()`, or other view-level behavior.
 
@@ -629,7 +579,7 @@ That keeps naming in user space instead of forcing Gandalf to define one
 canonical global step-name mechanism for every project.
 
 For the very common case where you only want to attach a `step_name`, Gandalf
-should also provide a helper like `named` so the declaration stays concise:
+provides a `named` helper so the declaration stays concise:
 
 ```python
 signup_wizard = (
@@ -642,49 +592,13 @@ signup_wizard = (
 This is shorthand for passing the same form with `context={"step_name": ...}`
 and keeps repetitive naming boilerplate out of the flow declaration.
 
-The context argument should also be able to accept a callable that receives the
-current `request`. That allows step metadata to be derived from request state,
-including prior wizard execution stored on `request.wizard`.
-
-For example:
-
-```python
-def build_profile_context(request):
-    account_step = request.wizard.path.find_one_by_context(step_name="account")
-    account_data = (
-        account_step.form.cleaned_data
-        if account_step and account_step.is_complete
-        else {}
-    )
-
-    return {
-        "step_name": "profile",
-        "analytics_key": "signup-profile",
-        "account_type": account_data.get("account_type"),
-        "prefill_source": "wizard" if account_data else "request",
-    }
-
-
-signup_wizard = (
-    wizard.step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
-    .step(ProfileForm, context=build_profile_context)
-    .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
-)
-```
-
-This keeps context declarative in the common case while still allowing a later
-step to build richer metadata as the wizard tree accumulates completed nodes.
-Because the callable receives the request, it can also use tenant information,
-feature flags, locale, or any other request-scoped input when shaping that
-context.
-
 ### Additional configuration follows the same pattern
 
 Calling `.configure(...)` is optional and only needed when overriding default runtime configuration. A `WizardViewSet` can receive a plain `Wizard` declaration and will configure it automatically with defaults.
 
 In the common case, declare the wizard steps and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
 
-In other words, storage customization:
+When you do need to override a default, pass it as a keyword to `.configure(...)`. For example, storage customization:
 
 ```python
 signup_wizard = (
@@ -693,58 +607,26 @@ signup_wizard = (
 )
 ```
 
-and auto FormView generation customization:
-
-```python
-signup_wizard = (
-    wizard.step(AccountForm)
-    .configure(form_view_factory_class=CustomFormViewFactory)
-)
-```
-
-Where `CustomFormViewFactory` is a class responsible for building the dynamic `FormView` class used when you call `.step(SomeForm)`.
-
-```python
-from django.views.generic.edit import FormView
-
-
-class CustomFormViewFactory:
-    def build(self, form_class):
-        class GeneratedFormView(FormView):
-            def get_initial(self):
-                initial = super().get_initial()
-                initial["source"] = "custom-factory"
-                return initial
-
-        GeneratedFormView.form_class = form_class
-        GeneratedFormView.__name__ = f"{form_class.__name__}View"
-        GeneratedFormView.__qualname__ = GeneratedFormView.__name__
-        return GeneratedFormView
-```
-
-That keeps the mental model consistent:
+The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `edit_resolver_class`). That keeps the mental model consistent:
 
 - `Wizard()` remains focused on step/branch declaration,
 - `configure(...)` receives configuration touch points,
 - each touch point has a sensible default so you only configure what you need,
-- those touch points control how step `FormView` classes are produced,
 - and future configuration hooks should follow this same `configure(...)` pattern instead of introducing unrelated mechanisms.
 
 ### Storage
 
-Wizard state will be backed by a session storage class. Gandalf should provide
+Wizard state is backed by a session storage class. Gandalf provides
 `SessionStorage` as its only built-in storage class, and users may pass a
 compatible custom session-backed class with `Wizard().configure(storage_class=...)`.
 
-For now, Gandalf should not expose `CookieStorage` as a built-in option. Wizard
-state can include enough structured form data and runtime metadata that
-cookie-backed storage is too size-constrained.
+Gandalf does not ship a `CookieStorage` option. Wizard state can include enough
+structured form data and runtime metadata that cookie-backed storage is too
+size-constrained.
 
-`SessionStorage` should store plain JSON-compatible data in `request.session`,
-not pickled Python objects or live runtime objects. Django's configured session
+`SessionStorage` stores plain JSON-compatible data in `request.session`, not
+pickled Python objects or live runtime objects. Django's configured session
 backend then handles the actual serialization and persistence.
-
-> This section describes the API direction; storage behavior internals are intentionally deferred.
 
 ### File uploads
 
@@ -820,241 +702,6 @@ weekday_or_weekend_wizard = (
     .step(ConfirmationForm)
 )
 ```
-
-### Tree-shaped runtime data contract
-
-The *mechanics* of replaying submissions are an implementation detail.
-
-The *behavior* is not.
-
-Because Gandalf models the journey as a real tree, the runtime data contract
-should also be shaped like a tree.
-
-The intent is that Gandalf reevaluates the flow from the root on each
-request/response cycle using the data it currently has.
-
-That means the primary runtime object is not a flattened `data` dict. It is the
-evaluated tree itself, with step results attached to the nodes that have run.
-
-More concretely, `wizard.tree` should be a tree of `Step` nodes.
-
-For example:
-
-```python
-business_flow = (
-    wizard.step(BizDetailsForm)
-    .step(BizComplianceForm)
-)
-personal_flow = (
-    wizard.step(ProfileForm)
-)
-
-onboarding_wizard = (
-    wizard.step(AccountTypeForm, context={"step_name": "account_type"})
-    .branch(
-        condition(is_business_account, business_flow),
-        default=personal_flow,
-    )
-    .step(ReviewForm, context={"step_name": "review"})
-)
-```
-
-At runtime, the user should be able to inspect something conceptually like:
-
-```python
-request.wizard.tree
-```
-
-where each `Step` node represents one step in the declared flow and exposes the
-runtime state for that step.
-
-Even though branch evaluation short-circuits for routing, the full declared tree
-still exists in `wizard.tree`. Steps from inactive branches remain part of the
-structure, so introspection code can still walk the complete flow definition
-while `wizard.path` reflects only the visited/completed path.
-
-Conceptually:
-
-```python
-step = request.wizard.tree.find_one_by_context(step_name="account")
-```
-
-The tree should expose helper methods for common context-based lookups. In
-particular, it should provide a single-node lookup like
-`find_one_by_context(...)` that returns `None` when no step matches and raises
-an error when the provided context is too broad and matches more than one node.
-
-`context` is metadata for these developer-facing lookups and for request-aware
-behavior; it is not how Gandalf maps stored state back onto steps. Persisted
-state is shaped to mirror the wizard AST, and a lockstep walk of declaration
-and saved structure aligns each state entry with its step by position. That
-means two steps with identical context never collide in storage, and a step
-needs no context at all in order to have its state persisted and replayed.
-
-and a `Step` node can hold things like:
-
-- its position in the tree,
-- the underlying form class or `FormView` class,
-- the step context declared for that node (for example `{"step_name": "account"}`),
-- whether it is currently on the active route,
-- whether it has run,
-- whether it completed successfully,
-- the bound form state, including `form.cleaned_data` when the step completes,
-- validation errors for the most recent run,
-- the request that was passed into that step view,
-- the response returned by that step view,
-- and any step-level metadata Gandalf records while executing the flow.
-
-The important idea is that Gandalf is not just storing “form answers”.
-It is capturing the execution of the flow step-by-step in a structure that
-matches the declared tree.
-
-So a `Step` is not just a bag of form data. It is the runtime record of:
-
-- what step this was,
-- what view handled it,
-- what request/response interaction happened there,
-- and what data or metadata was produced as a result.
-
-That means the tree can be walked not only to inspect collected values, but
-also to inspect how the wizard actually ran.
-
-### Path-shaped runtime projection (sequence of execution steps)
-
-In addition to the full execution tree, Gandalf should expose a **path**
-projection that represents the route actually taken through that tree.
-
-Conceptually:
-
-```python
-request.wizard.path
-```
-
-The path is intended to be an **ordered sequence of steps**
-in execution order. In other words, it is the linearized timeline of the run,
-but only for steps that were actually visited.
-
-Each item in `wizard.path` should be the same `Step` object exposed by
-`wizard.tree`, just presented in execution order. That keeps lookups and
-iteration consistent across both APIs while still allowing each `Step` to carry
-whatever runtime metadata Gandalf records, such as:
-
-- whether the step completed successfully,
-- completion timestamp or sequence index,
-- list index / sequence position,
-- and any other step-level runtime metadata collected during execution.
-
-This gives consumers a first-class way to iterate “what happened” without
-having to flatten `wizard.tree` themselves.
-
-For example:
-
-```python
-for step in request.wizard.path:
-    print(step.context.get("step_name"), step.is_complete)
-
-# Pythonic random access
-first = request.wizard.path[0]
-last = request.wizard.path[-1]
-count = len(request.wizard.path)
-```
-
-The API should feel list-like, so callers can use familiar Python operations:
-
-- iterate directly (`for item in wizard.path`),
-- index and slice (`wizard.path[0]`, `wizard.path[-1]`, `wizard.path[1:4]`),
-- check length (`len(wizard.path)`),
-- and materialize when desired (`list(wizard.path)`).
-
-The path should also expose helper lookups so consumers can find subsets of
-steps without hand-rolling loops each time. For example:
-
-```python
-account = wizard.path.find_one_by_context(step_name="account")
-completed_profile_steps = wizard.path.filter_by_context(step_name="profile")
-```
-
-`find_one_by_context(...)` should return a `Step`, return `None` when there is
-no match, and raise an error when the lookup is ambiguous.
-`filter_by_context(...)` should return matching `Step` objects in execution
-order. Because `wizard.path` only contains visited/completed nodes, every
-returned step should already be complete and should expose its submitted data
-through `step.form.cleaned_data`. In other words, being part of `wizard.path`
-means the step has completed successfully enough to contribute runtime data to
-the execution path.
-
-`Step` should not expose its own `cleaned_data` alias. Submitted form data
-should only be read through `step.form.cleaned_data`, keeping the bound form as
-the single data entry point.
-
-The path describes the current active route through the wizard. If a user
-goes back to an earlier step and changes an answer that flips a branch
-decision, the path reevaluates from the root using the new answer and reflects
-only the route the wizard would now run. Steps from branches that are no
-longer selected do not appear in the path.
-
-So if a user does this:
-
-1. Completes `AccountTypeForm` with `account_type="business"`.
-2. Completes `BizDetailsForm`.
-3. Completes `BizComplianceForm`.
-4. Goes back to `AccountTypeForm` and changes the answer to `account_type="personal"`.
-
-then Gandalf should reevaluate the tree from the root using the new
-`AccountTypeForm` answer.
-
-That means:
-
-- `BizDetailsForm` and `BizComplianceForm` are no longer on the path.
-- The next step should now be `ProfileForm`, not `BizDetailsForm`.
-- `wizard.path` reflects only the personal-branch route the wizard would
-  now run; previously collected business-branch data is not retained as
-  history.
-- Code consuming wizard state can use `wizard.path` for the ordered active
-  route, or walk `wizard.tree` when it needs the full declared structure
-  including branch arms that are not currently selected.
-
-This keeps Gandalf honest about its core abstractions:
-
-- the flow is declared as a tree,
-- the runtime state is the active route through that tree,
-- and Gandalf exposes a path projection of that active route so
-  consumers do not need to flatten the tree just to get execution order.
-
-In other words, Gandalf should not force one canonical interpretation of "all
-wizard data". It should expose both the declared tree and the active-route
-path so callers can pick the structure that matches their use case.
-
-That also means Gandalf does not need a separate result-building abstraction.
-
-The tree-shaped runtime state is the source of truth, and code running at
-`done()` time can walk that tree to derive whatever final payload it needs.
-
-For example:
-
-```python
-class CheckoutWizardViewSet(WizardViewSet):
-    wizard = checkout_wizard
-
-    def done(self, wizard):
-        customer_step = wizard.path.find_one_by_context(step_name="customer")
-        address_step = wizard.path.find_one_by_context(step_name="address")
-
-        create_order(
-            email=customer_step.form.cleaned_data["email"],
-            shipping_address={
-                "line_1": address_step.form.cleaned_data["line_1"],
-                "postcode": address_step.form.cleaned_data["postcode"],
-            },
-        )
-```
-
-If a project wants a transformed payload, it can still build one from either
-`wizard.tree` or `wizard.path`. Gandalf only needs to guarantee that:
-
-- `wizard.tree` accurately represents the declared structure plus runtime state,
-  and `wizard.path` accurately represents the visited/completed route through
-  that structure.
 
 ---
 
@@ -1231,13 +878,8 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    company_step = request.wizard.tree.find_one_by_context(step_name="company")
-    cleaned = (
-        company_step.form.cleaned_data
-        if company_step and company_step.is_complete
-        else {}
-    )
-    return cleaned.get("is_business")
+    company_step = request.wizard.find_step(step_name="company")
+    return company_step.form.cleaned_data.get("is_business")
 
 
 company_wizard = (
@@ -1250,8 +892,7 @@ company_wizard = (
 )
 ```
 
-`find_one_by_context(...)` returns a `Step` node. To read submitted values from
-that step, access the bound form state via `step.form.cleaned_data`.
+`BoundWizard.find_step(**context)` returns the matching `RuntimeStep` from the active runtime tree. Branch conditions run after the prior steps have completed, so reading `step.form.cleaned_data` from there is safe.
 
 What improves here:
 
@@ -1303,168 +944,6 @@ What improves here:
 
 ---
 
-## Examples from this project
-
-The `examples/` package demonstrates the intended declarative and chained style, split by concern (`core.py`, `forms.py`, `wizards.py`, and `views.py`).
-
-In `django-formtools`, condition callables receive the wizard view. In Gandalf, condition callables intentionally receive the current `request`; when they need wizard state, they can read it from `request.wizard`.
-
-### 1) A nested branch flow
-
-```python
-that_wizard = (
-    wizard.step(BWizardFirstForm)
-    .branch(
-        condition(is_this, BWizardSecondForm),
-        default=BWizardThirdForm,
-    )
-)
-
-main_wizard = (
-    wizard.step(FirstForm)
-    .step(SecondForm)
-    .step(ThirdForm)
-    .branch(
-        condition(
-            is_this,
-            (
-                wizard.step(AWizardFirstForm)
-                .step(AWizardSecondForm)
-            ),
-        ),
-        condition(is_that, that_wizard),
-    )
-    .step(MyFinalForm)
-)
-```
-
-Why this is important:
-
-- A branch can point to a **single next step** or to a **full nested wizard**.
-- Sub-flows are reusable objects, not one-off inline logic.
-- The whole structure still reads top-to-bottom.
-
-### 2) View-centric composition when you need more control
-
-The default usage is still to pass plain `Form` classes to `.step()`. The examples below show the more configurable path, where you provide explicit `FormView`s because a step needs custom view logic.
-
-Here is the more direct comparison for `get_initial()`-style wiring.
-
-#### formtools style
-
-```python
-from formtools.wizard.views import SessionWizardView
-
-
-class SignupWizard(SessionWizardView):
-    form_list = [
-        ("account", AccountForm),
-        ("profile", ProfileForm),
-        ("confirm", ConfirmForm),
-    ]
-
-    def get_form_initial(self, step):
-        if step == "account":
-            return {
-                "email": self.request.user.email,
-                "country": self.request.user.profile.country,
-            }
-
-        if step == "profile":
-            account = self.get_cleaned_data_for_step("account") or {}
-            return {
-                "contact_email": account.get("email"),
-                "country": account.get("country"),
-            }
-
-        if step == "confirm":
-            account = self.get_cleaned_data_for_step("account") or {}
-            profile = self.get_cleaned_data_for_step("profile") or {}
-            return {
-                "email": account.get("email"),
-                "display_name": profile.get("display_name"),
-            }
-
-        return {}
-```
-
-#### gandalf style
-
-```python
-from django.views.generic.edit import FormView
-
-
-class AccountStepView(FormView):
-    form_class = AccountForm
-
-    def get_initial(self):
-        return {
-            "email": self.request.user.email,
-            "country": self.request.user.profile.country,
-        }
-
-
-class ProfileStepView(FormView):
-    form_class = ProfileForm
-
-    def get_initial(self):
-        account_step = self.request.wizard.tree.find_one_by_context(step_name="account")
-        account_data = (
-            account_step.form.cleaned_data
-            if account_step and account_step.is_complete
-            else {}
-        )
-        return {
-            "contact_email": account_data.get("email"),
-            "country": account_data.get("country"),
-        }
-
-
-class ConfirmStepView(FormView):
-    form_class = ConfirmForm
-
-    def get_initial(self):
-        account_step = self.request.wizard.tree.find_one_by_context(step_name="account")
-        profile_step = self.request.wizard.tree.find_one_by_context(step_name="profile")
-        account_data = (
-            account_step.form.cleaned_data
-            if account_step and account_step.is_complete
-            else {}
-        )
-        profile_data = (
-            profile_step.form.cleaned_data
-            if profile_step and profile_step.is_complete
-            else {}
-        )
-        return {
-            "email": account_data.get("email"),
-            "display_name": profile_data.get("display_name"),
-        }
-
-
-class PortableProfileStepView(FormView):
-    form_class = ProfileForm
-
-    def get_initial(self):
-        return {
-            "contact_email": self.request.user.email,
-            "country": self.request.user.profile.country,
-        }
-
-
-view_based = (
-    wizard.step(AccountStepView, context={"step_name": "account"})
-    .step(ProfileStepView, context={"step_name": "profile"})
-    .step(ConfirmStepView, context={"step_name": "confirm"})
-)
-```
-
-With `formtools`, the initial-value logic tends to accumulate in one wizard-level method keyed by step name.
-
-With Gandalf, the easy case is still just `.step(MyForm)`. When a step needs more control, each explicit `FormView` can own its own `get_initial()` and still read prior wizard state via `self.request.wizard.tree`. If a step benefits from knowing that it is executing in wizard context, that information is available on `self.request.wizard`, and the untouched incoming request remains available as `self.request.wizard.original_request`. That keeps the wiring local to the step, and views like `PortableProfileStepView` remain completely ordinary `FormView`s when you do not want any wizard-specific mechanics at all.
-
----
-
 ## How this is better for complex trees
 
 Compared with traditional wizard configuration approaches, this style is designed to make complex flows easier to reason about because:
@@ -1475,29 +954,6 @@ Compared with traditional wizard configuration approaches, this style is designe
 - and reusable sub-wizards reduce duplication across similar journeys.
 
 In short: if your journey behaves like a tree, the API should look like a tree.
-
----
-
-## Current status
-
-This repository is currently an early prototype and API sketch.
-
-- `examples/` demonstrates desired usage and composition style across dedicated modules.
-- `implementation.py` contains rough implementation scaffolding and design notes.
-
-Expect iteration on naming, validation, execution semantics, and Django integration details.
-
----
-
-## Near-term direction
-
-Planned focus areas include:
-
-- robust flow tree data model,
-- branch condition evaluation lifecycle,
-- URL routing for named wizard steps,
-- management form handling strategy,
-- and end-to-end wizard execution through a `WizardViewSet` abstraction.
 
 ---
 
