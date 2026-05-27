@@ -184,4 +184,14 @@ urlpatterns = [
         views.DoubleConfiguredWizardViewSet.as_view(),
         name="double-configured-wizard-run",
     ),
+    path(
+        "merged-payload-wizard/",
+        views.MergedPayloadLinearWizardViewSet.as_view(),
+        name="merged-payload-wizard",
+    ),
+    path(
+        "merged-payload-wizard/<uuid:run_id>/",
+        views.MergedPayloadLinearWizardViewSet.as_view(),
+        name="merged-payload-wizard-run",
+    ),
 ]

@@ -5,6 +5,7 @@ from gandalf.form_views import form_view_factory
 from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
+    MergeCleanedData,
     RuntimeTreeBuilder,
     StateSerializer,
 )
@@ -14,6 +15,7 @@ from gandalf.storage import SessionStorage
 __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
+    "MergeCleanedData",
     "Wizard",
     "branch",
     "condition",
