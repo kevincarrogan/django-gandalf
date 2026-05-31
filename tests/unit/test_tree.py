@@ -474,6 +474,113 @@ def test_context_finder_handles_declared_branch_with_no_default():
     assert len(finder.all()) == 1
 
 
+def test_build_flow_graph_returns_empty_graph_for_none():
+    graph = tree.build_flow_graph(None)
+
+    assert graph == tree.FlowGraph(nodes=(), edges=())
+
+
+def test_build_flow_graph_threads_a_linear_chain():
+    root = tree.build([tree.Step(FirstStepForm), tree.Step(SecondStepForm)])
+
+    graph = tree.build_flow_graph(root)
+
+    assert graph.nodes == (
+        tree.FlowNode(key=0, kind="step", label="FirstStepForm"),
+        tree.FlowNode(key=1, kind="step", label="SecondStepForm"),
+    )
+    assert graph.edges == (tree.FlowEdge(source=0, target=1),)
+
+
+def test_build_flow_graph_captures_branch_topology_and_reconvergence():
+    root = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Branch(
+                arms=((_is_business, tree.Step(SecondStepForm)),),
+                default=tree.Step(FirstStepForm),
+            ),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    graph = tree.build_flow_graph(root)
+
+    assert graph.nodes == (
+        tree.FlowNode(key=0, kind="step", label="FirstStepForm"),
+        tree.FlowNode(key=1, kind="branch", label="Branch"),
+        tree.FlowNode(key=2, kind="step", label="SecondStepForm"),
+        tree.FlowNode(key=3, kind="step", label="FirstStepForm"),
+        tree.FlowNode(key=4, kind="step", label="SecondStepForm"),
+    )
+    assert graph.edges == (
+        tree.FlowEdge(source=1, target=2, label="_is_business"),
+        tree.FlowEdge(source=1, target=3, label="default"),
+        tree.FlowEdge(source=0, target=1),
+        tree.FlowEdge(source=2, target=4),
+        tree.FlowEdge(source=3, target=4),
+    )
+
+
+def test_build_flow_graph_adds_skip_edge_when_branch_has_no_default():
+    root = tree.build(
+        [
+            tree.Branch(
+                arms=((_is_business, tree.Step(SecondStepForm)),),
+                default=None,
+            ),
+            tree.Step(FirstStepForm),
+        ]
+    )
+
+    graph = tree.build_flow_graph(root)
+
+    # The branch node (key 0) is itself an exit, so it gains a direct edge to
+    # the following step alongside the arm's own exit.
+    assert graph.edges == (
+        tree.FlowEdge(source=0, target=1, label="_is_business"),
+        tree.FlowEdge(source=1, target=2),
+        tree.FlowEdge(source=0, target=2),
+    )
+
+
+def test_build_flow_graph_treats_empty_arm_as_a_skip():
+    root = tree.build(
+        [
+            tree.Branch(
+                arms=((_is_business, None),),
+                default=tree.Step(FirstStepForm),
+            ),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    graph = tree.build_flow_graph(root)
+
+    assert graph.edges == (
+        tree.FlowEdge(source=0, target=1, label="default"),
+        tree.FlowEdge(source=0, target=2),
+        tree.FlowEdge(source=1, target=2),
+    )
+
+
+def test_mermaid_serializes_a_flow_graph_without_touching_a_tree():
+    graph = tree.FlowGraph(
+        nodes=(
+            tree.FlowNode(key=0, kind="step", label="A"),
+            tree.FlowNode(key=1, kind="branch", label="Branch"),
+        ),
+        edges=(tree.FlowEdge(source=0, target=1, label="go"),),
+    )
+
+    assert tree.Mermaid().render(graph) == (
+        "flowchart TD\n"
+        '    n0["A"]\n'
+        '    n1{"Branch"}\n'
+        '    n0 -->|"go"| n1'
+    )
+
+
 def test_mermaid_renders_empty_tree():
     assert tree.mermaid(None) == "flowchart TD"
 
@@ -512,11 +619,11 @@ def test_mermaid_renders_branch_with_arm_and_default():
         '    n0["FirstStepForm"]\n'
         '    n1{"Branch"}\n'
         '    n2["SecondStepForm"]\n'
-        '    n1 -->|"_is_business"| n2\n'
         '    n3["FirstStepForm"]\n'
+        '    n4["SecondStepForm"]\n'
+        '    n1 -->|"_is_business"| n2\n'
         '    n1 -->|"default"| n3\n'
         "    n0 --> n1\n"
-        '    n4["SecondStepForm"]\n'
         "    n2 --> n4\n"
         "    n3 --> n4"
     )
@@ -539,9 +646,9 @@ def test_mermaid_renders_skip_path_when_branch_has_no_default():
         '    n0["FirstStepForm"]\n'
         '    n1{"Branch"}\n'
         '    n2["SecondStepForm"]\n'
+        '    n3["FirstStepForm"]\n'
         '    n1 -->|"_is_business"| n2\n'
         "    n0 --> n1\n"
-        '    n3["FirstStepForm"]\n'
         "    n2 --> n3\n"
         "    n1 --> n3"
     )
@@ -559,32 +666,10 @@ def test_mermaid_renders_nested_branch():
         '    n0{"Branch"}\n'
         '    n1{"Branch"}\n'
         '    n2["SecondStepForm"]\n'
+        '    n3["FirstStepForm"]\n'
         '    n1 -->|"_is_personal"| n2\n'
         '    n0 -->|"_is_business"| n1\n'
-        '    n3["FirstStepForm"]\n'
         '    n0 -->|"default"| n3'
-    )
-
-
-def test_mermaid_renders_skip_path_for_empty_arm():
-    root = tree.build(
-        [
-            tree.Branch(
-                arms=((_is_business, None),),
-                default=tree.Step(FirstStepForm),
-            ),
-            tree.Step(SecondStepForm),
-        ]
-    )
-
-    assert tree.mermaid(root) == (
-        "flowchart TD\n"
-        '    n0{"Branch"}\n'
-        '    n1["FirstStepForm"]\n'
-        '    n0 -->|"default"| n1\n'
-        '    n2["SecondStepForm"]\n'
-        "    n0 --> n2\n"
-        "    n1 --> n2"
     )
 
 

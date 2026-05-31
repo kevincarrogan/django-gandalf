@@ -167,87 +167,150 @@ def _format_tree(root) -> str:  # pragma: no cover
     return "\n".join(formatter.lines)
 
 
-class Mermaid:
-    """Renders a declaration tree as a Mermaid ``flowchart TD`` diagram.
+@dataclass(frozen=True)
+class FlowNode:
+    """A node in the output-agnostic flow graph. `kind` is ``"step"`` or
+    ``"branch"``; `key` is a stable integer id assigned in structural
+    pre-order."""
 
-    Steps become rectangular nodes labelled with the declaration name;
-    branches become decision nodes whose outgoing edges are labelled with
-    each arm's predicate name (and ``default`` for the fallback). Arm subtrees
-    reconverge on whatever follows the branch, and a branch with no default
-    (or an empty arm) grows a direct edge to the next node so the skip path is
-    visible.
+    key: int
+    kind: str
+    label: str
 
-    Unlike `Formatter`, this is not an `Interpreter`: laying out edges needs
-    each subtree's *exit* nodes (the tails that connect to whatever follows),
-    which the linear `walk` loop does not surface. `_emit_chain` returns
-    ``(entry_id, exit_ids)`` so a parent can wire those reconvergence edges.
+
+@dataclass(frozen=True)
+class FlowEdge:
+    """A directed edge between two `FlowNode` keys, with an optional label
+    (a branch arm's predicate name, or ``"default"``)."""
+
+    source: int
+    target: int
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class FlowGraph:
+    """An output-agnostic model of a wizard flow: a flat set of `FlowNode`s
+    and `FlowEdge`s. Renderers (Mermaid, DOT, …) consume this without ever
+    touching the declaration tree, and runtime-path highlighting is just a
+    matter of annotating these nodes and edges."""
+
+    nodes: tuple[FlowNode, ...]
+    edges: tuple[FlowEdge, ...]
+
+
+class FlowGraphBuilder:
+    """Folds a declaration tree into a `FlowGraph`.
+
+    Each subtree reduces to a *fragment* with a single entry node and a set of
+    exit nodes — the tails that must connect to whatever follows. Fragments
+    compose by two rules:
+
+    - *sequence*: wire every exit of the preceding fragment to the entry of
+      the next node;
+    - *branch*: fan the decision node out to each arm's entry (labelled with
+      the arm's predicate name, or ``"default"``) and union the arm exits,
+      adding the decision node itself as an exit for the skip path when an arm
+      is empty or there is no default.
+
+    Node keys are allocated in structural pre-order. This is the
+    boundary-carrying fold the `Interpreter`/`Transformer`/`Reducer` family
+    doesn't express: a subtree reduces to a value that remembers its entry and
+    exits so the parent can wire reconvergence.
     """
 
     def __init__(self):
-        self.lines: list[str] = []
+        self._nodes: list[FlowNode] = []
+        self._edges: list[FlowEdge] = []
         self._counter = 0
 
-    def render(self, root) -> str:
-        self.lines = ["flowchart TD"]
-        self._emit_chain(root)
-        return "\n".join(self.lines)
+    def build(self, root) -> FlowGraph:
+        self._build_chain(root)
+        return FlowGraph(nodes=tuple(self._nodes), edges=tuple(self._edges))
 
-    def _new_id(self) -> str:
-        node_id = f"n{self._counter}"
+    def _add_node(self, kind, label) -> int:
+        key = self._counter
         self._counter += 1
-        return node_id
+        self._nodes.append(FlowNode(key=key, kind=kind, label=label))
+        return key
 
-    def _emit_chain(self, node):
-        entry_id = None
-        pending_exits: list[str] = []
+    def _add_edge(self, source, target, label=None) -> None:
+        self._edges.append(FlowEdge(source=source, target=target, label=label))
+
+    def _build_chain(self, node):
+        entry = None
+        exits: list[int] = []
         while node is not None:
-            node_id, node_exits = self._emit_node(node)
-            if entry_id is None:
-                entry_id = node_id
+            node_entry, node_exits = self._build_node(node)
+            if entry is None:
+                entry = node_entry
             else:
-                for source in dict.fromkeys(pending_exits):
-                    self._edge(source, node_id)
-            pending_exits = node_exits
+                for source in dict.fromkeys(exits):
+                    self._add_edge(source, node_entry)
+            exits = node_exits
             node = node.next
-        return entry_id, pending_exits
+        return entry, exits
 
-    def _emit_node(self, node):
+    def _build_node(self, node):
         if isinstance(node, Step):
-            node_id = self._new_id()
-            self.lines.append(f'    {node_id}["{node.declaration.__name__}"]')
-            return node_id, [node_id]
-        return self._emit_branch(node)
+            key = self._add_node("step", node.declaration.__name__)
+            return key, [key]
+        return self._build_branch(node)
 
-    def _emit_branch(self, branch):
-        branch_id = self._new_id()
-        self.lines.append(f'    {branch_id}{{"Branch"}}')
-        exits: list[str] = []
+    def _build_branch(self, branch):
+        key = self._add_node("branch", "Branch")
+        exits: list[int] = []
         for predicate, arm in branch.arms:
-            self._emit_arm(branch_id, predicate.__name__, arm, exits)
+            self._build_arm(key, predicate.__name__, arm, exits)
         if branch.default is not None:
-            self._emit_arm(branch_id, "default", branch.default, exits)
+            self._build_arm(key, "default", branch.default, exits)
         else:
-            exits.append(branch_id)
-        return branch_id, exits
+            exits.append(key)
+        return key, exits
 
-    def _emit_arm(self, branch_id, label, arm, exits):
-        entry_id, arm_exits = self._emit_chain(arm)
-        if entry_id is None:
-            exits.append(branch_id)
+    def _build_arm(self, branch_key, label, arm, exits) -> None:
+        arm_entry, arm_exits = self._build_chain(arm)
+        if arm_entry is None:
+            exits.append(branch_key)
             return
-        self._edge(branch_id, entry_id, label)
+        self._add_edge(branch_key, arm_entry, label)
         exits.extend(arm_exits)
 
-    def _edge(self, source, target, label=None):
-        if label is None:
-            self.lines.append(f"    {source} --> {target}")
-        else:
-            self.lines.append(f'    {source} -->|"{label}"| {target}')
+
+def build_flow_graph(root) -> FlowGraph:
+    """Fold a declaration tree into a `FlowGraph`."""
+    return FlowGraphBuilder().build(root)
+
+
+class Mermaid:
+    """Serializes a `FlowGraph` as Mermaid ``flowchart TD`` source.
+
+    A pure writer: it owns Mermaid syntax and nothing else. Steps render as
+    rectangular nodes, branches as decision nodes, and edges carry their
+    optional label. All topology (sequencing, branching, reconvergence, skip
+    paths) is already decided in the `FlowGraph` it is handed.
+    """
+
+    def render(self, graph) -> str:
+        lines = ["flowchart TD"]
+        lines.extend(self._node_line(node) for node in graph.nodes)
+        lines.extend(self._edge_line(edge) for edge in graph.edges)
+        return "\n".join(lines)
+
+    def _node_line(self, node) -> str:
+        if node.kind == "branch":
+            return f'    n{node.key}{{"{node.label}"}}'
+        return f'    n{node.key}["{node.label}"]'
+
+    def _edge_line(self, edge) -> str:
+        if edge.label is None:
+            return f"    n{edge.source} --> n{edge.target}"
+        return f'    n{edge.source} -->|"{edge.label}"| n{edge.target}'
 
 
 def mermaid(root) -> str:
     """Render a declaration tree as a Mermaid ``flowchart TD`` source string."""
-    return Mermaid().render(root)
+    return Mermaid().render(build_flow_graph(root))
 
 
 class Configurer(Transformer):
