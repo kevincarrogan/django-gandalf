@@ -35,6 +35,9 @@ class Step:
         if self.next is not None:
             yield from self.next
 
+    def child_subtrees(self):
+        return ()
+
     def accept_interpret(self, interpreter):
         return interpreter.visit_step(self)
 
@@ -56,6 +59,12 @@ class Branch:
         yield self
         if self.next is not None:
             yield from self.next
+
+    def child_subtrees(self):
+        subtrees = [subtree for _, subtree in self.arms if subtree is not None]
+        if self.default is not None:
+            subtrees.append(self.default)
+        return tuple(subtrees)
 
     def accept_interpret(self, interpreter):
         return interpreter.visit_branch(self)
@@ -358,23 +367,19 @@ class Configurer(Transformer):
 def iter_nodes(root):
     """Yield every node of a tree — declaration or runtime — in pre-order.
 
-    Descends `.next` chains, yielding each node before its children. For a
-    runtime branch only the selected arm is followed; for a declaration branch
-    every arm and the default are. This is the one place that knows how to
-    walk *either* tree representation; callers filter the stream for whatever
-    they're after.
+    Descends `.next` chains, yielding each node before its children. Which
+    sub-branches to descend is the node's own decision, asked via
+    `child_subtrees()`: a declaration branch returns every arm and its
+    default, a runtime branch returns only the selected arm, and steps return
+    nothing. That keeps the traversal free of type sniffing and lets the same
+    walk span *either* tree representation; callers filter the stream for
+    whatever they're after.
     """
     node = root
     while node is not None:
         yield node
-        if hasattr(node, "selected_arm"):
-            if node.selected_arm is not None:
-                yield from iter_nodes(node.selected_arm)
-        elif hasattr(node, "arms"):
-            for _, arm in node.arms:
-                yield from iter_nodes(arm)
-            if node.default is not None:
-                yield from iter_nodes(node.default)
+        for subtree in node.child_subtrees():
+            yield from iter_nodes(subtree)
         node = node.next
 
 

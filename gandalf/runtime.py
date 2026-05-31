@@ -75,6 +75,9 @@ class RuntimeStep:
     def matches_context(self, **context):
         return self.declaration.matches_context(**context)
 
+    def child_subtrees(self):
+        return ()
+
     def accept_reduce(self, reducer):
         return reducer.visit_step(self)
 
@@ -94,6 +97,11 @@ class RuntimeBranch:
     declaration: tree.Branch
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def child_subtrees(self):
+        if self.selected_arm is None:
+            return ()
+        return (self.selected_arm,)
 
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
