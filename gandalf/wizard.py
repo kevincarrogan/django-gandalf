@@ -102,6 +102,10 @@ class Wizard:
             configuration=configuration,
         )
 
+    def mermaid(self):
+        """Render the declared flow as a Mermaid ``flowchart TD`` source string."""
+        return tree.mermaid(self.tree)
+
 
 class ConfiguredWizard:
     storage_class = SessionStorage
@@ -141,6 +145,10 @@ class ConfiguredWizard:
 
     def configure(self, **configuration):
         raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
+
+    def mermaid(self):
+        """Render the configured flow as a Mermaid ``flowchart TD`` source string."""
+        return tree.mermaid(self.tree)
 
     def _configure_tree(self, root):
         template_name = self.configuration.get("template_name")

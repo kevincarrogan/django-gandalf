@@ -167,6 +167,89 @@ def _format_tree(root) -> str:  # pragma: no cover
     return "\n".join(formatter.lines)
 
 
+class Mermaid:
+    """Renders a declaration tree as a Mermaid ``flowchart TD`` diagram.
+
+    Steps become rectangular nodes labelled with the declaration name;
+    branches become decision nodes whose outgoing edges are labelled with
+    each arm's predicate name (and ``default`` for the fallback). Arm subtrees
+    reconverge on whatever follows the branch, and a branch with no default
+    (or an empty arm) grows a direct edge to the next node so the skip path is
+    visible.
+
+    Unlike `Formatter`, this is not an `Interpreter`: laying out edges needs
+    each subtree's *exit* nodes (the tails that connect to whatever follows),
+    which the linear `walk` loop does not surface. `_emit_chain` returns
+    ``(entry_id, exit_ids)`` so a parent can wire those reconvergence edges.
+    """
+
+    def __init__(self):
+        self.lines: list[str] = []
+        self._counter = 0
+
+    def render(self, root) -> str:
+        self.lines = ["flowchart TD"]
+        self._emit_chain(root)
+        return "\n".join(self.lines)
+
+    def _new_id(self) -> str:
+        node_id = f"n{self._counter}"
+        self._counter += 1
+        return node_id
+
+    def _emit_chain(self, node):
+        entry_id = None
+        pending_exits: list[str] = []
+        while node is not None:
+            node_id, node_exits = self._emit_node(node)
+            if entry_id is None:
+                entry_id = node_id
+            else:
+                for source in dict.fromkeys(pending_exits):
+                    self._edge(source, node_id)
+            pending_exits = node_exits
+            node = node.next
+        return entry_id, pending_exits
+
+    def _emit_node(self, node):
+        if isinstance(node, Step):
+            node_id = self._new_id()
+            self.lines.append(f'    {node_id}["{node.declaration.__name__}"]')
+            return node_id, [node_id]
+        return self._emit_branch(node)
+
+    def _emit_branch(self, branch):
+        branch_id = self._new_id()
+        self.lines.append(f'    {branch_id}{{"Branch"}}')
+        exits: list[str] = []
+        for predicate, arm in branch.arms:
+            self._emit_arm(branch_id, predicate.__name__, arm, exits)
+        if branch.default is not None:
+            self._emit_arm(branch_id, "default", branch.default, exits)
+        else:
+            exits.append(branch_id)
+        return branch_id, exits
+
+    def _emit_arm(self, branch_id, label, arm, exits):
+        entry_id, arm_exits = self._emit_chain(arm)
+        if entry_id is None:
+            exits.append(branch_id)
+            return
+        self._edge(branch_id, entry_id, label)
+        exits.extend(arm_exits)
+
+    def _edge(self, source, target, label=None):
+        if label is None:
+            self.lines.append(f"    {source} --> {target}")
+        else:
+            self.lines.append(f'    {source} -->|"{label}"| {target}')
+
+
+def mermaid(root) -> str:
+    """Render a declaration tree as a Mermaid ``flowchart TD`` source string."""
+    return Mermaid().render(root)
+
+
 class Configurer(Transformer):
     """Transforms a declaration tree by attaching `form_view` classes to each
     Step. For Steps declared with a plain `forms.Form`, generates a `FormView`

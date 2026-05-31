@@ -474,3 +474,117 @@ def test_context_finder_handles_declared_branch_with_no_default():
     assert len(finder.all()) == 1
 
 
+def test_mermaid_renders_empty_tree():
+    assert tree.mermaid(None) == "flowchart TD"
+
+
+def test_mermaid_renders_single_step():
+    assert tree.mermaid(tree.Step(FirstStepForm)) == (
+        'flowchart TD\n    n0["FirstStepForm"]'
+    )
+
+
+def test_mermaid_renders_linear_chain():
+    root = tree.build([tree.Step(FirstStepForm), tree.Step(SecondStepForm)])
+
+    assert tree.mermaid(root) == (
+        "flowchart TD\n"
+        '    n0["FirstStepForm"]\n'
+        '    n1["SecondStepForm"]\n'
+        "    n0 --> n1"
+    )
+
+
+def test_mermaid_renders_branch_with_arm_and_default():
+    root = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Branch(
+                arms=((_is_business, tree.Step(SecondStepForm)),),
+                default=tree.Step(FirstStepForm),
+            ),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    assert tree.mermaid(root) == (
+        "flowchart TD\n"
+        '    n0["FirstStepForm"]\n'
+        '    n1{"Branch"}\n'
+        '    n2["SecondStepForm"]\n'
+        '    n1 -->|"_is_business"| n2\n'
+        '    n3["FirstStepForm"]\n'
+        '    n1 -->|"default"| n3\n'
+        "    n0 --> n1\n"
+        '    n4["SecondStepForm"]\n'
+        "    n2 --> n4\n"
+        "    n3 --> n4"
+    )
+
+
+def test_mermaid_renders_skip_path_when_branch_has_no_default():
+    root = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Branch(
+                arms=((_is_business, tree.Step(SecondStepForm)),),
+                default=None,
+            ),
+            tree.Step(FirstStepForm),
+        ]
+    )
+
+    assert tree.mermaid(root) == (
+        "flowchart TD\n"
+        '    n0["FirstStepForm"]\n'
+        '    n1{"Branch"}\n'
+        '    n2["SecondStepForm"]\n'
+        '    n1 -->|"_is_business"| n2\n'
+        "    n0 --> n1\n"
+        '    n3["FirstStepForm"]\n'
+        "    n2 --> n3\n"
+        "    n1 --> n3"
+    )
+
+
+def test_mermaid_renders_nested_branch():
+    inner = tree.Branch(arms=((_is_personal, tree.Step(SecondStepForm)),))
+    root = tree.Branch(
+        arms=((_is_business, inner),),
+        default=tree.Step(FirstStepForm),
+    )
+
+    assert tree.mermaid(root) == (
+        "flowchart TD\n"
+        '    n0{"Branch"}\n'
+        '    n1{"Branch"}\n'
+        '    n2["SecondStepForm"]\n'
+        '    n1 -->|"_is_personal"| n2\n'
+        '    n0 -->|"_is_business"| n1\n'
+        '    n3["FirstStepForm"]\n'
+        '    n0 -->|"default"| n3'
+    )
+
+
+def test_mermaid_renders_skip_path_for_empty_arm():
+    root = tree.build(
+        [
+            tree.Branch(
+                arms=((_is_business, None),),
+                default=tree.Step(FirstStepForm),
+            ),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    assert tree.mermaid(root) == (
+        "flowchart TD\n"
+        '    n0{"Branch"}\n'
+        '    n1["FirstStepForm"]\n'
+        '    n0 -->|"default"| n1\n'
+        '    n2["SecondStepForm"]\n'
+        "    n0 --> n2\n"
+        "    n1 --> n2"
+    )
+
+
