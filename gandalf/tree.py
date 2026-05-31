@@ -355,13 +355,35 @@ class Configurer(Transformer):
         )
 
 
-class ContextFinder:
-    """Locates steps in a tree (declaration or runtime) matching a context,
-    tracking the path of indices to each match. For runtime trees, only the
-    active arm is traversed. For declaration trees, every arm is.
+def iter_nodes(root):
+    """Yield every node of a tree — declaration or runtime — in pre-order.
 
-    Use `one()` / `all()` for the bare matches, or `one_with_path()` to also
-    get the position tuple alongside a single match.
+    Descends `.next` chains, yielding each node before its children. For a
+    runtime branch only the selected arm is followed; for a declaration branch
+    every arm and the default are. This is the one place that knows how to
+    walk *either* tree representation; callers filter the stream for whatever
+    they're after.
+    """
+    node = root
+    while node is not None:
+        yield node
+        if hasattr(node, "selected_arm"):
+            if node.selected_arm is not None:
+                yield from iter_nodes(node.selected_arm)
+        elif hasattr(node, "arms"):
+            for _, arm in node.arms:
+                yield from iter_nodes(arm)
+            if node.default is not None:
+                yield from iter_nodes(node.default)
+        node = node.next
+
+
+class ContextFinder:
+    """Finds steps matching a context across a tree (declaration or runtime).
+
+    A thin filter over `iter_nodes`: it owns the match predicate and result
+    arity, not the traversal. For runtime trees only the active arm of each
+    branch is reached; for declaration trees every arm is.
 
     Pass `require_data=True` to skip matches whose `data` attribute is None
     (only meaningful on runtime trees).
@@ -370,38 +392,21 @@ class ContextFinder:
     def __init__(self, context: dict, *, require_data: bool = False):
         self._context = context
         self._require_data = require_data
-        self.matches: list[tuple[tuple[int, ...], object]] = []
+        self.matches: list = []
 
     def visit(self, root) -> None:
-        self._walk(root, ())
+        self.matches = [node for node in iter_nodes(root) if self._is_match(node)]
 
-    def _walk(self, node, prefix: tuple[int, ...]) -> None:
-        index = 0
-        while node is not None:
-            path = prefix + (index,)
-            if hasattr(node, "matches_context"):
-                if node.matches_context(**self._context):
-                    if (
-                        not self._require_data
-                        or getattr(node, "data", None) is not None
-                    ):
-                        self.matches.append((path, node))
-            elif hasattr(node, "selected_arm"):
-                if node.selected_arm is not None:
-                    self._walk(node.selected_arm, path)
-            else:
-                for _, arm in node.arms:
-                    self._walk(arm, path)
-                if node.default is not None:
-                    self._walk(node.default, path)
-            index += 1
-            node = node.next
+    def _is_match(self, node) -> bool:
+        if not hasattr(node, "matches_context"):
+            return False
+        if not node.matches_context(**self._context):
+            return False
+        if self._require_data and getattr(node, "data", None) is None:
+            return False
+        return True
 
     def one(self):
-        path_and_node = self.one_with_path()
-        return None if path_and_node is None else path_and_node[1]
-
-    def one_with_path(self):
         if len(self.matches) > 1:
             raise MultipleStepsReturned(
                 f"Expected one matching step, found {len(self.matches)}."
@@ -411,4 +416,4 @@ class ContextFinder:
         return self.matches[0]
 
     def all(self) -> list:
-        return [match[1] for match in self.matches]
+        return list(self.matches)

@@ -383,30 +383,6 @@ def test_context_finder_all_returns_matches_in_walk_order():
     ]
 
 
-def test_context_finder_one_with_path_returns_position_for_a_flat_match():
-    root = tree.Step(
-        FirstStepForm,
-        context={"step_name": "first"},
-        next=tree.Step(SecondStepForm, context={"step_name": "second"}),
-    )
-    finder = tree.ContextFinder({"step_name": "second"})
-
-    finder.visit(root)
-
-    path, node = finder.one_with_path()
-    assert path == (1,)
-    assert node.declaration is SecondStepForm
-
-
-def test_context_finder_one_with_path_returns_none_when_no_match():
-    root = tree.Step(FirstStepForm, context={"step_name": "first"})
-    finder = tree.ContextFinder({"step_name": "missing"})
-
-    finder.visit(root)
-
-    assert finder.one_with_path() is None
-
-
 def test_context_finder_descends_into_branch_default_when_arm_has_no_match():
     arm_step = tree.Step(FirstStepForm, context={"step_name": "business"})
     default_step = tree.Step(SecondStepForm, context={"step_name": "personal"})
@@ -418,9 +394,7 @@ def test_context_finder_descends_into_branch_default_when_arm_has_no_match():
 
     finder.visit(root)
 
-    path, node = finder.one_with_path()
-    assert path == (0, 0)
-    assert node.declaration is SecondStepForm
+    assert finder.one().declaration is SecondStepForm
 
 
 def test_context_finder_require_data_skips_steps_with_no_data():
@@ -472,6 +446,38 @@ def test_context_finder_handles_declared_branch_with_no_default():
     finder.visit(root)
 
     assert len(finder.all()) == 1
+
+
+def test_iter_nodes_yields_chain_and_all_declaration_branch_arms():
+    arm = tree.Step(FirstStepForm)
+    default = tree.Step(SecondStepForm)
+    root = tree.build(
+        [
+            tree.Step(FirstStepForm),
+            tree.Branch(arms=((_is_business, arm),), default=default),
+            tree.Step(SecondStepForm),
+        ]
+    )
+
+    kinds = [type(node).__name__ for node in tree.iter_nodes(root)]
+
+    assert kinds == ["Step", "Branch", "Step", "Step", "Step"]
+
+
+def test_iter_nodes_follows_only_selected_arm_of_runtime_branch():
+    from gandalf.runtime import RuntimeBranch, RuntimeStep
+
+    selected = RuntimeStep(declaration=tree.Step(FirstStepForm), data={"a": 1})
+    trailing = RuntimeStep(declaration=tree.Step(SecondStepForm), data={"b": 2})
+    root = RuntimeBranch(
+        declaration=tree.Branch(arms=()),
+        selected_arm=selected,
+        next=trailing,
+    )
+
+    nodes = list(tree.iter_nodes(root))
+
+    assert nodes == [root, selected, trailing]
 
 
 def test_build_flow_graph_returns_empty_graph_for_none():

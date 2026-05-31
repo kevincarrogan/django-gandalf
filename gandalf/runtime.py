@@ -311,10 +311,9 @@ class BoundWizard:
             runtime = self.runtime_tree
         finder = tree.ContextFinder(context, require_data=True)
         finder.visit(runtime)
-        match = finder.one_with_path()
-        if match is None:
+        runtime_step = finder.one()
+        if runtime_step is None:
             raise StepNotFound(context)
-        _, runtime_step = match
         return runtime_step
 
     def _build_runtime_tree(self, entries):
