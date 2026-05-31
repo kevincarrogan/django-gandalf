@@ -213,6 +213,33 @@ Why this is better in this project’s sweet spot (complex branching):
 
 This is the project’s focus: make real-world flow trees clear and composable, not just linear demos.
 
+### Visualizing the flow
+
+Because the whole journey is a single declared tree, Gandalf can render it as a
+[Mermaid](https://mermaid.js.org/) `flowchart TD` diagram. Call `.mermaid()` on
+either a `Wizard` or a configured wizard:
+
+```python
+onboarding_wizard = (
+    wizard.step(AccountTypeForm)
+    .branch(
+        condition(is_business_account, business_flow),
+        default=personal_flow,
+    )
+    .step(ReviewForm)
+)
+
+print(onboarding_wizard.mermaid())
+```
+
+Steps render as rectangular nodes, branches as decision nodes whose outgoing
+edges are labelled with each arm's predicate name (and `default` for the
+fallback). Arm subtrees reconverge on whatever follows the branch, and a branch
+with no default grows a direct edge to the next node so the skip path is
+visible. Paste the output into any Mermaid renderer (GitHub Markdown, the
+Mermaid live editor, most docs tools) to get a picture of the journey straight
+from its declaration.
+
 ---
 
 ## Why this exists

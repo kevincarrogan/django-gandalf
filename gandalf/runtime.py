@@ -75,6 +75,9 @@ class RuntimeStep:
     def matches_context(self, **context):
         return self.declaration.matches_context(**context)
 
+    def child_subtrees(self):
+        return ()
+
     def accept_reduce(self, reducer):
         return reducer.visit_step(self)
 
@@ -94,6 +97,11 @@ class RuntimeBranch:
     declaration: tree.Branch
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
     next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def child_subtrees(self):
+        if self.selected_arm is None:
+            return ()
+        return (self.selected_arm,)
 
     def accept_reduce(self, reducer):
         sub_result = reducer.reduce(self.selected_arm)
@@ -311,10 +319,9 @@ class BoundWizard:
             runtime = self.runtime_tree
         finder = tree.ContextFinder(context, require_data=True)
         finder.visit(runtime)
-        match = finder.one_with_path()
-        if match is None:
+        runtime_step = finder.one()
+        if runtime_step is None:
             raise StepNotFound(context)
-        _, runtime_step = match
         return runtime_step
 
     def _build_runtime_tree(self, entries):

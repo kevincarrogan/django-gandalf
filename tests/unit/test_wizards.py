@@ -2483,3 +2483,30 @@ def test_configured_wizard_uses_configured_file_storage_class(
     assert isinstance(bound_wizard.file_storage, FakeFileStorage)
     bound_wizard.cleanup_files()
     assert ("delete_run", "existing-run") in calls
+
+
+def test_wizard_mermaid_renders_declared_flow():
+    wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
+
+    assert wizard.mermaid() == (
+        "flowchart TD\n"
+        '    n0["FirstStepForm"]\n'
+        '    n1["SecondStepForm"]\n'
+        "    n0 --> n1"
+    )
+
+
+def test_configured_wizard_mermaid_renders_configured_flow():
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .step(SecondStepForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert wizard.mermaid() == (
+        "flowchart TD\n"
+        '    n0["FirstStepForm"]\n'
+        '    n1["SecondStepForm"]\n'
+        "    n0 --> n1"
+    )

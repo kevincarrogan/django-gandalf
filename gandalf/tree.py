@@ -35,6 +35,9 @@ class Step:
         if self.next is not None:
             yield from self.next
 
+    def child_subtrees(self):
+        return ()
+
     def accept_interpret(self, interpreter):
         return interpreter.visit_step(self)
 
@@ -56,6 +59,12 @@ class Branch:
         yield self
         if self.next is not None:
             yield from self.next
+
+    def child_subtrees(self):
+        subtrees = [subtree for _, subtree in self.arms if subtree is not None]
+        if self.default is not None:
+            subtrees.append(self.default)
+        return tuple(subtrees)
 
     def accept_interpret(self, interpreter):
         return interpreter.visit_branch(self)
@@ -167,6 +176,152 @@ def _format_tree(root) -> str:  # pragma: no cover
     return "\n".join(formatter.lines)
 
 
+@dataclass(frozen=True)
+class FlowNode:
+    """A node in the output-agnostic flow graph. `kind` is ``"step"`` or
+    ``"branch"``; `key` is a stable integer id assigned in structural
+    pre-order."""
+
+    key: int
+    kind: str
+    label: str
+
+
+@dataclass(frozen=True)
+class FlowEdge:
+    """A directed edge between two `FlowNode` keys, with an optional label
+    (a branch arm's predicate name, or ``"default"``)."""
+
+    source: int
+    target: int
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class FlowGraph:
+    """An output-agnostic model of a wizard flow: a flat set of `FlowNode`s
+    and `FlowEdge`s. Renderers (Mermaid, DOT, …) consume this without ever
+    touching the declaration tree, and runtime-path highlighting is just a
+    matter of annotating these nodes and edges."""
+
+    nodes: tuple[FlowNode, ...]
+    edges: tuple[FlowEdge, ...]
+
+
+class FlowGraphBuilder:
+    """Folds a declaration tree into a `FlowGraph`.
+
+    Each subtree reduces to a *fragment* with a single entry node and a set of
+    exit nodes — the tails that must connect to whatever follows. Fragments
+    compose by two rules:
+
+    - *sequence*: wire every exit of the preceding fragment to the entry of
+      the next node;
+    - *branch*: fan the decision node out to each arm's entry (labelled with
+      the arm's predicate name, or ``"default"``) and union the arm exits,
+      adding the decision node itself as an exit for the skip path when an arm
+      is empty or there is no default.
+
+    Node keys are allocated in structural pre-order. This is the
+    boundary-carrying fold the `Interpreter`/`Transformer`/`Reducer` family
+    doesn't express: a subtree reduces to a value that remembers its entry and
+    exits so the parent can wire reconvergence.
+    """
+
+    def __init__(self):
+        self._nodes: list[FlowNode] = []
+        self._edges: list[FlowEdge] = []
+        self._counter = 0
+
+    def build(self, root) -> FlowGraph:
+        self._build_chain(root)
+        return FlowGraph(nodes=tuple(self._nodes), edges=tuple(self._edges))
+
+    def _add_node(self, kind, label) -> int:
+        key = self._counter
+        self._counter += 1
+        self._nodes.append(FlowNode(key=key, kind=kind, label=label))
+        return key
+
+    def _add_edge(self, source, target, label=None) -> None:
+        self._edges.append(FlowEdge(source=source, target=target, label=label))
+
+    def _build_chain(self, node):
+        entry = None
+        exits: list[int] = []
+        while node is not None:
+            node_entry, node_exits = self._build_node(node)
+            if entry is None:
+                entry = node_entry
+            else:
+                for source in dict.fromkeys(exits):
+                    self._add_edge(source, node_entry)
+            exits = node_exits
+            node = node.next
+        return entry, exits
+
+    def _build_node(self, node):
+        if isinstance(node, Step):
+            key = self._add_node("step", node.declaration.__name__)
+            return key, [key]
+        return self._build_branch(node)
+
+    def _build_branch(self, branch):
+        key = self._add_node("branch", "Branch")
+        exits: list[int] = []
+        for predicate, arm in branch.arms:
+            self._build_arm(key, predicate.__name__, arm, exits)
+        if branch.default is not None:
+            self._build_arm(key, "default", branch.default, exits)
+        else:
+            exits.append(key)
+        return key, exits
+
+    def _build_arm(self, branch_key, label, arm, exits) -> None:
+        arm_entry, arm_exits = self._build_chain(arm)
+        if arm_entry is None:
+            exits.append(branch_key)
+            return
+        self._add_edge(branch_key, arm_entry, label)
+        exits.extend(arm_exits)
+
+
+def build_flow_graph(root) -> FlowGraph:
+    """Fold a declaration tree into a `FlowGraph`."""
+    return FlowGraphBuilder().build(root)
+
+
+class Mermaid:
+    """Serializes a `FlowGraph` as Mermaid ``flowchart TD`` source.
+
+    A pure writer: it owns Mermaid syntax and nothing else. Steps render as
+    rectangular nodes, branches as decision nodes, and edges carry their
+    optional label. All topology (sequencing, branching, reconvergence, skip
+    paths) is already decided in the `FlowGraph` it is handed.
+    """
+
+    def render(self, graph) -> str:
+        lines = ["flowchart TD"]
+        lines.extend(self._node_line(node) for node in graph.nodes)
+        lines.extend(self._edge_line(edge) for edge in graph.edges)
+        return "\n".join(lines)
+
+    def _node_line(self, node) -> str:
+        if node.kind == "branch":
+            return f'    n{node.key}{{"{node.label}"}}'
+        return f'    n{node.key}["{node.label}"]'
+
+    def _edge_line(self, edge) -> str:
+        if edge.label is None:
+            return f"    n{edge.source} --> n{edge.target}"
+        return f'    n{edge.source} -->|"{edge.label}"| n{edge.target}'
+
+
+def mermaid(root) -> str:
+    """Render a declaration tree as a Mermaid ``flowchart TD`` source string."""
+    return Mermaid().render(build_flow_graph(root))
+
+
 class Configurer(Transformer):
     """Transforms a declaration tree by attaching `form_view` classes to each
     Step. For Steps declared with a plain `forms.Form`, generates a `FormView`
@@ -209,13 +364,31 @@ class Configurer(Transformer):
         )
 
 
-class ContextFinder:
-    """Locates steps in a tree (declaration or runtime) matching a context,
-    tracking the path of indices to each match. For runtime trees, only the
-    active arm is traversed. For declaration trees, every arm is.
+def iter_nodes(root):
+    """Yield every node of a tree — declaration or runtime — in pre-order.
 
-    Use `one()` / `all()` for the bare matches, or `one_with_path()` to also
-    get the position tuple alongside a single match.
+    Descends `.next` chains, yielding each node before its children. Which
+    sub-branches to descend is the node's own decision, asked via
+    `child_subtrees()`: a declaration branch returns every arm and its
+    default, a runtime branch returns only the selected arm, and steps return
+    nothing. That keeps the traversal free of type sniffing and lets the same
+    walk span *either* tree representation; callers filter the stream for
+    whatever they're after.
+    """
+    node = root
+    while node is not None:
+        yield node
+        for subtree in node.child_subtrees():
+            yield from iter_nodes(subtree)
+        node = node.next
+
+
+class ContextFinder:
+    """Finds steps matching a context across a tree (declaration or runtime).
+
+    A thin filter over `iter_nodes`: it owns the match predicate and result
+    arity, not the traversal. For runtime trees only the active arm of each
+    branch is reached; for declaration trees every arm is.
 
     Pass `require_data=True` to skip matches whose `data` attribute is None
     (only meaningful on runtime trees).
@@ -224,38 +397,21 @@ class ContextFinder:
     def __init__(self, context: dict, *, require_data: bool = False):
         self._context = context
         self._require_data = require_data
-        self.matches: list[tuple[tuple[int, ...], object]] = []
+        self.matches: list = []
 
     def visit(self, root) -> None:
-        self._walk(root, ())
+        self.matches = [node for node in iter_nodes(root) if self._is_match(node)]
 
-    def _walk(self, node, prefix: tuple[int, ...]) -> None:
-        index = 0
-        while node is not None:
-            path = prefix + (index,)
-            if hasattr(node, "matches_context"):
-                if node.matches_context(**self._context):
-                    if (
-                        not self._require_data
-                        or getattr(node, "data", None) is not None
-                    ):
-                        self.matches.append((path, node))
-            elif hasattr(node, "selected_arm"):
-                if node.selected_arm is not None:
-                    self._walk(node.selected_arm, path)
-            else:
-                for _, arm in node.arms:
-                    self._walk(arm, path)
-                if node.default is not None:
-                    self._walk(node.default, path)
-            index += 1
-            node = node.next
+    def _is_match(self, node) -> bool:
+        if not hasattr(node, "matches_context"):
+            return False
+        if not node.matches_context(**self._context):
+            return False
+        if self._require_data and getattr(node, "data", None) is None:
+            return False
+        return True
 
     def one(self):
-        path_and_node = self.one_with_path()
-        return None if path_and_node is None else path_and_node[1]
-
-    def one_with_path(self):
         if len(self.matches) > 1:
             raise MultipleStepsReturned(
                 f"Expected one matching step, found {len(self.matches)}."
@@ -265,4 +421,4 @@ class ContextFinder:
         return self.matches[0]
 
     def all(self) -> list:
-        return [match[1] for match in self.matches]
+        return list(self.matches)
