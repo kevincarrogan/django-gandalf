@@ -1392,6 +1392,39 @@ def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     assert sorted(os.listdir(run_dir)) == ["later.jpg"]
 
 
+def test_file_editing_wizard_edit_changing_label_keeps_photo(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "label": "Original",
+            "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
+        },
+    )
+
+    response = client.post(
+        file_editing_wizard_run_url(run_id),
+        data={
+            "gandalf_edit_step": "photo",
+            "label": "Renamed",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    state = client.session["gandalf_runs"][run_id]["state"]
+    assert state[0]["step"]["label"] == "Renamed"
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert sorted(os.listdir(run_dir)) == ["first.jpg"]
+
+
 def test_file_editing_wizard_edit_get_renders_existing_photo(
     client,
     file_editing_wizard_url,
@@ -1417,12 +1450,14 @@ def test_file_editing_wizard_edit_get_renders_existing_photo(
     assert "first.jpg" in response.context["form"].initial["photo"].name
 
 
-def test_file_editing_wizard_edit_with_invalid_submission_at_leaf_truncates(
+def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     client,
     file_editing_wizard_url,
     file_editing_wizard_run_url,
     isolated_media_root,
 ):
+    import os
+
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
@@ -1432,17 +1467,22 @@ def test_file_editing_wizard_edit_with_invalid_submission_at_leaf_truncates(
             "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
         },
     )
+    state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
         file_editing_wizard_run_url(run_id),
         data={
             "gandalf_edit_step": "photo",
             "label": "",
+            "photo": SimpleUploadedFile("rejected.jpg", b"rejected-bytes"),
         },
     )
 
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors == {"label": ["This field is required."]}
+    assert client.session["gandalf_runs"][run_id]["state"] == state_before
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert sorted(os.listdir(run_dir)) == ["first.jpg"]
 
 
 def test_file_editing_wizard_edit_with_unknown_step_raises_step_not_found(
@@ -1511,34 +1551,35 @@ def test_empty_branch_arm_context_finder_walks_both_trees(
 
 
 @pytest.fixture
-def branch_truncate_wizard_url():
-    return reverse("branch-truncate-wizard")
+def branch_edit_rejection_wizard_url():
+    return reverse("branch-edit-rejection-wizard")
 
 
 @pytest.fixture
-def branch_truncate_wizard_run_url():
+def branch_edit_rejection_wizard_run_url():
     def build_url(run_id):
-        return reverse("branch-truncate-wizard-run", kwargs={"run_id": run_id})
+        return reverse("branch-edit-rejection-wizard-run", kwargs={"run_id": run_id})
 
     return build_url
 
 
-def test_branch_truncate_wizard_edit_post_branch_step_with_invalid_truncates(
+def test_branch_edit_rejection_wizard_edit_post_branch_step_with_invalid_keeps_state(
     client,
-    branch_truncate_wizard_url,
-    branch_truncate_wizard_run_url,
+    branch_edit_rejection_wizard_url,
+    branch_edit_rejection_wizard_run_url,
 ):
-    client.get(branch_truncate_wizard_url)
+    client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
     client.post(
-        branch_truncate_wizard_run_url(run_id),
+        branch_edit_rejection_wizard_run_url(run_id),
         data={"email": "ada@example.com"},
     )
-    client.post(branch_truncate_wizard_run_url(run_id), data={"confirmed": "on"})
+    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"confirmed": "on"})
+    state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
-        branch_truncate_wizard_run_url(run_id),
+        branch_edit_rejection_wizard_run_url(run_id),
         data={"gandalf_edit_step": "review", "confirmed": ""},
     )
 
@@ -1546,42 +1587,44 @@ def test_branch_truncate_wizard_edit_post_branch_step_with_invalid_truncates(
     assert response.context["form"].errors == {
         "confirmed": ["This field is required."]
     }
+    assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 
-def test_branch_truncate_wizard_edit_unvisited_step_raises_step_not_found(
+def test_branch_edit_rejection_wizard_edit_unvisited_step_raises_step_not_found(
     client,
-    branch_truncate_wizard_url,
-    branch_truncate_wizard_run_url,
+    branch_edit_rejection_wizard_url,
+    branch_edit_rejection_wizard_run_url,
 ):
     from gandalf.runtime import StepNotFound
 
-    client.get(branch_truncate_wizard_url)
+    client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
 
     with pytest.raises(StepNotFound):
         client.post(
-            branch_truncate_wizard_run_url(run_id),
+            branch_edit_rejection_wizard_run_url(run_id),
             data={"gandalf_edit_step": "review", "confirmed": "on"},
         )
 
 
-def test_branch_truncate_wizard_edit_in_branch_arm_with_invalid_truncates(
+def test_branch_edit_rejection_wizard_edit_in_branch_arm_with_invalid_keeps_state(
     client,
-    branch_truncate_wizard_url,
-    branch_truncate_wizard_run_url,
+    branch_edit_rejection_wizard_url,
+    branch_edit_rejection_wizard_run_url,
 ):
-    client.get(branch_truncate_wizard_url)
+    client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_truncate_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
     client.post(
-        branch_truncate_wizard_run_url(run_id),
+        branch_edit_rejection_wizard_run_url(run_id),
         data={"email": "ada@example.com"},
     )
-    client.post(branch_truncate_wizard_run_url(run_id), data={"confirmed": "on"})
+    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"confirmed": "on"})
+    state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
-        branch_truncate_wizard_run_url(run_id),
+        branch_edit_rejection_wizard_run_url(run_id),
         data={"gandalf_edit_step": "second", "email": "not-an-email"},
     )
 
@@ -1589,3 +1632,4 @@ def test_branch_truncate_wizard_edit_in_branch_arm_with_invalid_truncates(
     assert response.context["form"].errors == {
         "email": ["Enter a valid email address."]
     }
+    assert client.session["gandalf_runs"][run_id]["state"] == state_before

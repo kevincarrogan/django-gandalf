@@ -72,7 +72,9 @@ class WizardViewSet(View):
         files = self._store_uploads(bound_wizard, request.FILES)
         if edit_context is not None:
             resolver.clean_submission(submission)
-            bound_wizard.edit(submission, files=files, **edit_context)
+            edit_response = bound_wizard.edit(submission, files=files, **edit_context)
+            if edit_response is not None:
+                return edit_response
         else:
             bound_wizard.submit(submission, *args, files=files, **kwargs)
         response = bound_wizard.replay(*args, **kwargs)

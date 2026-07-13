@@ -389,6 +389,45 @@ def test_wizard_viewset_post_with_edit_context_invokes_bound_wizard_edit(rf):
     assert "gandalf_edit_step" not in stored[0]["step"]
 
 
+def test_wizard_viewset_post_with_invalid_edit_returns_error_render(rf):
+    class PlainWizardViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, context={"step_name": "first"})
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+    request = rf.post(
+        "/wizard/existing-run/",
+        data={"gandalf_edit_step": "first", "name": ""},
+    )
+    request.session = _Session(
+        {
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        }
+    )
+
+    response = PlainWizardViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].__class__ is FirstStepForm
+    assert response.context_data["form"].errors == {
+        "name": ["This field is required."],
+    }
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+
+
 def test_wizard_viewset_post_with_files_stores_uploads_through_file_storage(rf):
     class PlainWizardViewSet(WizardViewSet):
         wizard = (

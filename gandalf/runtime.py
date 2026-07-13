@@ -264,9 +264,23 @@ class BoundWizard:
         )
 
     def edit(self, submission, *args, files=None, **context):
+        """Replace the target step's stored submission and re-validate the run.
+
+        Transactional: the new submission is validated against the target
+        step's form view first. On failure the rendered error response is
+        returned, stored state and previously persisted file refs are left
+        untouched, and any newly stored uploads are deleted. On success the
+        submission is spliced into the runtime tree, the walker re-validates
+        downstream state, the rebuilt state is persisted, and None is
+        returned.
+        """
         runtime = self.runtime_tree
         runtime_step = self._resolve_edit_target(context, runtime=runtime)
-        leaf_decl = runtime_step.declaration
+        response = self._validate_edit(runtime_step, submission, files, context, args)
+        if response is not None:
+            for ref in (files or {}).values():
+                self.file_storage.delete(ref)
+            return response
         merged_files = self._merge_file_refs(runtime_step.files or {}, files or {})
         spliced = SpliceSubmission(
             runtime_step, submission, files=merged_files or None
@@ -277,13 +291,30 @@ class BoundWizard:
             self.dispatcher, rebuilt_entries, None, args, {}, self
         )
         walker.walk(self.wizard.tree)
-        cursor = walker.cursor()
-        if cursor.response is not None and cursor.node is leaf_decl:
-            rebuilt_runtime = self._build_runtime_tree(entries=rebuilt_entries)
-            entries = serializer.reduce(truncate_after(rebuilt_runtime, leaf_decl))
-        else:
-            entries = serializer.reduce(cursor.state)
+        entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
+        return None
+
+    def _validate_edit(self, runtime_step, submission, files, context, args):
+        """Dispatch the new submission through the target step's form view.
+
+        The request carries the stored files overlaid with the new uploads,
+        mirroring what a replay of the accepted edit would see. Returns the
+        rendered response when the submission does not satisfy the step,
+        None when it does. `request.wizard_edit_context` exposes the resolved
+        edit context so error templates can re-render the edit marker.
+        """
+        validation_refs = {**(runtime_step.files or {}), **(files or {})}
+        request = self.dispatcher.build_request(
+            "POST",
+            submission=submission,
+            files=_open_file_refs(self, validation_refs),
+        )
+        request.wizard_edit_context = context
+        response = self.dispatcher.dispatch(runtime_step.declaration, request, *args)
+        if self.dispatcher.response_satisfies_step(response):
+            return None
+        return response
 
     def _merge_file_refs(self, old_refs, new_refs):
         merged = {}
@@ -316,11 +347,6 @@ class BoundWizard:
             raise StepNotFound(context)
         _, runtime_step = match
         return runtime_step
-
-    def _build_runtime_tree(self, entries):
-        builder = self.wizard.runtime_tree_builder_class(self, entries)
-        builder.walk(self.wizard.tree)
-        return builder.head
 
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
         request = self.dispatcher.build_request("GET")
@@ -586,48 +612,3 @@ class SpliceSubmission(tree.Transformer):
         )
 
 
-def truncate_after(runtime_tree, target_decl):
-    """Returns a new runtime tree where the RuntimeStep with
-    `declaration is target_decl` is preserved (with `next=None`) and
-    everything after it is dropped."""
-    new_tree, _ = _truncate_after_recurse(runtime_tree, target_decl)
-    return new_tree
-
-
-def _truncate_after_recurse(node, target_decl):
-    if node is None:
-        return None, False
-    if isinstance(node, RuntimeStep):
-        if node.declaration is target_decl:
-            return (
-                RuntimeStep(
-                    node.declaration,
-                    data=node.data,
-                    files=node.files,
-                    next=None,
-                    bound_wizard=node.bound_wizard,
-                ),
-                True,
-            )
-        new_next, found = _truncate_after_recurse(node.next, target_decl)
-        return (
-            RuntimeStep(
-                node.declaration,
-                data=node.data,
-                files=node.files,
-                next=new_next,
-                bound_wizard=node.bound_wizard,
-            ),
-            found,
-        )
-    new_arm, found_in_arm = _truncate_after_recurse(node.selected_arm, target_decl)
-    if found_in_arm:
-        return (
-            RuntimeBranch(node.declaration, selected_arm=new_arm, next=None),
-            True,
-        )
-    new_next, found_in_next = _truncate_after_recurse(node.next, target_decl)
-    return (
-        RuntimeBranch(node.declaration, selected_arm=new_arm, next=new_next),
-        found_in_next,
-    )

@@ -449,7 +449,7 @@ def test_configured_wizard_uses_configured_step_dispatcher_class(
     assert captured["bound_wizard"] is bound_wizard
 
 
-def test_bound_wizard_edit_with_invalid_submission_past_branch_truncates(
+def test_bound_wizard_edit_with_invalid_submission_past_branch_keeps_state(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -487,12 +487,15 @@ def test_bound_wizard_edit_with_invalid_submission_past_branch_truncates(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    bound_wizard.edit({}, step_name="review")
+    response = bound_wizard.edit({}, step_name="review")
 
+    assert response.context_data["form"].errors == {
+        "confirmed": ["This field is required."],
+    }
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
         {"branch": [{"step": {"business_name": "Acme"}}]},
-        {"step": {}},
+        {"step": {"confirmed": "on"}},
     ]
 
 
@@ -1284,7 +1287,7 @@ def test_bound_wizard_edit_replaces_step_data_and_preserves_downstream(
     ]
 
 
-def test_bound_wizard_edit_with_invalid_submission_parks_cursor_at_edited_step(
+def test_bound_wizard_edit_with_invalid_submission_returns_error_render(
     request_with_session_factory,
 ):
     wizard = (
@@ -1308,16 +1311,73 @@ def test_bound_wizard_edit_with_invalid_submission_parks_cursor_at_edited_step(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    bound_wizard.edit({"name": ""}, step_name="first")
+    response = bound_wizard.edit({"name": ""}, step_name="first")
 
-    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
-        {"step": {"name": ""}},
-    ]
-    response = bound_wizard.replay()
     assert response.context_data["form"].__class__ is FirstStepForm
     assert response.context_data["form"].errors == {
         "name": ["This field is required."],
     }
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+
+
+def test_bound_wizard_edit_with_valid_submission_returns_none(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .step(SecondStepForm, context={"step_name": "second"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.edit({"name": "Grace"}, step_name="first") is None
+
+
+def test_bound_wizard_edit_error_render_exposes_edit_context_on_request(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .step(SecondStepForm, context={"step_name": "second"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.edit({"name": ""}, step_name="first")
+
+    step_request = response.context_data["view"].request
+    assert step_request.wizard_edit_context == {"step_name": "first"}
 
 
 def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
@@ -1485,7 +1545,7 @@ def test_bound_wizard_edit_raises_step_not_found_for_unknown_context(
         bound_wizard.edit({"name": "Grace"}, step_name="missing")
 
 
-def test_bound_wizard_edit_with_invalid_submission_inside_branch_truncates_to_leaf(
+def test_bound_wizard_edit_with_invalid_submission_inside_branch_keeps_state(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -1524,11 +1584,14 @@ def test_bound_wizard_edit_with_invalid_submission_inside_branch_truncates_to_le
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    bound_wizard.edit({"business_name": ""}, step_name="business_name")
+    response = bound_wizard.edit({"business_name": ""}, step_name="business_name")
 
+    assert response.context_data["form"].errors == {
+        "business_name": ["This field is required."],
+    }
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
-        {"branch": [{"step": {"business_name": ""}}]},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
     ]
 
 
@@ -2417,6 +2480,52 @@ def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
     assert state[0]["files"] == {"photo": new_ref}
     assert not bound_wizard.file_storage.backend.exists(old_ref["tmp_name"])
     assert bound_wizard.file_storage.open(new_ref).read() == b"second"
+
+
+def test_bound_wizard_edit_rejected_deletes_new_files_and_keeps_old(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(OptionalPhotoForm, context={"step_name": "photo"})
+        .step(FirstStepForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    old_photo = SimpleUploadedFile("v1.jpg", b"first")
+    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
+    bound_wizard.submit(
+        {"label": "Original", "photo": "v1.jpg"},
+        files={"photo": old_ref},
+    )
+    new_photo = SimpleUploadedFile("v2.jpg", b"second")
+    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+
+    response = bound_wizard.edit(
+        {"label": "", "photo": "v2.jpg"},
+        files={"photo": new_ref},
+        step_name="photo",
+    )
+
+    assert response.context_data["form"].errors == {
+        "label": ["This field is required."],
+    }
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {
+            "step": {"label": "Original", "photo": "v1.jpg"},
+            "files": {"photo": old_ref},
+        },
+    ]
+    assert not bound_wizard.file_storage.backend.exists(new_ref["tmp_name"])
+    assert bound_wizard.file_storage.open(old_ref).read() == b"first"
 
 
 def test_bound_wizard_cleanup_files_wipes_run_prefix(

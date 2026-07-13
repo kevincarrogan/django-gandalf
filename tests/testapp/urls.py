@@ -325,13 +325,13 @@ urlpatterns = [
         name="empty-branch-arm-context-finder-wizard-run",
     ),
     path(
-        "branch-truncate-wizard/",
-        views.BranchTruncateWizardViewSet.as_view(),
-        name="branch-truncate-wizard",
+        "branch-edit-rejection-wizard/",
+        views.BranchEditRejectionWizardViewSet.as_view(),
+        name="branch-edit-rejection-wizard",
     ),
     path(
-        "branch-truncate-wizard/<uuid:run_id>/",
-        views.BranchTruncateWizardViewSet.as_view(),
-        name="branch-truncate-wizard-run",
+        "branch-edit-rejection-wizard/<uuid:run_id>/",
+        views.BranchEditRejectionWizardViewSet.as_view(),
+        name="branch-edit-rejection-wizard-run",
     ),
 ]

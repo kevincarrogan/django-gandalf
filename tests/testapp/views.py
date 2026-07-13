@@ -946,12 +946,13 @@ def _always_true(_request):
     return True
 
 
-class BranchTruncateWizardViewSet(WizardViewSet):
+class BranchEditRejectionWizardViewSet(WizardViewSet):
     description = (
-        "Linear-via-branch wizard used to exercise the branch-handling path "
-        "of `_truncate_after_recurse` (truncating when an edited step that "
-        "lives after a branch fails validation), plus the require_data branch "
-        "arc when an edit targets a step that hasn't been visited yet."
+        "Linear-via-branch wizard used to exercise rejected edits around a "
+        "branch (an invalid edit targeting a step after or inside the branch "
+        "returns the error render and leaves state untouched), plus the "
+        "require_data branch arc when an edit targets a step that hasn't "
+        "been visited yet."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
@@ -969,7 +970,7 @@ class BranchTruncateWizardViewSet(WizardViewSet):
 
     def get_wizard_url(self, run_id):
         return reverse(
-            "branch-truncate-wizard-run",
+            "branch-edit-rejection-wizard-run",
             kwargs={"run_id": run_id},
         )
 
