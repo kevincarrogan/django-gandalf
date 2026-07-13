@@ -87,12 +87,16 @@ class RuntimeStep:
 class RuntimeBranch:
     """Runtime mirror of a declared `tree.Branch` along the active path —
     records the selected arm only. Inactive arms are not mirrored in the
-    runtime tree; inspect `bound_wizard.wizard.tree` for the full declared
-    structure.
+    runtime tree; their stored entries ride along verbatim in
+    `dormant_arms`, keyed by arm id, so answers survive an arm change and
+    are restored when the user flips back. Inspect
+    `bound_wizard.wizard.tree` for the full declared structure.
     """
 
     declaration: tree.Branch
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
+    selected_arm_id: str | None = None
+    dormant_arms: dict = dataclass_field(default_factory=dict)
     next: "RuntimeStep | RuntimeBranch | None" = None
 
     def accept_reduce(self, reducer):
@@ -105,6 +109,61 @@ class RuntimeBranch:
         return transformer.visit_branch(self, transformed_arm, next_result)
 
 
+@dataclass
+class PreservedBranch:
+    """Verbatim passthrough of a stored branch entry positioned after the
+    cursor. The walk cannot select an arm there — branch predicates may
+    depend on answers the user has not (re)supplied yet — so the raw entry
+    is carried through serialization untouched and re-interpreted on a
+    later walk once the steps before it are answered.
+
+    `accept_reduce` returns the raw entry without consulting the reducer,
+    so custom `state_serializer_class` hooks do not see sealed regions.
+    """
+
+    entry: dict
+    next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
+
+    def accept_reduce(self, reducer):
+        return self.entry
+
+
+def _branch_sub_entries(entry, arm_id):
+    """Split a stored branch entry into (active sub-entries, dormant arms)
+    for the derived `arm_id`. A bare-list entry is the pre-per-arm legacy
+    shape and is treated as belonging to whichever arm is active on this
+    walk."""
+    if entry is None:
+        return [], {}
+    stored = entry["branch"]
+    if isinstance(stored, list):
+        return stored, {}
+    dormant = {key: value for key, value in stored.items() if key != arm_id}
+    return stored.get(arm_id, []), dormant
+
+
+def _preserved_branch_entry(entry):
+    return entry if entry is not None else {"branch": {}}
+
+
+def _trim_trailing_holes(entries):
+    """Drop trailing hole entries so persisted state stays minimal: a
+    trailing `{"step": None}` or empty branch slot carries no information
+    (walkers treat a missing entry the same way). Interior holes are kept —
+    they preserve positional alignment for answered entries that come
+    after them."""
+    trimmed = list(entries)
+    while trimmed and _is_empty_entry(trimmed[-1]):
+        trimmed.pop()
+    return trimmed
+
+
+def _is_empty_entry(entry):
+    if "branch" in entry:
+        return not entry["branch"]
+    return entry.get("step") is None and not entry.get("files")
+
+
 @dataclass(frozen=True)
 class Cursor:
     """Position in the wizard where the user currently is — the first step
@@ -113,8 +172,10 @@ class Cursor:
     `node` is None when every stored submission validates and there is no
     next step. `response` carries the rendered form when stored data was
     invalid; otherwise the cursor is at an empty slot ready for a GET render.
-    `state` is the runtime tree built up to (and including) the cursor, with
-    a pending submission already placed at the cursor's slot.
+    `state` is the full runtime tree: validated up to the cursor (with a
+    pending submission already placed at the cursor's slot) and carried
+    verbatim past it, so serializing it preserves answers positioned after
+    the cursor.
     """
 
     node: tree.Step | None
@@ -349,22 +410,35 @@ class BoundWizard:
         return runtime_step
 
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
+        """Derive the active arm for a branch, returning `(arm_id, subtree)`.
+
+        `arm_id` is the arm's declaration-order index as a string, or
+        `"default"` — the key its sub-entries are stored under. The decision
+        itself is never persisted; only per-arm memory is keyed by it.
+        """
         request = self.dispatcher.build_request("GET")
         self._predicate_runtime_tree = partial_runtime_head
         try:
-            for predicate, subtree in branch_node.arms:
+            for index, (predicate, subtree) in enumerate(branch_node.arms):
                 if predicate(request):
-                    return subtree
-            return branch_node.default
+                    return str(index), subtree
+            return "default", branch_node.default
         finally:
             self._predicate_runtime_tree = None
 
 
 class CursorWalker(tree.Interpreter):
-    """Interpreter that locates the wizard cursor and builds the runtime tree
-    up to that point. Validates stored entries by dispatching POSTs through
-    the StepDispatcher; when given a pending submission, places it at the
-    cursor's slot."""
+    """Interpreter that locates the wizard cursor and builds a runtime tree
+    mirroring the full declaration tree. Validates stored entries by
+    dispatching POSTs through the StepDispatcher; when given a pending
+    submission, places it at the cursor's slot.
+
+    Once the cursor is found the walk *seals* instead of stopping: later
+    steps carry their stored entries verbatim (no validation — it could not
+    be trusted while earlier answers are missing) and later branches become
+    `PreservedBranch` passthroughs. Serializing the head therefore keeps
+    every answer positioned after the cursor, so an edit that diverts the
+    flow only costs the user the steps that genuinely changed."""
 
     def __init__(
         self,
@@ -386,15 +460,25 @@ class CursorWalker(tree.Interpreter):
         self._head: RuntimeStep | RuntimeBranch | None = None
         self._tail: RuntimeStep | RuntimeBranch | None = None
         self._cursor = None
+        self._sealed = False
 
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         stored_files = entry.get("files") if entry is not None else None
+        if self._sealed:
+            self._append(
+                RuntimeStep(
+                    declaration=step,
+                    data=stored,
+                    files=stored_files,
+                    bound_wizard=self._bound_wizard,
+                )
+            )
+            return
         if stored is None:
-            self._place_pending(step)
-            self._cursor = Cursor(node=step, state=self._head)
-            return False
+            self._park(step, keep_data=None, keep_files=None)
+            return
         response = self._dispatcher.dispatch(
             step,
             self._dispatcher.build_request(
@@ -406,9 +490,10 @@ class CursorWalker(tree.Interpreter):
             **self._kwargs,
         )
         if not self._dispatcher.response_satisfies_step(response):
-            self._place_pending(step)
-            self._cursor = Cursor(node=step, state=self._head, response=response)
-            return False
+            self._park(
+                step, keep_data=stored, keep_files=stored_files, response=response
+            )
+            return
         self._append(
             RuntimeStep(
                 declaration=step,
@@ -417,12 +502,14 @@ class CursorWalker(tree.Interpreter):
                 bound_wizard=self._bound_wizard,
             )
         )
-        return True
 
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
-        sub_entries = entry["branch"] if entry is not None else []
-        arm = self._bound_wizard._select_branch_arm(branch, self._head)
+        if self._sealed:
+            self._append(PreservedBranch(entry=_preserved_branch_entry(entry)))
+            return
+        arm_id, arm = self._bound_wizard._select_branch_arm(branch, self._head)
+        sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
         sub = type(self)(
             self._dispatcher,
             sub_entries,
@@ -433,31 +520,45 @@ class CursorWalker(tree.Interpreter):
             pending_files=self._pending_files,
         )
         sub.walk(arm)
-        self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
+        self._append(
+            RuntimeBranch(
+                declaration=branch,
+                selected_arm=sub._head,
+                selected_arm_id=arm_id,
+                dormant_arms=dormant_arms,
+            )
+        )
         if sub._cursor is not None:
             self._cursor = Cursor(
                 node=sub._cursor.node,
                 state=self._head,
                 response=sub._cursor.response,
             )
-            return False
-        return True
+            self._sealed = True
 
     def cursor(self):
         if self._cursor is not None:
             return self._cursor
         return Cursor(node=None, state=self._head)
 
-    def _place_pending(self, step):
+    def _park(self, step, keep_data, keep_files, response=None):
+        """Mark `step` as the cursor and seal the walk. The pending
+        submission lands here; without one, the stored data (invalid, or
+        None for a hole) is kept so replay can re-render it with errors."""
         if self._pending_submission is not None:
-            self._append(
-                RuntimeStep(
-                    declaration=step,
-                    data=self._pending_submission,
-                    files=self._pending_files,
-                    bound_wizard=self._bound_wizard,
-                )
+            data, files = self._pending_submission, self._pending_files
+        else:
+            data, files = keep_data, keep_files
+        self._append(
+            RuntimeStep(
+                declaration=step,
+                data=data,
+                files=files,
+                bound_wizard=self._bound_wizard,
             )
+        )
+        self._cursor = Cursor(node=step, state=self._head, response=response)
+        self._sealed = True
 
     def _open_files(self, file_refs):
         return _open_file_refs(self._bound_wizard, file_refs)
@@ -472,7 +573,14 @@ class CursorWalker(tree.Interpreter):
 
 class StateSerializer(tree.Reducer):
     """Bottom-up reducer that flattens a runtime tree into the dict-shaped
-    state stored in `request.session`."""
+    state stored in `request.session`. Branch entries are keyed per arm:
+    the active arm's sub-entries land under `selected_arm_id` (omitted
+    when empty — a missing key means the arm was never answered) and
+    dormant arms are carried back untouched. Trailing holes are trimmed
+    at every level."""
+
+    def reduce(self, root):
+        return _trim_trailing_holes(super().reduce(root))
 
     def visit_step(self, runtime_step):
         entry = {"step": runtime_step.data}
@@ -481,7 +589,10 @@ class StateSerializer(tree.Reducer):
         return entry
 
     def visit_branch(self, runtime_branch, sub_result):
-        return {"branch": sub_result}
+        arms = dict(runtime_branch.dormant_arms)
+        if sub_result:
+            arms[runtime_branch.selected_arm_id] = sub_result
+        return {"branch": arms}
 
 
 class PathFlattener(tree.Transformer):
@@ -531,7 +642,14 @@ class MergeCleanedData(tree.Reducer):
 
 class RuntimeTreeBuilder(tree.Interpreter):
     """Builds a runtime tree mirroring the declaration tree, applying stored
-    state data to runtime steps along the active path."""
+    state data to runtime steps along the active path.
+
+    Unlike `CursorWalker` this never seals: introspection is allowed to
+    look ahead past holes (`find_step` on a fresh run locates future
+    steps), and per-arm branch memory makes the lookahead lossless — even
+    if a predicate past a hole derives a different arm than the entries
+    were stored under, the stored sub-entries simply ride along as
+    dormant memory."""
 
     def __init__(self, bound_wizard, entries):
         self._bound_wizard = bound_wizard
@@ -558,8 +676,10 @@ class RuntimeTreeBuilder(tree.Interpreter):
 
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
-        sub_entries = entry["branch"] if entry is not None else []
-        selected_decl = self._bound_wizard._select_branch_arm(branch, self.head)
+        arm_id, selected_decl = self._bound_wizard._select_branch_arm(
+            branch, self.head
+        )
+        sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
 
         sub_builder = type(self)(self._bound_wizard, sub_entries)
         sub_builder.walk(selected_decl)
@@ -568,6 +688,8 @@ class RuntimeTreeBuilder(tree.Interpreter):
             RuntimeBranch(
                 declaration=branch,
                 selected_arm=sub_builder.head,
+                selected_arm_id=arm_id,
+                dormant_arms=dormant_arms,
             )
         )
 
@@ -608,6 +730,8 @@ class SpliceSubmission(tree.Transformer):
         return RuntimeBranch(
             declaration=runtime_branch.declaration,
             selected_arm=transformed_arm,
+            selected_arm_id=runtime_branch.selected_arm_id,
+            dormant_arms=runtime_branch.dormant_arms,
             next=next_result,
         )
 

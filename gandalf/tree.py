@@ -124,14 +124,15 @@ class Reducer:
 class Interpreter:
     """Top-down traversal where the visitor controls descent into branch
     arms manually (typically by calling `self.walk(arm)` inside
-    `visit_branch`). Subclasses must define `visit_step` and `visit_branch`;
-    return `False` from a visit method to stop the walk."""
+    `visit_branch`). Subclasses must define `visit_step` and `visit_branch`.
+    The walk always visits every node at its level; visitors that lose
+    interest partway (e.g. a sealed cursor walk) track that in their own
+    state."""
 
     def walk(self, root):
         node = root
         while node is not None:
-            if node.accept_interpret(self) is False:
-                return
+            node.accept_interpret(self)
             node = node.next
 
 

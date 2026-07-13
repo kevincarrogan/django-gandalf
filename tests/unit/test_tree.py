@@ -285,25 +285,6 @@ def test_interpreter_walk_traverses_chain():
     ]
 
 
-def test_interpreter_walk_stops_when_visit_returns_false():
-    class Stopper(tree.Interpreter):
-        def __init__(self):
-            self.steps = []
-
-        def visit_step(self, step):
-            self.steps.append(step)
-            return False
-
-        def visit_branch(self, branch):
-            pass
-
-    root = tree.Step(FirstStepForm, next=tree.Step(SecondStepForm))
-    stopper = Stopper()
-    stopper.walk(root)
-
-    assert len(stopper.steps) == 1
-
-
 def test_context_finder_collects_matching_steps():
     root = tree.Step(
         FirstStepForm,

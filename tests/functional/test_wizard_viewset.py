@@ -489,7 +489,7 @@ def test_branching_wizard_post_inside_arm_records_nested_state(
     assert isinstance(response.context["form"], ReviewForm)
     assert client.session["gandalf_runs"][run_id]["state"] == [
         {"step": {"account_type": "business"}},
-        {"branch": [{"step": {"business_name": "Acme"}}]},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
 
 
@@ -584,11 +584,11 @@ def test_editing_branching_wizard_post_edit_keeping_arm_preserves_downstream(
     assert isinstance(response.context["form"], ReviewForm)
     assert client.session["gandalf_runs"][run_id]["state"] == [
         {"step": {"account_type": "business"}},
-        {"branch": [{"step": {"business_name": "Acme"}}]},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
 
 
-def test_editing_branching_wizard_post_edit_changing_arm_truncates_downstream(
+def test_editing_branching_wizard_post_edit_changing_arm_keeps_dormant_arm(
     client,
     editing_branching_wizard_url,
     editing_branching_wizard_run_url,
@@ -613,7 +613,7 @@ def test_editing_branching_wizard_post_edit_changing_arm_truncates_downstream(
     assert isinstance(response.context["form"], PersonalDetailsForm)
     assert client.session["gandalf_runs"][run_id]["state"] == [
         {"step": {"account_type": "personal"}},
-        {"branch": []},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
 
 
@@ -636,6 +636,26 @@ def test_editing_branching_wizard_post_edit_strips_marker_from_submission(
 
     stored = client.session["gandalf_runs"][run_id]["state"][0]["step"]
     assert "gandalf_edit_step" not in stored
+
+
+def test_editing_branching_wizard_resumes_legacy_bare_list_branch_state(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    session = client.session
+    session["gandalf_runs"][run_id]["state"] = [
+        {"step": {"account_type": "business"}},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
+    ]
+    session.save()
+
+    response = client.get(editing_branching_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], ReviewForm)
 
 
 def test_branch_entry_wizard_renders_default_arm_first_step(client):
