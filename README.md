@@ -738,10 +738,12 @@ Gandalf surfaces this as two operations on `BoundWizard`:
 - `render_edit(**context)` — GET-side. Resolves the targeted runtime step via
   context matching, then dispatches its form view with the stored submission
   pre-filled as `initial`. The user sees their earlier answer ready to amend.
-- `edit(submission, **context)` — POST-side. Splices the new submission into
-  the runtime tree at the target step, re-runs the cursor walker, and persists
-  the rebuilt state. Downstream steps that no longer fit (e.g. a branch arm
-  whose predicate now matches differently) are dropped from state automatically.
+- `edit(submission, **context)` — POST-side and transactional. The new
+  submission is validated against the target step first: if it fails, the
+  rendered error response is returned and stored state is left untouched. On
+  success the submission is spliced into the runtime tree, the cursor walker
+  re-validates the run, and the rebuilt state is persisted; `edit()` returns
+  `None` and the viewset replays to whatever step now needs attention.
 
 You typically reach these via the viewset, which detects an edit cycle through
 a configurable resolver. The default is `StepNameEditResolver`: edit links
@@ -831,16 +833,45 @@ edit) or a context dict that uniquely identifies a runtime step, and
 `clean_submission(submission)` stripping the resolver-owned field(s) out of
 the POST dict before the wizard treats it as form data.
 
-### Smart preservation on edit
+### The re-entrant summary pattern
 
-When an edit changes the answer to a step that other steps depended on, the
-wizard does the right thing automatically. Concretely: after `edit()` splices
-the new submission into the runtime tree, `CursorWalker` re-validates every
-downstream step against the new state. Any step whose stored data still
-validates is kept; any step whose stored data no longer fits (the branch arm
-changed, the dependent form now rejects the old input) parks the cursor and
-the trailing entries get truncated from state. The user re-runs the remainder
-of the wizard from that point.
+The edit operations exist to serve one very common flow: a wizard that runs
+linearly to a summary screen where every answer has a "change" link. The
+promise is that changing an answer costs the user exactly as much of the
+wizard as the change actually invalidates — usually nothing:
+
+- **Trivial edit** — the new answer validates and no branch re-routes. Every
+  other stored answer still validates, so the first unanswered step is the
+  summary itself and the edit POST lands the user straight back on it. There
+  is no step pointer to rewind and no re-cycling through completed steps;
+  position is always derived from state.
+- **Diverting edit** — the new answer flips a branch arm (or makes a
+  dependent step's stored data invalid). The cursor parks at the first step
+  that genuinely needs attention; the user answers only those steps, and the
+  wizard fast-forwards through every still-valid downstream answer back to
+  the summary.
+- **Invalid edit** — rejected outright. The error render comes back, stored
+  state is untouched, and nothing downstream is lost to a typo.
+- **Flip-flop** — answers for a de-selected branch arm are kept as dormant
+  memory. Changing account type from business to personal and back restores
+  the business answers (re-validated like any stored data) instead of
+  re-asking them.
+
+Under the hood this works because state is a full-tree mirror with holes
+rather than a truncate-on-change prefix: after `edit()` splices the new
+submission into the runtime tree, `CursorWalker` re-validates entries up to
+the first missing or no-longer-valid answer, then carries everything after it
+verbatim. Branch entries are stored per arm (`{"branch": {"0": [...],
+"default": [...]}}`), so the active arm is still re-derived from your
+predicates on every walk while inactive arms simply wait. A stored answer
+that no longer validates keeps its data and replays as the errored form, so
+the user corrects it rather than retyping it.
+
+Two practical caveats: dormant arms live in the session until the run
+completes, so state grows by the size of the abandoned arms; and arm identity
+is positional (declaration order), so a dynamic `get_wizard()` that reorders
+branch arms between requests will misattribute dormant memory — the same
+positional-alignment rule that already applies to steps.
 
 ---
 

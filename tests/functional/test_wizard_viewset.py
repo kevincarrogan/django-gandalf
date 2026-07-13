@@ -638,6 +638,62 @@ def test_editing_branching_wizard_post_edit_strips_marker_from_submission(
     assert "gandalf_edit_step" not in stored
 
 
+def test_editing_branching_wizard_full_reentrant_loop(
+    client,
+    editing_branching_wizard_url,
+    editing_branching_wizard_run_url,
+):
+    """The re-entrant summary pattern end to end: trivial edits bounce
+    straight back to the summary, a diverting edit asks only the new arm's
+    steps, and flipping the branch answer back restores the dormant arm."""
+    client.get(editing_branching_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = editing_branching_wizard_run_url(run_id)
+    client.post(run_url, data={"account_type": "business"})
+    client.post(run_url, data={"business_name": "Acme"})
+
+    response = client.get(run_url)
+    assert isinstance(response.context["form"], ReviewForm)
+
+    # Trivial edit from the summary: change lands, user is back on the
+    # summary immediately.
+    response = client.post(
+        run_url,
+        data={"gandalf_edit_step": "business_name", "business_name": "Globex"},
+    )
+    assert isinstance(response.context["form"], ReviewForm)
+
+    # Diverting edit: the flow re-routes to the personal arm and asks only
+    # its unanswered step.
+    response = client.post(
+        run_url,
+        data={"gandalf_edit_step": "account_type", "account_type": "personal"},
+    )
+    assert isinstance(response.context["form"], PersonalDetailsForm)
+
+    # Answering the diverted step (a plain submission, no edit marker)
+    # returns straight to the summary.
+    response = client.post(run_url, data={"preferred_name": "Ada"})
+    assert isinstance(response.context["form"], ReviewForm)
+
+    # Flipping the branch answer back restores the dormant business arm
+    # without re-asking it, landing on the summary again.
+    response = client.post(
+        run_url,
+        data={"gandalf_edit_step": "account_type", "account_type": "business"},
+    )
+    assert isinstance(response.context["form"], ReviewForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"account_type": "business"}},
+        {
+            "branch": {
+                "0": [{"step": {"business_name": "Globex"}}],
+                "default": [{"step": {"preferred_name": "Ada"}}],
+            }
+        },
+    ]
+
+
 def test_editing_branching_wizard_resumes_legacy_bare_list_branch_state(
     client,
     editing_branching_wizard_url,
