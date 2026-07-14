@@ -8,8 +8,8 @@
 | `gandalf/wizard.py` | Declarative builder — `Wizard` (fluent `.step()` / `.branch()` API) and `ConfiguredWizard` (post-`.configure()`, holds the configured tree and pluggable class slots: `storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `state_serializer_class`, `form_view_factory`) |
 | `gandalf/form_views.py` | `form_view_factory()` — generates a `FormView` subclass from a plain `Form` class |
 | `gandalf/storage.py` | `SessionStorage` — JSON persistence to `request.session`. Knows nothing about tree shape; reads and writes a `state` list per `run_id` |
-| `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `submit()`, `replay()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds a full-length runtime tree in lockstep with stored entries — validated up to the cursor, carried verbatim past it. `RuntimeTreeBuilder` (an `Interpreter`) builds the full active-route runtime tree for introspection. `Cursor` is the decision object — `(node, state, response)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
-| `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST, including the optional step-URL routing flow (`_routed_get` / `_routed_post`, `get_step_url` hook) |
+| `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `cursor()`, `submit()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds a full-length runtime tree in lockstep with stored entries — validated up to the cursor, carried verbatim past it. `RuntimeTreeBuilder` (an `Interpreter`) builds the full active-route runtime tree for introspection. `Cursor` is the decision object — `(node, state, response)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
+| `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST. Every request routes through step URLs (`_routed_get` / `_routed_post`); `urls()` publishes the patterns from `url_name`, and `get_wizard_url` / `get_step_url` reverse them |
 
 ---
 
@@ -110,23 +110,40 @@ sequenceDiagram
     WVS-->>Django: redirect(wizard_url(run_id))
 ```
 
-### GET — returning visit (with `run_id`)
+### GET — bare run URL (with `run_id`, no step segment)
 
 ```mermaid
 sequenceDiagram
     participant Django
     participant WVS as WizardViewSet
     participant BW as BoundWizard
-    participant SS as SessionStorage
+    participant CWK as CursorWalker
+
+    Django->>WVS: GET /wizard/<run_id>/
+    WVS->>BW: retrieve(run_id)
+    WVS->>BW: cursor()
+    BW->>CWK: CursorWalker(bound, entries, pending=None).walk(tree)
+    CWK-->>BW: Cursor(node, state, response)
+    alt cursor.node is None
+        WVS-->>Django: done() response
+    else
+        WVS-->>Django: 302 → step URL for cursor.node
+    end
+```
+
+### GET — step URL
+
+```mermaid
+sequenceDiagram
+    participant Django
+    participant WVS as WizardViewSet
+    participant BW as BoundWizard
     participant CWK as CursorWalker
     participant FV as FormView
 
-    Django->>WVS: GET /wizard/<run_id>/
-    WVS->>BW: get_bound_wizard(request)
+    Django->>WVS: GET /wizard/<run_id>/<gandalf_step>/
     WVS->>BW: retrieve(run_id)
-    BW->>SS: retrieve_run(run_id)
-    WVS->>BW: replay()
-    BW->>SS: get_state(run_id) → entries
+    WVS->>BW: cursor()
     BW->>CWK: CursorWalker(bound, entries, pending=None).walk(tree)
     loop lockstep over (declaration, entries)
         alt stored is not None
@@ -137,19 +154,17 @@ sequenceDiagram
         end
     end
     CWK-->>BW: Cursor(node, state, response)
-    alt cursor.node is None
-        BW-->>WVS: None → viewset calls done()
-    else cursor.response is not None
-        BW-->>WVS: cursor.response (re-rendered invalid form)
+    WVS->>BW: find_step_at(cursor, **route_context)
+    alt target is cursor.node
+        WVS->>FV: render_cursor → 200 form (with errors if stored data invalid)
+    else target has data
+        WVS->>BW: render_edit → 200 pre-filled form
     else
-        BW->>FV: as_view()(GET) at cursor.node
-        FV-->>BW: 200 rendered step
-        BW-->>WVS: response
+        WVS-->>Django: 302 → cursor's step URL
     end
-    WVS-->>Django: response
 ```
 
-### POST — step submission
+### POST — step URL
 
 ```mermaid
 sequenceDiagram
@@ -159,34 +174,30 @@ sequenceDiagram
     participant SS as SessionStorage
     participant CWK as CursorWalker
     participant SER as StateSerializer
-    participant FV as FormView
 
-    Django->>WVS: POST /wizard/<run_id>/
-    WVS->>BW: get_bound_wizard(request)
+    Django->>WVS: POST /wizard/<run_id>/<gandalf_step>/
     WVS->>BW: retrieve(run_id)
-    WVS->>BW: submit(request.POST.dict())
-    BW->>SS: get_state(run_id) → old entries
-    BW->>CWK: CursorWalker(bound, entries, pending=submission).walk(tree)
-    Note over CWK: Same lockstep walk; places the pending submission<br/>at the first empty slot, then seals and carries the rest verbatim.
-    CWK-->>BW: Cursor(node, state with submission placed, ...)
-    BW->>SER: reduce(cursor.state) → new entries
-    BW->>SS: set_state(run_id, new entries)
-
-    WVS->>BW: replay()
-    BW->>SS: get_state(run_id) → new entries
-    BW->>CWK: CursorWalker(bound, entries, pending=None).walk(tree)
-    CWK-->>BW: Cursor for next step
-    alt cursor.node is None
-        BW-->>WVS: None → viewset calls done()
+    WVS->>BW: cursor(); find_step_at(cursor, **route_context)
+    alt target is cursor.node
+        WVS->>BW: submit(request.POST.dict())
+        BW->>CWK: walk(tree) placing pending at the cursor slot
+        BW->>SER: reduce(cursor.state) → new entries
+        BW->>SS: set_state(run_id, new entries)
+    else target has data
+        WVS->>BW: edit(submission, **route_context)
+        Note over BW: validates first; invalid → 200 error render,<br/>state untouched (transactional)
     else
-        BW->>FV: as_view()(GET) at cursor.node
-        FV-->>BW: 200 rendered step
-        BW-->>WVS: response
+        WVS-->>Django: 302 → cursor's step URL (nothing stored)
     end
-    WVS-->>Django: response
+    WVS->>BW: cursor()
+    alt next cursor.node is None
+        WVS-->>Django: done() response
+    else
+        WVS-->>Django: 302 → next cursor's step URL (PRG)
+    end
 ```
 
-A POST therefore walks the tree **twice**: once inside `submit()` to place the submission and persist, once inside `replay()` to find the next step to render. Both walks use the same `CursorWalker` class.
+A successful POST therefore walks the tree twice (once to place and persist, once to find the redirect target), and the follow-up GET walks again to render. All walks use the same `CursorWalker` class.
 
 ---
 
@@ -276,8 +287,8 @@ One robustness note: `CursorWalker` never evaluates predicates past the cursor (
 
 ---
 
-## Step URL routing (optional)
+## Step URL routing
 
-`StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps an optional URL kwarg (`gandalf_step` by default) to a step-context lookup — the same resolution mechanism edit markers use — and reverses a step declaration back into a URL segment. Routing activates only when a URL pattern captures the kwarg *and* the viewset implements `get_step_url()`; otherwise the flow is byte-for-byte the non-routed one.
+Steps are addressed by URL — there is no unrouted mode. `StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps the `gandalf_step` URL kwarg to a step-context lookup and reverses a step declaration back into a URL segment (`step_name` context by default; subclass to route on another key). The viewset validates at request time that the configured router can reverse every declared step, raising `ImproperlyConfigured` for unnamed steps.
 
-On a routed request the viewset derives the cursor, resolves the claimed step with `BoundWizard.find_step_at(cursor, **context)` — a `ContextFinder` pass over the **sealed walk's tree** rather than `RuntimeTreeBuilder`'s, so no branch predicate ever runs past the cursor and dormant arms are invisible — and then: the cursor's step renders/submits, a data-bearing step renders pre-filled/edits, anything else redirects to the cursor's URL. Successful routed POSTs redirect (POST→redirect→GET); the URL is never trusted to *set* position, only checked against the derived cursor.
+On a step-URL request the viewset derives the cursor, resolves the claimed step with `BoundWizard.find_step_at(cursor, **context)` — a `ContextFinder` pass over the **sealed walk's tree** rather than `RuntimeTreeBuilder`'s, so no branch predicate ever runs past the cursor and dormant arms are invisible — and then: the cursor's step renders/submits, a data-bearing step renders pre-filled/edits, anything else redirects to the cursor's URL. The bare run URL redirects to the cursor's step URL (or fires `done()` on completion), and a bare-URL POST redirects without storing. Successful POSTs redirect (POST→redirect→GET); the URL is never trusted to *set* position, only checked against the derived cursor.

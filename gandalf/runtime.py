@@ -331,12 +331,6 @@ class BoundWizard:
         walker.walk(self.wizard.tree)
         return walker.cursor()
 
-    def replay(self, *args, **kwargs):
-        cursor = self.cursor(*args, **kwargs)
-        if cursor.node is None:
-            return None
-        return self.dispatcher.render_cursor(cursor, *args, **kwargs)
-
     def render_edit(self, *args, url_kwargs=None, **context):
         if url_kwargs is None:
             url_kwargs = {}
@@ -373,7 +367,7 @@ class BoundWizard:
             self._delete_file_refs(files)
             raise
         response = self._validate_edit(
-            runtime_step, submission, files, context, args, url_kwargs
+            runtime_step, submission, files, args, url_kwargs
         )
         if response is not None:
             self._delete_file_refs(files)
@@ -396,14 +390,14 @@ class BoundWizard:
             self.file_storage.delete(ref)
         return None
 
-    def _validate_edit(self, runtime_step, submission, files, context, args, kwargs):
+    def _validate_edit(self, runtime_step, submission, files, args, kwargs):
         """Dispatch the new submission through the target step's form view.
 
         The request carries the stored files overlaid with the new uploads,
         mirroring what a replay of the accepted edit would see. Returns the
         rendered response when the submission does not satisfy the step,
-        None when it does. `request.wizard_edit_context` exposes the resolved
-        edit context so error templates can re-render the edit marker.
+        None when it does. The error render happens at the step's own URL,
+        so resubmitting the corrected form re-targets the same step.
         """
         validation_refs, _ = _overlay_file_refs(
             runtime_step.files or {}, files or {}
@@ -413,7 +407,6 @@ class BoundWizard:
             submission=submission,
             files=_open_file_refs(self, validation_refs),
         )
-        request.wizard_edit_context = context
         response = self.dispatcher.dispatch(
             runtime_step.declaration, request, *args, **kwargs
         )

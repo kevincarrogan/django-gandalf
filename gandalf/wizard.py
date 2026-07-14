@@ -18,7 +18,6 @@ __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
     "MergeCleanedData",
-    "StepNameEditResolver",
     "StepNameRouter",
     "Wizard",
     "WizardFileStorage",
@@ -32,29 +31,10 @@ __all__ = [
 
 def named(name, form_class_or_form_view_class):
     """Shorthand for declaring a step with `context={"step_name": name}`.
-    Pass the result to `Wizard().step(...)`.
+    Pass the result to `Wizard().step(...)`. Equivalent to the `name=`
+    keyword on `.step()`, which is the preferred spelling.
     """
     return form_class_or_form_view_class, {"step_name": name}
-
-
-class StepNameEditResolver:
-    """Resolves an edit cycle from a single `gandalf_edit_step` field whose
-    value is looked up against the wizard's runtime tree via `step_name=`
-    context matching. The default `edit_resolver_class` on `ConfiguredWizard`.
-    """
-
-    field_name = "gandalf_edit_step"
-    context_key = "step_name"
-
-    def resolve(self, request):
-        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
-        if not value:
-            return None
-        return {self.context_key: value}
-
-    def clean_submission(self, submission):
-        submission.pop(self.field_name, None)
-        return submission
 
 
 class StepNameRouter:
@@ -98,9 +78,9 @@ def condition(predicate, target):
     return predicate, target
 
 
-def step(form_class_or_form_view_class, context=None):
+def step(form_class_or_form_view_class, context=None, name=None):
     """Module-level entry point: returns a Wizard starting with one step."""
-    return Wizard().step(form_class_or_form_view_class, context=context)
+    return Wizard().step(form_class_or_form_view_class, context=context, name=name)
 
 
 def branch(*conditions, default=None):
@@ -112,10 +92,12 @@ class Wizard:
     def __init__(self, *, tree=None):
         self.tree = tree
 
-    def step(self, form_class_or_form_view_class, context=None):
+    def step(self, form_class_or_form_view_class, context=None, name=None):
         if isinstance(form_class_or_form_view_class, tuple):
             form_class_or_form_view_class, base_context = form_class_or_form_view_class
             context = {**base_context, **(context or {})}
+        if name is not None:
+            context = {**(context or {}), "step_name": name}
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(
@@ -149,7 +131,6 @@ class ConfiguredWizard:
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
     form_view_factory = staticmethod(form_view_factory)
-    edit_resolver_class = StepNameEditResolver
     step_router_class = StepNameRouter
 
     def __init__(self, *, tree, configuration):
@@ -173,9 +154,6 @@ class ConfiguredWizard:
         )
         self.state_serializer_class = configuration.get(
             "state_serializer_class", self.state_serializer_class
-        )
-        self.edit_resolver_class = configuration.get(
-            "edit_resolver_class", self.edit_resolver_class
         )
         self.step_router_class = configuration.get(
             "step_router_class", self.step_router_class

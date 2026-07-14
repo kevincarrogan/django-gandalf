@@ -39,6 +39,13 @@ This project follows a test-driven development approach for filling out the requ
      dynamic `get_form_class()`, etc.). Gandalf reconstructs `cleaned_data`
      through the FormView's composition API, so any of those overrides are
      honored automatically.
+- Every step served over HTTP must carry a routable name — the canonical
+  spelling is `.step(SomeForm, name="some-step")` (shorthand for
+  `context={"step_name": ...}`). Steps are addressed by URL; there is no
+  unrouted mode, and the viewset raises `ImproperlyConfigured` for wizards
+  with unnamed steps. Viewsets declare `url_name` and are mounted with
+  `path("prefix/", include(MyViewSet.urls()))` unless a custom URL scheme
+  requires overriding `get_wizard_url` / `get_step_url`.
 - Prefer style 1 in tests and documentation unless the scenario specifically
   exercises style 2 behavior.
 - Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation when the declaration naturally spans multiple steps or arguments:

@@ -1,6 +1,9 @@
+from django.core.exceptions import ImproperlyConfigured
 from django.shortcuts import redirect
+from django.urls import path, reverse
 from django.views import View
 
+from gandalf import tree
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
@@ -8,6 +11,29 @@ from gandalf.wizard import ConfiguredWizard, Wizard
 
 class WizardViewSet(View):
     storage_class = SessionStorage
+    url_name = None
+
+    @classmethod
+    def urls(cls):
+        """URL patterns for this wizard, derived from `url_name`:
+        `<url_name>` (start), `<url_name>-run` (bare run URL), and
+        `<url_name>-step` (routed step URL). Mount with
+        `path("prefix/", include(MyWizardViewSet.urls()))`.
+        """
+        if cls.url_name is None:
+            raise ImproperlyConfigured(
+                "WizardViewSet.urls() requires url_name to be set."
+            )
+        view = cls.as_view()
+        return [
+            path("", view, name=cls.url_name),
+            path("<uuid:run_id>/", view, name=f"{cls.url_name}-run"),
+            path(
+                "<uuid:run_id>/<slug:gandalf_step>/",
+                view,
+                name=f"{cls.url_name}-step",
+            ),
+        ]
 
     def get_wizard(self, bound_wizard):
         """Per-request hook returning the Wizard to use for this dispatch.
@@ -39,8 +65,28 @@ class WizardViewSet(View):
 
     def _resolve_wizard(self, bound_wizard):
         wizard = self.configure_wizard(self.get_wizard(bound_wizard))
+        self._validate_routable(wizard)
         bound_wizard.bind(wizard)
         return bound_wizard
+
+    def _validate_routable(self, wizard):
+        """Every step must be routable: steps are addressed by URL, so each
+        one needs a segment the configured router can derive. Raises for
+        any step the router cannot reverse."""
+        router = wizard.step_router_class()
+        finder = tree.ContextFinder({})
+        finder.visit(wizard.tree)
+        unroutable = [
+            step for step in finder.all() if router.reverse(step) is None
+        ]
+        if unroutable:
+            names = ", ".join(
+                step.declaration.__name__ for step in unroutable
+            )
+            raise ImproperlyConfigured(
+                "Every wizard step needs a routable name; declare steps "
+                f"with .step(..., name=...). Unroutable steps: {names}."
+            )
 
     def get(self, request, *args, run_id=None, **kwargs):
         bound_wizard = self._make_bound_wizard(request)
@@ -58,21 +104,10 @@ class WizardViewSet(View):
         if route_context is not None:
             return self._routed_get(bound_wizard, route_context, *args, **kwargs)
 
-        edit_context = bound_wizard.wizard.edit_resolver_class().resolve(request)
-        if edit_context is not None:
-            return bound_wizard.render_edit(
-                *args, url_kwargs=kwargs or None, **edit_context
-            )
-
         cursor = bound_wizard.cursor(*args, **kwargs)
         if cursor.node is None:
             return self._finish(bound_wizard)
-
-        step_url = self._step_url_for(bound_wizard, cursor.node)
-        if step_url is not None:
-            return redirect(step_url)
-
-        return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
+        return self._redirect_to_cursor(bound_wizard, cursor)
 
     def post(self, request, *args, run_id, **kwargs):
         bound_wizard = self._make_bound_wizard(request)
@@ -82,30 +117,14 @@ class WizardViewSet(View):
         router = bound_wizard.wizard.step_router_class()
         route_context = router.resolve(kwargs)
         kwargs = router.clean_url_kwargs(kwargs)
+        if route_context is None:
+            return self._redirect_to_cursor(
+                bound_wizard, bound_wizard.cursor(*args, **kwargs)
+            )
         submission = request.POST.dict()
-        if route_context is not None:
-            return self._routed_post(
-                bound_wizard, route_context, submission, *args, **kwargs
-            )
-
-        resolver = bound_wizard.wizard.edit_resolver_class()
-        edit_context = resolver.resolve(request)
-        files = self._store_uploads(bound_wizard, request.FILES)
-        if edit_context is not None:
-            resolver.clean_submission(submission)
-            edit_response = bound_wizard.edit(
-                submission, *args, files=files, url_kwargs=kwargs or None, **edit_context
-            )
-            if edit_response is not None:
-                return edit_response
-        else:
-            bound_wizard.submit(submission, *args, files=files, **kwargs)
-        response = bound_wizard.replay(*args, **kwargs)
-
-        if response is None:
-            return self._finish(bound_wizard)
-
-        return response
+        return self._routed_post(
+            bound_wizard, route_context, submission, *args, **kwargs
+        )
 
     def _routed_get(self, bound_wizard, route_context, *args, **kwargs):
         """Render the step a routed URL addresses.
@@ -152,25 +171,38 @@ class WizardViewSet(View):
 
     def _redirect_to_cursor(self, bound_wizard, cursor):
         if cursor.node is not None:
-            step_url = self._step_url_for(bound_wizard, cursor.node)
-            if step_url is not None:
-                return redirect(step_url)
+            return redirect(self._step_url_for(bound_wizard, cursor.node))
         return redirect(self.get_wizard_url(bound_wizard.run_id))
 
     def _step_url_for(self, bound_wizard, step_declaration):
         segment = bound_wizard.wizard.step_router_class().reverse(step_declaration)
-        if segment is None:
-            return None
         return self.get_step_url(bound_wizard.run_id, segment)
 
-    def get_step_url(self, run_id, step_segment):
-        """Reverse a routed step URL for this wizard, mirroring
-        `get_wizard_url`. The default returns None, which keeps URL
-        routing off: no canonicalization redirects and no addressable
-        step URLs. Implement it (alongside a URL pattern capturing the
-        router's `url_kwarg`) to opt in.
+    def get_wizard_url(self, run_id):
+        """Reverse the bare run URL. The default uses the `<url_name>-run`
+        pattern published by `urls()`; override for a custom URL scheme.
         """
-        return None
+        if self.url_name is None:
+            raise ImproperlyConfigured(
+                "Set url_name (or override get_wizard_url) on this "
+                "WizardViewSet."
+            )
+        return reverse(f"{self.url_name}-run", kwargs={"run_id": run_id})
+
+    def get_step_url(self, run_id, step_segment):
+        """Reverse a routed step URL, mirroring `get_wizard_url`. The
+        default uses the `<url_name>-step` pattern published by `urls()`;
+        override for a custom URL scheme.
+        """
+        if self.url_name is None:
+            raise ImproperlyConfigured(
+                "Set url_name (or override get_step_url) on this "
+                "WizardViewSet."
+            )
+        return reverse(
+            f"{self.url_name}-step",
+            kwargs={"run_id": run_id, "gandalf_step": step_segment},
+        )
 
     def _finish(self, bound_wizard):
         response = self.done(bound_wizard)

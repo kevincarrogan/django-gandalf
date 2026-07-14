@@ -1,7 +1,13 @@
 from gandalf import tree as tree_module
 from gandalf import wizard
 from gandalf.form_views import form_view_factory
-from gandalf.wizard import MergeCleanedData, Wizard, condition, named
+from gandalf.wizard import (
+    MergeCleanedData,
+    StepNameRouter,
+    Wizard,
+    condition,
+    named,
+)
 from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
@@ -32,6 +38,8 @@ class IndexView(TemplateView):
         context = super().get_context_data(**kwargs)
         entries = []
         for pattern in get_resolver(None).url_patterns:
+            if not hasattr(pattern, "callback"):
+                continue
             if "run_id" in pattern.pattern.converters:
                 continue
             if pattern.name == "index":
@@ -61,15 +69,9 @@ def is_business_account(request):
 class SingleStepWizardViewSet(WizardViewSet):
     description = "A single-step wizard with a custom done() returning the run id."
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "single-step-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "single-step-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -78,15 +80,9 @@ class SingleStepWizardViewSet(WizardViewSet):
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
     description = "Single-step wizard with no done() override (falls back to default)."
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "single-step-wizard-without-done-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "single-step-wizard-without-done"
 
 
 class SingleStepWizardDoneDataViewSet(WizardViewSet):
@@ -94,15 +90,9 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
         "Single-step wizard; done() reads the submitted form data via the runtime tree."
     )
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "single-step-wizard-done-data-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "single-step-wizard-done-data"
 
     def done(self, bound_wizard):
         cleaned_data = bound_wizard.runtime_tree.form.cleaned_data
@@ -114,15 +104,9 @@ class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
         "Single-step wizard; done() reads raw stored state via get_run_data()."
     )
     template_name = "testapp/single_step_wizard.html"
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "single-step-wizard-done-run-data-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "single-step-wizard-done-run-data"
 
     def done(self, bound_wizard):
         run_data = bound_wizard.get_run_data()
@@ -135,15 +119,9 @@ class LinearWizardViewSet(WizardViewSet):
         "Two-step linear wizard built from the module-level `wizard` instance."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepForm).step(SecondStepForm)
+    wizard = wizard.step(FirstStepForm, name="first").step(SecondStepForm, name="second")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "linear-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "linear-wizard"
 
 
 class DoneLinearWizardViewSet(WizardViewSet):
@@ -153,19 +131,15 @@ class DoneLinearWizardViewSet(WizardViewSet):
         Wizard()
         .step(
             FirstStepForm,
+            name="first",
         )
         .step(
             SecondStepForm,
+            name="second",
         )
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "done-linear-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "done-linear-wizard"
 
     def done(self, bound_wizard):
         first = bound_wizard.runtime_tree
@@ -185,19 +159,15 @@ class OtherLinearWizardViewSet(WizardViewSet):
         Wizard()
         .step(
             FirstStepForm,
+            name="first",
         )
         .step(
             SecondStepForm,
+            name="second",
         )
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "other-linear-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "other-linear-wizard"
 
 
 class RecreatedLinearWizardViewSet(WizardViewSet):
@@ -209,19 +179,15 @@ class RecreatedLinearWizardViewSet(WizardViewSet):
         Wizard()
         .step(
             FirstStepForm,
+            name="first",
         )
         .step(
             SecondStepForm,
+            name="second",
         )
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "recreated-linear-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "recreated-linear-wizard"
 
 
 class BranchingWizardViewSet(WizardViewSet):
@@ -236,44 +202,27 @@ class BranchingWizardViewSet(WizardViewSet):
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(PersonalDetailsForm),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm)
+        .step(ReviewForm, name="review")
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "branching-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "branching-wizard"
 
 
-class SectionEditResolver:
-    """Custom edit resolver that reads `?section=...` (or POST field) and
-    looks up steps by their `section` context key rather than `step_name`."""
+class SectionRouter(StepNameRouter):
+    """Custom router keying step URLs on a `section` context entry rather
+    than `step_name`."""
 
-    field_name = "section"
     context_key = "section"
-
-    def resolve(self, request):
-        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
-        if not value:
-            return None
-        return {self.context_key: value}
-
-    def clean_submission(self, submission):
-        submission.pop(self.field_name, None)
-        return submission
 
 
 class SectionEditingWizardViewSet(WizardViewSet):
     description = (
-        "Wizard configuring a custom `edit_resolver_class` that keys edit "
-        "lookups on a `section` context entry plus a `section=` form field."
+        "Wizard configuring a custom `step_router_class` that routes step "
+        "URLs by a `section` context entry rather than `step_name`."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
@@ -283,17 +232,11 @@ class SectionEditingWizardViewSet(WizardViewSet):
         .step(ReviewForm, context={"section": "review"})
         .configure(
             template_name="testapp/editing_wizard.html",
-            edit_resolver_class=SectionEditResolver,
+            step_router_class=SectionRouter,
         )
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "section-editing-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "section-editing-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -322,13 +265,7 @@ class EditingBranchingWizardViewSet(WizardViewSet):
         .step(ReviewForm, context={"step_name": "review"})
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "editing-branching-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "editing-branching-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -354,16 +291,10 @@ class DoneBranchingWizardViewSet(WizardViewSet):
             ),
         )
         .step(ReviewForm, context={"step_name": "review"})
-        .step(SecondStepForm)
+        .step(SecondStepForm, name="second")
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "done-branching-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "done-branching-wizard"
 
     def done(self, bound_wizard):
         from gandalf import tree as tree_module
@@ -392,17 +323,11 @@ class BranchEntryWizardViewSet(WizardViewSet):
     description = "Wizard whose very first node is a branch (no preceding step)."
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.branch(
-        condition(_always_false, wizard.step(FirstStepForm)),
-        default=wizard.step(SecondStepForm),
+        condition(_always_false, wizard.step(FirstStepForm, name="first")),
+        default=wizard.step(SecondStepForm, name="second"),
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "branch-entry-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "branch-entry-wizard"
 
 
 class DuplicateContextWizardViewSet(WizardViewSet):
@@ -414,13 +339,7 @@ class DuplicateContextWizardViewSet(WizardViewSet):
         .step(SecondStepForm, context={"step_name": "duplicate"})
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "duplicate-context-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "duplicate-context-wizard"
 
     def done(self, bound_wizard):
         try:
@@ -432,6 +351,7 @@ class DuplicateContextWizardViewSet(WizardViewSet):
 
 class InvalidWizardViewSet(WizardViewSet):
     description = "Wizard attribute is not a Wizard instance; visiting should error."
+    url_name = "invalid-wizard"
     wizard = object()
 
 
@@ -445,15 +365,9 @@ class FormViewStepWizardViewSet(WizardViewSet):
     description = (
         "Step backed by a form_view_factory FormView rather than a bare Form class."
     )
-    wizard = Wizard().step(FirstStepFormView)
+    wizard = Wizard().step(FirstStepFormView, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "form-view-step-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "form-view-step-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -463,15 +377,9 @@ class MissingTemplateWizardViewSet(WizardViewSet):
     description = (
         "Wizard with neither template_name nor configured template (expect failure)."
     )
-    wizard = Wizard().step(FirstStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "missing-template-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "missing-template-wizard"
 
 
 class PreConfiguredWizardViewSet(WizardViewSet):
@@ -480,19 +388,13 @@ class PreConfiguredWizardViewSet(WizardViewSet):
     )
     wizard = (
         Wizard()
-        .step(FirstStepForm)
+        .step(FirstStepForm, name="first")
         .configure(
             template_name="testapp/single_step_wizard.html",
         )
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "pre-configured-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "pre-configured-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -503,13 +405,7 @@ class EmptyWizardViewSet(WizardViewSet):
     template_name = "testapp/single_step_wizard.html"
     wizard = Wizard()
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "empty-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "empty-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -541,15 +437,9 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
         "request.wizard.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepForm).step(EmailStepPrefilledFromPath)
+    wizard = wizard.step(FirstStepForm, name="first").step(EmailStepPrefilledFromPath, name="second")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "path-aware-linear-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "path-aware-linear-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -574,15 +464,9 @@ class PathAwareFormViewFirstStepWizardViewSet(WizardViewSet):
         "request.wizard.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepFromFormView).step(EmailStepPrefilledFromPath)
+    wizard = wizard.step(FirstStepFromFormView, name="first").step(EmailStepPrefilledFromPath, name="second")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "path-aware-form-view-first-step-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "path-aware-form-view-first-step-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -599,20 +483,14 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
         .branch(
             condition(
                 is_business_account,
-                wizard.step(BusinessDetailsForm).step(SecondStepForm),
+                wizard.step(BusinessDetailsForm, name="business_name").step(SecondStepForm, name="second"),
             ),
-            default=wizard.step(PersonalDetailsForm),
+            default=wizard.step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm)
+        .step(ReviewForm, name="review")
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "branching-merged-payload-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "branching-merged-payload-wizard"
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.path)
@@ -635,20 +513,14 @@ class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
-        wizard.step(FirstStepForm)
+        wizard.step(FirstStepForm, name="first")
         .branch(
-            condition(_never_matches, wizard.step(SecondStepForm)),
+            condition(_never_matches, wizard.step(SecondStepForm, name="second")),
         )
         .step(AccountTypeForm, context={"step_name": "skip_branch_account"})
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "empty-branch-arm-merged-payload-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "empty-branch-arm-merged-payload-wizard"
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.path)
@@ -668,20 +540,14 @@ class RuntimeTreeBranchingMergeViewSet(WizardViewSet):
         .branch(
             condition(
                 is_business_account,
-                wizard.step(BusinessDetailsForm),
+                wizard.step(BusinessDetailsForm, name="business_name"),
             ),
-            default=wizard.step(PersonalDetailsForm),
+            default=wizard.step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm)
+        .step(ReviewForm, name="review")
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "runtime-tree-branching-merge-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "runtime-tree-branching-merge-wizard"
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
@@ -698,15 +564,9 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
         "path via MergeCleanedData and dispatches the merged payload."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = Wizard().step(FirstStepForm).step(SecondStepForm)
+    wizard = Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "merged-payload-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "merged-payload-wizard"
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.path)
@@ -722,7 +582,7 @@ class DoubleConfiguredWizardViewSet(WizardViewSet):
     def get_wizard(self, bound_wizard):
         return (
             Wizard()
-            .step(FirstStepForm)
+            .step(FirstStepForm, name="first")
             .configure(
                 template_name=self.template_name,
             )
@@ -731,13 +591,7 @@ class DoubleConfiguredWizardViewSet(WizardViewSet):
     def configure_wizard(self, wizard):
         return wizard.configure(template_name=self.template_name)
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "double-configured-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "double-configured-wizard"
 
 
 class DynamicWizardViewSet(WizardViewSet):
@@ -753,16 +607,12 @@ class DynamicWizardViewSet(WizardViewSet):
         if state:
             count = int(state[0]["step"]["count"])
             for index in range(count):
-                wizard = wizard.step(ItemForm, context={"index": index})
+                wizard = wizard.step(
+                    ItemForm, context={"index": index}, name=f"item-{index}"
+                )
         return wizard
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "dynamic-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "dynamic-wizard"
 
     def done(self, bound_wizard):
         node = bound_wizard.runtime_tree.next
@@ -809,16 +659,10 @@ class FileUploadingWizardViewSet(WizardViewSet):
     wizard = (
         Wizard()
         .step(ProfilePhotoForm, context={"step_name": "photo"})
-        .step(FirstStepForm)
+        .step(FirstStepForm, name="first")
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "file-uploading-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "file-uploading-wizard"
 
     def done(self, bound_wizard):
         photo_step = bound_wizard.find_step(step_name="photo")
@@ -842,16 +686,11 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
                 wizard = wizard.step(
                     ItemForm,
                     context={"list_key": "items", "index": index},
+                    name=f"item-{index}",
                 )
         return wizard
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "dynamic-list-payload-wizard-run",
-            kwargs={
-                "run_id": run_id,
-            },
-        )
+    url_name = "dynamic-list-payload-wizard"
 
     def done(self, bound_wizard):
         import json
@@ -869,11 +708,7 @@ class NamedHelperWizardViewSet(WizardViewSet):
         .step(named("second", SecondStepForm))
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "named-helper-wizard-run",
-            kwargs={"run_id": run_id},
-        )
+    url_name = "named-helper-wizard"
 
     def done(self, bound_wizard):
         first = bound_wizard.find_step(step_name="first")
@@ -896,11 +731,7 @@ class FileEditingWizardViewSet(WizardViewSet):
         .step(ReviewForm, context={"step_name": "review"})
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "file-editing-wizard-run",
-            kwargs={"run_id": run_id},
-        )
+    url_name = "file-editing-wizard"
 
     def done(self, bound_wizard):
         photo_step = bound_wizard.find_step(step_name="photo")
@@ -920,16 +751,12 @@ class EmptyBranchArmContextFinderViewSet(WizardViewSet):
         Wizard()
         .step(named("first", FirstStepForm))
         .branch(
-            condition(_never_matches, Wizard().step(SecondStepForm)),
+            condition(_never_matches, Wizard().step(SecondStepForm, name="second")),
         )
         .step(named("review", ReviewForm))
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "empty-branch-arm-context-finder-wizard-run",
-            kwargs={"run_id": run_id},
-        )
+    url_name = "empty-branch-arm-context-finder-wizard"
 
     def done(self, bound_wizard):
         declared_finder = tree_module.ContextFinder({})
@@ -962,27 +789,83 @@ class RoutedWizardViewSet(WizardViewSet):
         .step(named("review", ReviewForm))
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "routed-wizard-run",
-            kwargs={"run_id": run_id},
-        )
-
-    def get_step_url(self, run_id, step_segment):
-        return reverse(
-            "routed-wizard-step",
-            kwargs={"run_id": run_id, "gandalf_step": step_segment},
-        )
+    url_name = "routed-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-class PartiallyRoutedWizardViewSet(WizardViewSet):
+class MisconfiguredStepUrlsWizardViewSet(WizardViewSet):
     description = (
-        "Routed wizard whose first step is unnamed: unroutable steps render "
-        "at the bare run URL instead of redirecting, so partial naming "
-        "degrades gracefully."
+        "Wizard registered with hand-written URL patterns but neither "
+        "url_name nor the reverse hooks; any request raises "
+        "ImproperlyConfigured."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class LookupProbeStepView(FormView):
+    """Step view that probes render_edit for its own (still unanswered)
+    step while rendering: `require_data` skips the match, so the probe
+    observes StepNotFound mid-run."""
+
+    form_class = SecondStepForm
+    template_name = "testapp/editing_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_context_data(self, **kwargs):
+        from gandalf.runtime import StepNotFound
+
+        context = super().get_context_data(**kwargs)
+        try:
+            self.request.wizard.render_edit(step_name="second")
+        except StepNotFound:
+            context["lookup_probe"] = "step-not-found"
+        return context
+
+
+class ProgrammaticLookupWizardViewSet(WizardViewSet):
+    description = (
+        "Exercises programmatic BoundWizard lookups: a mid-run render_edit "
+        "of the unanswered cursor step raises StepNotFound (require_data), "
+        "and done() shows edit() deleting newly stored uploads when its "
+        "target cannot be resolved."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(LookupProbeStepView, name="second")
+    )
+
+    url_name = "programmatic-lookup-wizard"
+
+    def done(self, bound_wizard):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from gandalf.runtime import StepNotFound
+
+        upload = SimpleUploadedFile("orphan.txt", b"orphan-bytes")
+        ref = bound_wizard.file_storage.save(bound_wizard.run_id, upload)
+        try:
+            bound_wizard.edit({"name": "x"}, files={"upload": ref}, step_name="missing")
+        except StepNotFound:
+            deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
+            return HttpResponse(f"completed edit-cleanup={deleted}")
+        return HttpResponse("completed no-raise")
+
+
+class UnroutableWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard with an unnamed step: resolving it at the HTTP boundary "
+        "raises ImproperlyConfigured because every step needs a routable "
+        "name."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
@@ -991,17 +874,7 @@ class PartiallyRoutedWizardViewSet(WizardViewSet):
         .step(named("second", SecondStepForm))
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "partially-routed-wizard-run",
-            kwargs={"run_id": run_id},
-        )
-
-    def get_step_url(self, run_id, step_segment):
-        return reverse(
-            "partially-routed-wizard-step",
-            kwargs={"run_id": run_id, "gandalf_step": step_segment},
-        )
+    url_name = "unroutable-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -1038,6 +911,16 @@ class OrgScopedEditingWizardViewSet(WizardViewSet):
             kwargs={"org": self.kwargs["org"], "run_id": run_id},
         )
 
+    def get_step_url(self, run_id, step_segment):
+        return reverse(
+            "org-scoped-wizard-step",
+            kwargs={
+                "org": self.kwargs["org"],
+                "run_id": run_id,
+                "gandalf_step": step_segment,
+            },
+        )
+
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
@@ -1068,11 +951,7 @@ class BranchEditRejectionWizardViewSet(WizardViewSet):
         .step(AccountTypeForm, context={"step_name": "tail"})
     )
 
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "branch-edit-rejection-wizard-run",
-            kwargs={"run_id": run_id},
-        )
+    url_name = "branch-edit-rejection-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")

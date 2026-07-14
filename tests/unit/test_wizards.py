@@ -25,6 +25,15 @@ from tests.testapp.forms import (
 )
 
 
+def _replay(bound_wizard, *args, **kwargs):
+    """Walk stored state and render the cursor, mirroring what the viewset
+    does over HTTP; returns None when the run is complete."""
+    cursor = bound_wizard.cursor(*args, **kwargs)
+    if cursor.node is None:
+        return None
+    return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
+
+
 def _make_bound_wizard(wizard, request):
     return BoundWizard(request, wizard.storage_class(request), wizard=wizard)
 
@@ -703,7 +712,7 @@ def test_bound_wizard_replays_submissions_from_url_run_id(
 
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert bound_wizard.run_id == "existing-run"
     assert response.context_data["form"].__class__ is SecondStepForm
@@ -726,7 +735,7 @@ def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
 
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve(run_id)
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert bound_wizard.run_id == run_id
     assert response.context_data["form"].__class__ is SecondStepForm
@@ -788,7 +797,7 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"name": "Ada"})
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.context_data["form"].__class__ is SecondStepForm
 
@@ -841,7 +850,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"account_type": "business"})
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is BusinessDetailsForm
@@ -878,7 +887,7 @@ def test_bound_wizard_renders_first_step_in_default_branch(
     bound_wizard.retrieve("existing-run")
 
     bound_wizard.submit({"account_type": "personal"})
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is PersonalDetailsForm
@@ -988,7 +997,7 @@ def test_bound_wizard_replay_returns_invalid_stored_step_response(
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is FirstStepForm
@@ -1038,8 +1047,8 @@ def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
     first_bound_wizard.submit({"name": "Ada"})
     second_bound_wizard = _make_bound_wizard(linear_wizard, request)
     second_bound_wizard.retrieve("second-run")
-    first_response = first_bound_wizard.replay()
-    second_response = second_bound_wizard.replay()
+    first_response = _replay(first_bound_wizard)
+    second_response = _replay(second_bound_wizard)
 
     assert first_response.context_data["form"].__class__ is SecondStepForm
     assert second_response.context_data["form"].__class__ is FirstStepForm
@@ -1144,7 +1153,7 @@ def test_bound_wizard_replay_returns_none_after_complete_path(
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response is None
 
@@ -1350,36 +1359,6 @@ def test_bound_wizard_edit_with_valid_submission_returns_none(
     assert bound_wizard.edit({"name": "Grace"}, step_name="first") is None
 
 
-def test_bound_wizard_edit_error_render_exposes_edit_context_on_request(
-    request_with_session_factory,
-):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, context={"step_name": "first"})
-        .step(SecondStepForm, context={"step_name": "second"})
-        .configure(template_name="testapp/linear_wizard.html")
-    )
-    request = request_with_session_factory(
-        session={
-            "gandalf_runs": {
-                "existing-run": {
-                    "state": [
-                        {"step": {"name": "Ada"}},
-                        {"step": {"email": "ada@example.com"}},
-                    ],
-                },
-            },
-        },
-    )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-
-    response = bound_wizard.edit({"name": ""}, step_name="first")
-
-    step_request = response.context_data["view"].request
-    assert step_request.wizard_edit_context == {"step_name": "first"}
-
-
 def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
     request_with_session_factory,
 ):
@@ -1468,7 +1447,7 @@ def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
         {"step": {"account_type": "personal"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
     assert response.context_data["form"].__class__ is PersonalDetailsForm
 
 
@@ -1651,7 +1630,7 @@ def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
         {"step": {"confirmed": "on"}},
     ]
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
     assert response.context_data["form"].__class__ is PersonalDetailsForm
 
 
@@ -1687,7 +1666,7 @@ def test_bound_wizard_submit_fills_hole_and_completes_preserved_run(
         },
         {"step": {"confirmed": "on"}},
     ]
-    assert bound_wizard.replay() is None
+    assert _replay(bound_wizard) is None
 
 
 def test_bound_wizard_edit_flip_flop_restores_dormant_arm_answers(
@@ -1716,7 +1695,7 @@ def test_bound_wizard_edit_flip_flop_restores_dormant_arm_answers(
         {"step": {"account_type": "business"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
     assert response.context_data["form"].__class__ is ReviewForm
 
 
@@ -1755,7 +1734,7 @@ def test_bound_wizard_edit_restoring_stale_dormant_answer_renders_errors(
             }
         },
     ]
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
     assert response.context_data["form"].__class__ is BusinessDetailsForm
     assert response.context_data["form"].errors == {
         "business_name": ["This field is required."],
@@ -1792,7 +1771,7 @@ def test_bound_wizard_edit_keeps_invalid_downstream_answer_for_correction(
         {"step": {"name": "Grace"}},
         {"step": {"email": "not-an-email"}},
     ]
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
     assert response.context_data["form"].__class__ is SecondStepForm
     assert response.context_data["form"].errors == {
         "email": ["Enter a valid email address."],
@@ -1983,7 +1962,7 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is SecondStepForm
@@ -2564,7 +2543,7 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     assert captured["path_head_name"] == "Ada"
@@ -2621,7 +2600,7 @@ def test_bound_wizard_replay_reconstitutes_uploaded_file_for_form_validation(
     file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
     bound_wizard.submit({"photo": "avatar.jpg"}, files={"photo": file_key})
 
-    response = bound_wizard.replay()
+    response = _replay(bound_wizard)
 
     assert response.status_code == 200
     response.render()

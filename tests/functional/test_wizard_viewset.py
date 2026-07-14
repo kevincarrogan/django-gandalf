@@ -8,6 +8,8 @@ from django.urls import reverse
 import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
+from gandalf.tree import MultipleStepsReturned
+
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
@@ -163,6 +165,10 @@ def empty_wizard_run_url():
     return build_url
 
 
+def _step(run_url, step):
+    return f"{run_url}{step}/"
+
+
 def get_only_run_info_from_session(session):
     gandalf_runs = session["gandalf_runs"]
     assert len(gandalf_runs) == 1
@@ -200,7 +206,7 @@ def test_wizard_viewset_delegates_run_get_to_first_step_form(
     client.get(single_step_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    response = client.get(single_step_wizard_run_url(run_id))
+    response = client.get(single_step_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
@@ -216,7 +222,11 @@ def test_wizard_viewset_delegates_run_post_to_first_step_form(
     client.get(single_step_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    response = client.post(single_step_wizard_run_url(run_id), data={"name": ""})
+    response = client.post(
+        _step(single_step_wizard_run_url(run_id), "first"),
+        data={"name": ""},
+        follow=True,
+    )
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
@@ -233,7 +243,11 @@ def test_single_step_wizard_valid_post_returns_done_response(
     client.get(single_step_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    response = client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        _step(single_step_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
@@ -246,9 +260,13 @@ def test_single_step_wizard_get_after_valid_post_returns_done_response(
 ):
     client.get(single_step_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(single_step_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(single_step_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
 
-    response = client.get(single_step_wizard_run_url(run_id))
+    response = client.get(single_step_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
@@ -263,8 +281,9 @@ def test_single_step_wizard_done_can_read_submitted_form_data(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(
-        single_step_wizard_done_data_run_url(run_id),
+        _step(single_step_wizard_done_data_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -280,8 +299,9 @@ def test_single_step_wizard_done_can_read_run_data(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(
-        single_step_wizard_done_run_data_run_url(run_id),
+        _step(single_step_wizard_done_run_data_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -296,7 +316,7 @@ def test_linear_wizard_run_starts_with_first_declared_form(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    response = client.get(linear_wizard_run_url(run_id))
+    response = client.get(linear_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")
@@ -312,7 +332,11 @@ def test_linear_wizard_valid_first_step_renders_next_declared_form(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+    response = client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")
@@ -332,8 +356,16 @@ def test_linear_wizard_replaces_invalid_submission_on_next_post(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(linear_wizard_run_url(run_id), data={"name": ""})
-    response = client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": ""},
+        follow=True,
+    )
+    response = client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
@@ -350,10 +382,15 @@ def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_ste
     client.get(done_linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(done_linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     response = client.post(
-        done_linear_wizard_run_url(run_id),
+        _step(done_linear_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -371,10 +408,15 @@ def test_linear_wizard_done_can_read_submitted_form_data_from_each_step(
     client.get(done_linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(done_linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     response = client.post(
-        done_linear_wizard_run_url(run_id),
+        _step(done_linear_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -389,11 +431,20 @@ def test_linear_wizard_does_not_append_submission_after_done(
     client.get(done_linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(done_linear_wizard_run_url(run_id), data={"name": "Ada"})
-    client.post(done_linear_wizard_run_url(run_id), data={"email": "ada@example.com"})
+    client.post(
+        _step(done_linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    client.post(
+        _step(done_linear_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
     response = client.post(
         done_linear_wizard_run_url(run_id),
         data={"email": "grace@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -412,8 +463,12 @@ def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
-    response = client.get(linear_wizard_run_url(run_id))
+    client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    response = client.get(linear_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/linear_wizard.html")
@@ -431,8 +486,9 @@ def test_branching_wizard_valid_step_renders_first_step_in_matching_branch(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(
-        branching_wizard_run_url(run_id),
+        _step(branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -454,8 +510,9 @@ def test_branching_wizard_valid_step_renders_first_step_in_default_branch(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(
-        branching_wizard_run_url(run_id),
+        _step(branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "personal"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -476,13 +533,15 @@ def test_branching_wizard_post_inside_arm_records_nested_state(
     client.get(branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        branching_wizard_run_url(run_id),
+        _step(branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
 
     response = client.post(
-        branching_wizard_run_url(run_id),
+        _step(branching_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -503,13 +562,24 @@ def test_done_branching_wizard_complete_flow_uses_runtime_tree(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        done_branching_wizard_run_url(run_id), data={"account_type": "business"}
+        _step(done_branching_wizard_run_url(run_id), "account_type"),
+        data={"account_type": "business"},
+        follow=True,
     )
-    client.post(done_branching_wizard_run_url(run_id), data={"business_name": "Acme"})
-    client.post(done_branching_wizard_run_url(run_id), data={"confirmed": "on"})
+    client.post(
+        _step(done_branching_wizard_run_url(run_id), "business"),
+        data={"business_name": "Acme"},
+        follow=True,
+    )
+    client.post(
+        _step(done_branching_wizard_run_url(run_id), "review"),
+        data={"confirmed": "on"},
+        follow=True,
+    )
     response = client.post(
-        done_branching_wizard_run_url(run_id),
+        _step(done_branching_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -531,26 +601,26 @@ def editing_branching_wizard_run_url():
     return build_url
 
 
-def test_editing_branching_wizard_get_with_edit_param_renders_form_with_initial(
+def test_editing_branching_wizard_get_completed_step_renders_form_with_initial(
     client,
     editing_branching_wizard_url,
     editing_branching_wizard_run_url,
 ):
-    from tests.testapp.forms import AccountTypeForm
-
     client.get(editing_branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
 
     response = client.get(
-        editing_branching_wizard_run_url(run_id) + "?gandalf_edit_step=account_type",
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -568,17 +638,20 @@ def test_editing_branching_wizard_post_edit_keeping_arm_preserves_downstream(
     client.get(editing_branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
 
     response = client.post(
-        editing_branching_wizard_run_url(run_id),
-        data={"gandalf_edit_step": "account_type", "account_type": "business"},
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
+        data={"account_type": "business"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -597,17 +670,20 @@ def test_editing_branching_wizard_post_edit_changing_arm_keeps_dormant_arm(
     client.get(editing_branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
     client.post(
-        editing_branching_wizard_run_url(run_id),
+        _step(editing_branching_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
 
     response = client.post(
-        editing_branching_wizard_run_url(run_id),
-        data={"gandalf_edit_step": "account_type", "account_type": "personal"},
+        _step(editing_branching_wizard_run_url(run_id), "account_type"),
+        data={"account_type": "personal"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -616,27 +692,6 @@ def test_editing_branching_wizard_post_edit_changing_arm_keeps_dormant_arm(
         {"step": {"account_type": "personal"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
-
-
-def test_editing_branching_wizard_post_edit_strips_marker_from_submission(
-    client,
-    editing_branching_wizard_url,
-    editing_branching_wizard_run_url,
-):
-    client.get(editing_branching_wizard_url)
-    run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(
-        editing_branching_wizard_run_url(run_id),
-        data={"account_type": "business"},
-    )
-
-    client.post(
-        editing_branching_wizard_run_url(run_id),
-        data={"gandalf_edit_step": "account_type", "account_type": "business"},
-    )
-
-    stored = client.session["gandalf_runs"][run_id]["state"][0]["step"]
-    assert "gandalf_edit_step" not in stored
 
 
 def test_editing_branching_wizard_full_reentrant_loop(
@@ -650,38 +705,53 @@ def test_editing_branching_wizard_full_reentrant_loop(
     client.get(editing_branching_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     run_url = editing_branching_wizard_run_url(run_id)
-    client.post(run_url, data={"account_type": "business"})
-    client.post(run_url, data={"business_name": "Acme"})
+    client.post(
+        _step(run_url, "account_type"),
+        data={"account_type": "business"},
+        follow=True,
+    )
+    client.post(
+        _step(run_url, "business_name"),
+        data={"business_name": "Acme"},
+        follow=True,
+    )
 
-    response = client.get(run_url)
+    response = client.get(run_url, follow=True)
     assert isinstance(response.context["form"], ReviewForm)
 
     # Trivial edit from the summary: change lands, user is back on the
     # summary immediately.
     response = client.post(
-        run_url,
-        data={"gandalf_edit_step": "business_name", "business_name": "Globex"},
+        _step(run_url, "business_name"),
+        data={"business_name": "Globex"},
+        follow=True,
     )
     assert isinstance(response.context["form"], ReviewForm)
 
     # Diverting edit: the flow re-routes to the personal arm and asks only
     # its unanswered step.
     response = client.post(
-        run_url,
-        data={"gandalf_edit_step": "account_type", "account_type": "personal"},
+        _step(run_url, "account_type"),
+        data={"account_type": "personal"},
+        follow=True,
     )
     assert isinstance(response.context["form"], PersonalDetailsForm)
 
     # Answering the diverted step (a plain submission, no edit marker)
     # returns straight to the summary.
-    response = client.post(run_url, data={"preferred_name": "Ada"})
+    response = client.post(
+        _step(run_url, "preferred_name"),
+        data={"preferred_name": "Ada"},
+        follow=True,
+    )
     assert isinstance(response.context["form"], ReviewForm)
 
     # Flipping the branch answer back restores the dormant business arm
     # without re-asking it, landing on the summary again.
     response = client.post(
-        run_url,
-        data={"gandalf_edit_step": "account_type", "account_type": "business"},
+        _step(run_url, "account_type"),
+        data={"account_type": "business"},
+        follow=True,
     )
     assert isinstance(response.context["form"], ReviewForm)
     assert client.session["gandalf_runs"][run_id]["state"] == [
@@ -709,7 +779,7 @@ def test_editing_branching_wizard_resumes_legacy_bare_list_branch_state(
     ]
     session.save()
 
-    response = client.get(editing_branching_wizard_run_url(run_id))
+    response = client.get(editing_branching_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], ReviewForm)
@@ -994,33 +1064,9 @@ def test_routed_wizard_unknown_step_url_on_completed_run_redirects_to_run_url(
     assert response["Location"] == routed_wizard_urls(routed_wizard_run)
 
 
-def test_partially_routed_wizard_unnamed_cursor_renders_at_bare_run_url(client):
-    client.get(reverse("partially-routed-wizard"))
-    run_id, _ = get_only_run_info_from_session(client.session)
-
-    response = client.get(
-        reverse("partially-routed-wizard-run", kwargs={"run_id": run_id})
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert isinstance(response.context["form"], FirstStepForm)
-
-
-def test_partially_routed_wizard_step_url_redirects_to_bare_run_url(client):
-    client.get(reverse("partially-routed-wizard"))
-    run_id, _ = get_only_run_info_from_session(client.session)
-
-    response = client.get(
-        reverse(
-            "partially-routed-wizard-step",
-            kwargs={"run_id": run_id, "gandalf_step": "second"},
-        )
-    )
-
-    assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == reverse(
-        "partially-routed-wizard-run", kwargs={"run_id": run_id}
-    )
+def test_unroutable_wizard_raises_improperly_configured(client):
+    with pytest.raises(ImproperlyConfigured, match="FirstStepForm"):
+        client.get(reverse("unroutable-wizard"))
 
 
 def test_org_scoped_wizard_edit_render_receives_url_kwargs(
@@ -1029,12 +1075,13 @@ def test_org_scoped_wizard_edit_render_receives_url_kwargs(
     start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
     client.get(start_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id}
+    step_url = reverse(
+        "org-scoped-wizard-step",
+        kwargs={"org": "acme", "run_id": run_id, "gandalf_step": "first"},
     )
-    client.post(run_url, data={"name": "Ada"})
+    client.post(step_url, data={"name": "Ada"})
 
-    response = client.get(run_url + "?gandalf_edit_step=first")
+    response = client.get(step_url)
 
     assert response.status_code == HTTPStatus.OK
     assert response.context["org"] == "acme"
@@ -1047,19 +1094,86 @@ def test_org_scoped_wizard_invalid_edit_error_render_receives_url_kwargs(
     start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
     client.get(start_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id}
+    step_url = reverse(
+        "org-scoped-wizard-step",
+        kwargs={"org": "acme", "run_id": run_id, "gandalf_step": "first"},
     )
-    client.post(run_url, data={"name": "Ada"})
+    client.post(step_url, data={"name": "Ada"})
 
-    response = client.post(
-        run_url,
-        data={"gandalf_edit_step": "first", "name": ""},
-    )
+    response = client.post(step_url, data={"name": ""})
 
     assert response.status_code == HTTPStatus.OK
     assert response.context["org"] == "acme"
     assert response.context["form"].errors == {"name": ["This field is required."]}
+
+
+def test_wizard_viewset_urls_requires_url_name():
+    from django.core.exceptions import ImproperlyConfigured
+
+    from gandalf.viewsets import WizardViewSet
+
+    class NamelessViewSet(WizardViewSet):
+        pass
+
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        NamelessViewSet.urls()
+
+
+def test_misconfigured_wizard_start_raises_improperly_configured(client):
+    from django.core.exceptions import ImproperlyConfigured
+
+    with pytest.raises(ImproperlyConfigured, match="get_wizard_url"):
+        client.get(reverse("misconfigured-wizard"))
+
+
+def test_misconfigured_wizard_run_url_raises_improperly_configured(client):
+    from django.core.exceptions import ImproperlyConfigured
+
+    session = client.session
+    session["gandalf_runs"] = {"11111111-1111-1111-1111-111111111111": {}}
+    session.save()
+
+    with pytest.raises(ImproperlyConfigured, match="get_step_url"):
+        client.get(
+            reverse(
+                "misconfigured-wizard-run",
+                kwargs={"run_id": "11111111-1111-1111-1111-111111111111"},
+            )
+        )
+
+
+def test_programmatic_lookup_wizard_probes_step_not_found_mid_run(client):
+    client.get(reverse("programmatic-lookup-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "programmatic-lookup-wizard-run", kwargs={"run_id": run_id}
+    )
+    client.post(_step(run_url, "first"), data={"name": "Ada"})
+
+    response = client.get(_step(run_url, "second"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["lookup_probe"] == "step-not-found"
+
+
+def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
+    client, isolated_media_root
+):
+    client.get(reverse("programmatic-lookup-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "programmatic-lookup-wizard-run", kwargs={"run_id": run_id}
+    )
+    client.post(_step(run_url, "first"), data={"name": "Ada"})
+
+    response = client.post(
+        _step(run_url, "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed edit-cleanup=True"
 
 
 def test_branch_entry_wizard_renders_default_arm_first_step(client):
@@ -1068,7 +1182,7 @@ def test_branch_entry_wizard_renders_default_arm_first_step(client):
     run_id, _ = get_only_run_info_from_session(client.session)
     run_url = reverse("branch-entry-wizard-run", kwargs={"run_id": run_id})
 
-    response = client.get(run_url)
+    response = client.get(run_url, follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
@@ -1080,11 +1194,8 @@ def test_find_step_raises_when_multiple_steps_share_context(client):
     run_id, _ = get_only_run_info_from_session(client.session)
     run_url = reverse("duplicate-context-wizard-run", kwargs={"run_id": run_id})
 
-    client.post(run_url, data={"name": "Ada"})
-    response = client.post(run_url, data={"email": "ada@example.com"})
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"raised MultipleStepsReturned"
+    with pytest.raises(MultipleStepsReturned):
+        client.get(run_url, follow=True)
 
 
 def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
@@ -1100,7 +1211,9 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
         match="WizardViewSet subclasses must define done().",
     ):
         client.post(
-            single_step_wizard_without_done_run_url(run_id), data={"name": "Ada"}
+            _step(single_step_wizard_without_done_run_url(run_id), "first"),
+            data={"name": "Ada"},
+            follow=True,
         )
 
 
@@ -1116,8 +1229,12 @@ def test_linear_wizard_submissions_do_not_leak_to_new_client(
     second_client.get(linear_wizard_url)
     second_run_id, _ = get_only_run_info_from_session(second_client.session)
 
-    first_client.post(linear_wizard_run_url(first_run_id), data={"name": "Ada"})
-    response = second_client.get(linear_wizard_run_url(second_run_id))
+    first_client.post(
+        _step(linear_wizard_run_url(first_run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    response = second_client.get(linear_wizard_run_url(second_run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
@@ -1131,8 +1248,12 @@ def test_linear_wizard_submissions_persist_for_same_client(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
-    response = client.get(linear_wizard_run_url(run_id))
+    client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    response = client.get(linear_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
@@ -1147,12 +1268,16 @@ def test_linear_wizard_submissions_do_not_leak_to_different_wizard(
 ):
     client.get(linear_wizard_url)
     linear_run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(linear_wizard_run_url(linear_run_id), data={"name": "Ada"})
+    client.post(
+        _step(linear_wizard_run_url(linear_run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
 
     existing_run_ids = set(client.session["gandalf_runs"])
     client.get(other_linear_wizard_url)
     other_run_id = get_new_run_id_from_session(client.session, existing_run_ids)
-    response = client.get(other_linear_wizard_run_url(other_run_id))
+    response = client.get(other_linear_wizard_run_url(other_run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], FirstStepForm)
@@ -1167,8 +1292,12 @@ def test_linear_wizard_submissions_survive_recreated_declaration(
     client.get(linear_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(linear_wizard_run_url(run_id), data={"name": "Ada"})
-    response = client.get(recreated_linear_wizard_run_url(run_id))
+    client.post(
+        _step(linear_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    response = client.get(recreated_linear_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], SecondStepForm)
@@ -1190,12 +1319,16 @@ def test_wizard_viewset_accepts_form_view_step(client):
 
     assertRedirects(response, run_url, fetch_redirect_response=False)
 
-    response = client.get(run_url)
+    response = client.get(run_url, follow=True)
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
     assert isinstance(response.context["form"], FirstStepForm)
 
-    response = client.post(run_url, data={"name": "Ada"})
+    response = client.post(
+        _step(run_url, "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
 
@@ -1216,12 +1349,16 @@ def test_wizard_viewset_accepts_pre_configured_wizard(client):
 
     assertRedirects(response, run_url, fetch_redirect_response=False)
 
-    response = client.get(run_url)
+    response = client.get(run_url, follow=True)
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/single_step_wizard.html")
     assert isinstance(response.context["form"], FirstStepForm)
 
-    response = client.post(run_url, data={"name": "Ada"})
+    response = client.post(
+        _step(run_url, "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
 
@@ -1240,19 +1377,27 @@ def test_dynamic_wizard_generates_step_per_chosen_count(client):
     run_id, _ = get_only_run_info_from_session(client.session)
     run_url = reverse("dynamic-wizard-run", kwargs={"run_id": run_id})
 
-    first_response = client.get(run_url)
+    first_response = client.get(run_url, follow=True)
     assert first_response.status_code == HTTPStatus.OK
     assert "count" in first_response.context["form"].fields
 
-    client.post(run_url, data={"count": "3"})
+    client.post(
+        _step(run_url, "count"),
+        data={"count": "3"},
+        follow=True,
+    )
 
-    for name in ("Ada", "Grace", "Mary"):
-        response = client.get(run_url)
+    for index, name in enumerate(("Ada", "Grace", "Mary")):
+        response = client.get(run_url, follow=True)
         assert response.status_code == HTTPStatus.OK
         assert "name" in response.context["form"].fields
-        client.post(run_url, data={"name": name})
+        client.post(
+            _step(run_url, f"item-{index}"),
+            data={"name": name},
+            follow=True,
+        )
 
-    done_response = client.get(run_url)
+    done_response = client.get(run_url, follow=True)
     assert done_response.status_code == HTTPStatus.OK
     assert done_response.content == b"completed Ada, Grace, Mary"
 
@@ -1265,12 +1410,28 @@ def test_dynamic_list_payload_wizard_condenses_items_into_list(client):
     run_id, _ = get_only_run_info_from_session(client.session)
     run_url = reverse("dynamic-list-payload-wizard-run", kwargs={"run_id": run_id})
 
-    client.post(run_url, data={"count": "3"})
-    client.post(run_url, data={"name": "Ada"})
-    client.post(run_url, data={"name": "Grace"})
-    client.post(run_url, data={"name": "Mary"})
+    client.post(
+        _step(run_url, "count"),
+        data={"count": "3"},
+        follow=True,
+    )
+    client.post(
+        _step(run_url, "item-0"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    client.post(
+        _step(run_url, "item-1"),
+        data={"name": "Grace"},
+        follow=True,
+    )
+    client.post(
+        _step(run_url, "item-2"),
+        data={"name": "Mary"},
+        follow=True,
+    )
 
-    response = client.get(run_url)
+    response = client.get(run_url, follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert json.loads(response.content) == {
@@ -1299,7 +1460,7 @@ def test_dynamic_wizard_regenerates_tree_from_current_stored_state(client):
     }
     session.save()
 
-    done_response = client.get(run_url)
+    done_response = client.get(run_url, follow=True)
     assert done_response.status_code == HTTPStatus.OK
     assert done_response.content == b"completed Ada, Grace"
 
@@ -1316,7 +1477,7 @@ def test_empty_wizard_run_returns_done_response_immediately(
         response, empty_wizard_run_url(run_id), fetch_redirect_response=False
     )
 
-    response = client.get(empty_wizard_run_url(run_id))
+    response = client.get(empty_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == f"completed {run_id}".encode()
@@ -1343,10 +1504,15 @@ def test_linear_wizard_done_can_merge_cleaned_data_across_path(
     client.get(merged_payload_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(merged_payload_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(merged_payload_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     response = client.post(
-        merged_payload_wizard_run_url(run_id),
+        _step(merged_payload_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1378,10 +1544,11 @@ def test_step_view_can_pre_fill_initial_from_request_wizard_path(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        path_aware_linear_wizard_run_url(run_id),
+        _step(path_aware_linear_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
-    response = client.get(path_aware_linear_wizard_run_url(run_id))
+    response = client.get(path_aware_linear_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="ada@example.com"')
@@ -1412,10 +1579,11 @@ def test_step_view_can_pre_fill_initial_from_path_with_form_view_upstream(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        path_aware_form_view_first_step_wizard_run_url(run_id),
+        _step(path_aware_form_view_first_step_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
-    response = client.get(path_aware_form_view_first_step_wizard_run_url(run_id))
+    response = client.get(path_aware_form_view_first_step_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="ada@example.com"')
@@ -1446,20 +1614,24 @@ def test_branching_wizard_done_merges_cleaned_data_across_multi_step_arm_path(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        branching_merged_payload_wizard_run_url(run_id),
+        _step(branching_merged_payload_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
     client.post(
-        branching_merged_payload_wizard_run_url(run_id),
+        _step(branching_merged_payload_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
     client.post(
-        branching_merged_payload_wizard_run_url(run_id),
+        _step(branching_merged_payload_wizard_run_url(run_id), "second"),
         data={"email": "acme@example.com"},
+        follow=True,
     )
     response = client.post(
-        branching_merged_payload_wizard_run_url(run_id),
+        _step(branching_merged_payload_wizard_run_url(run_id), "review"),
         data={"confirmed": "on"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1496,12 +1668,17 @@ def test_branching_wizard_with_unmatched_no_default_arm_drops_branch_from_path(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        empty_branch_arm_merged_payload_wizard_run_url(run_id),
+        _step(empty_branch_arm_merged_payload_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
     response = client.post(
-        empty_branch_arm_merged_payload_wizard_run_url(run_id),
+        _step(
+            empty_branch_arm_merged_payload_wizard_run_url(run_id),
+            "skip_branch_account",
+        ),
         data={"account_type": "personal"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1533,16 +1710,19 @@ def test_branching_wizard_done_can_merge_cleaned_data_across_runtime_tree(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        runtime_tree_branching_merge_wizard_run_url(run_id),
+        _step(runtime_tree_branching_merge_wizard_run_url(run_id), "account_type"),
         data={"account_type": "business"},
+        follow=True,
     )
     client.post(
-        runtime_tree_branching_merge_wizard_run_url(run_id),
+        _step(runtime_tree_branching_merge_wizard_run_url(run_id), "business_name"),
         data={"business_name": "Acme"},
+        follow=True,
     )
     response = client.post(
-        runtime_tree_branching_merge_wizard_run_url(run_id),
+        _step(runtime_tree_branching_merge_wizard_run_url(run_id), "review"),
         data={"confirmed": "on"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1564,26 +1744,26 @@ def section_editing_wizard_run_url():
     return build_url
 
 
-def test_section_editing_wizard_uses_custom_edit_resolver_for_get(
+def test_section_editing_wizard_uses_custom_step_router_for_get(
     client,
     section_editing_wizard_url,
     section_editing_wizard_run_url,
 ):
-    from tests.testapp.forms import AccountTypeForm
-
     client.get(section_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        section_editing_wizard_run_url(run_id),
+        _step(section_editing_wizard_run_url(run_id), "account"),
         data={"account_type": "personal"},
+        follow=True,
     )
     client.post(
-        section_editing_wizard_run_url(run_id),
+        _step(section_editing_wizard_run_url(run_id), "details"),
         data={"preferred_name": "Ada"},
+        follow=True,
     )
 
     response = client.get(
-        section_editing_wizard_run_url(run_id) + "?section=account",
+        _step(section_editing_wizard_run_url(run_id), "account"),
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1592,7 +1772,7 @@ def test_section_editing_wizard_uses_custom_edit_resolver_for_get(
     assert form.initial == {"account_type": "personal"}
 
 
-def test_section_editing_wizard_uses_custom_edit_resolver_for_post(
+def test_section_editing_wizard_uses_custom_step_router_for_post(
     client,
     section_editing_wizard_url,
     section_editing_wizard_run_url,
@@ -1600,22 +1780,26 @@ def test_section_editing_wizard_uses_custom_edit_resolver_for_post(
     client.get(section_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        section_editing_wizard_run_url(run_id),
+        _step(section_editing_wizard_run_url(run_id), "account"),
         data={"account_type": "personal"},
+        follow=True,
     )
     client.post(
-        section_editing_wizard_run_url(run_id),
+        _step(section_editing_wizard_run_url(run_id), "details"),
         data={"preferred_name": "Ada"},
+        follow=True,
     )
 
-    client.post(
-        section_editing_wizard_run_url(run_id),
-        data={"section": "account", "account_type": "business"},
+    response = client.post(
+        _step(section_editing_wizard_run_url(run_id), "account"),
+        data={"account_type": "business"},
+        follow=True,
     )
 
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], ReviewForm)
     _, run_data = get_only_run_info_from_session(client.session)
     assert run_data["state"][0]["step"] == {"account_type": "business"}
-    assert "section" not in run_data["state"][0]["step"]
 
 
 @pytest.fixture
@@ -1650,8 +1834,9 @@ def test_file_uploading_wizard_persists_upload_and_advances(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     response = client.post(
-        file_uploading_wizard_run_url(run_id),
+        _step(file_uploading_wizard_run_url(run_id), "photo"),
         data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1676,13 +1861,15 @@ def test_file_uploading_wizard_done_cleans_up_files(
     client.get(file_uploading_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_uploading_wizard_run_url(run_id),
+        _step(file_uploading_wizard_run_url(run_id), "photo"),
         data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+        follow=True,
     )
 
     response = client.post(
-        file_uploading_wizard_run_url(run_id),
+        _step(file_uploading_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1700,11 +1887,12 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
     client.get(file_uploading_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_uploading_wizard_run_url(run_id),
+        _step(file_uploading_wizard_run_url(run_id), "photo"),
         data={"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+        follow=True,
     )
 
-    response = client.get(file_uploading_wizard_run_url(run_id))
+    response = client.get(file_uploading_wizard_run_url(run_id), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, '<input type="text" name="name"')
@@ -1731,10 +1919,15 @@ def test_named_helper_wizard_completes_with_context_lookups(
     client.get(named_helper_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
 
-    client.post(named_helper_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(named_helper_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
     response = client.post(
-        named_helper_wizard_run_url(run_id),
+        _step(named_helper_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1765,20 +1958,21 @@ def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
             "label": "First",
             "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
         },
+        follow=True,
     )
 
     response = client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
-            "gandalf_edit_step": "photo",
             "label": "First",
             "photo": SimpleUploadedFile("second.jpg", b"second-bytes"),
         },
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1798,17 +1992,18 @@ def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={"label": "No photo yet"},
+        follow=True,
     )
 
     response = client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
-            "gandalf_edit_step": "photo",
             "label": "Now with photo",
             "photo": SimpleUploadedFile("later.jpg", b"later-bytes"),
         },
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1827,19 +2022,18 @@ def test_file_editing_wizard_edit_changing_label_keeps_photo(
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
             "label": "Original",
             "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
         },
+        follow=True,
     )
 
     response = client.post(
-        file_editing_wizard_run_url(run_id),
-        data={
-            "gandalf_edit_step": "photo",
-            "label": "Renamed",
-        },
+        _step(file_editing_wizard_run_url(run_id), "photo"),
+        data={"label": "Renamed"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1858,15 +2052,16 @@ def test_file_editing_wizard_edit_get_renders_existing_photo(
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
             "label": "Original",
             "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
         },
+        follow=True,
     )
 
     response = client.get(
-        file_editing_wizard_run_url(run_id) + "?gandalf_edit_step=photo",
+        _step(file_editing_wizard_run_url(run_id), "photo"),
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1885,18 +2080,18 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
             "label": "Original",
             "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
         },
+        follow=True,
     )
     state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
-            "gandalf_edit_step": "photo",
             "label": "",
             "photo": SimpleUploadedFile("rejected.jpg", b"rejected-bytes"),
         },
@@ -1909,29 +2104,36 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     assert sorted(os.listdir(run_dir)) == ["first.jpg"]
 
 
-def test_file_editing_wizard_edit_with_unknown_step_raises_step_not_found(
+def test_file_editing_wizard_unknown_step_url_redirects(
     client,
     file_editing_wizard_url,
     file_editing_wizard_run_url,
     isolated_media_root,
 ):
-    from gandalf.runtime import StepNotFound
+    import os
 
     client.get(file_editing_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
     client.post(
-        file_editing_wizard_run_url(run_id),
+        _step(file_editing_wizard_run_url(run_id), "photo"),
         data={"label": "Only label"},
+        follow=True,
+    )
+    state_before = client.session["gandalf_runs"][run_id]["state"]
+
+    response = client.post(
+        _step(file_editing_wizard_run_url(run_id), "nonexistent"),
+        data={
+            "label": "ignored",
+            "photo": SimpleUploadedFile("orphan.jpg", b"orphan-bytes"),
+        },
     )
 
-    with pytest.raises(StepNotFound):
-        client.post(
-            file_editing_wizard_run_url(run_id),
-            data={
-                "gandalf_edit_step": "nonexistent",
-                "label": "ignored",
-            },
-        )
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == _step(file_editing_wizard_run_url(run_id), "review")
+    assert client.session["gandalf_runs"][run_id]["state"] == state_before
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert not os.path.exists(run_dir) or os.listdir(run_dir) == []
 
 
 @pytest.fixture
@@ -1959,12 +2161,14 @@ def test_empty_branch_arm_context_finder_walks_both_trees(
     run_id, _ = get_only_run_info_from_session(client.session)
 
     client.post(
-        empty_branch_arm_context_finder_wizard_run_url(run_id),
+        _step(empty_branch_arm_context_finder_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
+        follow=True,
     )
     response = client.post(
-        empty_branch_arm_context_finder_wizard_run_url(run_id),
+        _step(empty_branch_arm_context_finder_wizard_run_url(run_id), "review"),
         data={"confirmed": "on"},
+        follow=True,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -1994,17 +2198,26 @@ def test_branch_edit_rejection_wizard_edit_post_branch_step_with_invalid_keeps_s
 ):
     client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
     client.post(
-        branch_edit_rejection_wizard_run_url(run_id),
-        data={"email": "ada@example.com"},
+        _step(branch_edit_rejection_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
     )
-    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"confirmed": "on"})
+    client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+    client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "review"),
+        data={"confirmed": "on"},
+        follow=True,
+    )
     state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
-        branch_edit_rejection_wizard_run_url(run_id),
-        data={"gandalf_edit_step": "review", "confirmed": ""},
+        _step(branch_edit_rejection_wizard_run_url(run_id), "review"),
+        data={"confirmed": ""},
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -2014,22 +2227,30 @@ def test_branch_edit_rejection_wizard_edit_post_branch_step_with_invalid_keeps_s
     assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 
-def test_branch_edit_rejection_wizard_edit_unvisited_step_raises_step_not_found(
+def test_branch_edit_rejection_wizard_unvisited_step_url_redirects_to_cursor(
     client,
     branch_edit_rejection_wizard_url,
     branch_edit_rejection_wizard_run_url,
 ):
-    from gandalf.runtime import StepNotFound
-
     client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
+    client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    state_before = client.session["gandalf_runs"][run_id]["state"]
 
-    with pytest.raises(StepNotFound):
-        client.post(
-            branch_edit_rejection_wizard_run_url(run_id),
-            data={"gandalf_edit_step": "review", "confirmed": "on"},
-        )
+    response = client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "review"),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == _step(
+        branch_edit_rejection_wizard_run_url(run_id), "second"
+    )
+    assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 
 def test_branch_edit_rejection_wizard_edit_in_branch_arm_with_invalid_keeps_state(
@@ -2039,17 +2260,26 @@ def test_branch_edit_rejection_wizard_edit_in_branch_arm_with_invalid_keeps_stat
 ):
     client.get(branch_edit_rejection_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"name": "Ada"})
     client.post(
-        branch_edit_rejection_wizard_run_url(run_id),
-        data={"email": "ada@example.com"},
+        _step(branch_edit_rejection_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
     )
-    client.post(branch_edit_rejection_wizard_run_url(run_id), data={"confirmed": "on"})
+    client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+    client.post(
+        _step(branch_edit_rejection_wizard_run_url(run_id), "review"),
+        data={"confirmed": "on"},
+        follow=True,
+    )
     state_before = client.session["gandalf_runs"][run_id]["state"]
 
     response = client.post(
-        branch_edit_rejection_wizard_run_url(run_id),
-        data={"gandalf_edit_step": "second", "email": "not-an-email"},
+        _step(branch_edit_rejection_wizard_run_url(run_id), "second"),
+        data={"email": "not-an-email"},
     )
 
     assert response.status_code == HTTPStatus.OK

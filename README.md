@@ -93,9 +93,10 @@ class EmailForm(forms.Form):
 
 
 class SignupWizardViewSet(WizardViewSet):
+    url_name = "signup"
     wizard = (
-        wizard.step(NameForm)
-        .step(EmailForm)
+        wizard.step(NameForm, name="name")
+        .step(EmailForm, name="email")
         .configure(template_name="signup/step.html")
     )
 
@@ -105,11 +106,24 @@ class SignupWizardViewSet(WizardViewSet):
         return HttpResponse("Thanks!")
 ```
 
+mounted with a single include:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    path("signup/", include(SignupWizardViewSet.urls())),
+]
+```
+
 A few things to notice:
 
 - The wizard is declared as a chained builder rather than a list of
   `(name, form)` tuples. Each `.step(...)` returns a new `Wizard`; nothing
   mutates in place.
+- Every step is named, and every step gets its own URL
+  (`signup/<run_id>/name/`, `signup/<run_id>/email/`) derived from
+  `url_name` by `urls()`.
 - `bound_wizard.path` is the linked chain of completed steps for the
   current run, in execution order.
 - `MergeCleanedData` is a `tree.Reducer` that folds each step's
@@ -570,40 +584,36 @@ and no step bookkeeping travels in the POST body:
 </form>
 ```
 
-### `.step()` can also carry arbitrary context
+### Every step is named; `.step()` can also carry arbitrary context
 
-Step declarations can also include a `context` dict for metadata that belongs to
-that step definition rather than to the submitted form data.
+Steps are addressed by URL, so every step needs a name. The canonical
+spelling is the `name=` keyword:
 
+```python
+signup_wizard = (
+    wizard.step(AccountForm, name="account")
+    .step(ProfileForm, name="profile")
+    .step(ConfirmForm, name="confirm")
+)
+```
+
+`name="account"` is shorthand for `context={"step_name": "account"}` — the
+name lives in the step's context like any other metadata, and the default
+`StepNameRouter` turns it into the step's URL segment. The `named()` helper
+(`.step(named("account", AccountForm))`) is an equivalent older spelling.
+
+Step declarations can also include a `context` dict for any other metadata
+that belongs to the step definition rather than the submitted form data.
 That metadata is exposed again on the runtime tree as `node.context`, so a
-project can build its own lookup helpers and conventions on top of the tree.
-
-For example, a project can choose to attach a step name explicitly:
+project can build its own lookup helpers and conventions on top of the tree:
 
 ```python
 signup_wizard = (
-    wizard.step(AccountForm, context={"step_name": "account", "analytics_key": "signup-account"})
-    .step(ProfileForm, context={"step_name": "profile", "analytics_key": "signup-profile"})
-    .step(ConfirmForm, context={"step_name": "confirm", "analytics_key": "signup-confirm"})
+    wizard.step(AccountForm, name="account", context={"analytics_key": "signup-account"})
+    .step(ProfileForm, name="profile", context={"analytics_key": "signup-profile"})
+    .step(ConfirmForm, name="confirm", context={"analytics_key": "signup-confirm"})
 )
 ```
-
-That keeps naming in user space instead of forcing Gandalf to define one
-canonical global step-name mechanism for every project.
-
-For the very common case where you only want to attach a `step_name`, Gandalf
-provides a `named` helper so the declaration stays concise:
-
-```python
-signup_wizard = (
-    wizard.step(named("account", AccountForm))
-    .step(named("profile", ProfileForm))
-    .step(named("confirm", ConfirmForm))
-)
-```
-
-This is shorthand for passing the same form with `context={"step_name": ...}`
-and keeps repetitive naming boilerplate out of the flow declaration.
 
 ### Additional configuration follows the same pattern
 
@@ -620,7 +630,7 @@ signup_wizard = (
 )
 ```
 
-The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `edit_resolver_class`). That keeps the mental model consistent:
+The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
 
 - `Wizard()` remains focused on step/branch declaration,
 - `configure(...)` receives configuration touch points,
@@ -722,35 +732,9 @@ weekday_or_weekend_wizard = (
 
 A wizard often needs an "edit" affordance — a review screen with links back to
 each prior step, or a sidebar that lets the user revisit any completed section.
-Gandalf surfaces this as two operations on `BoundWizard`:
-
-- `render_edit(**context)` — GET-side. Resolves the targeted runtime step via
-  context matching, then dispatches its form view with the stored submission
-  pre-filled as `initial`. The user sees their earlier answer ready to amend.
-- `edit(submission, **context)` — POST-side and transactional. The new
-  submission is validated against the target step first: if it fails, the
-  rendered error response is returned and stored state is left untouched. On
-  success the submission is spliced into the runtime tree, the cursor walker
-  re-validates the run, and the rebuilt state is persisted; `edit()` returns
-  `None` and the viewset replays to whatever step now needs attention.
-
-You typically reach these via the viewset, which detects an edit cycle through
-a configurable resolver. The default is `StepNameEditResolver`: edit links
-include `?gandalf_edit_step=<step_name>` and edit POSTs include a
-`gandalf_edit_step` form field. The resolver looks the value up against each
-step's `context={"step_name": ...}`:
-
-```python
-from gandalf.wizard import Wizard, named
-
-wizard = (
-    Wizard()
-    .step(named("account", AccountForm))
-    .step(named("profile", ProfileForm))
-    .step(named("review", ReviewForm))
-    .configure(template_name="onboarding/wizard.html")
-)
-```
+Because every step has its own URL, the edit affordance is just a link: a
+completed step's URL renders it pre-filled, and posting the changed answer to
+that URL applies a transactional edit.
 
 A review template wires per-step edit links from the runtime path:
 
@@ -759,7 +743,7 @@ A review template wires per-step edit links from the runtime path:
 <ul>
   {% for step in wizard.path %}
     <li>
-      <a href="?gandalf_edit_step={{ step.declaration.context.step_name }}">
+      <a href="../{{ step.declaration.context.step_name }}/">
         Edit {{ step.declaration.context.step_name }}
       </a>
     </li>
@@ -772,55 +756,23 @@ A review template wires per-step edit links from the runtime path:
 </form>
 ```
 
-Edit POSTs use the same field name as a hidden input on the per-step edit form
-(or arrive via the URL query if you redirect through GET first):
+The per-step edit form is the ordinary step form — it posts back to its own
+step URL, so no marker fields or wizard-specific markup are needed. A valid
+edit redirects back to wherever the wizard's cursor is (usually the summary);
+an invalid edit re-renders at the same URL with errors and stored state
+untouched.
 
-```html
-<form method="post">
-  {% csrf_token %}
-  <input type="hidden" name="gandalf_edit_step" value="{{ step_name }}">
-  {{ form.as_p }}
-  <button type="submit">Save changes</button>
-</form>
-```
+Programmatically, the same operations live on `BoundWizard`:
 
-### Customizing the edit resolver
-
-`edit_resolver_class` is configurable per wizard the same way `storage_class`
-is. Subclass the default to use a different field name, a different context
-key, or a composite lookup:
-
-```python
-class SectionEditResolver:
-    field_name = "section"
-    context_key = "section"
-
-    def resolve(self, request):
-        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
-        if not value:
-            return None
-        return {self.context_key: value}
-
-    def clean_submission(self, submission):
-        submission.pop(self.field_name, None)
-        return submission
-
-
-wizard = (
-    Wizard()
-    .step(AccountForm, context={"section": "account"})
-    .step(ProfileForm, context={"section": "profile"})
-    .configure(
-        template_name="onboarding/wizard.html",
-        edit_resolver_class=SectionEditResolver,
-    )
-)
-```
-
-A resolver needs two methods: `resolve(request)` returning either `None` (no
-edit) or a context dict that uniquely identifies a runtime step, and
-`clean_submission(submission)` stripping the resolver-owned field(s) out of
-the POST dict before the wizard treats it as form data.
+- `render_edit(**context)` — GET-side. Resolves the targeted runtime step via
+  context matching, then dispatches its form view with the stored submission
+  pre-filled as `initial`.
+- `edit(submission, **context)` — POST-side and transactional. The new
+  submission is validated against the target step first: if it fails, the
+  rendered error response is returned and stored state is left untouched. On
+  success the submission is spliced into the runtime tree, the cursor walker
+  re-validates the run, and the rebuilt state is persisted; `edit()` returns
+  `None`.
 
 ### The re-entrant summary pattern
 
@@ -876,70 +828,62 @@ Some practical caveats:
   current walk — treat mid-run `path` reads as "answered", not
   "confirmed-valid".
 
-## Addressable step URLs (optional routing)
+## Step URLs
 
-Routing is an add-on over the pointer-less core: each step can be given its
-own URL, resolved back to a step by context lookup — the same mechanism edit
-resolution uses. The bare run URL stays canonical and the cursor keeps sole
-authority over position; a step URL is a *claim* that either resolves or
-redirects to where the wizard actually is.
+Every step is addressed by its own URL. Steps are named at declaration time
+(`.step(..., name=...)`, or the `named()` helper, or a
+`context={"step_name": ...}` entry), the name becomes a URL segment, and the
+name is resolved back to a step by context lookup on every request. The bare
+run URL stays canonical and the cursor keeps sole authority over position; a
+step URL is a *claim* that either resolves or redirects to where the wizard
+actually is. Gandalf takes an opinionated stance here — unlike some wizard
+tooling there is no unrouted mode, so every step must carry a routable name;
+the viewset raises `ImproperlyConfigured` at request time for a wizard with
+an unnamed step.
 
-Opting in takes two things — a URL pattern capturing the router's
-`gandalf_step` kwarg, and a `get_step_url()` hook mirroring
-`get_wizard_url()`:
+A wizard needs three URL patterns (start, bare run URL, step URL). Set
+`url_name` and mount `urls()` to get them, plus the reverse hooks, for free:
 
 ```python
 from django.http import HttpResponse
-from django.urls import path, reverse
+from django.urls import include, path
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import Wizard, named
+from gandalf.wizard import Wizard
 
 
 class OnboardingViewSet(WizardViewSet):
+    url_name = "onboarding"
     template_name = "onboarding/step.html"
     wizard = (
         Wizard()
-        .step(named("account", AccountForm))
-        .step(named("profile", ProfileForm))
-        .step(named("review", ReviewForm))
+        .step(AccountForm, name="account")
+        .step(ProfileForm, name="profile")
+        .step(ReviewForm, name="review")
     )
-
-    def get_wizard_url(self, run_id):
-        return reverse("onboarding-run", kwargs={"run_id": run_id})
-
-    def get_step_url(self, run_id, step_segment):
-        return reverse(
-            "onboarding-step",
-            kwargs={"run_id": run_id, "gandalf_step": step_segment},
-        )
 
     def done(self, bound_wizard):
         return HttpResponse("Thanks!")
 
 
 urlpatterns = [
-    path("onboarding/", OnboardingViewSet.as_view(), name="onboarding"),
-    path(
-        "onboarding/<uuid:run_id>/",
-        OnboardingViewSet.as_view(),
-        name="onboarding-run",
-    ),
-    path(
-        "onboarding/<uuid:run_id>/<slug:gandalf_step>/",
-        OnboardingViewSet.as_view(),
-        name="onboarding-step",
-    ),
+    path("onboarding/", include(OnboardingViewSet.urls())),
 ]
 ```
 
-The semantics on a routed request:
+`urls()` publishes `onboarding` (start), `onboarding-run`
+(`onboarding/<uuid:run_id>/`), and `onboarding-step`
+(`onboarding/<uuid:run_id>/<slug:gandalf_step>/`). For a custom URL scheme
+(extra kwargs, different converters), write the patterns yourself and
+override `get_wizard_url(run_id)` / `get_step_url(run_id, step_segment)`
+instead of setting `url_name`.
+
+The request semantics:
 
 - **GET the cursor's step URL** → renders the form (with errors if the
   stored answer no longer validates).
 - **GET a completed step's URL** → renders it pre-filled — this *is* the
-  edit affordance; summary "change" links are just step URLs, no
-  `?gandalf_edit_step` marker needed.
+  edit affordance; summary "change" links are just step URLs.
 - **GET anything else** — unknown, not yet reached, or parked in a dormant
   arm — → redirects to the cursor's URL. A stale "change" link after a
   diverting edit snaps back to the current step instead of erroring.
@@ -961,14 +905,30 @@ re-submitting it is just an edit that returns you to the cursor. An explicit
 you the completed chain and each step's `declaration.context.step_name`
 builds the URL).
 
-Routing degrades gracefully with partial naming: a step without a routable
-name simply has no URL of its own and renders at the bare run URL. And like
-every other touch point, the router is pluggable — subclass `StepNameRouter`
-(or supply your own with `resolve(url_kwargs)`, `reverse(step)`, and
-`clean_url_kwargs(url_kwargs)`) via
+Like every other touch point, the router is pluggable — subclass
+`StepNameRouter` (or supply your own with `resolve(url_kwargs)`,
+`reverse(step)`, and `clean_url_kwargs(url_kwargs)`) via
 `Wizard.configure(step_router_class=...)` to route on a different context
-key or a composite lookup, exactly as the edit resolver example above does
-for edit markers.
+key or a composite lookup:
+
+```python
+from gandalf.wizard import StepNameRouter, Wizard
+
+
+class SectionRouter(StepNameRouter):
+    context_key = "section"
+
+
+wizard = (
+    Wizard()
+    .step(AccountForm, context={"section": "account"})
+    .step(ProfileForm, context={"section": "profile"})
+    .configure(
+        template_name="onboarding/wizard.html",
+        step_router_class=SectionRouter,
+    )
+)
+```
 
 ---
 
@@ -993,9 +953,9 @@ class CheckoutWizard(SessionWizardView):
 
 ```python
 checkout_wizard = (
-    wizard.step(CustomerForm, context={"step_name": "customer"})
-    .step(AddressForm, context={"step_name": "address"})
-    .step(ConfirmForm, context={"step_name": "confirm"})
+    wizard.step(CustomerForm, name="customer")
+    .step(AddressForm, name="address")
+    .step(ConfirmForm, name="confirm")
 )
 ```
 
@@ -1035,12 +995,12 @@ def needs_vat(request):
 
 
 company_wizard = (
-    wizard.step(CompanyForm, context={"step_name": "company"})
+    wizard.step(CompanyForm, name="company")
     .branch(
         condition(needs_vat, VATForm),
         default=None,  # skip VAT if condition is false
     )
-    .step(SummaryForm, context={"step_name": "summary"})
+    .step(SummaryForm, name="summary")
 )
 ```
 
