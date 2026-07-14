@@ -7,7 +7,12 @@ from django.test import override_settings
 
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import ConfiguredWizard, StepNameEditResolver, Wizard
-from tests.testapp.forms import FirstStepForm, ProfilePhotoForm, SecondStepForm
+from tests.testapp.forms import (
+    FirstStepForm,
+    ProfilePhotoForm,
+    ReviewForm,
+    SecondStepForm,
+)
 
 
 class _Session(dict):
@@ -58,6 +63,57 @@ def test_wizard_configure_overrides_edit_resolver_class():
     wizard = Wizard().configure(edit_resolver_class=FakeResolver)
 
     assert wizard.edit_resolver_class is FakeResolver
+
+
+def test_step_name_router_resolves_step_name_context_from_url_kwargs():
+    from gandalf.wizard import StepNameRouter
+
+    router = StepNameRouter()
+
+    assert router.resolve({"gandalf_step": "account_type"}) == {
+        "step_name": "account_type",
+    }
+
+
+def test_step_name_router_returns_none_without_url_kwarg():
+    from gandalf.wizard import StepNameRouter
+
+    router = StepNameRouter()
+
+    assert router.resolve({}) is None
+    assert router.resolve({"gandalf_step": ""}) is None
+    assert router.resolve({"org": "acme"}) is None
+
+
+def test_step_name_router_reverses_step_declaration_to_segment():
+    from gandalf import tree
+    from gandalf.wizard import StepNameRouter
+
+    router = StepNameRouter()
+    named_step = tree.Step(FirstStepForm, context={"step_name": "first"})
+    unnamed_step = tree.Step(FirstStepForm)
+
+    assert router.reverse(named_step) == "first"
+    assert router.reverse(unnamed_step) is None
+
+
+def test_step_name_router_clean_url_kwargs_strips_marker():
+    from gandalf.wizard import StepNameRouter
+
+    router = StepNameRouter()
+
+    assert router.clean_url_kwargs({"gandalf_step": "first", "org": "acme"}) == {
+        "org": "acme",
+    }
+
+
+def test_wizard_configure_overrides_step_router_class():
+    class FakeRouter:
+        pass
+
+    wizard = Wizard().configure(step_router_class=FakeRouter)
+
+    assert wizard.step_router_class is FakeRouter
 
 
 def test_wizard_viewset_uses_configured_edit_resolver_class(rf):
@@ -426,6 +482,230 @@ def test_wizard_viewset_post_with_invalid_edit_returns_error_render(rf):
         {"step": {"name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
     ]
+
+
+class _RoutedViewSet(WizardViewSet):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .step(SecondStepForm, context={"step_name": "second"})
+        .step(ReviewForm, context={"step_name": "review"})
+    )
+    template_name = "testapp/linear_wizard.html"
+
+    def get_wizard_url(self, run_id):
+        return f"/wizard/{run_id}/"
+
+    def get_step_url(self, run_id, step_segment):
+        return f"/wizard/{run_id}/{step_segment}/"
+
+    def done(self, bound_wizard):
+        from django.http import HttpResponse
+
+        return HttpResponse(b"done")
+
+
+def _routed_session(state):
+    return _Session({"gandalf_runs": {"existing-run": {"state": state}}})
+
+
+def test_wizard_viewset_routed_get_renders_cursor_step(rf):
+    request = rf.get("/wizard/existing-run/second/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="second"
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].__class__ is SecondStepForm
+
+
+def test_wizard_viewset_routed_get_renders_completed_step_prefilled(rf):
+    request = rf.get("/wizard/existing-run/first/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].initial == {"name": "Ada"}
+
+
+def test_wizard_viewset_routed_get_unknown_step_redirects_to_cursor(rf):
+    request = rf.get("/wizard/existing-run/missing/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="missing"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+
+
+def test_wizard_viewset_routed_get_on_complete_run_redirects_to_run_url(rf):
+    request = rf.get("/wizard/existing-run/missing/")
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+            {"step": {"confirmed": "on"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="missing"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/"
+
+
+def test_wizard_viewset_bare_run_url_redirects_to_cursor_step_url(rf):
+    request = rf.get("/wizard/existing-run/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+
+
+def test_wizard_viewset_routed_post_submits_cursor_step_and_redirects(rf):
+    request = rf.post("/wizard/existing-run/first/", data={"name": "Ada"})
+    request.session = _routed_session([])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Ada"}},
+    ]
+
+
+def test_wizard_viewset_routed_post_final_step_finishes(rf):
+    request = rf.post("/wizard/existing-run/review/", data={"confirmed": "on"})
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="review"
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"done"
+
+
+def test_wizard_viewset_routed_post_edits_completed_step_and_redirects(rf):
+    request = rf.post("/wizard/existing-run/first/", data={"name": "Grace"})
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/review/"
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Grace"}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+
+
+def test_wizard_viewset_routed_post_invalid_edit_renders_errors(rf):
+    request = rf.post("/wizard/existing-run/first/", data={"name": ""})
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].errors == {
+        "name": ["This field is required."],
+    }
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+
+
+def test_wizard_viewset_routed_post_to_wrong_step_redirects_without_storing(rf):
+    request = rf.post("/wizard/existing-run/review/", data={"confirmed": "on"})
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="review"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"name": "Ada"}},
+    ]
+
+
+def test_wizard_viewset_get_without_step_urls_renders_cursor_directly(rf):
+    class PlainWizardViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, context={"step_name": "first"})
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+    request = rf.get("/wizard/existing-run/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = PlainWizardViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context_data["form"].__class__ is SecondStepForm
+
+
+def test_wizard_viewset_routed_redirect_falls_back_when_cursor_is_unroutable(rf):
+    class PartiallyRoutedViewSet(WizardViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm)
+            .step(SecondStepForm, context={"step_name": "second"})
+        )
+        template_name = "testapp/linear_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+        def get_step_url(self, run_id, step_segment):
+            return f"/wizard/{run_id}/{step_segment}/"
+
+    request = rf.get("/wizard/existing-run/second/")
+    request.session = _routed_session([])
+
+    response = PartiallyRoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="second"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/"
 
 
 def test_wizard_viewset_post_with_files_stores_uploads_through_file_storage(rf):

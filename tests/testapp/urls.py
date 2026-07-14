@@ -335,6 +335,36 @@ urlpatterns = [
         name="branch-edit-rejection-wizard-run",
     ),
     path(
+        "routed-wizard/",
+        views.RoutedWizardViewSet.as_view(),
+        name="routed-wizard",
+    ),
+    path(
+        "routed-wizard/<uuid:run_id>/",
+        views.RoutedWizardViewSet.as_view(),
+        name="routed-wizard-run",
+    ),
+    path(
+        "routed-wizard/<uuid:run_id>/<slug:gandalf_step>/",
+        views.RoutedWizardViewSet.as_view(),
+        name="routed-wizard-step",
+    ),
+    path(
+        "partially-routed-wizard/",
+        views.PartiallyRoutedWizardViewSet.as_view(),
+        name="partially-routed-wizard",
+    ),
+    path(
+        "partially-routed-wizard/<uuid:run_id>/",
+        views.PartiallyRoutedWizardViewSet.as_view(),
+        name="partially-routed-wizard-run",
+    ),
+    path(
+        "partially-routed-wizard/<uuid:run_id>/<slug:gandalf_step>/",
+        views.PartiallyRoutedWizardViewSet.as_view(),
+        name="partially-routed-wizard-step",
+    ),
+    path(
         "org-scoped-wizard/<slug:org>/",
         views.OrgScopedEditingWizardViewSet.as_view(),
         name="org-scoped-wizard",

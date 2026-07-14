@@ -9,7 +9,7 @@
 | `gandalf/form_views.py` | `form_view_factory()` — generates a `FormView` subclass from a plain `Form` class |
 | `gandalf/storage.py` | `SessionStorage` — JSON persistence to `request.session`. Knows nothing about tree shape; reads and writes a `state` list per `run_id` |
 | `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `submit()`, `replay()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds a full-length runtime tree in lockstep with stored entries — validated up to the cursor, carried verbatim past it. `RuntimeTreeBuilder` (an `Interpreter`) builds the full active-route runtime tree for introspection. `Cursor` is the decision object — `(node, state, response)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
-| `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST |
+| `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST, including the optional step-URL routing flow (`_routed_get` / `_routed_post`, `get_step_url` hook) |
 
 ---
 
@@ -273,3 +273,11 @@ wizard = (
 `BoundWizard._select_branch_arm()` (called from inside both `CursorWalker` and `RuntimeTreeBuilder` when they hit a `tree.Branch`) temporarily sets `self._predicate_runtime_tree` to the partial runtime head built up to the branch, evaluates each arm predicate in declaration order, and returns `(arm_id, subtree)` for the first matching arm — or `("default", Branch.default)`. The partial-tree handoff is what lets predicates see prior answers without seeing future ones; the arm id keys which per-arm memory in the branch's stored entry is live for this walk.
 
 One robustness note: `CursorWalker` never evaluates predicates past the cursor (sealed branches are opaque), but `RuntimeTreeBuilder` — which backs `runtime_tree`, `path`, `find_step`, and edit-target resolution — builds the whole tree even when earlier answers are missing or dormant. A predicate that dereferences another step's data unconditionally (`find_step(...).data["key"]`) can therefore raise when that step is unanswered or parked in a dormant arm. Predicates used alongside mid-run introspection should tolerate missing data (e.g. guard on `step is None or step.data is None`).
+
+---
+
+## Step URL routing (optional)
+
+`StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps an optional URL kwarg (`gandalf_step` by default) to a step-context lookup — the same resolution mechanism edit markers use — and reverses a step declaration back into a URL segment. Routing activates only when a URL pattern captures the kwarg *and* the viewset implements `get_step_url()`; otherwise the flow is byte-for-byte the non-routed one.
+
+On a routed request the viewset derives the cursor, resolves the claimed step with `BoundWizard.find_step_at(cursor, **context)` — a `ContextFinder` pass over the **sealed walk's tree** rather than `RuntimeTreeBuilder`'s, so no branch predicate ever runs past the cursor and dormant arms are invisible — and then: the cursor's step renders/submits, a data-bearing step renders pre-filled/edits, anything else redirects to the cursor's URL. Successful routed POSTs redirect (POST→redirect→GET); the URL is never trusted to *set* position, only checked against the derived cursor.

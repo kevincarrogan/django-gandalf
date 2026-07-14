@@ -876,6 +876,100 @@ Some practical caveats:
   current walk — treat mid-run `path` reads as "answered", not
   "confirmed-valid".
 
+## Addressable step URLs (optional routing)
+
+Routing is an add-on over the pointer-less core: each step can be given its
+own URL, resolved back to a step by context lookup — the same mechanism edit
+resolution uses. The bare run URL stays canonical and the cursor keeps sole
+authority over position; a step URL is a *claim* that either resolves or
+redirects to where the wizard actually is.
+
+Opting in takes two things — a URL pattern capturing the router's
+`gandalf_step` kwarg, and a `get_step_url()` hook mirroring
+`get_wizard_url()`:
+
+```python
+from django.http import HttpResponse
+from django.urls import path, reverse
+
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import Wizard, named
+
+
+class OnboardingViewSet(WizardViewSet):
+    template_name = "onboarding/step.html"
+    wizard = (
+        Wizard()
+        .step(named("account", AccountForm))
+        .step(named("profile", ProfileForm))
+        .step(named("review", ReviewForm))
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse("onboarding-run", kwargs={"run_id": run_id})
+
+    def get_step_url(self, run_id, step_segment):
+        return reverse(
+            "onboarding-step",
+            kwargs={"run_id": run_id, "gandalf_step": step_segment},
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse("Thanks!")
+
+
+urlpatterns = [
+    path("onboarding/", OnboardingViewSet.as_view(), name="onboarding"),
+    path(
+        "onboarding/<uuid:run_id>/",
+        OnboardingViewSet.as_view(),
+        name="onboarding-run",
+    ),
+    path(
+        "onboarding/<uuid:run_id>/<slug:gandalf_step>/",
+        OnboardingViewSet.as_view(),
+        name="onboarding-step",
+    ),
+]
+```
+
+The semantics on a routed request:
+
+- **GET the cursor's step URL** → renders the form (with errors if the
+  stored answer no longer validates).
+- **GET a completed step's URL** → renders it pre-filled — this *is* the
+  edit affordance; summary "change" links are just step URLs, no
+  `?gandalf_edit_step` marker needed.
+- **GET anything else** — unknown, not yet reached, or parked in a dormant
+  arm — → redirects to the cursor's URL. A stale "change" link after a
+  diverting edit snaps back to the current step instead of erroring.
+- **POST to the cursor's step URL** → a plain submission; **POST to a
+  completed step's URL** → a transactional edit; **POST to anything else**
+  → redirects to the cursor without storing the payload or its uploads.
+  A submission from a stale tab can therefore never land on the wrong step.
+- **Successful POSTs redirect** (POST → redirect → GET), so refreshing
+  never re-submits — even after an invalid submission, which persists and
+  re-renders with errors on the following GET. A rejected edit stays a
+  direct render so nothing about it is persisted.
+- **The bare run URL redirects** to the cursor's step URL when that step is
+  routable, and still fires `done()` when the run is complete.
+
+Because history then contains only GETs of step URLs, the browser back
+button works naturally: going back shows an earlier answer pre-filled, and
+re-submitting it is just an edit that returns you to the cursor. An explicit
+"back" link is a link to the last completed step's URL (`wizard.path` gives
+you the completed chain and each step's `declaration.context.step_name`
+builds the URL).
+
+Routing degrades gracefully with partial naming: a step without a routable
+name simply has no URL of its own and renders at the bare run URL. And like
+every other touch point, the router is pluggable — subclass `StepNameRouter`
+(or supply your own with `resolve(url_kwargs)`, `reverse(step)`, and
+`clean_url_kwargs(url_kwargs)`) via
+`Wizard.configure(step_router_class=...)` to route on a different context
+key or a composite lookup, exactly as the edit resolver example above does
+for edit markers.
+
 ---
 
 ## `django-formtools` to `django-gandalf` examples

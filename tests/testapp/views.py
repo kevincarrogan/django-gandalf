@@ -942,6 +942,71 @@ class EmptyBranchArmContextFinderViewSet(WizardViewSet):
         )
 
 
+class RoutedWizardViewSet(WizardViewSet):
+    description = (
+        "Branching wizard with addressable step URLs: each step is named and "
+        "routed via a gandalf_step URL segment; the bare run URL redirects "
+        "to the cursor's step URL."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(named("account_type", AccountTypeForm))
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(named("business_name", BusinessDetailsForm)),
+            ),
+            default=Wizard().step(named("preferred_name", PersonalDetailsForm)),
+        )
+        .step(named("review", ReviewForm))
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "routed-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def get_step_url(self, run_id, step_segment):
+        return reverse(
+            "routed-wizard-step",
+            kwargs={"run_id": run_id, "gandalf_step": step_segment},
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class PartiallyRoutedWizardViewSet(WizardViewSet):
+    description = (
+        "Routed wizard whose first step is unnamed: unroutable steps render "
+        "at the bare run URL instead of redirecting, so partial naming "
+        "degrades gracefully."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm)
+        .step(named("second", SecondStepForm))
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "partially-routed-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    def get_step_url(self, run_id, step_segment):
+        return reverse(
+            "partially-routed-wizard-step",
+            kwargs={"run_id": run_id, "gandalf_step": step_segment},
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 class OrgScopedStepView(FormView):
     form_class = FirstStepForm
     template_name = "testapp/editing_wizard.html"

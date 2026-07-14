@@ -1545,6 +1545,85 @@ def _branching_review_wizard():
     )
 
 
+def test_bound_wizard_cursor_returns_first_unanswered_step(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .step(SecondStepForm, context={"step_name": "second"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    cursor = bound_wizard.cursor()
+
+    assert cursor.node.matches_context(step_name="second")
+
+
+def test_bound_wizard_cursor_node_is_none_when_run_is_complete(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, context={"step_name": "first"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.cursor().node is None
+
+
+def test_bound_wizard_find_step_at_sees_preserved_tail_but_not_dormant_arms(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "personal"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    preserved = bound_wizard.find_step_at(cursor, step_name="review")
+    dormant = bound_wizard.find_step_at(cursor, step_name="business_name")
+    at_cursor = bound_wizard.find_step_at(cursor, step_name="preferred_name")
+
+    assert preserved.data == {"confirmed": "on"}
+    assert dormant is None
+    assert at_cursor.declaration is cursor.node
+
+
 def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
     request_with_session_factory,
 ):

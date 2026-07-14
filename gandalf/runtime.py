@@ -124,6 +124,11 @@ class PreservedBranch:
     entry: dict
     next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
 
+    # ContextFinder treats nodes carrying a `selected_arm` attribute as
+    # runtime branches and skips them when it is None — preserved regions
+    # are opaque to context lookups.
+    selected_arm = None
+
     def accept_reduce(self, reducer):
         return self.entry
 
@@ -287,6 +292,17 @@ class BoundWizard:
         finder.visit(self._current_runtime_tree())
         return finder.one()
 
+    def find_step_at(self, cursor, **context):
+        """Locate a step matching `context` on the walked tree behind
+        `cursor` — the validated prefix plus the verbatim-preserved tail.
+
+        Unlike `find_step` this never evaluates branch predicates past the
+        cursor, so it is safe on incomplete runs; steps parked in dormant
+        arms are not visible (their branch regions are opaque)."""
+        finder = tree.ContextFinder(context)
+        finder.visit(cursor.state)
+        return finder.one()
+
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
         finder.visit(self._current_runtime_tree())
@@ -307,12 +323,16 @@ class BoundWizard:
         entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
 
-    def replay(self, *args, **kwargs):
+    def cursor(self, *args, **kwargs):
+        """Walk stored state and return the run's current Cursor."""
         walker = self.wizard.cursor_walker_class(
             self.dispatcher, self.get_state(), None, args, kwargs, self
         )
         walker.walk(self.wizard.tree)
-        cursor = walker.cursor()
+        return walker.cursor()
+
+    def replay(self, *args, **kwargs):
+        cursor = self.cursor(*args, **kwargs)
         if cursor.node is None:
             return None
         return self.dispatcher.render_cursor(cursor, *args, **kwargs)

@@ -19,6 +19,7 @@ __all__ = [
     "ConfiguredWizard",
     "MergeCleanedData",
     "StepNameEditResolver",
+    "StepNameRouter",
     "Wizard",
     "WizardFileStorage",
     "branch",
@@ -54,6 +55,43 @@ class StepNameEditResolver:
     def clean_submission(self, submission):
         submission.pop(self.field_name, None)
         return submission
+
+
+class StepNameRouter:
+    """Routes an optional URL step segment to a step-context lookup and
+    reverses a step declaration back into a segment. The default
+    `step_router_class` on `ConfiguredWizard`.
+
+    Routing is an add-on: it activates only when the URL pattern captures
+    `url_kwarg` (e.g. `<slug:gandalf_step>`). Without that kwarg,
+    `resolve()` always returns None and the wizard behaves exactly as if
+    routing did not exist. Subclass to route on a different context key or
+    a composite lookup — the returned dict is matched against step context
+    the same way edit resolution is.
+    """
+
+    url_kwarg = "gandalf_step"
+    context_key = "step_name"
+
+    def resolve(self, url_kwargs):
+        value = url_kwargs.get(self.url_kwarg)
+        if not value:
+            return None
+        return {self.context_key: value}
+
+    def reverse(self, step):
+        """Return the URL segment for a step declaration, or None when the
+        step carries no routable context (an unroutable step renders at the
+        bare run URL instead)."""
+        context = step.context or {}
+        return context.get(self.context_key)
+
+    def clean_url_kwargs(self, url_kwargs):
+        return {
+            key: value
+            for key, value in url_kwargs.items()
+            if key != self.url_kwarg
+        }
 
 
 def condition(predicate, target):
@@ -112,6 +150,7 @@ class ConfiguredWizard:
     state_serializer_class = StateSerializer
     form_view_factory = staticmethod(form_view_factory)
     edit_resolver_class = StepNameEditResolver
+    step_router_class = StepNameRouter
 
     def __init__(self, *, tree, configuration):
         self.configuration = configuration
@@ -137,6 +176,9 @@ class ConfiguredWizard:
         )
         self.edit_resolver_class = configuration.get(
             "edit_resolver_class", self.edit_resolver_class
+        )
+        self.step_router_class = configuration.get(
+            "step_router_class", self.step_router_class
         )
 
     def configure(self, **configuration):

@@ -9,6 +9,7 @@ import pytest
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from tests.testapp.forms import (
+    AccountTypeForm,
     BusinessDetailsForm,
     FirstStepForm,
     PersonalDetailsForm,
@@ -712,6 +713,314 @@ def test_editing_branching_wizard_resumes_legacy_bare_list_branch_state(
 
     assert response.status_code == HTTPStatus.OK
     assert isinstance(response.context["form"], ReviewForm)
+
+
+@pytest.fixture
+def routed_wizard_urls():
+    def build(run_id, step=None):
+        if step is None:
+            return reverse("routed-wizard-run", kwargs={"run_id": run_id})
+        return reverse(
+            "routed-wizard-step",
+            kwargs={"run_id": run_id, "gandalf_step": step},
+        )
+
+    return build
+
+
+@pytest.fixture
+def routed_wizard_run(client, routed_wizard_urls):
+    client.get(reverse("routed-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+    return run_id
+
+
+def test_routed_wizard_bare_run_url_redirects_to_cursor_step_url(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.get(routed_wizard_urls(routed_wizard_run))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "account_type"
+    )
+
+
+def test_routed_wizard_get_cursor_step_url_renders_form(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.get(routed_wizard_urls(routed_wizard_run, "account_type"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], AccountTypeForm)
+
+
+def test_routed_wizard_valid_submit_redirects_to_next_step_url(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "business_name"
+    )
+
+
+def test_routed_wizard_invalid_submit_redirects_and_rerenders_with_errors(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "not-a-choice"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "account_type"
+    )
+    followed = client.get(response["Location"])
+    assert followed.status_code == HTTPStatus.OK
+    assert followed.context["form"].errors == {
+        "account_type": [
+            "Select a valid choice. not-a-choice is not one of the available "
+            "choices."
+        ],
+    }
+
+
+def test_routed_wizard_get_completed_step_url_renders_prefilled_form(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+
+    response = client.get(routed_wizard_urls(routed_wizard_run, "account_type"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].initial == {"account_type": "business"}
+
+
+def test_routed_wizard_get_unknown_step_url_redirects_to_cursor(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.get(routed_wizard_urls(routed_wizard_run, "missing"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "account_type"
+    )
+
+
+def test_routed_wizard_get_future_step_url_redirects_to_cursor(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.get(routed_wizard_urls(routed_wizard_run, "review"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "account_type"
+    )
+
+
+def test_routed_wizard_trivial_edit_redirects_back_to_summary(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Globex"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "review")
+    state = client.session["gandalf_runs"][routed_wizard_run]["state"]
+    assert state[1] == {"branch": {"0": [{"step": {"business_name": "Globex"}}]}}
+
+
+def test_routed_wizard_diverting_edit_redirects_to_new_arm_step(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "personal"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "preferred_name"
+    )
+
+
+def test_routed_wizard_invalid_edit_renders_errors_without_redirect(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+    state_before = client.session["gandalf_runs"][routed_wizard_run]["state"]
+
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": ""},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].errors == {
+        "business_name": ["This field is required."],
+    }
+    assert client.session["gandalf_runs"][routed_wizard_run]["state"] == state_before
+
+
+def test_routed_wizard_dormant_step_url_redirects_instead_of_500(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "personal"},
+    )
+
+    response = client.get(routed_wizard_urls(routed_wizard_run, "business_name"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "preferred_name"
+    )
+
+
+def test_routed_wizard_stale_tab_post_redirects_without_storing(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "personal"},
+    )
+    state_before = client.session["gandalf_runs"][routed_wizard_run]["state"]
+
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "review"),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(
+        routed_wizard_run, "preferred_name"
+    )
+    assert client.session["gandalf_runs"][routed_wizard_run]["state"] == state_before
+
+
+def test_routed_wizard_final_submit_completes_run(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run, "review"),
+        data={"confirmed": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {routed_wizard_run}".encode()
+
+
+def test_routed_wizard_unknown_step_url_on_completed_run_redirects_to_run_url(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
+    )
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "review"),
+        data={"confirmed": "on"},
+    )
+
+    response = client.get(routed_wizard_urls(routed_wizard_run, "missing"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run)
+
+
+def test_partially_routed_wizard_unnamed_cursor_renders_at_bare_run_url(client):
+    client.get(reverse("partially-routed-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.get(
+        reverse("partially-routed-wizard-run", kwargs={"run_id": run_id})
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+
+
+def test_partially_routed_wizard_step_url_redirects_to_bare_run_url(client):
+    client.get(reverse("partially-routed-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.get(
+        reverse(
+            "partially-routed-wizard-step",
+            kwargs={"run_id": run_id, "gandalf_step": "second"},
+        )
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == reverse(
+        "partially-routed-wizard-run", kwargs={"run_id": run_id}
+    )
 
 
 def test_org_scoped_wizard_edit_render_receives_url_kwargs(
