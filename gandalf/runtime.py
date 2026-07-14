@@ -156,6 +156,20 @@ def _overlay_file_refs(old_refs, new_refs):
     return merged, replaced
 
 
+def _iter_route_steps(node):
+    """Yield RuntimeStep nodes in active-route order, descending selected
+    branch arms inline. Preserved (opaque) branch regions are yielded as
+    their PreservedBranch node — the steps inside them are unknowable."""
+    while node is not None:
+        if isinstance(node, RuntimeStep):
+            yield node
+        elif isinstance(node, RuntimeBranch):
+            yield from _iter_route_steps(node.selected_arm)
+        else:
+            yield node
+        node = node.next
+
+
 def _trim_trailing_holes(entries):
     """Drop trailing hole entries so persisted state stays minimal: a
     trailing `{"step": None}` or empty branch slot carries no information
@@ -303,6 +317,21 @@ class BoundWizard:
         finder.visit(cursor.state)
         return finder.one()
 
+    def previous_step(self, cursor, target_declaration):
+        """The step immediately before `target_declaration` in active-route
+        order on the walked tree behind `cursor`, or None when the target
+        is the first step — or when its predecessor is hidden inside a
+        preserved (opaque) branch region and cannot be known."""
+        previous = None
+        for node in _iter_route_steps(cursor.state):
+            if isinstance(node, PreservedBranch):
+                previous = node
+                continue
+            if node.declaration is target_declaration:
+                return previous if isinstance(previous, RuntimeStep) else None
+            previous = node
+        return None
+
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
         finder.visit(self._current_runtime_tree())
@@ -331,15 +360,22 @@ class BoundWizard:
         walker.walk(self.wizard.tree)
         return walker.cursor()
 
-    def render_edit(self, *args, url_kwargs=None, **context):
+    def render_edit(self, *args, target=None, url_kwargs=None, **context):
+        """Render a completed step pre-filled with its stored submission.
+
+        `target` accepts an already-resolved runtime step (e.g. from
+        `find_step_at`, which never evaluates predicates past the cursor);
+        without one the step is resolved from `context` against the full
+        runtime tree."""
         if url_kwargs is None:
             url_kwargs = {}
-        runtime_step = self._resolve_edit_target(context)
-        initial = dict(runtime_step.data or {})
-        for field, ref in (runtime_step.files or {}).items():
+        if target is None:
+            target = self._resolve_edit_target(context)
+        initial = dict(target.data or {})
+        for field, ref in (target.files or {}).items():
             initial[field] = self.file_storage.open(ref)
         return self.dispatcher.dispatch(
-            runtime_step.declaration,
+            target.declaration,
             self.dispatcher.build_request("GET"),
             *args,
             initial=initial,

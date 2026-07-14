@@ -6,7 +6,12 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
 import pytest
-from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
+from pytest_django.asserts import (
+    assertContains,
+    assertNotContains,
+    assertRedirects,
+    assertTemplateUsed,
+)
 
 from gandalf.tree import MultipleStepsReturned
 
@@ -1019,6 +1024,48 @@ def test_routed_wizard_stale_tab_post_redirects_without_storing(
         routed_wizard_run, "preferred_name"
     )
     assert client.session["gandalf_runs"][routed_wizard_run]["state"] == state_before
+
+
+def test_routed_wizard_renders_back_link_to_previous_step(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    client.post(
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
+    )
+
+    response = client.get(routed_wizard_urls(routed_wizard_run, "business_name"))
+
+    assert response.status_code == HTTPStatus.OK
+    back_url = routed_wizard_urls(routed_wizard_run, "account_type")
+    assertContains(response, f'<a href="{back_url}">Back</a>', html=True)
+
+
+def test_routed_wizard_first_step_renders_without_back_link(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.get(routed_wizard_urls(routed_wizard_run, "account_type"))
+
+    assert response.status_code == HTTPStatus.OK
+    assertNotContains(response, ">Back</a>", html=False)
+
+
+def test_routed_wizard_back_link_absent_behind_preserved_branch(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    session = client.session
+    session["gandalf_runs"][routed_wizard_run]["state"] = [
+        {"step": None},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+        {"step": {"confirmed": "on"}},
+    ]
+    session.save()
+
+    response = client.get(routed_wizard_urls(routed_wizard_run, "review"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].initial == {"confirmed": "on"}
+    assertNotContains(response, ">Back</a>", html=False)
 
 
 def test_routed_wizard_final_submit_completes_run(

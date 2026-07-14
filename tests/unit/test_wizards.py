@@ -1603,6 +1603,67 @@ def test_bound_wizard_find_step_at_sees_preserved_tail_but_not_dormant_arms(
     assert at_cursor.declaration is cursor.node
 
 
+def test_bound_wizard_previous_step_walks_the_active_route(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    account = bound_wizard.find_step_at(cursor, step_name="account_type")
+    business = bound_wizard.find_step_at(cursor, step_name="business_name")
+    review = bound_wizard.find_step_at(cursor, step_name="review")
+
+    assert bound_wizard.previous_step(cursor, account.declaration) is None
+    assert (
+        bound_wizard.previous_step(cursor, business.declaration).declaration
+        is account.declaration
+    )
+    assert (
+        bound_wizard.previous_step(cursor, review.declaration).declaration
+        is business.declaration
+    )
+
+
+def test_bound_wizard_previous_step_is_none_behind_a_preserved_branch(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": None},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    review = bound_wizard.find_step_at(cursor, step_name="review")
+
+    assert bound_wizard.previous_step(cursor, review.declaration) is None
+
+
 def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
     request_with_session_factory,
 ):

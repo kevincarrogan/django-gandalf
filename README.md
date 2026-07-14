@@ -900,10 +900,28 @@ The request semantics:
 
 Because history then contains only GETs of step URLs, the browser back
 button works naturally: going back shows an earlier answer pre-filled, and
-re-submitting it is just an edit that returns you to the cursor. An explicit
-"back" link is a link to the last completed step's URL (`wizard.path` gives
-you the completed chain and each step's `declaration.context.step_name`
-builds the URL).
+re-submitting it is just an edit that returns you to the cursor.
+
+For an explicit in-page back link, every step render carries two request
+attributes:
+
+- `request.wizard_back_url` — the previous active-route step's URL
+  (branch-aware: on a branch arm's first step it points at the step before
+  the branch). `None` on the first step, so templates can show the link
+  conditionally.
+- `request.wizard_run_url` — the bare run URL, which redirects to the
+  current step; useful as a "cancel, return to where I was" affordance on
+  edit pages.
+
+```django
+{% if request.wizard_back_url %}
+  <a href="{{ request.wizard_back_url }}">Back</a>
+{% endif %}
+```
+
+Going back is non-destructive by construction: nothing after the step you
+return to is discarded, and re-submitting an unchanged answer is a trivial
+edit that redirects straight back to the cursor.
 
 Like every other touch point, the router is pluggable — subclass
 `StepNameRouter` (or supply your own with `resolve(url_kwargs)`,

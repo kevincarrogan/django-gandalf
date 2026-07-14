@@ -349,6 +349,66 @@ def test_wizard_viewset_routed_get_renders_cursor_step(rf):
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
+def test_wizard_viewset_routed_get_annotates_back_and_run_urls(rf):
+    request = rf.get("/wizard/existing-run/second/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="second"
+    )
+
+    step_request = response.context_data["view"].request
+    assert step_request.wizard_back_url == "/wizard/existing-run/first/"
+    assert step_request.wizard_run_url == "/wizard/existing-run/"
+
+
+def test_wizard_viewset_first_step_render_has_no_back_url(rf):
+    request = rf.get("/wizard/existing-run/first/")
+    request.session = _routed_session([])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    step_request = response.context_data["view"].request
+    assert step_request.wizard_back_url is None
+
+
+def test_wizard_viewset_edit_render_annotates_back_url(rf):
+    request = rf.get("/wizard/existing-run/second/")
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="second"
+    )
+
+    step_request = response.context_data["view"].request
+    assert step_request.wizard_back_url == "/wizard/existing-run/first/"
+
+
+def test_wizard_viewset_rejected_edit_render_annotates_back_url(rf):
+    request = rf.post("/wizard/existing-run/second/", data={"email": ""})
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="second"
+    )
+
+    assert response.context_data["form"].errors
+    step_request = response.context_data["view"].request
+    assert step_request.wizard_back_url == "/wizard/existing-run/first/"
+
+
 def test_wizard_viewset_routed_get_renders_completed_step_prefilled(rf):
     request = rf.get("/wizard/existing-run/first/")
     request.session = _routed_session([{"step": {"name": "Ada"}}])
