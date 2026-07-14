@@ -867,11 +867,25 @@ predicates on every walk while inactive arms simply wait. A stored answer
 that no longer validates keeps its data and replays as the errored form, so
 the user corrects it rather than retyping it.
 
-Two practical caveats: dormant arms live in the session until the run
-completes, so state grows by the size of the abandoned arms; and arm identity
-is positional (declaration order), so a dynamic `get_wizard()` that reorders
-branch arms between requests will misattribute dormant memory — the same
-positional-alignment rule that already applies to steps.
+Some practical caveats:
+
+- Dormant arms live in the session until the run completes, so state grows
+  by the size of the abandoned arms.
+- Arm identity is positional (declaration order), so a dynamic
+  `get_wizard()` that reorders branch arms between requests will
+  misattribute dormant memory — the same positional-alignment rule that
+  already applies to steps.
+- Preservation applies to *every* still-valid answer, including a
+  confirmation step that was already answered: after a diverting edit the
+  stored confirmation stays confirmed, and once the diverted steps are
+  answered the wizard completes without re-showing it. If your flow
+  requires re-confirmation after changes, model that explicitly (keep the
+  confirmation as the final unanswered step until the user truly submits
+  it, or make its validation depend on the answers it confirms).
+- While a divert is in progress, `bound_wizard.path` includes preserved
+  downstream steps that hold data but have not been re-validated on the
+  current walk — treat mid-run `path` reads as "answered", not
+  "confirmed-valid".
 
 ---
 

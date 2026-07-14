@@ -942,6 +942,41 @@ class EmptyBranchArmContextFinderViewSet(WizardViewSet):
         )
 
 
+class OrgScopedStepView(FormView):
+    form_class = FirstStepForm
+    template_name = "testapp/editing_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["org"] = self.kwargs["org"]
+        return context
+
+
+class OrgScopedEditingWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard mounted under an extra URL kwarg; the first step's view "
+        "reads self.kwargs['org'] in every render, including edit cycles."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(OrgScopedStepView, context={"step_name": "first"})
+        .step(ReviewForm, context={"step_name": "review"})
+    )
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "org-scoped-wizard-run",
+            kwargs={"org": self.kwargs["org"], "run_id": run_id},
+        )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 def _always_true(_request):
     return True
 

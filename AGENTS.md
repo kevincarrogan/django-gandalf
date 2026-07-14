@@ -60,19 +60,24 @@ wrapping.
   defaults instead of shortened expressions such as `value or []`. When the
   value is transformed after defaulting, assign the default to the local
   parameter first and then perform the final assignment once.
-- Stored state mirrors the shape of the wizard tree. Each entry in a state
-  list is either `{"step": <form_data>}` for a `tree.Step` node or
-  `{"branch": [<sub-state entries>, ...]}` for a `tree.Branch` node, with
-  the sub-state recording the taken arm's state recursively. The
-  `WizardState` class in `gandalf/storage.py` owns the walk: a single
-  lockstep traversal of the wizard tree and the state list yields
-  `(step, stored_or_none)` pairs, descending into the matching branch arm
-  (re-derived from submissions-so-far at walk time, not stored). Branch
-  decisions are never persisted; they are always recomputed from the
-  preceding step submissions. Step context (e.g.
-  `context={"step_name": "account"}`) is user-space metadata for lookup
-  and introspection, not a storage key mechanism. Gandalf does not need
-  to generate or assign stable step keys.
+- Stored state is a full-tree positional mirror of the wizard tree, with
+  holes. Each entry in a state list is either `{"step": <form_data>}` for
+  a `tree.Step` node (`{"step": null}` marks a hole — a slot with no valid
+  answer yet) or `{"branch": {"<arm_id>": [<sub-state entries>, ...]}}`
+  for a `tree.Branch` node, keyed per arm by declaration-order index (as a
+  string) or `"default"`. The active arm's entries live under its key;
+  other keys are dormant memory carried verbatim so answers survive an arm
+  change and restore on flip-back. Bare-list branch entries are the legacy
+  shape, still readable. `CursorWalker` in `gandalf/runtime.py` owns the
+  walk: a lockstep traversal of the wizard tree and the state list that
+  validates entries up to the cursor (the first missing or invalid
+  answer), then seals and carries the remaining entries verbatim. Branch
+  decisions are never persisted; the active arm is always recomputed from
+  the preceding step submissions, and the arm id only keys which per-arm
+  memory is live. Step context (e.g. `context={"step_name": "account"}`)
+  is user-space metadata for lookup and introspection, not a storage key
+  mechanism; steps themselves still have no stable identifiers, so
+  alignment stays positional.
 
 ## Implementation Ownership
 

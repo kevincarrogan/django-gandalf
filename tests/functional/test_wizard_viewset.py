@@ -714,6 +714,45 @@ def test_editing_branching_wizard_resumes_legacy_bare_list_branch_state(
     assert isinstance(response.context["form"], ReviewForm)
 
 
+def test_org_scoped_wizard_edit_render_receives_url_kwargs(
+    client,
+):
+    start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id}
+    )
+    client.post(run_url, data={"name": "Ada"})
+
+    response = client.get(run_url + "?gandalf_edit_step=first")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["org"] == "acme"
+    assert response.context["form"].initial == {"name": "Ada"}
+
+
+def test_org_scoped_wizard_invalid_edit_error_render_receives_url_kwargs(
+    client,
+):
+    start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse(
+        "org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id}
+    )
+    client.post(run_url, data={"name": "Ada"})
+
+    response = client.post(
+        run_url,
+        data={"gandalf_edit_step": "first", "name": ""},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["org"] == "acme"
+    assert response.context["form"].errors == {"name": ["This field is required."]}
+
+
 def test_branch_entry_wizard_renders_default_arm_first_step(client):
     start_url = reverse("branch-entry-wizard")
     client.get(start_url)

@@ -2729,6 +2729,205 @@ def test_bound_wizard_edit_rejected_deletes_new_files_and_keeps_old(
     assert bound_wizard.file_storage.open(old_ref).read() == b"first"
 
 
+def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    from django.views.generic.edit import FormView
+
+    class ExplodingStepView(FormView):
+        form_class = SecondStepForm
+        template_name = "testapp/linear_wizard.html"
+
+        def post(self, request, *args, **kwargs):
+            raise RuntimeError("downstream step exploded")
+
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm, context={"step_name": "photo"})
+        .step(ExplodingStepView)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    old_photo = SimpleUploadedFile("v1.jpg", b"first")
+    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
+    bound_wizard.storage.set_state(
+        "existing-run",
+        [
+            {"step": {"photo": "v1.jpg"}, "files": {"photo": old_ref}},
+            {"step": {"email": "ada@example.com"}},
+        ],
+    )
+    new_photo = SimpleUploadedFile("v2.jpg", b"second")
+    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+
+    with pytest.raises(RuntimeError):
+        bound_wizard.edit(
+            {"photo": "v2.jpg"},
+            files={"photo": new_ref},
+            step_name="photo",
+        )
+
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"photo": "v1.jpg"}, "files": {"photo": old_ref}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+    assert bound_wizard.file_storage.open(old_ref).read() == b"first"
+
+
+def test_bound_wizard_edit_step_not_found_deletes_new_files(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    from gandalf.runtime import StepNotFound
+
+    wizard = (
+        Wizard()
+        .step(OptionalPhotoForm, context={"step_name": "photo"})
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("orphan.jpg", b"orphan-bytes")
+    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+
+    with pytest.raises(StepNotFound):
+        bound_wizard.edit(
+            {"label": "ignored"},
+            files={"photo": new_ref},
+            step_name="missing",
+        )
+
+    assert not bound_wizard.file_storage.backend.exists(new_ref["tmp_name"])
+
+
+def test_bound_wizard_submit_correction_keeps_stored_file_refs(
+    request_with_session_factory,
+    temp_file_storage_class,
+):
+    wizard = (
+        Wizard()
+        .step(OptionalPhotoForm, context={"step_name": "photo"})
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=temp_file_storage_class,
+        )
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    photo = SimpleUploadedFile("kept.jpg", b"kept-bytes")
+    photo_ref = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    bound_wizard.submit({"label": "", "photo": "kept.jpg"}, files={"photo": photo_ref})
+
+    bound_wizard.submit({"label": "Fixed", "photo": "kept.jpg"})
+
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {
+            "step": {"label": "Fixed", "photo": "kept.jpg"},
+            "files": {"photo": photo_ref},
+        },
+    ]
+
+
+def test_bound_wizard_edit_error_render_receives_url_kwargs(
+    request_with_session_factory,
+):
+    from django.views.generic.edit import FormView
+
+    class KwargAwareStepView(FormView):
+        form_class = FirstStepForm
+        template_name = "testapp/linear_wizard.html"
+
+        def get_context_data(self, **context):
+            context = super().get_context_data(**context)
+            context["org"] = self.kwargs["org"]
+            return context
+
+    wizard = (
+        Wizard()
+        .step(KwargAwareStepView, context={"step_name": "first"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.edit(
+        {"name": ""},
+        url_kwargs={"org": "acme"},
+        step_name="first",
+    )
+
+    assert response.context_data["org"] == "acme"
+    assert response.context_data["form"].errors == {
+        "name": ["This field is required."],
+    }
+
+
+def test_bound_wizard_render_edit_receives_url_kwargs(
+    request_with_session_factory,
+):
+    from django.views.generic.edit import FormView
+
+    class KwargAwareStepView(FormView):
+        form_class = FirstStepForm
+        template_name = "testapp/linear_wizard.html"
+
+        def get_context_data(self, **context):
+            context = super().get_context_data(**context)
+            context["org"] = self.kwargs["org"]
+            return context
+
+    wizard = (
+        Wizard()
+        .step(KwargAwareStepView, context={"step_name": "first"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"name": "Ada"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    response = bound_wizard.render_edit(
+        url_kwargs={"org": "acme"},
+        step_name="first",
+    )
+
+    assert response.context_data["org"] == "acme"
+    assert response.context_data["form"].initial == {"name": "Ada"}
+
+
 def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
     request_with_session_factory,
     temp_file_storage_class,

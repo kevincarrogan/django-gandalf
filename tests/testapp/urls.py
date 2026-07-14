@@ -334,4 +334,14 @@ urlpatterns = [
         views.BranchEditRejectionWizardViewSet.as_view(),
         name="branch-edit-rejection-wizard-run",
     ),
+    path(
+        "org-scoped-wizard/<slug:org>/",
+        views.OrgScopedEditingWizardViewSet.as_view(),
+        name="org-scoped-wizard",
+    ),
+    path(
+        "org-scoped-wizard/<slug:org>/<uuid:run_id>/",
+        views.OrgScopedEditingWizardViewSet.as_view(),
+        name="org-scoped-wizard-run",
+    ),
 ]

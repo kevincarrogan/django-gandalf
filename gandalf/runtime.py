@@ -142,8 +142,13 @@ def _branch_sub_entries(entry, arm_id):
     return stored.get(arm_id, []), dormant
 
 
-def _preserved_branch_entry(entry):
-    return entry if entry is not None else {"branch": {}}
+def _overlay_file_refs(old_refs, new_refs):
+    """Overlay new upload refs over stored ones per field, returning the
+    merged mapping plus the stored refs that were replaced (so callers can
+    delete them once the new state is safely persisted)."""
+    merged = {**old_refs, **new_refs}
+    replaced = [old_refs[field] for field in old_refs if field in new_refs]
+    return merged, replaced
 
 
 def _trim_trailing_holes(entries):
@@ -312,7 +317,9 @@ class BoundWizard:
             return None
         return self.dispatcher.render_cursor(cursor, *args, **kwargs)
 
-    def render_edit(self, *args, **context):
+    def render_edit(self, *args, url_kwargs=None, **context):
+        if url_kwargs is None:
+            url_kwargs = {}
         runtime_step = self._resolve_edit_target(context)
         initial = dict(runtime_step.data or {})
         for field, ref in (runtime_step.files or {}).items():
@@ -322,41 +329,54 @@ class BoundWizard:
             self.dispatcher.build_request("GET"),
             *args,
             initial=initial,
+            **url_kwargs,
         )
 
-    def edit(self, submission, *args, files=None, **context):
+    def edit(self, submission, *args, files=None, url_kwargs=None, **context):
         """Replace the target step's stored submission and re-validate the run.
 
         Transactional: the new submission is validated against the target
-        step's form view first. On failure the rendered error response is
-        returned, stored state and previously persisted file refs are left
-        untouched, and any newly stored uploads are deleted. On success the
+        step's form view first. On failure (or when the target cannot be
+        resolved) the newly stored uploads are deleted while stored state
+        and previously persisted file refs stay untouched; a validation
+        failure returns the rendered error response. On success the
         submission is spliced into the runtime tree, the walker re-validates
-        downstream state, the rebuilt state is persisted, and None is
-        returned.
+        downstream state, the rebuilt state is persisted, replaced old file
+        refs are deleted only after that persist, and None is returned.
         """
+        if url_kwargs is None:
+            url_kwargs = {}
         runtime = self.runtime_tree
-        runtime_step = self._resolve_edit_target(context, runtime=runtime)
-        response = self._validate_edit(runtime_step, submission, files, context, args)
+        try:
+            runtime_step = self._resolve_edit_target(context, runtime=runtime)
+        except StepNotFound:
+            self._delete_file_refs(files)
+            raise
+        response = self._validate_edit(
+            runtime_step, submission, files, context, args, url_kwargs
+        )
         if response is not None:
-            for ref in (files or {}).values():
-                self.file_storage.delete(ref)
+            self._delete_file_refs(files)
             return response
-        merged_files = self._merge_file_refs(runtime_step.files or {}, files or {})
+        merged_files, replaced_refs = _overlay_file_refs(
+            runtime_step.files or {}, files or {}
+        )
         spliced = SpliceSubmission(
             runtime_step, submission, files=merged_files or None
         ).transform(runtime)
         serializer = self.wizard.state_serializer_class()
         rebuilt_entries = serializer.reduce(spliced)
         walker = self.wizard.cursor_walker_class(
-            self.dispatcher, rebuilt_entries, None, args, {}, self
+            self.dispatcher, rebuilt_entries, None, args, url_kwargs, self
         )
         walker.walk(self.wizard.tree)
         entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
+        for ref in replaced_refs:
+            self.file_storage.delete(ref)
         return None
 
-    def _validate_edit(self, runtime_step, submission, files, context, args):
+    def _validate_edit(self, runtime_step, submission, files, context, args, kwargs):
         """Dispatch the new submission through the target step's form view.
 
         The request carries the stored files overlaid with the new uploads,
@@ -365,30 +385,25 @@ class BoundWizard:
         None when it does. `request.wizard_edit_context` exposes the resolved
         edit context so error templates can re-render the edit marker.
         """
-        validation_refs = {**(runtime_step.files or {}), **(files or {})}
+        validation_refs, _ = _overlay_file_refs(
+            runtime_step.files or {}, files or {}
+        )
         request = self.dispatcher.build_request(
             "POST",
             submission=submission,
             files=_open_file_refs(self, validation_refs),
         )
         request.wizard_edit_context = context
-        response = self.dispatcher.dispatch(runtime_step.declaration, request, *args)
+        response = self.dispatcher.dispatch(
+            runtime_step.declaration, request, *args, **kwargs
+        )
         if self.dispatcher.response_satisfies_step(response):
             return None
         return response
 
-    def _merge_file_refs(self, old_refs, new_refs):
-        merged = {}
-        for field, old_ref in old_refs.items():
-            if field in new_refs:
-                self.file_storage.delete(old_ref)
-                merged[field] = new_refs[field]
-            else:
-                merged[field] = old_ref
-        for field, new_ref in new_refs.items():
-            if field not in old_refs:
-                merged[field] = new_ref
-        return merged
+    def _delete_file_refs(self, refs):
+        for ref in (refs or {}).values():
+            self.file_storage.delete(ref)
 
     def cleanup_files(self):
         """Remove all files persisted under this run's prefix.
@@ -460,40 +475,34 @@ class CursorWalker(tree.Interpreter):
         self._head: RuntimeStep | RuntimeBranch | None = None
         self._tail: RuntimeStep | RuntimeBranch | None = None
         self._cursor = None
-        self._sealed = False
+
+    @property
+    def _sealed(self):
+        return self._cursor is not None
 
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         stored_files = entry.get("files") if entry is not None else None
-        if self._sealed:
-            self._append(
-                RuntimeStep(
-                    declaration=step,
-                    data=stored,
-                    files=stored_files,
-                    bound_wizard=self._bound_wizard,
+        if not self._sealed:
+            if stored is None:
+                self._park(step, keep_data=None, keep_files=stored_files)
+                return
+            response = self._dispatcher.dispatch(
+                step,
+                self._dispatcher.build_request(
+                    "POST",
+                    submission=stored,
+                    files=self._open_files(stored_files),
+                ),
+                *self._args,
+                **self._kwargs,
+            )
+            if not self._dispatcher.response_satisfies_step(response):
+                self._park(
+                    step, keep_data=stored, keep_files=stored_files, response=response
                 )
-            )
-            return
-        if stored is None:
-            self._park(step, keep_data=None, keep_files=None)
-            return
-        response = self._dispatcher.dispatch(
-            step,
-            self._dispatcher.build_request(
-                "POST",
-                submission=stored,
-                files=self._open_files(stored_files),
-            ),
-            *self._args,
-            **self._kwargs,
-        )
-        if not self._dispatcher.response_satisfies_step(response):
-            self._park(
-                step, keep_data=stored, keep_files=stored_files, response=response
-            )
-            return
+                return
         self._append(
             RuntimeStep(
                 declaration=step,
@@ -506,7 +515,9 @@ class CursorWalker(tree.Interpreter):
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
         if self._sealed:
-            self._append(PreservedBranch(entry=_preserved_branch_entry(entry)))
+            self._append(
+                PreservedBranch(entry=entry if entry is not None else {"branch": {}})
+            )
             return
         arm_id, arm = self._bound_wizard._select_branch_arm(branch, self._head)
         sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
@@ -534,7 +545,6 @@ class CursorWalker(tree.Interpreter):
                 state=self._head,
                 response=sub._cursor.response,
             )
-            self._sealed = True
 
     def cursor(self):
         if self._cursor is not None:
@@ -542,11 +552,20 @@ class CursorWalker(tree.Interpreter):
         return Cursor(node=None, state=self._head)
 
     def _park(self, step, keep_data, keep_files, response=None):
-        """Mark `step` as the cursor and seal the walk. The pending
-        submission lands here; without one, the stored data (invalid, or
-        None for a hole) is kept so replay can re-render it with errors."""
+        """Mark `step` as the cursor; setting it seals the rest of the walk.
+        The pending submission lands here; without one, the stored data
+        (invalid, or None for a hole) is kept so replay can re-render it
+        with errors. Stored file refs are kept unless the pending
+        submission replaces them — browsers never re-send file inputs, so
+        a correction POST without a new upload must not drop the
+        previously stored files."""
         if self._pending_submission is not None:
-            data, files = self._pending_submission, self._pending_files
+            data = self._pending_submission
+            files, _ = _overlay_file_refs(
+                keep_files or {}, self._pending_files or {}
+            )
+            if not files:
+                files = None
         else:
             data, files = keep_data, keep_files
         self._append(
@@ -558,7 +577,6 @@ class CursorWalker(tree.Interpreter):
             )
         )
         self._cursor = Cursor(node=step, state=self._head, response=response)
-        self._sealed = True
 
     def _open_files(self, file_refs):
         return _open_file_refs(self._bound_wizard, file_refs)
