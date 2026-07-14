@@ -558,28 +558,17 @@ In that case, `AccountStepView.get_context_data()` is the method that runs for
 that step, because the user-supplied `FormView` always takes precedence over
 the auto-generated one.
 
-Whichever template is used for a wizard step should include the Gandalf
-management form tag:
+Step templates need no wizard-specific markup — a plain Django form template
+works as-is. Gandalf derives the user's position from stored state on every
+request, so unlike `django-formtools` there is no management form to include
+and no step bookkeeping travels in the POST body:
 
 ```django
-{% load gandalf %}
 <form method="post">
   {% csrf_token %}
-  {% gandalf_management_form %}
   {{ form.as_p }}
 </form>
 ```
-
-`{% gandalf_management_form %}` reads the template context and checks for
-wizard state on the request object. When the template is being rendered as part
-of a wizard step, the tag automatically injects the wizard management form.
-
-If no wizard is present (for example, `request.wizard` is not available in the
-context), the tag is a no-op and safely renders nothing extra.
-
-In practice, this behavior is mostly transparent: with a normal Gandalf wizard
-setup, you can include the tag in your form template and usually do not need to
-think about the implementation details.
 
 ### `.step()` can also carry arbitrary context
 
