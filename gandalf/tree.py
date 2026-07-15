@@ -96,6 +96,12 @@ class Transformer:
             return None
         return root.accept_transform(self)
 
+    def visit_preserved_branch(self, preserved_branch, next_result):
+        """Runtime trees only: a stored branch entry past the cursor,
+        carried verbatim. The default clones it through so transforms
+        preserve state; override to handle or skip opaque regions."""
+        return replace(preserved_branch, next=next_result)
+
 
 class Reducer:
     """Bottom-up tree fold. Each node's `visit_*` method returns a value

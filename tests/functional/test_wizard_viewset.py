@@ -1220,7 +1220,52 @@ def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"completed edit-cleanup=True nav-probe=True"
+    assert response.content == (
+        b"completed edit-cleanup=True nav-probe=True resolve-status=200"
+    )
+
+
+@pytest.fixture
+def cross_branch_run(client):
+    client.get(reverse("cross-branch-wizard"))
+    run_id, _ = get_only_run_info_from_session(client.session)
+    session = client.session
+    session["gandalf_runs"][run_id]["state"] = [
+        {"step": {"account_type": "personal"}},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+        {"branch": {"0": [{"step": {"email": "ada@example.com"}}]}},
+        {"step": {"confirmed": "on"}},
+    ]
+    session.save()
+    run_url = reverse("cross-branch-wizard-run", kwargs={"run_id": run_id})
+    return run_id, run_url
+
+
+def test_cross_branch_wizard_path_read_is_safe_mid_divert(
+    client, cross_branch_run
+):
+    _, run_url = cross_branch_run
+
+    response = client.get(_step(run_url, "preferred_name"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["path_names"] == ["account_type", "review"]
+
+
+def test_cross_branch_wizard_edit_is_safe_mid_divert(client, cross_branch_run):
+    run_id, run_url = cross_branch_run
+
+    response = client.post(
+        _step(run_url, "account_type"),
+        data={"account_type": "personal"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == _step(run_url, "preferred_name")
+    state = client.session["gandalf_runs"][run_id]["state"]
+    assert state[0] == {"step": {"account_type": "personal"}}
+    assert state[1] == {"branch": {"0": [{"step": {"business_name": "Acme"}}]}}
+    assert state[3] == {"step": {"confirmed": "on"}}
 
 
 def test_branch_entry_wizard_renders_default_arm_first_step(client):

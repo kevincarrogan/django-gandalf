@@ -44,6 +44,7 @@ urlpatterns = [
     path("branch-edit-rejection-wizard/", include(views.BranchEditRejectionWizardViewSet.urls())),
     path("routed-wizard/", include(views.RoutedWizardViewSet.urls())),
     path("unroutable-wizard/", include(views.UnroutableWizardViewSet.urls())),
+    path("cross-branch-wizard/", include(views.CrossBranchWizardViewSet.urls())),
     path(
         "programmatic-lookup-wizard/",
         include(views.ProgrammaticLookupWizardViewSet.urls()),

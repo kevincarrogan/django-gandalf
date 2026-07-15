@@ -7,7 +7,6 @@ from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
     MergeCleanedData,
-    RuntimeTreeBuilder,
     StateSerializer,
     StepDispatcher,
 )
@@ -126,7 +125,6 @@ class Wizard:
 class ConfiguredWizard:
     storage_class = SessionStorage
     file_storage_class = WizardFileStorage
-    runtime_tree_builder_class = RuntimeTreeBuilder
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
@@ -142,9 +140,6 @@ class ConfiguredWizard:
         self.storage_class = configuration.get("storage_class", self.storage_class)
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
-        )
-        self.runtime_tree_builder_class = configuration.get(
-            "runtime_tree_builder_class", self.runtime_tree_builder_class
         )
         self.cursor_walker_class = configuration.get(
             "cursor_walker_class", self.cursor_walker_class

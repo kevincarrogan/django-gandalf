@@ -872,7 +872,70 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
             and bound_wizard.previous_step(cursor, foreign_declaration) is None
         )
-        return HttpResponse(f"completed edit-cleanup={deleted} nav-probe={nav_probe}")
+        resolved = bound_wizard.render_edit(step_name="first")
+        return HttpResponse(
+            f"completed edit-cleanup={deleted} nav-probe={nav_probe} "
+            f"resolve-status={resolved.status_code}"
+        )
+
+
+def _business_was_acme(request):
+    business_step = request.wizard.find_step(step_name="business_name")
+    return business_step.data["business_name"] == "Acme"
+
+
+class PathProbeStepView(FormView):
+    """Step view that reads request.wizard.path while rendering — the
+    mid-run introspection that must stay safe when later branch regions
+    are opaque."""
+
+    form_class = PersonalDetailsForm
+    template_name = "testapp/editing_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        names = []
+        node = self.request.wizard.path
+        while node is not None:
+            names.append(node.declaration.context["step_name"])
+            node = node.next
+        context["path_names"] = names
+        return context
+
+
+class CrossBranchWizardViewSet(WizardViewSet):
+    description = (
+        "Second branch's predicate dereferences a step inside the first "
+        "branch's business arm; mid-divert renders and edits must stay "
+        "safe because unreached branch regions are opaque."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, name="business_name"),
+            ),
+            default=Wizard().step(PathProbeStepView, name="preferred_name"),
+        )
+        .branch(
+            condition(
+                _business_was_acme,
+                Wizard().step(SecondStepForm, name="second"),
+            ),
+        )
+        .step(ReviewForm, name="review")
+    )
+
+    url_name = "cross-branch-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
 class UnroutableWizardViewSet(WizardViewSet):

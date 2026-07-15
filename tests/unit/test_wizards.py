@@ -208,7 +208,13 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"account_type": "personal"}}],
+                },
+            },
+        },
     )
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
@@ -217,6 +223,39 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
 
     assert isinstance(personal_step, RuntimeStep)
     assert personal_step.declaration.declaration is PersonalDetailsForm
+
+
+def test_bound_wizard_find_step_returns_none_inside_unreached_branch(
+    request_with_session_factory,
+):
+    def is_business_account(request):
+        return False
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account"})
+        .branch(
+            gandalf.wizard.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, context={"step_name": "business"}),
+            ),
+            default=Wizard().step(
+                PersonalDetailsForm, context={"step_name": "personal"}
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.find_step(step_name="personal") is None
+    review_step = bound_wizard.find_step(step_name="review")
+    assert review_step is not None
+    assert review_step.data is None
 
 
 def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
@@ -391,35 +430,6 @@ def test_get_bound_wizard_uses_configured_storage_class(request_with_session_fac
 
     assert isinstance(bound_wizard.storage, FakeStorage)
     assert bound_wizard.storage.request is request
-
-
-def test_configured_wizard_uses_configured_runtime_tree_builder_class(
-    request_with_session_factory,
-):
-    sentinel = object()
-
-    class FakeBuilder:
-        def __init__(self, bound_wizard, entries):
-            self.head = sentinel
-
-        def walk(self, root):
-            pass
-
-    request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
-    )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            runtime_tree_builder_class=FakeBuilder,
-        )
-    )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-
-    assert bound_wizard.runtime_tree is sentinel
 
 
 def test_configured_wizard_uses_configured_step_dispatcher_class(
@@ -1680,6 +1690,104 @@ def test_bound_wizard_previous_step_is_none_behind_a_preserved_branch(
     assert bound_wizard.previous_step(cursor, review.declaration) is None
 
 
+def _cross_branch_wizard():
+    """Wizard whose second branch's predicate dereferences a step inside the
+    first branch's business arm — the issue #45 crash shape when that step
+    is dormant or unanswered."""
+    import gandalf.wizard
+
+    def is_business_account(request):
+        account_step = request.wizard.find_step(step_name="account_type")
+        return account_step.data["account_type"] == "business"
+
+    def business_was_acme(request):
+        business_step = request.wizard.find_step(step_name="business_name")
+        return business_step.data["business_name"] == "Acme"
+
+    return (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            gandalf.wizard.condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, name="business_name"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
+        )
+        .branch(
+            gandalf.wizard.condition(
+                business_was_acme,
+                Wizard().step(SecondStepForm, name="second"),
+            ),
+        )
+        .step(ReviewForm, name="review")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+
+def test_bound_wizard_edit_succeeds_with_cross_branch_predicate_mid_divert(
+    request_with_session_factory,
+):
+    wizard = _cross_branch_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "personal"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                        {"branch": {"0": [{"step": {"email": "ada@example.com"}}]}},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert (
+        bound_wizard.edit({"account_type": "personal"}, step_name="account_type")
+        is None
+    )
+    state = request.session["gandalf_runs"]["existing-run"]["state"]
+    assert state[0] == {"step": {"account_type": "personal"}}
+    assert state[1] == {"branch": {"0": [{"step": {"business_name": "Acme"}}]}}
+
+
+def test_bound_wizard_path_is_safe_with_cross_branch_predicate_mid_divert(
+    request_with_session_factory,
+):
+    wizard = _cross_branch_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "personal"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                        {"branch": {"0": [{"step": {"email": "ada@example.com"}}]}},
+                        {"step": {"confirmed": "on"}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    names = [step.declaration.context["step_name"] for step in _iter_path(bound_wizard)]
+
+    assert names == ["account_type", "review"]
+
+
+def _iter_path(bound_wizard):
+    node = bound_wizard.path
+    while node is not None:
+        yield node
+        node = node.next
+
+
 class _StubUrls:
     def get_wizard_url(self, run_id):
         return f"/wizard/{run_id}/"
@@ -1731,6 +1839,28 @@ def test_bound_wizard_back_url_is_none_at_the_first_step(
 
     assert bound_wizard.back_url is None
     assert bound_wizard.run_url == "/wizard/existing-run/"
+
+
+def test_bound_wizard_runtime_tree_reuses_the_render_context_walk(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"account_type": "business"}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    bound_wizard.mark_rendering(cursor, cursor.node)
+
+    assert bound_wizard.runtime_tree is cursor.state
 
 
 def test_bound_wizard_nav_urls_are_none_without_reverser_or_render_context(
@@ -2766,6 +2896,9 @@ def test_bound_wizard_render_edit_passes_stored_file_as_initial(
         form_class = ProfilePhotoForm
         template_name = "testapp/linear_wizard.html"
 
+        def get_success_url(self):
+            return self.request.path
+
         def get_initial(self):
             captured["initial"] = super().get_initial()
             return captured["initial"]
@@ -3061,6 +3194,9 @@ def test_bound_wizard_edit_error_render_receives_url_kwargs(
         form_class = FirstStepForm
         template_name = "testapp/linear_wizard.html"
 
+        def get_success_url(self):
+            return self.request.path
+
         def get_context_data(self, **context):
             context = super().get_context_data(**context)
             context["org"] = self.kwargs["org"]
@@ -3103,6 +3239,9 @@ def test_bound_wizard_render_edit_receives_url_kwargs(
     class KwargAwareStepView(FormView):
         form_class = FirstStepForm
         template_name = "testapp/linear_wizard.html"
+
+        def get_success_url(self):
+            return self.request.path
 
         def get_context_data(self, **context):
             context = super().get_context_data(**context)

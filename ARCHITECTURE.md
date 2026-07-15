@@ -5,10 +5,10 @@
 | Module | Role |
 |---|---|
 | `gandalf/tree.py` | Immutable wizard tree — `Step` and `Branch` frozen dataclasses linked via `.next`; `build()` threads `next` from a flat declaration list. Also defines the four traversal kinds (`Visitor`, `Interpreter`, `Transformer`, `Reducer`) and the `Configurer` transformer that attaches `form_view` classes to each `Step` |
-| `gandalf/wizard.py` | Declarative builder — `Wizard` (fluent `.step()` / `.branch()` API) and `ConfiguredWizard` (post-`.configure()`, holds the configured tree and pluggable class slots: `storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `state_serializer_class`, `form_view_factory`) |
+| `gandalf/wizard.py` | Declarative builder — `Wizard` (fluent `.step()` / `.branch()` API) and `ConfiguredWizard` (post-`.configure()`, holds the configured tree and pluggable class slots: `storage_class`, `cursor_walker_class`, `state_serializer_class`, `step_router_class`, `form_view_factory`) |
 | `gandalf/form_views.py` | `form_view_factory()` — generates a `FormView` subclass from a plain `Form` class |
 | `gandalf/storage.py` | `SessionStorage` — JSON persistence to `request.session`. Knows nothing about tree shape; reads and writes a `state` list per `run_id` |
-| `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `cursor()`, `submit()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds a full-length runtime tree in lockstep with stored entries — validated up to the cursor, carried verbatim past it. `RuntimeTreeBuilder` (an `Interpreter`) builds the full active-route runtime tree for introspection. `Cursor` is the decision object — `(node, state, response)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
+| `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `cursor()`, `submit()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds the one runtime tree everything uses — validated up to the cursor, carried verbatim past it; `runtime_tree`, `path`, `find_step`, and edit resolution all derive from it. `Cursor` is the decision object — `(node, state, response)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
 | `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST. Every request routes through step URLs (`_routed_get` / `_routed_post`); `urls()` publishes the patterns from `url_name`, and `get_wizard_url` / `get_step_url` reverse them |
 
 ---
@@ -84,7 +84,7 @@ graph LR
 
 `form_view_factory()` produces one `GeneratedFormView` class per `Step`, but the diagram collapses them to a single node; each `Step.form_view` points to its own generated class.
 
-`RuntimeTreeBuilder` is omitted from the diagram — it's a parallel `Interpreter` used by `BoundWizard.find_step()` / `filter_steps()` and by the `runtime_tree` property for introspection. It does not produce a cursor and is not on the submit/replay path.
+The `runtime_tree` property (and `path` / `find_step` / `filter_steps` on top of it) is the same walk: it reuses the render context's cursor when the viewset recorded one, and performs one `CursorWalker` pass otherwise. There is no separate introspection builder.
 
 ---
 
@@ -213,7 +213,7 @@ State is stored in `request.session["gandalf_runs"][run_id]["state"]` as a list 
 
 Branch entries are keyed by arm id — the arm's declaration-order index as a string, or `"default"`. The active arm's answers live under its key; other keys are **dormant memory**: they are carried verbatim (never validated, never descended into) so that changing a branch answer parks the old arm's data instead of discarding it, and flipping back restores it. A missing key means that arm has never been answered. Bare-list branch entries (the pre-per-arm shape) are still read, treated as belonging to whichever arm is derived on that walk — a best-effort adoption: a request-dependent predicate (user role, feature flag) that derives a different arm than the legacy entries were recorded under will misattribute them, the same exposure the pre-per-arm code had.
 
-Branch **decisions** are still never persisted. On every walk the active arm is re-derived by evaluating each branch predicate against the runtime-tree prefix built so far; the arm id only keys which stored memory is live. `SessionStorage` is deliberately tree-shape-agnostic — it just reads and writes a list; the lockstep walk in `CursorWalker` / `RuntimeTreeBuilder` is what makes the list mean something.
+Branch **decisions** are still never persisted. On every walk the active arm is re-derived by evaluating each branch predicate against the runtime-tree prefix built so far; the arm id only keys which stored memory is live. `SessionStorage` is deliberately tree-shape-agnostic — it just reads and writes a list; the lockstep walk in `CursorWalker` is what makes the list mean something.
 
 Steps have no stable identifier. Alignment between declaration and stored entries is purely positional, which is why the stored shape must mirror the AST: each walker pops one entry per node as it descends. (Arm ids are positional too — a dynamic `get_wizard()` that reorders branch arms between requests can misattribute dormant memory, the same way reordering steps misaligns entries.)
 
@@ -281,9 +281,9 @@ wizard = (
 )
 ```
 
-`BoundWizard._select_branch_arm()` (called from inside both `CursorWalker` and `RuntimeTreeBuilder` when they hit a `tree.Branch`) temporarily sets `self._predicate_runtime_tree` to the partial runtime head built up to the branch, evaluates each arm predicate in declaration order, and returns `(arm_id, subtree)` for the first matching arm — or `("default", Branch.default)`. The partial-tree handoff is what lets predicates see prior answers without seeing future ones; the arm id keys which per-arm memory in the branch's stored entry is live for this walk.
+`BoundWizard._select_branch_arm()` (called from inside `CursorWalker` when it hits a `tree.Branch`) temporarily sets `self._predicate_runtime_tree` to the partial runtime head built up to the branch, evaluates each arm predicate in declaration order, and returns `(arm_id, subtree)` for the first matching arm — or `("default", Branch.default)`. The partial-tree handoff is what lets predicates see prior answers without seeing future ones; the arm id keys which per-arm memory in the branch's stored entry is live for this walk.
 
-One robustness note: `CursorWalker` never evaluates predicates past the cursor (sealed branches are opaque), but `RuntimeTreeBuilder` — which backs `runtime_tree`, `path`, `find_step`, and edit-target resolution — builds the whole tree even when earlier answers are missing or dormant. A predicate that dereferences another step's data unconditionally (`find_step(...).data["key"]`) can therefore raise when that step is unanswered or parked in a dormant arm. Predicates used alongside mid-run introspection should tolerate missing data (e.g. guard on `step is None or step.data is None`).
+This yields a guarantee: because the sealed walk is the only thing that ever selects arms, **a branch predicate only ever runs behind a fully-validated prefix** — every step before the branch is answered and currently valid when the predicate executes. Predicates can dereference prior answers (`find_step(...).data["key"]`) unconditionally. The corollary is that unreached branch regions are opaque to introspection: `find_step` returns `None` for steps inside a branch whose arm cannot be derived yet, and `path` skips preserved regions.
 
 ---
 

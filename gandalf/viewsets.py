@@ -161,7 +161,12 @@ class WizardViewSet(View):
             files = self._store_uploads(bound_wizard, self.request.FILES)
             bound_wizard.mark_rendering(cursor, target.declaration)
             edit_response = bound_wizard.edit(
-                submission, *args, files=files, url_kwargs=kwargs or None, **route_context
+                submission,
+                *args,
+                cursor=cursor,
+                target=target,
+                files=files,
+                url_kwargs=kwargs or None,
             )
             if edit_response is not None:
                 return edit_response

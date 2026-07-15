@@ -630,7 +630,7 @@ signup_wizard = (
 )
 ```
 
-The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `runtime_tree_builder_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
+The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
 
 - `Wizard()` remains focused on step/branch declaration,
 - `configure(...)` receives configuration touch points,
@@ -826,7 +826,11 @@ Some practical caveats:
 - While a divert is in progress, `bound_wizard.path` includes preserved
   downstream steps that hold data but have not been re-validated on the
   current walk — treat mid-run `path` reads as "answered", not
-  "confirmed-valid".
+  "confirmed-valid". Steps inside branch regions that cannot be reached
+  yet are invisible to `path` and `find_step` until the answers they
+  depend on exist — which is also why branch predicates can dereference
+  prior answers unconditionally: they only ever run behind a
+  fully-validated prefix.
 
 ## Step URLs
 

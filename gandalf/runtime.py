@@ -132,6 +132,10 @@ class PreservedBranch:
     def accept_reduce(self, reducer):
         return self.entry
 
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_preserved_branch(self, next_result)
+
 
 def _branch_sub_entries(entry, arm_id):
     """Split a stored branch entry into (active sub-entries, dormant arms)
@@ -290,9 +294,15 @@ class BoundWizard:
 
     @property
     def runtime_tree(self):
-        builder = self.wizard.runtime_tree_builder_class(self, self.get_state())
-        builder.walk(self.wizard.tree)
-        return builder.head
+        """The runtime tree behind the sealed cursor walk: validated up to
+        the cursor, carried verbatim past it, with unreached branch regions
+        opaque. On a complete run this is the full tree. Reuses the render
+        context's walk when the viewset recorded one; otherwise walks once.
+        Branch predicates therefore only ever run behind a fully-validated
+        prefix."""
+        if self._render_context is not None:
+            return self._render_context[0].state
+        return self.cursor().state
 
     @property
     def path(self):
@@ -402,7 +412,7 @@ class BoundWizard:
         if url_kwargs is None:
             url_kwargs = {}
         if target is None:
-            target = self._resolve_edit_target(context)
+            target = self._resolve_edit_target(self.cursor(), context)
         initial = dict(target.data or {})
         for field, ref in (target.files or {}).items():
             initial[field] = self.file_storage.open(ref)
@@ -414,7 +424,16 @@ class BoundWizard:
             **url_kwargs,
         )
 
-    def edit(self, submission, *args, files=None, url_kwargs=None, **context):
+    def edit(
+        self,
+        submission,
+        *args,
+        cursor=None,
+        target=None,
+        files=None,
+        url_kwargs=None,
+        **context,
+    ):
         """Replace the target step's stored submission and re-validate the run.
 
         Transactional: the new submission is validated against the target
@@ -422,30 +441,36 @@ class BoundWizard:
         resolved) the newly stored uploads are deleted while stored state
         and previously persisted file refs stay untouched; a validation
         failure returns the rendered error response. On success the
-        submission is spliced into the runtime tree, the walker re-validates
-        downstream state, the rebuilt state is persisted, replaced old file
-        refs are deleted only after that persist, and None is returned.
+        submission is spliced into the walked runtime tree, the walker
+        re-validates downstream state, the rebuilt state is persisted,
+        replaced old file refs are deleted only after that persist, and
+        None is returned.
+
+        `cursor` and `target` accept an already-walked cursor and its
+        resolved step (e.g. from `find_step_at`); without them the run is
+        walked and the target resolved from `context`. Either way the
+        splice operates on the sealed walk's tree, so no branch predicate
+        ever runs past the cursor.
         """
         if url_kwargs is None:
             url_kwargs = {}
-        runtime = self.runtime_tree
-        try:
-            runtime_step = self._resolve_edit_target(context, runtime=runtime)
-        except StepNotFound:
-            self._delete_file_refs(files)
-            raise
-        response = self._validate_edit(
-            runtime_step, submission, files, args, url_kwargs
-        )
+        if cursor is None or target is None:
+            cursor = self.cursor(*args, **url_kwargs)
+            try:
+                target = self._resolve_edit_target(cursor, context)
+            except StepNotFound:
+                self._delete_file_refs(files)
+                raise
+        response = self._validate_edit(target, submission, files, args, url_kwargs)
         if response is not None:
             self._delete_file_refs(files)
             return response
         merged_files, replaced_refs = _overlay_file_refs(
-            runtime_step.files or {}, files or {}
+            target.files or {}, files or {}
         )
         spliced = SpliceSubmission(
-            runtime_step, submission, files=merged_files or None
-        ).transform(runtime)
+            target, submission, files=merged_files or None
+        ).transform(cursor.state)
         serializer = self.wizard.state_serializer_class()
         rebuilt_entries = serializer.reduce(spliced)
         walker = self.wizard.cursor_walker_class(
@@ -494,11 +519,9 @@ class BoundWizard:
         """
         self.file_storage.delete_run(self.run_id)
 
-    def _resolve_edit_target(self, context, runtime=None):
-        if runtime is None:
-            runtime = self.runtime_tree
+    def _resolve_edit_target(self, cursor, context):
         finder = tree.ContextFinder(context, require_data=True)
-        finder.visit(runtime)
+        finder.visit(cursor.state)
         match = finder.one_with_path()
         if match is None:
             raise StepNotFound(context)
@@ -705,6 +728,9 @@ class PathFlattener(tree.Transformer):
             return next_result
         return replace(runtime_step, next=next_result)
 
+    def visit_preserved_branch(self, preserved_branch, next_result):
+        return next_result
+
     def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
         if transformed_selected_arm is None:
             return next_result
@@ -737,67 +763,6 @@ class MergeCleanedData(tree.Reducer):
 
     def visit_branch(self, runtime_branch, sub_result):
         return sub_result
-
-
-class RuntimeTreeBuilder(tree.Interpreter):
-    """Builds a runtime tree mirroring the declaration tree, applying stored
-    state data to runtime steps along the active path.
-
-    Unlike `CursorWalker` this never seals: introspection is allowed to
-    look ahead past holes (`find_step` on a fresh run locates future
-    steps), and per-arm branch memory makes the lookahead lossless — even
-    if a predicate past a hole derives a different arm than the entries
-    were stored under, the stored sub-entries simply ride along as
-    dormant memory."""
-
-    def __init__(self, bound_wizard, entries):
-        self._bound_wizard = bound_wizard
-        self._entries_iter = iter(entries)
-        self.head: RuntimeStep | RuntimeBranch | None = None
-        self._tail: RuntimeStep | RuntimeBranch | None = None
-
-    def visit_step(self, step):
-        entry = next(self._entries_iter, None)
-        if entry is None:
-            data = None
-            files = None
-        else:
-            data = entry["step"]
-            files = entry.get("files")
-        self._append(
-            RuntimeStep(
-                declaration=step,
-                data=data,
-                files=files,
-                bound_wizard=self._bound_wizard,
-            )
-        )
-
-    def visit_branch(self, branch):
-        entry = next(self._entries_iter, None)
-        arm_id, selected_decl = self._bound_wizard._select_branch_arm(
-            branch, self.head
-        )
-        sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
-
-        sub_builder = type(self)(self._bound_wizard, sub_entries)
-        sub_builder.walk(selected_decl)
-
-        self._append(
-            RuntimeBranch(
-                declaration=branch,
-                selected_arm=sub_builder.head,
-                selected_arm_id=arm_id,
-                dormant_arms=dormant_arms,
-            )
-        )
-
-    def _append(self, node):
-        if self.head is None:
-            self.head = node
-        else:
-            self._tail.next = node
-        self._tail = node
 
 
 class SpliceSubmission(tree.Transformer):
