@@ -87,12 +87,16 @@ class RuntimeStep:
 class RuntimeBranch:
     """Runtime mirror of a declared `tree.Branch` along the active path —
     records the selected arm only. Inactive arms are not mirrored in the
-    runtime tree; inspect `bound_wizard.wizard.tree` for the full declared
-    structure.
+    runtime tree; their stored entries ride along verbatim in
+    `dormant_arms`, keyed by arm id, so answers survive an arm change and
+    are restored when the user flips back. Inspect
+    `bound_wizard.wizard.tree` for the full declared structure.
     """
 
     declaration: tree.Branch
     selected_arm: "RuntimeStep | RuntimeBranch | None" = None
+    selected_arm_id: str | None = None
+    dormant_arms: dict = dataclass_field(default_factory=dict)
     next: "RuntimeStep | RuntimeBranch | None" = None
 
     def accept_reduce(self, reducer):
@@ -105,6 +109,89 @@ class RuntimeBranch:
         return transformer.visit_branch(self, transformed_arm, next_result)
 
 
+@dataclass
+class PreservedBranch:
+    """Verbatim passthrough of a stored branch entry positioned after the
+    cursor. The walk cannot select an arm there — branch predicates may
+    depend on answers the user has not (re)supplied yet — so the raw entry
+    is carried through serialization untouched and re-interpreted on a
+    later walk once the steps before it are answered.
+
+    `accept_reduce` returns the raw entry without consulting the reducer,
+    so custom `state_serializer_class` hooks do not see sealed regions.
+    """
+
+    entry: dict
+    next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
+
+    # ContextFinder treats nodes carrying a `selected_arm` attribute as
+    # runtime branches and skips them when it is None — preserved regions
+    # are opaque to context lookups.
+    selected_arm = None
+
+    def accept_reduce(self, reducer):
+        return self.entry
+
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_preserved_branch(self, next_result)
+
+
+def _branch_sub_entries(entry, arm_id):
+    """Split a stored branch entry into (active sub-entries, dormant arms)
+    for the derived `arm_id`. A bare-list entry is the pre-per-arm legacy
+    shape and is treated as belonging to whichever arm is active on this
+    walk."""
+    if entry is None:
+        return [], {}
+    stored = entry["branch"]
+    if isinstance(stored, list):
+        return stored, {}
+    dormant = {key: value for key, value in stored.items() if key != arm_id}
+    return stored.get(arm_id, []), dormant
+
+
+def _overlay_file_refs(old_refs, new_refs):
+    """Overlay new upload refs over stored ones per field, returning the
+    merged mapping plus the stored refs that were replaced (so callers can
+    delete them once the new state is safely persisted)."""
+    merged = {**old_refs, **new_refs}
+    replaced = [old_refs[field] for field in old_refs if field in new_refs]
+    return merged, replaced
+
+
+def _iter_route_steps(node):
+    """Yield RuntimeStep nodes in active-route order, descending selected
+    branch arms inline. Preserved (opaque) branch regions are yielded as
+    their PreservedBranch node — the steps inside them are unknowable."""
+    while node is not None:
+        if isinstance(node, RuntimeStep):
+            yield node
+        elif isinstance(node, RuntimeBranch):
+            yield from _iter_route_steps(node.selected_arm)
+        else:
+            yield node
+        node = node.next
+
+
+def _trim_trailing_holes(entries):
+    """Drop trailing hole entries so persisted state stays minimal: a
+    trailing `{"step": None}` or empty branch slot carries no information
+    (walkers treat a missing entry the same way). Interior holes are kept —
+    they preserve positional alignment for answered entries that come
+    after them."""
+    trimmed = list(entries)
+    while trimmed and _is_empty_entry(trimmed[-1]):
+        trimmed.pop()
+    return trimmed
+
+
+def _is_empty_entry(entry):
+    if "branch" in entry:
+        return not entry["branch"]
+    return entry.get("step") is None and not entry.get("files")
+
+
 @dataclass(frozen=True)
 class Cursor:
     """Position in the wizard where the user currently is — the first step
@@ -113,8 +200,10 @@ class Cursor:
     `node` is None when every stored submission validates and there is no
     next step. `response` carries the rendered form when stored data was
     invalid; otherwise the cursor is at an empty slot ready for a GET render.
-    `state` is the runtime tree built up to (and including) the cursor, with
-    a pending submission already placed at the cursor's slot.
+    `state` is the full runtime tree: validated up to the cursor (with a
+    pending submission already placed at the cursor's slot) and carried
+    verbatim past it, so serializing it preserves answers positioned after
+    the cursor.
     """
 
     node: tree.Step | None
@@ -168,7 +257,9 @@ class BoundWizard:
         self.request = request
         self.storage = storage
         self.run_id = None
+        self.urls = None
         self._predicate_runtime_tree = None
+        self._render_context = None
         self._dispatcher = None
         self._file_storage = None
 
@@ -203,9 +294,15 @@ class BoundWizard:
 
     @property
     def runtime_tree(self):
-        builder = self.wizard.runtime_tree_builder_class(self, self.get_state())
-        builder.walk(self.wizard.tree)
-        return builder.head
+        """The runtime tree behind the sealed cursor walk: validated up to
+        the cursor, carried verbatim past it, with unreached branch regions
+        opaque. On a complete run this is the full tree. Reuses the render
+        context's walk when the viewset recorded one; otherwise walks once.
+        Branch predicates therefore only ever run behind a fully-validated
+        prefix."""
+        if self._render_context is not None:
+            return self._render_context[0].state
+        return self.cursor().state
 
     @property
     def path(self):
@@ -220,6 +317,62 @@ class BoundWizard:
         finder = tree.ContextFinder(context)
         finder.visit(self._current_runtime_tree())
         return finder.one()
+
+    def find_step_at(self, cursor, **context):
+        """Locate a step matching `context` on the walked tree behind
+        `cursor` — the validated prefix plus the verbatim-preserved tail.
+
+        Unlike `find_step` this never evaluates branch predicates past the
+        cursor, so it is safe on incomplete runs; steps parked in dormant
+        arms are not visible (their branch regions are opaque)."""
+        finder = tree.ContextFinder(context)
+        finder.visit(cursor.state)
+        return finder.one()
+
+    def previous_step(self, cursor, target_declaration):
+        """The step immediately before `target_declaration` in active-route
+        order on the walked tree behind `cursor`, or None when the target
+        is the first step — or when its predecessor is hidden inside a
+        preserved (opaque) branch region and cannot be known."""
+        previous = None
+        for node in _iter_route_steps(cursor.state):
+            if isinstance(node, PreservedBranch):
+                previous = node
+                continue
+            if node.declaration is target_declaration:
+                return previous if isinstance(previous, RuntimeStep) else None
+            previous = node
+        return None
+
+    def mark_rendering(self, cursor, target_declaration):
+        """Record which step this request is rendering, so the navigation
+        properties can derive URLs lazily. Called by the viewset before
+        dispatching a step render; reuses the cursor it already computed."""
+        self._render_context = (cursor, target_declaration)
+
+    @property
+    def run_url(self):
+        """The bare run URL — redirects to the current step, so it works as
+        a "return to where I was" link. None without a URL reverser (set by
+        the viewset via `bound_wizard.urls`)."""
+        if self.urls is None:
+            return None
+        return self.urls.get_wizard_url(self.run_id)
+
+    @property
+    def back_url(self):
+        """The previous active-route step's URL for the step this request
+        is rendering. None without a URL reverser or render context
+        (programmatic use), at the first step, or when the predecessor is
+        hidden inside a preserved branch region."""
+        if self.urls is None or self._render_context is None:
+            return None
+        cursor, target_declaration = self._render_context
+        previous = self.previous_step(cursor, target_declaration)
+        if previous is None:
+            return None
+        segment = self.wizard.step_router_class().reverse(previous.declaration)
+        return self.urls.get_step_url(self.run_id, segment)
 
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)
@@ -241,62 +394,122 @@ class BoundWizard:
         entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
 
-    def replay(self, *args, **kwargs):
+    def cursor(self, *args, **kwargs):
+        """Walk stored state and return the run's current Cursor."""
         walker = self.wizard.cursor_walker_class(
             self.dispatcher, self.get_state(), None, args, kwargs, self
         )
         walker.walk(self.wizard.tree)
-        cursor = walker.cursor()
-        if cursor.node is None:
-            return None
-        return self.dispatcher.render_cursor(cursor, *args, **kwargs)
+        return walker.cursor()
 
-    def render_edit(self, *args, **context):
-        runtime_step = self._resolve_edit_target(context)
-        initial = dict(runtime_step.data or {})
-        for field, ref in (runtime_step.files or {}).items():
+    def render_edit(self, *args, target=None, url_kwargs=None, **context):
+        """Render a completed step pre-filled with its stored submission.
+
+        `target` accepts an already-resolved runtime step (e.g. from
+        `find_step_at`, which never evaluates predicates past the cursor);
+        without one the step is resolved from `context` against the full
+        runtime tree."""
+        if url_kwargs is None:
+            url_kwargs = {}
+        if target is None:
+            target = self._resolve_edit_target(self.cursor(), context)
+        initial = dict(target.data or {})
+        for field, ref in (target.files or {}).items():
             initial[field] = self.file_storage.open(ref)
         return self.dispatcher.dispatch(
-            runtime_step.declaration,
+            target.declaration,
             self.dispatcher.build_request("GET"),
             *args,
             initial=initial,
+            **url_kwargs,
         )
 
-    def edit(self, submission, *args, files=None, **context):
-        runtime = self.runtime_tree
-        runtime_step = self._resolve_edit_target(context, runtime=runtime)
-        leaf_decl = runtime_step.declaration
-        merged_files = self._merge_file_refs(runtime_step.files or {}, files or {})
+    def edit(
+        self,
+        submission,
+        *args,
+        cursor=None,
+        target=None,
+        files=None,
+        url_kwargs=None,
+        **context,
+    ):
+        """Replace the target step's stored submission and re-validate the run.
+
+        Transactional: the new submission is validated against the target
+        step's form view first. On failure (or when the target cannot be
+        resolved) the newly stored uploads are deleted while stored state
+        and previously persisted file refs stay untouched; a validation
+        failure returns the rendered error response. On success the
+        submission is spliced into the walked runtime tree, the walker
+        re-validates downstream state, the rebuilt state is persisted,
+        replaced old file refs are deleted only after that persist, and
+        None is returned.
+
+        `cursor` and `target` accept an already-walked cursor and its
+        resolved step (e.g. from `find_step_at`); without them the run is
+        walked and the target resolved from `context`. Either way the
+        splice operates on the sealed walk's tree, so no branch predicate
+        ever runs past the cursor.
+        """
+        if url_kwargs is None:
+            url_kwargs = {}
+        if cursor is None or target is None:
+            cursor = self.cursor(*args, **url_kwargs)
+            try:
+                target = self._resolve_edit_target(cursor, context)
+            except StepNotFound:
+                self._delete_file_refs(files)
+                raise
+        response = self._validate_edit(target, submission, files, args, url_kwargs)
+        if response is not None:
+            self._delete_file_refs(files)
+            return response
+        merged_files, replaced_refs = _overlay_file_refs(
+            target.files or {}, files or {}
+        )
         spliced = SpliceSubmission(
-            runtime_step, submission, files=merged_files or None
-        ).transform(runtime)
+            target, submission, files=merged_files or None
+        ).transform(cursor.state)
         serializer = self.wizard.state_serializer_class()
         rebuilt_entries = serializer.reduce(spliced)
         walker = self.wizard.cursor_walker_class(
-            self.dispatcher, rebuilt_entries, None, args, {}, self
+            self.dispatcher, rebuilt_entries, None, args, url_kwargs, self
         )
         walker.walk(self.wizard.tree)
-        cursor = walker.cursor()
-        if cursor.response is not None and cursor.node is leaf_decl:
-            rebuilt_runtime = self._build_runtime_tree(entries=rebuilt_entries)
-            entries = serializer.reduce(truncate_after(rebuilt_runtime, leaf_decl))
-        else:
-            entries = serializer.reduce(cursor.state)
+        entries = serializer.reduce(walker.cursor().state)
         self.storage.set_state(self.run_id, entries)
+        for ref in replaced_refs:
+            self.file_storage.delete(ref)
+        return None
 
-    def _merge_file_refs(self, old_refs, new_refs):
-        merged = {}
-        for field, old_ref in old_refs.items():
-            if field in new_refs:
-                self.file_storage.delete(old_ref)
-                merged[field] = new_refs[field]
-            else:
-                merged[field] = old_ref
-        for field, new_ref in new_refs.items():
-            if field not in old_refs:
-                merged[field] = new_ref
-        return merged
+    def _validate_edit(self, runtime_step, submission, files, args, kwargs):
+        """Dispatch the new submission through the target step's form view.
+
+        The request carries the stored files overlaid with the new uploads,
+        mirroring what a replay of the accepted edit would see. Returns the
+        rendered response when the submission does not satisfy the step,
+        None when it does. The error render happens at the step's own URL,
+        so resubmitting the corrected form re-targets the same step.
+        """
+        validation_refs, _ = _overlay_file_refs(
+            runtime_step.files or {}, files or {}
+        )
+        request = self.dispatcher.build_request(
+            "POST",
+            submission=submission,
+            files=_open_file_refs(self, validation_refs),
+        )
+        response = self.dispatcher.dispatch(
+            runtime_step.declaration, request, *args, **kwargs
+        )
+        if self.dispatcher.response_satisfies_step(response):
+            return None
+        return response
+
+    def _delete_file_refs(self, refs):
+        for ref in (refs or {}).values():
+            self.file_storage.delete(ref)
 
     def cleanup_files(self):
         """Remove all files persisted under this run's prefix.
@@ -306,39 +519,45 @@ class BoundWizard:
         """
         self.file_storage.delete_run(self.run_id)
 
-    def _resolve_edit_target(self, context, runtime=None):
-        if runtime is None:
-            runtime = self.runtime_tree
+    def _resolve_edit_target(self, cursor, context):
         finder = tree.ContextFinder(context, require_data=True)
-        finder.visit(runtime)
+        finder.visit(cursor.state)
         match = finder.one_with_path()
         if match is None:
             raise StepNotFound(context)
         _, runtime_step = match
         return runtime_step
 
-    def _build_runtime_tree(self, entries):
-        builder = self.wizard.runtime_tree_builder_class(self, entries)
-        builder.walk(self.wizard.tree)
-        return builder.head
-
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
+        """Derive the active arm for a branch, returning `(arm_id, subtree)`.
+
+        `arm_id` is the arm's declaration-order index as a string, or
+        `"default"` — the key its sub-entries are stored under. The decision
+        itself is never persisted; only per-arm memory is keyed by it.
+        """
         request = self.dispatcher.build_request("GET")
         self._predicate_runtime_tree = partial_runtime_head
         try:
-            for predicate, subtree in branch_node.arms:
+            for index, (predicate, subtree) in enumerate(branch_node.arms):
                 if predicate(request):
-                    return subtree
-            return branch_node.default
+                    return str(index), subtree
+            return "default", branch_node.default
         finally:
             self._predicate_runtime_tree = None
 
 
 class CursorWalker(tree.Interpreter):
-    """Interpreter that locates the wizard cursor and builds the runtime tree
-    up to that point. Validates stored entries by dispatching POSTs through
-    the StepDispatcher; when given a pending submission, places it at the
-    cursor's slot."""
+    """Interpreter that locates the wizard cursor and builds a runtime tree
+    mirroring the full declaration tree. Validates stored entries by
+    dispatching POSTs through the StepDispatcher; when given a pending
+    submission, places it at the cursor's slot.
+
+    Once the cursor is found the walk *seals* instead of stopping: later
+    steps carry their stored entries verbatim (no validation — it could not
+    be trusted while earlier answers are missing) and later branches become
+    `PreservedBranch` passthroughs. Serializing the head therefore keeps
+    every answer positioned after the cursor, so an edit that diverts the
+    flow only costs the user the steps that genuinely changed."""
 
     def __init__(
         self,
@@ -361,28 +580,33 @@ class CursorWalker(tree.Interpreter):
         self._tail: RuntimeStep | RuntimeBranch | None = None
         self._cursor = None
 
+    @property
+    def _sealed(self):
+        return self._cursor is not None
+
     def visit_step(self, step):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         stored_files = entry.get("files") if entry is not None else None
-        if stored is None:
-            self._place_pending(step)
-            self._cursor = Cursor(node=step, state=self._head)
-            return False
-        response = self._dispatcher.dispatch(
-            step,
-            self._dispatcher.build_request(
-                "POST",
-                submission=stored,
-                files=self._open_files(stored_files),
-            ),
-            *self._args,
-            **self._kwargs,
-        )
-        if not self._dispatcher.response_satisfies_step(response):
-            self._place_pending(step)
-            self._cursor = Cursor(node=step, state=self._head, response=response)
-            return False
+        if not self._sealed:
+            if stored is None:
+                self._park(step, keep_data=None, keep_files=stored_files)
+                return
+            response = self._dispatcher.dispatch(
+                step,
+                self._dispatcher.build_request(
+                    "POST",
+                    submission=stored,
+                    files=self._open_files(stored_files),
+                ),
+                *self._args,
+                **self._kwargs,
+            )
+            if not self._dispatcher.response_satisfies_step(response):
+                self._park(
+                    step, keep_data=stored, keep_files=stored_files, response=response
+                )
+                return
         self._append(
             RuntimeStep(
                 declaration=step,
@@ -391,12 +615,16 @@ class CursorWalker(tree.Interpreter):
                 bound_wizard=self._bound_wizard,
             )
         )
-        return True
 
     def visit_branch(self, branch):
         entry = next(self._entries_iter, None)
-        sub_entries = entry["branch"] if entry is not None else []
-        arm = self._bound_wizard._select_branch_arm(branch, self._head)
+        if self._sealed:
+            self._append(
+                PreservedBranch(entry=entry if entry is not None else {"branch": {}})
+            )
+            return
+        arm_id, arm = self._bound_wizard._select_branch_arm(branch, self._head)
+        sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
         sub = type(self)(
             self._dispatcher,
             sub_entries,
@@ -407,31 +635,52 @@ class CursorWalker(tree.Interpreter):
             pending_files=self._pending_files,
         )
         sub.walk(arm)
-        self._append(RuntimeBranch(declaration=branch, selected_arm=sub._head))
+        self._append(
+            RuntimeBranch(
+                declaration=branch,
+                selected_arm=sub._head,
+                selected_arm_id=arm_id,
+                dormant_arms=dormant_arms,
+            )
+        )
         if sub._cursor is not None:
             self._cursor = Cursor(
                 node=sub._cursor.node,
                 state=self._head,
                 response=sub._cursor.response,
             )
-            return False
-        return True
 
     def cursor(self):
         if self._cursor is not None:
             return self._cursor
         return Cursor(node=None, state=self._head)
 
-    def _place_pending(self, step):
+    def _park(self, step, keep_data, keep_files, response=None):
+        """Mark `step` as the cursor; setting it seals the rest of the walk.
+        The pending submission lands here; without one, the stored data
+        (invalid, or None for a hole) is kept so replay can re-render it
+        with errors. Stored file refs are kept unless the pending
+        submission replaces them — browsers never re-send file inputs, so
+        a correction POST without a new upload must not drop the
+        previously stored files."""
         if self._pending_submission is not None:
-            self._append(
-                RuntimeStep(
-                    declaration=step,
-                    data=self._pending_submission,
-                    files=self._pending_files,
-                    bound_wizard=self._bound_wizard,
-                )
+            data = self._pending_submission
+            files, _ = _overlay_file_refs(
+                keep_files or {}, self._pending_files or {}
             )
+            if not files:
+                files = None
+        else:
+            data, files = keep_data, keep_files
+        self._append(
+            RuntimeStep(
+                declaration=step,
+                data=data,
+                files=files,
+                bound_wizard=self._bound_wizard,
+            )
+        )
+        self._cursor = Cursor(node=step, state=self._head, response=response)
 
     def _open_files(self, file_refs):
         return _open_file_refs(self._bound_wizard, file_refs)
@@ -446,7 +695,14 @@ class CursorWalker(tree.Interpreter):
 
 class StateSerializer(tree.Reducer):
     """Bottom-up reducer that flattens a runtime tree into the dict-shaped
-    state stored in `request.session`."""
+    state stored in `request.session`. Branch entries are keyed per arm:
+    the active arm's sub-entries land under `selected_arm_id` (omitted
+    when empty — a missing key means the arm was never answered) and
+    dormant arms are carried back untouched. Trailing holes are trimmed
+    at every level."""
+
+    def reduce(self, root):
+        return _trim_trailing_holes(super().reduce(root))
 
     def visit_step(self, runtime_step):
         entry = {"step": runtime_step.data}
@@ -455,7 +711,10 @@ class StateSerializer(tree.Reducer):
         return entry
 
     def visit_branch(self, runtime_branch, sub_result):
-        return {"branch": sub_result}
+        arms = dict(runtime_branch.dormant_arms)
+        if sub_result:
+            arms[runtime_branch.selected_arm_id] = sub_result
+        return {"branch": arms}
 
 
 class PathFlattener(tree.Transformer):
@@ -468,6 +727,9 @@ class PathFlattener(tree.Transformer):
         if runtime_step.data is None:
             return next_result
         return replace(runtime_step, next=next_result)
+
+    def visit_preserved_branch(self, preserved_branch, next_result):
+        return next_result
 
     def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
         if transformed_selected_arm is None:
@@ -503,56 +765,6 @@ class MergeCleanedData(tree.Reducer):
         return sub_result
 
 
-class RuntimeTreeBuilder(tree.Interpreter):
-    """Builds a runtime tree mirroring the declaration tree, applying stored
-    state data to runtime steps along the active path."""
-
-    def __init__(self, bound_wizard, entries):
-        self._bound_wizard = bound_wizard
-        self._entries_iter = iter(entries)
-        self.head: RuntimeStep | RuntimeBranch | None = None
-        self._tail: RuntimeStep | RuntimeBranch | None = None
-
-    def visit_step(self, step):
-        entry = next(self._entries_iter, None)
-        if entry is None:
-            data = None
-            files = None
-        else:
-            data = entry["step"]
-            files = entry.get("files")
-        self._append(
-            RuntimeStep(
-                declaration=step,
-                data=data,
-                files=files,
-                bound_wizard=self._bound_wizard,
-            )
-        )
-
-    def visit_branch(self, branch):
-        entry = next(self._entries_iter, None)
-        sub_entries = entry["branch"] if entry is not None else []
-        selected_decl = self._bound_wizard._select_branch_arm(branch, self.head)
-
-        sub_builder = type(self)(self._bound_wizard, sub_entries)
-        sub_builder.walk(selected_decl)
-
-        self._append(
-            RuntimeBranch(
-                declaration=branch,
-                selected_arm=sub_builder.head,
-            )
-        )
-
-    def _append(self, node):
-        if self.head is None:
-            self.head = node
-        else:
-            self._tail.next = node
-        self._tail = node
-
-
 class SpliceSubmission(tree.Transformer):
     """Transformer over a runtime tree that replaces the `data` (and `files`)
     on a target RuntimeStep (identified by identity) with a new submission.
@@ -582,52 +794,9 @@ class SpliceSubmission(tree.Transformer):
         return RuntimeBranch(
             declaration=runtime_branch.declaration,
             selected_arm=transformed_arm,
+            selected_arm_id=runtime_branch.selected_arm_id,
+            dormant_arms=runtime_branch.dormant_arms,
             next=next_result,
         )
 
 
-def truncate_after(runtime_tree, target_decl):
-    """Returns a new runtime tree where the RuntimeStep with
-    `declaration is target_decl` is preserved (with `next=None`) and
-    everything after it is dropped."""
-    new_tree, _ = _truncate_after_recurse(runtime_tree, target_decl)
-    return new_tree
-
-
-def _truncate_after_recurse(node, target_decl):
-    if node is None:
-        return None, False
-    if isinstance(node, RuntimeStep):
-        if node.declaration is target_decl:
-            return (
-                RuntimeStep(
-                    node.declaration,
-                    data=node.data,
-                    files=node.files,
-                    next=None,
-                    bound_wizard=node.bound_wizard,
-                ),
-                True,
-            )
-        new_next, found = _truncate_after_recurse(node.next, target_decl)
-        return (
-            RuntimeStep(
-                node.declaration,
-                data=node.data,
-                files=node.files,
-                next=new_next,
-                bound_wizard=node.bound_wizard,
-            ),
-            found,
-        )
-    new_arm, found_in_arm = _truncate_after_recurse(node.selected_arm, target_decl)
-    if found_in_arm:
-        return (
-            RuntimeBranch(node.declaration, selected_arm=new_arm, next=None),
-            True,
-        )
-    new_next, found_in_next = _truncate_after_recurse(node.next, target_decl)
-    return (
-        RuntimeBranch(node.declaration, selected_arm=new_arm, next=new_next),
-        found_in_next,
-    )

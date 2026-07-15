@@ -96,6 +96,12 @@ class Transformer:
             return None
         return root.accept_transform(self)
 
+    def visit_preserved_branch(self, preserved_branch, next_result):
+        """Runtime trees only: a stored branch entry past the cursor,
+        carried verbatim. The default clones it through so transforms
+        preserve state; override to handle or skip opaque regions."""
+        return replace(preserved_branch, next=next_result)
+
 
 class Reducer:
     """Bottom-up tree fold. Each node's `visit_*` method returns a value
@@ -124,14 +130,15 @@ class Reducer:
 class Interpreter:
     """Top-down traversal where the visitor controls descent into branch
     arms manually (typically by calling `self.walk(arm)` inside
-    `visit_branch`). Subclasses must define `visit_step` and `visit_branch`;
-    return `False` from a visit method to stop the walk."""
+    `visit_branch`). Subclasses must define `visit_step` and `visit_branch`.
+    The walk always visits every node at its level; visitors that lose
+    interest partway (e.g. a sealed cursor walk) track that in their own
+    state."""
 
     def walk(self, root):
         node = root
         while node is not None:
-            if node.accept_interpret(self) is False:
-                return
+            node.accept_interpret(self)
             node = node.next
 
 

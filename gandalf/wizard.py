@@ -7,7 +7,6 @@ from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
     MergeCleanedData,
-    RuntimeTreeBuilder,
     StateSerializer,
     StepDispatcher,
 )
@@ -18,7 +17,7 @@ __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
     "MergeCleanedData",
-    "StepNameEditResolver",
+    "StepNameRouter",
     "Wizard",
     "WizardFileStorage",
     "branch",
@@ -31,38 +30,56 @@ __all__ = [
 
 def named(name, form_class_or_form_view_class):
     """Shorthand for declaring a step with `context={"step_name": name}`.
-    Pass the result to `Wizard().step(...)`.
+    Pass the result to `Wizard().step(...)`. Equivalent to the `name=`
+    keyword on `.step()`, which is the preferred spelling.
     """
     return form_class_or_form_view_class, {"step_name": name}
 
 
-class StepNameEditResolver:
-    """Resolves an edit cycle from a single `gandalf_edit_step` field whose
-    value is looked up against the wizard's runtime tree via `step_name=`
-    context matching. The default `edit_resolver_class` on `ConfiguredWizard`.
+class StepNameRouter:
+    """Routes an optional URL step segment to a step-context lookup and
+    reverses a step declaration back into a segment. The default
+    `step_router_class` on `ConfiguredWizard`.
+
+    Routing is an add-on: it activates only when the URL pattern captures
+    `url_kwarg` (e.g. `<slug:gandalf_step>`). Without that kwarg,
+    `resolve()` always returns None and the wizard behaves exactly as if
+    routing did not exist. Subclass to route on a different context key or
+    a composite lookup — the returned dict is matched against step context
+    the same way edit resolution is.
     """
 
-    field_name = "gandalf_edit_step"
+    url_kwarg = "gandalf_step"
     context_key = "step_name"
 
-    def resolve(self, request):
-        value = request.GET.get(self.field_name) or request.POST.get(self.field_name)
+    def resolve(self, url_kwargs):
+        value = url_kwargs.get(self.url_kwarg)
         if not value:
             return None
         return {self.context_key: value}
 
-    def clean_submission(self, submission):
-        submission.pop(self.field_name, None)
-        return submission
+    def reverse(self, step):
+        """Return the URL segment for a step declaration, or None when the
+        step carries no routable context (an unroutable step renders at the
+        bare run URL instead)."""
+        context = step.context or {}
+        return context.get(self.context_key)
+
+    def clean_url_kwargs(self, url_kwargs):
+        return {
+            key: value
+            for key, value in url_kwargs.items()
+            if key != self.url_kwarg
+        }
 
 
 def condition(predicate, target):
     return predicate, target
 
 
-def step(form_class_or_form_view_class, context=None):
+def step(form_class_or_form_view_class, context=None, name=None):
     """Module-level entry point: returns a Wizard starting with one step."""
-    return Wizard().step(form_class_or_form_view_class, context=context)
+    return Wizard().step(form_class_or_form_view_class, context=context, name=name)
 
 
 def branch(*conditions, default=None):
@@ -74,10 +91,12 @@ class Wizard:
     def __init__(self, *, tree=None):
         self.tree = tree
 
-    def step(self, form_class_or_form_view_class, context=None):
+    def step(self, form_class_or_form_view_class, context=None, name=None):
         if isinstance(form_class_or_form_view_class, tuple):
             form_class_or_form_view_class, base_context = form_class_or_form_view_class
             context = {**base_context, **(context or {})}
+        if name is not None:
+            context = {**(context or {}), "step_name": name}
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(
@@ -106,12 +125,11 @@ class Wizard:
 class ConfiguredWizard:
     storage_class = SessionStorage
     file_storage_class = WizardFileStorage
-    runtime_tree_builder_class = RuntimeTreeBuilder
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
     form_view_factory = staticmethod(form_view_factory)
-    edit_resolver_class = StepNameEditResolver
+    step_router_class = StepNameRouter
 
     def __init__(self, *, tree, configuration):
         self.configuration = configuration
@@ -123,9 +141,6 @@ class ConfiguredWizard:
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
         )
-        self.runtime_tree_builder_class = configuration.get(
-            "runtime_tree_builder_class", self.runtime_tree_builder_class
-        )
         self.cursor_walker_class = configuration.get(
             "cursor_walker_class", self.cursor_walker_class
         )
@@ -135,8 +150,8 @@ class ConfiguredWizard:
         self.state_serializer_class = configuration.get(
             "state_serializer_class", self.state_serializer_class
         )
-        self.edit_resolver_class = configuration.get(
-            "edit_resolver_class", self.edit_resolver_class
+        self.step_router_class = configuration.get(
+            "step_router_class", self.step_router_class
         )
 
     def configure(self, **configuration):

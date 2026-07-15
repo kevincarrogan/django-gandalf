@@ -2,22 +2,19 @@
 <html lang="en">
 <body>
   <h1>Editing branching wizard</h1>
-  {% if request.GET.gandalf_edit_step %}
-    <p><a href="?">Cancel edit</a></p>
+  {% if request.wizard.back_url %}
+    <p><a href="{{ request.wizard.back_url }}">Back</a></p>
   {% endif %}
   <form method="post">
     {% csrf_token %}
-    {% if request.GET.gandalf_edit_step %}
-      <input type="hidden" name="gandalf_edit_step" value="{{ request.GET.gandalf_edit_step }}">
-    {% endif %}
     {{ form.as_p }}
     <button type="submit">Continue</button>
   </form>
   <h2>Edit prior answers</h2>
   <ul>
-    <li><a href="?gandalf_edit_step=account_type">Edit account type</a></li>
-    <li><a href="?gandalf_edit_step=business_name">Edit business name</a></li>
-    <li><a href="?gandalf_edit_step=preferred_name">Edit preferred name</a></li>
+    <li><a href="../account_type/">Edit account type</a></li>
+    <li><a href="../business_name/">Edit business name</a></li>
+    <li><a href="../preferred_name/">Edit preferred name</a></li>
   </ul>
 </body>
 </html>

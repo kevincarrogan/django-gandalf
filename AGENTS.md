@@ -39,6 +39,13 @@ This project follows a test-driven development approach for filling out the requ
      dynamic `get_form_class()`, etc.). Gandalf reconstructs `cleaned_data`
      through the FormView's composition API, so any of those overrides are
      honored automatically.
+- Every step served over HTTP must carry a routable name — the canonical
+  spelling is `.step(SomeForm, name="some-step")` (shorthand for
+  `context={"step_name": ...}`). Steps are addressed by URL; there is no
+  unrouted mode, and the viewset raises `ImproperlyConfigured` for wizards
+  with unnamed steps. Viewsets declare `url_name` and are mounted with
+  `path("prefix/", include(MyViewSet.urls()))` unless a custom URL scheme
+  requires overriding `get_wizard_url` / `get_step_url`.
 - Prefer style 1 in tests and documentation unless the scenario specifically
   exercises style 2 behavior.
 - Treat parenthesized, one-builder-call-per-line wizard declarations as the idiomatic style in tests and documentation when the declaration naturally spans multiple steps or arguments:
@@ -55,24 +62,29 @@ When `ruff-format` keeps a short wizard declaration compact, accept that output
 as idiomatic too. Do not add `# fmt: off` only to force wizard declaration
 wrapping.
 - Express class-level configuration constants in uppercase, for example
-  `SESSION_KEY` or `MANAGEMENT_FORM_RUN_ID_FIELD_NAME`.
+  `SESSION_KEY`.
 - Prefer explicit `if value is None` branches when handling optional mutable
   defaults instead of shortened expressions such as `value or []`. When the
   value is transformed after defaulting, assign the default to the local
   parameter first and then perform the final assignment once.
-- Stored state mirrors the shape of the wizard tree. Each entry in a state
-  list is either `{"step": <form_data>}` for a `tree.Step` node or
-  `{"branch": [<sub-state entries>, ...]}` for a `tree.Branch` node, with
-  the sub-state recording the taken arm's state recursively. The
-  `WizardState` class in `gandalf/storage.py` owns the walk: a single
-  lockstep traversal of the wizard tree and the state list yields
-  `(step, stored_or_none)` pairs, descending into the matching branch arm
-  (re-derived from submissions-so-far at walk time, not stored). Branch
-  decisions are never persisted; they are always recomputed from the
-  preceding step submissions. Step context (e.g.
-  `context={"step_name": "account"}`) is user-space metadata for lookup
-  and introspection, not a storage key mechanism. Gandalf does not need
-  to generate or assign stable step keys.
+- Stored state is a full-tree positional mirror of the wizard tree, with
+  holes. Each entry in a state list is either `{"step": <form_data>}` for
+  a `tree.Step` node (`{"step": null}` marks a hole — a slot with no valid
+  answer yet) or `{"branch": {"<arm_id>": [<sub-state entries>, ...]}}`
+  for a `tree.Branch` node, keyed per arm by declaration-order index (as a
+  string) or `"default"`. The active arm's entries live under its key;
+  other keys are dormant memory carried verbatim so answers survive an arm
+  change and restore on flip-back. Bare-list branch entries are the legacy
+  shape, still readable. `CursorWalker` in `gandalf/runtime.py` owns the
+  walk: a lockstep traversal of the wizard tree and the state list that
+  validates entries up to the cursor (the first missing or invalid
+  answer), then seals and carries the remaining entries verbatim. Branch
+  decisions are never persisted; the active arm is always recomputed from
+  the preceding step submissions, and the arm id only keys which per-arm
+  memory is live. Step context (e.g. `context={"step_name": "account"}`)
+  is user-space metadata for lookup and introspection, not a storage key
+  mechanism; steps themselves still have no stable identifiers, so
+  alignment stays positional.
 
 ## Implementation Ownership
 
