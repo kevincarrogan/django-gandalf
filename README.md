@@ -902,20 +902,21 @@ Because history then contains only GETs of step URLs, the browser back
 button works naturally: going back shows an earlier answer pre-filled, and
 re-submitting it is just an edit that returns you to the cursor.
 
-For an explicit in-page back link, every step render carries two request
-attributes:
+For an explicit in-page back link, the wizard object exposes two lazy
+navigation properties, reachable from any step template via
+`request.wizard`:
 
-- `request.wizard_back_url` — the previous active-route step's URL
+- `request.wizard.back_url` — the previous active-route step's URL
   (branch-aware: on a branch arm's first step it points at the step before
   the branch). `None` on the first step, so templates can show the link
   conditionally.
-- `request.wizard_run_url` — the bare run URL, which redirects to the
+- `request.wizard.run_url` — the bare run URL, which redirects to the
   current step; useful as a "cancel, return to where I was" affordance on
   edit pages.
 
 ```django
-{% if request.wizard_back_url %}
-  <a href="{{ request.wizard_back_url }}">Back</a>
+{% if request.wizard.back_url %}
+  <a href="{{ request.wizard.back_url }}">Back</a>
 {% endif %}
 ```
 

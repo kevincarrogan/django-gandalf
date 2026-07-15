@@ -67,6 +67,7 @@ class WizardViewSet(View):
         wizard = self.configure_wizard(self.get_wizard(bound_wizard))
         self._validate_routable(wizard)
         bound_wizard.bind(wizard)
+        bound_wizard.urls = self
         return bound_wizard
 
     def _validate_routable(self, wizard):
@@ -137,10 +138,10 @@ class WizardViewSet(View):
         cursor = bound_wizard.cursor(*args, **kwargs)
         target = bound_wizard.find_step_at(cursor, **route_context)
         if target is not None and target.declaration is cursor.node:
-            self._annotate_step_request(bound_wizard, cursor, cursor.node)
+            bound_wizard.mark_rendering(cursor, cursor.node)
             return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
         if target is not None and target.data is not None:
-            self._annotate_step_request(bound_wizard, cursor, target.declaration)
+            bound_wizard.mark_rendering(cursor, target.declaration)
             return bound_wizard.render_edit(
                 *args, target=target, url_kwargs=kwargs or None
             )
@@ -158,7 +159,7 @@ class WizardViewSet(View):
             bound_wizard.submit(submission, *args, files=files, **kwargs)
         elif target is not None and target.data is not None:
             files = self._store_uploads(bound_wizard, self.request.FILES)
-            self._annotate_step_request(bound_wizard, cursor, target.declaration)
+            bound_wizard.mark_rendering(cursor, target.declaration)
             edit_response = bound_wizard.edit(
                 submission, *args, files=files, url_kwargs=kwargs or None, **route_context
             )
@@ -171,20 +172,6 @@ class WizardViewSet(View):
         if next_cursor.node is None:
             return self._finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, next_cursor)
-
-    def _annotate_step_request(self, bound_wizard, cursor, target_declaration):
-        """Expose navigation URLs to the step render as request attributes:
-        `wizard_back_url` (the previous active-route step's URL, or None at
-        the first step or behind an opaque preserved region) and
-        `wizard_run_url` (the bare run URL — a "return to current step"
-        affordance, since it redirects to the cursor). Set on the incoming
-        request so every dispatched copy carries them."""
-        previous = bound_wizard.previous_step(cursor, target_declaration)
-        back_url = None
-        if previous is not None:
-            back_url = self._step_url_for(bound_wizard, previous.declaration)
-        self.request.wizard_back_url = back_url
-        self.request.wizard_run_url = self.get_wizard_url(bound_wizard.run_id)
 
     def _redirect_to_cursor(self, bound_wizard, cursor):
         if cursor.node is not None:

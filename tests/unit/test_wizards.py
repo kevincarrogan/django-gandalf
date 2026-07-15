@@ -1638,6 +1638,22 @@ def test_bound_wizard_previous_step_walks_the_active_route(
     )
 
 
+def test_bound_wizard_previous_step_is_none_for_unknown_declaration(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    foreign_declaration = tree.Step(FirstStepForm)
+
+    assert bound_wizard.previous_step(cursor, foreign_declaration) is None
+
+
 def test_bound_wizard_previous_step_is_none_behind_a_preserved_branch(
     request_with_session_factory,
 ):
@@ -1662,6 +1678,78 @@ def test_bound_wizard_previous_step_is_none_behind_a_preserved_branch(
     review = bound_wizard.find_step_at(cursor, step_name="review")
 
     assert bound_wizard.previous_step(cursor, review.declaration) is None
+
+
+class _StubUrls:
+    def get_wizard_url(self, run_id):
+        return f"/wizard/{run_id}/"
+
+    def get_step_url(self, run_id, step_segment):
+        return f"/wizard/{run_id}/{step_segment}/"
+
+
+def test_bound_wizard_back_and_run_urls_derive_from_render_context(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    bound_wizard.urls = _StubUrls()
+    cursor = bound_wizard.cursor()
+
+    bound_wizard.mark_rendering(cursor, cursor.node)
+
+    assert bound_wizard.back_url == "/wizard/existing-run/business_name/"
+    assert bound_wizard.run_url == "/wizard/existing-run/"
+
+
+def test_bound_wizard_back_url_is_none_at_the_first_step(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    bound_wizard.urls = _StubUrls()
+    cursor = bound_wizard.cursor()
+
+    bound_wizard.mark_rendering(cursor, cursor.node)
+
+    assert bound_wizard.back_url is None
+    assert bound_wizard.run_url == "/wizard/existing-run/"
+
+
+def test_bound_wizard_nav_urls_are_none_without_reverser_or_render_context(
+    request_with_session_factory,
+):
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.back_url is None
+    assert bound_wizard.run_url is None
+
+    bound_wizard.urls = _StubUrls()
+
+    assert bound_wizard.back_url is None
+    assert bound_wizard.run_url == "/wizard/existing-run/"
 
 
 def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(

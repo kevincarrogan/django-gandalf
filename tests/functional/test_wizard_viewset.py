@@ -1220,7 +1220,7 @@ def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"completed edit-cleanup=True"
+    assert response.content == b"completed edit-cleanup=True nav-probe=True"
 
 
 def test_branch_entry_wizard_renders_default_arm_first_step(client):

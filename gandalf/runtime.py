@@ -253,7 +253,9 @@ class BoundWizard:
         self.request = request
         self.storage = storage
         self.run_id = None
+        self.urls = None
         self._predicate_runtime_tree = None
+        self._render_context = None
         self._dispatcher = None
         self._file_storage = None
 
@@ -331,6 +333,36 @@ class BoundWizard:
                 return previous if isinstance(previous, RuntimeStep) else None
             previous = node
         return None
+
+    def mark_rendering(self, cursor, target_declaration):
+        """Record which step this request is rendering, so the navigation
+        properties can derive URLs lazily. Called by the viewset before
+        dispatching a step render; reuses the cursor it already computed."""
+        self._render_context = (cursor, target_declaration)
+
+    @property
+    def run_url(self):
+        """The bare run URL — redirects to the current step, so it works as
+        a "return to where I was" link. None without a URL reverser (set by
+        the viewset via `bound_wizard.urls`)."""
+        if self.urls is None:
+            return None
+        return self.urls.get_wizard_url(self.run_id)
+
+    @property
+    def back_url(self):
+        """The previous active-route step's URL for the step this request
+        is rendering. None without a URL reverser or render context
+        (programmatic use), at the first step, or when the predecessor is
+        hidden inside a preserved branch region."""
+        if self.urls is None or self._render_context is None:
+            return None
+        cursor, target_declaration = self._render_context
+        previous = self.previous_step(cursor, target_declaration)
+        if previous is None:
+            return None
+        segment = self.wizard.step_router_class().reverse(previous.declaration)
+        return self.urls.get_step_url(self.run_id, segment)
 
     def filter_steps(self, **context):
         finder = tree.ContextFinder(context)

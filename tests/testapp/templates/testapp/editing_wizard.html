@@ -2,8 +2,8 @@
 <html lang="en">
 <body>
   <h1>Editing branching wizard</h1>
-  {% if request.wizard_back_url %}
-    <p><a href="{{ request.wizard_back_url }}">Back</a></p>
+  {% if request.wizard.back_url %}
+    <p><a href="{{ request.wizard.back_url }}">Back</a></p>
   {% endif %}
   <form method="post">
     {% csrf_token %}

@@ -834,8 +834,9 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
     description = (
         "Exercises programmatic BoundWizard lookups: a mid-run render_edit "
         "of the unanswered cursor step raises StepNotFound (require_data), "
-        "and done() shows edit() deleting newly stored uploads when its "
-        "target cannot be resolved."
+        "done() shows edit() deleting newly stored uploads when its target "
+        "cannot be resolved, and the navigation properties fall back to "
+        "None outside a step render."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
@@ -849,7 +850,8 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
     def done(self, bound_wizard):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        from gandalf.runtime import StepNotFound
+        from gandalf import tree as gandalf_tree
+        from gandalf.runtime import BoundWizard, StepNotFound
 
         upload = SimpleUploadedFile("orphan.txt", b"orphan-bytes")
         ref = bound_wizard.file_storage.save(bound_wizard.run_id, upload)
@@ -857,8 +859,20 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             bound_wizard.edit({"name": "x"}, files={"upload": ref}, step_name="missing")
         except StepNotFound:
             deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
-            return HttpResponse(f"completed edit-cleanup={deleted}")
-        return HttpResponse("completed no-raise")
+        else:
+            deleted = False
+
+        detached = BoundWizard(self.request, bound_wizard.storage)
+        cursor = bound_wizard.cursor()
+        foreign_declaration = gandalf_tree.Step(FirstStepForm)
+        nav_probe = (
+            detached.run_url is None
+            and detached.back_url is None
+            and bound_wizard.back_url is None
+            and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
+            and bound_wizard.previous_step(cursor, foreign_declaration) is None
+        )
+        return HttpResponse(f"completed edit-cleanup={deleted} nav-probe={nav_probe}")
 
 
 class UnroutableWizardViewSet(WizardViewSet):
