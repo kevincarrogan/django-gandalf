@@ -44,7 +44,15 @@ class WizardViewSet(View):
         `retrieve()`) the run's stored state via `get_run_data()` /
         `get_state()`.
         """
-        return self.wizard
+        wizard = getattr(self, "wizard", None)
+        if wizard is None:
+            name = self.__class__.__name__
+            raise ImproperlyConfigured(
+                f"{name} has no wizard to run. Define {name}.wizard as a "
+                f"Wizard declaration, or override {name}.get_wizard() to "
+                "build one per request."
+            )
+        return wizard
 
     def configure_wizard(self, wizard):
         configuration = {}

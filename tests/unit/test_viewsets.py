@@ -2,6 +2,7 @@ import tempfile
 from http import HTTPStatus
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 
@@ -239,6 +240,24 @@ def test_wizard_viewset_does_not_reconfigure_configured_wizard():
 
     assert wizard is configured_wizard
     assert wizard.tree.form_view.template_name == "testapp/single_step_wizard.html"
+
+
+def test_wizard_viewset_without_wizard_raises_improperly_configured(rf):
+    class MyWizardViewSet(WizardViewSet):
+        url_name = "my-wizard"
+
+    request = rf.get("/wizard/")
+    request.session = _Session()
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=(
+            r"MyWizardViewSet has no wizard to run\. Define "
+            r"MyWizardViewSet\.wizard as a Wizard declaration, or override "
+            r"MyWizardViewSet\.get_wizard\(\) to build one per request\."
+        ),
+    ):
+        MyWizardViewSet.as_view()(request)
 
 
 def test_wizard_viewset_rejects_invalid_wizard_type():
