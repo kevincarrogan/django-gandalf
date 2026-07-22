@@ -877,8 +877,13 @@ urlpatterns = [
 
 `urls()` publishes `onboarding` (start), `onboarding-run`
 (`onboarding/<uuid:run_id>/`), and `onboarding-step`
-(`onboarding/<uuid:run_id>/<slug:gandalf_step>/`). For a custom URL scheme
-(extra kwargs, different converters), write the patterns yourself and
+(`onboarding/<uuid:run_id>/<slug:gandalf_step>/`). The mount prefix can
+capture kwargs of its own — `path("<slug:team>/onboarding/",
+include(OnboardingViewSet.urls()))` — and the default reverse hooks
+forward them into every redirect via `get_url_kwargs()`, which returns
+the current request's captured kwargs minus the wizard-owned `run_id` /
+`gandalf_step`. For a custom URL scheme (different converters, reverse
+context not captured in the URL), write the patterns yourself and
 override `get_wizard_url(run_id)` / `get_step_url(run_id, step_segment)`
 instead of setting `url_name`.
 

@@ -119,7 +119,9 @@ class LinearWizardViewSet(WizardViewSet):
         "Two-step linear wizard built from the module-level `wizard` instance."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepForm, name="first").step(SecondStepForm, name="second")
+    wizard = wizard.step(FirstStepForm, name="first").step(
+        SecondStepForm, name="second"
+    )
 
     url_name = "linear-wizard"
 
@@ -437,7 +439,9 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
         "request.wizard.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepForm, name="first").step(EmailStepPrefilledFromPath, name="second")
+    wizard = wizard.step(FirstStepForm, name="first").step(
+        EmailStepPrefilledFromPath, name="second"
+    )
 
     url_name = "path-aware-linear-wizard"
 
@@ -464,7 +468,9 @@ class PathAwareFormViewFirstStepWizardViewSet(WizardViewSet):
         "request.wizard.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = wizard.step(FirstStepFromFormView, name="first").step(EmailStepPrefilledFromPath, name="second")
+    wizard = wizard.step(FirstStepFromFormView, name="first").step(
+        EmailStepPrefilledFromPath, name="second"
+    )
 
     url_name = "path-aware-form-view-first-step-wizard"
 
@@ -483,7 +489,9 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
         .branch(
             condition(
                 is_business_account,
-                wizard.step(BusinessDetailsForm, name="business_name").step(SecondStepForm, name="second"),
+                wizard.step(BusinessDetailsForm, name="business_name").step(
+                    SecondStepForm, name="second"
+                ),
             ),
             default=wizard.step(PersonalDetailsForm, name="preferred_name"),
         )
@@ -564,7 +572,9 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
         "path via MergeCleanedData and dispatches the merged payload."
     )
     template_name = "testapp/linear_wizard.html"
-    wizard = Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
+    wizard = (
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
+    )
 
     url_name = "merged-payload-wizard"
 
@@ -945,11 +955,7 @@ class UnroutableWizardViewSet(WizardViewSet):
         "name."
     )
     template_name = "testapp/editing_wizard.html"
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .step(named("second", SecondStepForm))
-    )
+    wizard = Wizard().step(FirstStepForm).step(named("second", SecondStepForm))
 
     url_name = "unroutable-wizard"
 
@@ -973,30 +979,16 @@ class OrgScopedStepView(FormView):
 class OrgScopedEditingWizardViewSet(WizardViewSet):
     description = (
         "Wizard mounted under an extra URL kwarg; the first step's view "
-        "reads self.kwargs['org'] in every render, including edit cycles."
+        "reads self.kwargs['org'] in every render, including edit cycles. "
+        "Relies on the default URL hooks forwarding the org kwarg."
     )
     template_name = "testapp/editing_wizard.html"
+    url_name = "org-scoped-wizard"
     wizard = (
         Wizard()
         .step(OrgScopedStepView, context={"step_name": "first"})
         .step(ReviewForm, context={"step_name": "review"})
     )
-
-    def get_wizard_url(self, run_id):
-        return reverse(
-            "org-scoped-wizard-run",
-            kwargs={"org": self.kwargs["org"], "run_id": run_id},
-        )
-
-    def get_step_url(self, run_id, step_segment):
-        return reverse(
-            "org-scoped-wizard-step",
-            kwargs={
-                "org": self.kwargs["org"],
-                "run_id": run_id,
-                "gandalf_step": step_segment,
-            },
-        )
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")

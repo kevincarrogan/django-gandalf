@@ -816,9 +816,7 @@ def test_routed_wizard_bare_run_url_redirects_to_cursor_step_url(
     response = client.get(routed_wizard_urls(routed_wizard_run))
 
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == routed_wizard_urls(
-        routed_wizard_run, "account_type"
-    )
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "account_type")
 
 
 def test_routed_wizard_get_cursor_step_url_renders_form(
@@ -853,15 +851,12 @@ def test_routed_wizard_invalid_submit_redirects_and_rerenders_with_errors(
     )
 
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == routed_wizard_urls(
-        routed_wizard_run, "account_type"
-    )
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "account_type")
     followed = client.get(response["Location"])
     assert followed.status_code == HTTPStatus.OK
     assert followed.context["form"].errors == {
         "account_type": [
-            "Select a valid choice. not-a-choice is not one of the available "
-            "choices."
+            "Select a valid choice. not-a-choice is not one of the available choices."
         ],
     }
 
@@ -886,9 +881,7 @@ def test_routed_wizard_get_unknown_step_url_redirects_to_cursor(
     response = client.get(routed_wizard_urls(routed_wizard_run, "missing"))
 
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == routed_wizard_urls(
-        routed_wizard_run, "account_type"
-    )
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "account_type")
 
 
 def test_routed_wizard_get_future_step_url_redirects_to_cursor(
@@ -897,9 +890,7 @@ def test_routed_wizard_get_future_step_url_redirects_to_cursor(
     response = client.get(routed_wizard_urls(routed_wizard_run, "review"))
 
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == routed_wizard_urls(
-        routed_wizard_run, "account_type"
-    )
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "account_type")
 
 
 def test_routed_wizard_trivial_edit_redirects_back_to_summary(
@@ -1154,6 +1145,34 @@ def test_org_scoped_wizard_invalid_edit_error_render_receives_url_kwargs(
     assert response.context["form"].errors == {"name": ["This field is required."]}
 
 
+def test_org_scoped_wizard_start_redirects_within_same_mount(client):
+    start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
+
+    response = client.get(start_url)
+
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id})
+    assertRedirects(response, run_url, target_status_code=HTTPStatus.FOUND)
+
+
+def test_org_scoped_wizard_submission_redirects_within_same_mount(client):
+    start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    first_step_url = reverse(
+        "org-scoped-wizard-step",
+        kwargs={"org": "acme", "run_id": run_id, "gandalf_step": "first"},
+    )
+
+    response = client.post(first_step_url, data={"name": "Ada"})
+
+    review_step_url = reverse(
+        "org-scoped-wizard-step",
+        kwargs={"org": "acme", "run_id": run_id, "gandalf_step": "review"},
+    )
+    assertRedirects(response, review_step_url)
+
+
 def test_wizard_viewset_urls_requires_url_name():
     from django.core.exceptions import ImproperlyConfigured
 
@@ -1192,9 +1211,7 @@ def test_misconfigured_wizard_run_url_raises_improperly_configured(client):
 def test_programmatic_lookup_wizard_probes_step_not_found_mid_run(client):
     client.get(reverse("programmatic-lookup-wizard"))
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "programmatic-lookup-wizard-run", kwargs={"run_id": run_id}
-    )
+    run_url = reverse("programmatic-lookup-wizard-run", kwargs={"run_id": run_id})
     client.post(_step(run_url, "first"), data={"name": "Ada"})
 
     response = client.get(_step(run_url, "second"))
@@ -1208,9 +1225,7 @@ def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
 ):
     client.get(reverse("programmatic-lookup-wizard"))
     run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse(
-        "programmatic-lookup-wizard-run", kwargs={"run_id": run_id}
-    )
+    run_url = reverse("programmatic-lookup-wizard-run", kwargs={"run_id": run_id})
     client.post(_step(run_url, "first"), data={"name": "Ada"})
 
     response = client.post(
@@ -1241,9 +1256,7 @@ def cross_branch_run(client):
     return run_id, run_url
 
 
-def test_cross_branch_wizard_path_read_is_safe_mid_divert(
-    client, cross_branch_run
-):
+def test_cross_branch_wizard_path_read_is_safe_mid_divert(client, cross_branch_run):
     _, run_url = cross_branch_run
 
     response = client.get(_step(run_url, "preferred_name"))
@@ -1675,7 +1688,9 @@ def test_step_view_can_pre_fill_initial_from_path_with_form_view_upstream(
         data={"name": "Ada"},
         follow=True,
     )
-    response = client.get(path_aware_form_view_first_step_wizard_run_url(run_id), follow=True)
+    response = client.get(
+        path_aware_form_view_first_step_wizard_run_url(run_id), follow=True
+    )
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="ada@example.com"')
@@ -2313,9 +2328,7 @@ def test_branch_edit_rejection_wizard_edit_post_branch_step_with_invalid_keeps_s
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.context["form"].errors == {
-        "confirmed": ["This field is required."]
-    }
+    assert response.context["form"].errors == {"confirmed": ["This field is required."]}
     assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 

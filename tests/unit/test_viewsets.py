@@ -607,6 +607,35 @@ def test_wizard_viewset_default_url_hooks_reverse_url_name_patterns():
     assert viewset.get_step_url(run_id, "first") == f"/routed-wizard/{run_id}/first/"
 
 
+def test_wizard_viewset_get_url_kwargs_strips_wizard_owned_kwargs():
+    class NamedViewSet(WizardViewSet):
+        url_name = "routed-wizard"
+
+    viewset = NamedViewSet()
+    viewset.kwargs = {
+        "org": "acme",
+        "run_id": "11111111-1111-1111-1111-111111111111",
+        "gandalf_step": "first",
+    }
+
+    assert viewset.get_url_kwargs() == {"org": "acme"}
+
+
+def test_wizard_viewset_default_url_hooks_forward_mount_prefix_kwargs():
+    class PrefixMountedViewSet(WizardViewSet):
+        url_name = "org-scoped-wizard"
+
+    viewset = PrefixMountedViewSet()
+    viewset.kwargs = {"org": "acme"}
+    run_id = "11111111-1111-1111-1111-111111111111"
+
+    assert viewset.get_wizard_url(run_id) == f"/org-scoped-wizard/acme/{run_id}/"
+    assert (
+        viewset.get_step_url(run_id, "first")
+        == f"/org-scoped-wizard/acme/{run_id}/first/"
+    )
+
+
 def test_wizard_viewset_default_url_hooks_require_url_name():
     from django.core.exceptions import ImproperlyConfigured
 
@@ -640,11 +669,7 @@ def test_wizard_viewset_rejects_wizard_with_unnamed_step(rf):
     from django.core.exceptions import ImproperlyConfigured
 
     class UnnamedStepViewSet(WizardViewSet):
-        wizard = (
-            Wizard()
-            .step(FirstStepForm)
-            .step(SecondStepForm, name="second")
-        )
+        wizard = Wizard().step(FirstStepForm).step(SecondStepForm, name="second")
         template_name = "testapp/linear_wizard.html"
 
         def get_wizard_url(self, run_id):

@@ -12,6 +12,9 @@ from gandalf.wizard import ConfiguredWizard, Wizard
 class WizardViewSet(View):
     storage_class = SessionStorage
     url_name = None
+    # URL kwargs owned by the patterns `urls()` publishes; anything else the
+    # request captures is mount-prefix context (e.g. a tenant slug).
+    reserved_url_kwargs = frozenset({"run_id", "gandalf_step"})
 
     @classmethod
     def urls(cls):
@@ -85,13 +88,9 @@ class WizardViewSet(View):
         router = wizard.step_router_class()
         finder = tree.ContextFinder({})
         finder.visit(wizard.tree)
-        unroutable = [
-            step for step in finder.all() if router.reverse(step) is None
-        ]
+        unroutable = [step for step in finder.all() if router.reverse(step) is None]
         if unroutable:
-            names = ", ".join(
-                step.declaration.__name__ for step in unroutable
-            )
+            names = ", ".join(step.declaration.__name__ for step in unroutable)
             raise ImproperlyConfigured(
                 "Every wizard step needs a routable name; declare steps "
                 f"with .step(..., name=...). Unroutable steps: {names}."
@@ -195,30 +194,55 @@ class WizardViewSet(View):
         segment = bound_wizard.wizard.step_router_class().reverse(step_declaration)
         return self.get_step_url(bound_wizard.run_id, segment)
 
+    def get_url_kwargs(self):
+        """URL kwargs the mount prefix captured (e.g. a tenant slug),
+        forwarded into every reverse of this wizard's own URLs.
+
+        The wizard only ever links to itself under the mount the current
+        request came in through, so the request's captured kwargs — minus
+        the wizard-owned `run_id` / `gandalf_step` — are exactly the
+        reverse context. Override when reversing needs context the URL
+        does not capture. Reversing from outside a request (an email, a
+        management command) is ordinary `reverse()` with explicit kwargs.
+        """
+        url_kwargs = getattr(self, "kwargs", None) or {}
+        return {
+            key: value
+            for key, value in url_kwargs.items()
+            if key not in self.reserved_url_kwargs
+        }
+
     def get_wizard_url(self, run_id):
         """Reverse the bare run URL. The default uses the `<url_name>-run`
-        pattern published by `urls()`; override for a custom URL scheme.
+        pattern published by `urls()`, forwarding any mount-prefix kwargs
+        via `get_url_kwargs()`; override for a custom URL scheme.
         """
         if self.url_name is None:
             raise ImproperlyConfigured(
-                "Set url_name (or override get_wizard_url) on this "
-                "WizardViewSet."
+                "Set url_name (or override get_wizard_url) on this WizardViewSet."
             )
-        return reverse(f"{self.url_name}-run", kwargs={"run_id": run_id})
+        return reverse(
+            f"{self.url_name}-run",
+            kwargs={**self.get_url_kwargs(), "run_id": run_id},
+        )
 
     def get_step_url(self, run_id, step_segment):
         """Reverse a routed step URL, mirroring `get_wizard_url`. The
-        default uses the `<url_name>-step` pattern published by `urls()`;
+        default uses the `<url_name>-step` pattern published by `urls()`,
+        forwarding any mount-prefix kwargs via `get_url_kwargs()`;
         override for a custom URL scheme.
         """
         if self.url_name is None:
             raise ImproperlyConfigured(
-                "Set url_name (or override get_step_url) on this "
-                "WizardViewSet."
+                "Set url_name (or override get_step_url) on this WizardViewSet."
             )
         return reverse(
             f"{self.url_name}-step",
-            kwargs={"run_id": run_id, "gandalf_step": step_segment},
+            kwargs={
+                **self.get_url_kwargs(),
+                "run_id": run_id,
+                "gandalf_step": step_segment,
+            },
         )
 
     def _finish(self, bound_wizard):
