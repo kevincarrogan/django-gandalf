@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from django.core.exceptions import ImproperlyConfigured
 from django.shortcuts import redirect
 from django.urls import path, reverse
@@ -87,9 +85,9 @@ class WizardViewSet(View):
         bound_wizard.urls = self
         return bound_wizard
 
-    def _refreshed_cursor(self, bound_wizard, *args, **kwargs):
+    def _refreshed_cursor(self, bound_wizard, walk, *args, **kwargs):
         """Re-derive the wizard from the state this request just wrote, then
-        walk it.
+        walk it again if the tree it describes has changed.
 
         A dynamic `get_wizard()` reads stored state, so the tree resolved at
         the start of a POST predates that POST's own submission: answering
@@ -97,9 +95,16 @@ class WizardViewSet(View):
         tree that does not yet hold the steps it implies. Judging completion
         against that stale tree fires `done()` mid-run. The recorded render
         context is dropped with it, since the write invalidated that walk.
+
+        Re-resolving to the very same wizard means the tree cannot have
+        changed, and `walk` was made from the state that was just persisted,
+        so a second walk could only reproduce it.
         """
         bound_wizard.clear_rendering()
+        previous = bound_wizard.wizard
         self._resolve_wizard(bound_wizard)
+        if bound_wizard.wizard is previous:
+            return walk.cursor
         return bound_wizard.cursor(*args, **kwargs)
 
     def _validate_routable(self, wizard):
@@ -109,12 +114,24 @@ class WizardViewSet(View):
         router = wizard.step_router_class()
         finder = tree.ContextFinder({})
         finder.visit(wizard.tree)
-        unroutable = [step for step in finder.all() if router.reverse(step) is None]
+        steps = finder.all()
+        unroutable = [step for step in steps if router.reverse(step) is None]
         if unroutable:
             names = ", ".join(step.declaration.__name__ for step in unroutable)
             raise ImproperlyConfigured(
                 "Every wizard step needs a routable name; declare steps "
                 f"with .step(..., name=...). Unroutable steps: {names}."
+            )
+        # A segment has to name exactly one step. This is checked here rather
+        # than per request because it is a property of the declaration, and
+        # because a walk stops at the cursor and so cannot see a duplicate
+        # that lies beyond it.
+        segments = [router.reverse(step) for step in steps]
+        duplicates = sorted({name for name in segments if segments.count(name) > 1})
+        if duplicates:
+            raise ImproperlyConfigured(
+                "Wizard step names must be unique; a URL segment has to name "
+                f"exactly one step. Duplicated: {', '.join(duplicates)}."
             )
 
     def get(self, request, *args, run_id=None, **kwargs):
@@ -196,76 +213,61 @@ class WizardViewSet(View):
         or parked in a dormant arm — redirects to where the wizard
         actually is.
         """
-        cursor = bound_wizard.cursor(*args, **kwargs)
-        target = bound_wizard.find_step_at(cursor, **route_context)
-        if target is not None and target.declaration is cursor.node:
-            bound_wizard.mark_rendering(cursor, cursor.node)
-            return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
-        if target is not None and target.data is not None:
-            bound_wizard.mark_rendering(cursor, target.declaration)
-            return bound_wizard.render_edit(
-                *args, target=target, url_kwargs=kwargs or None
-            )
-        return self._redirect_to_cursor(bound_wizard, cursor)
+        walk = bound_wizard.walk(*args, claim=route_context, **kwargs)
+        if not walk.reached:
+            return self._redirect_to_cursor(bound_wizard, walk.cursor)
+        bound_wizard.mark_rendering(walk.cursor, walk.target.declaration)
+        if walk.target.declaration is walk.cursor.node:
+            return bound_wizard.dispatcher.render_cursor(walk.cursor, *args, **kwargs)
+        return bound_wizard.render_step(
+            *args, target=walk.target, url_kwargs=kwargs or None
+        )
 
     def _routed_post(self, bound_wizard, route_context, submission, *args, **kwargs):
-        """Apply a routed submission: the cursor's step submits, a completed
-        step edits, anything else redirects to the cursor without storing
-        the payload or its uploads. Successful writes redirect (PRG); a
-        rejected edit returns its error render directly, and a step that
-        escapes returns the escape's redirect."""
-        cursor = bound_wizard.cursor(*args, **kwargs)
-        target = bound_wizard.find_step_at(cursor, **route_context)
-        if target is not None and target.declaration is cursor.node:
-            files = self._store_uploads(bound_wizard, self.request.FILES)
-            # `submit()` stores before anything validates the submission, so
-            # a parking escape needs the state from before it to roll back to.
-            previous_entries = deepcopy(bound_wizard.get_state())
-            bound_wizard.submit(submission, *args, files=files, **kwargs)
-            next_cursor = bound_wizard.cursor(*args, **kwargs)
-            # The escape is matched against the tree this request was
-            # resolved with, before any refresh replaces its declarations.
-            escape = next_cursor.escape_for(target.declaration)
-            if escape is not None:
-                return self._escaped(bound_wizard, escape, previous_entries, files)
-            return self._continue(
-                bound_wizard, self._refreshed_cursor(bound_wizard, *args, **kwargs)
-            )
-        if target is not None and target.data is not None:
-            files = self._store_uploads(bound_wizard, self.request.FILES)
-            bound_wizard.mark_rendering(cursor, target.declaration)
-            edit_response = bound_wizard.edit(
-                submission,
-                *args,
-                cursor=cursor,
-                target=target,
-                files=files,
-                url_kwargs=kwargs or None,
-            )
-            if edit_response is not None:
-                return edit_response
-            return self._continue(
-                bound_wizard, self._refreshed_cursor(bound_wizard, *args, **kwargs)
-            )
-        return self._redirect_to_cursor(bound_wizard, cursor)
+        """Put the submission at the step the URL claims.
+
+        One walk decides everything: it replays the stored answers, puts the
+        submission at the claimed step, and carries on. Reaching that step is
+        the authorisation — a run that cannot get there stores nothing. A
+        submission that fails validation is kept so the redirect can render
+        it with its errors, and a step that escapes returns the escape's
+        redirect.
+        """
+        files = self._store_uploads(bound_wizard, self.request.FILES)
+        walk = bound_wizard.walk(
+            *args, claim=route_context, submission=submission, files=files, **kwargs
+        )
+        if not walk.reached:
+            bound_wizard.delete_file_refs(files)
+            return self._redirect_to_cursor(bound_wizard, walk.cursor)
+        escape = walk.cursor.escape_for(walk.target.declaration)
+        if escape is not None:
+            return self._escaped(bound_wizard, escape, walk, files)
+        bound_wizard.persist(walk)
+        return self._continue(
+            bound_wizard, self._refreshed_cursor(bound_wizard, walk, *args, **kwargs)
+        )
 
     def _continue(self, bound_wizard, next_cursor):
         if next_cursor.node is None:
             return self._finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, next_cursor)
 
-    def _escaped(self, bound_wizard, escape, previous_entries, files):
+    def _escaped(self, bound_wizard, escape, walk, files):
         """Settle what the escape leaves behind, then send the user off.
 
-        The escape is only ever acted on for the submission the user just
-        made; replays of a stored escaping answer merely satisfy their step.
+        Nothing has been persisted yet, so `Park` simply declines to write
+        rather than having to undo one. The escape is only ever acted on for
+        the submission the user just made; replays of a stored escaping
+        answer merely satisfy their step.
         """
         if isinstance(escape, Obliterate):
             bound_wizard.obliterate()
         elif isinstance(escape, Park):
-            bound_wizard.set_state(previous_entries)
             bound_wizard.delete_file_refs(files)
-        elif not isinstance(escape, Advance):
+        elif isinstance(escape, Advance):
+            bound_wizard.persist(walk)
+        else:
             raise ImproperlyConfigured(
                 "Raise Park, Advance or Obliterate to escape a wizard; "
                 f"{type(escape).__name__} names no disposition for the run."

@@ -96,12 +96,6 @@ class Transformer:
             return None
         return root.accept_transform(self)
 
-    def visit_preserved_branch(self, preserved_branch, next_result):
-        """Runtime trees only: a stored branch entry past the cursor,
-        carried verbatim. The default clones it through so transforms
-        preserve state; override to handle or skip opaque regions."""
-        return replace(preserved_branch, next=next_result)
-
 
 class Reducer:
     """Bottom-up tree fold. Each node's `visit_*` method returns a value
@@ -221,16 +215,12 @@ class ContextFinder:
     tracking the path of indices to each match. For runtime trees, only the
     active arm is traversed. For declaration trees, every arm is.
 
-    Use `one()` / `all()` for the bare matches, or `one_with_path()` to also
-    get the position tuple alongside a single match.
-
-    Pass `require_data=True` to skip matches whose `data` attribute is None
-    (only meaningful on runtime trees).
+    Use `one()` for a single match or `all()` for every match; both track the
+    path of indices to each, which is what makes nested matches addressable.
     """
 
-    def __init__(self, context: dict, *, require_data: bool = False):
+    def __init__(self, context: dict):
         self._context = context
-        self._require_data = require_data
         self.matches: list[tuple[tuple[int, ...], object]] = []
 
     def visit(self, root) -> None:
@@ -242,11 +232,7 @@ class ContextFinder:
             path = prefix + (index,)
             if hasattr(node, "matches_context"):
                 if node.matches_context(**self._context):
-                    if (
-                        not self._require_data
-                        or getattr(node, "data", None) is not None
-                    ):
-                        self.matches.append((path, node))
+                    self.matches.append((path, node))
             elif hasattr(node, "selected_arm"):
                 if node.selected_arm is not None:
                     self._walk(node.selected_arm, path)

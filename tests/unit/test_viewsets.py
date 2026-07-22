@@ -413,14 +413,21 @@ def test_wizard_viewset_edit_render_annotates_back_url(rf):
     assert step_wizard.back_url == "/wizard/existing-run/first/"
 
 
-def test_wizard_viewset_rejected_edit_render_annotates_back_url(rf):
-    request = rf.post("/wizard/existing-run/second/", data={"email": ""})
-    request.session = _routed_session(
+def test_wizard_viewset_rejected_submission_render_annotates_back_url(rf):
+    """The rejected answer is stored and redirected to (PRG), so the errored
+    form is rendered by the follow-up GET — which is where `back_url` is
+    derived from the walk it already did."""
+    session = _routed_session(
         [
             {"step": {"name": "Ada"}},
             {"step": {"email": "ada@example.com"}},
         ]
     )
+    post = rf.post("/wizard/existing-run/second/", data={"email": ""})
+    post.session = session
+    _RoutedViewSet.as_view()(post, run_id="existing-run", gandalf_step="second")
+    request = rf.get("/wizard/existing-run/second/")
+    request.session = session
 
     response = _RoutedViewSet.as_view()(
         request, run_id="existing-run", gandalf_step="second"
@@ -536,7 +543,7 @@ def test_wizard_viewset_routed_post_edits_completed_step_and_redirects(rf):
     ]
 
 
-def test_wizard_viewset_routed_post_invalid_edit_renders_errors(rf):
+def test_wizard_viewset_routed_post_rejected_submission_is_kept(rf):
     request = rf.post("/wizard/existing-run/first/", data={"name": ""})
     request.session = _routed_session(
         [
@@ -549,12 +556,12 @@ def test_wizard_viewset_routed_post_invalid_edit_renders_errors(rf):
         request, run_id="existing-run", gandalf_step="first"
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.context_data["form"].errors == {
-        "name": ["This field is required."],
-    }
+    # Placement is placement: the rejected answer is stored and becomes the
+    # cursor, so the redirect lands back on it and re-renders its errors.
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/first/"
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
-        {"step": {"name": "Ada"}},
+        {"step": {"name": ""}},
         {"step": {"email": "ada@example.com"}},
     ]
 
@@ -1000,7 +1007,7 @@ def test_wizard_viewset_reconstructs_the_form_of_an_escaped_answer(rf):
     assert response.content == b"email,subscribe"
 
 
-def test_wizard_viewset_editing_a_step_into_an_escape_stores_the_edit(rf):
+def test_wizard_viewset_placing_an_escaping_answer_on_a_completed_step(rf):
     from tests.testapp.forms import NewsletterForm
 
     viewset = _escaping_viewset(
@@ -1019,10 +1026,33 @@ def test_wizard_viewset_editing_a_step_into_an_escape_stores_the_edit(rf):
         request, run_id="existing-run", gandalf_step="newsletter"
     )
 
-    # Editing a completed step never escapes: the raise only marks the step
-    # satisfied, so the edit is stored and the run carries on.
+    # A step escapes wherever it sits — there is no separate edit path for
+    # the disposition to be defined against. `Advance` keeps the answer.
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == "/wizard/existing-run/second/"
+    assert response["Location"] == "/escaped/"
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"email": "ada@example.com", "subscribe": "on"}},
     ]
+
+
+def test_wizard_viewset_rejects_duplicate_step_names(rf):
+    """Two steps sharing a name is a declaration error: a URL segment has to
+    name exactly one step, and a walk stops at the cursor so it could not see
+    a duplicate lying beyond it."""
+
+    class _DuplicateViewSet(WizardViewSet):
+        url_name = "wizard"
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, name="duplicate")
+            .step(SecondStepForm, name="duplicate")
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+    request = rf.get("/wizard/existing-run/duplicate/")
+    request.session = _routed_session([])
+
+    with pytest.raises(ImproperlyConfigured, match="must be unique"):
+        _DuplicateViewSet.as_view()(
+            request, run_id="existing-run", gandalf_step="duplicate"
+        )

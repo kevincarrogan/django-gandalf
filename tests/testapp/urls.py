@@ -113,6 +113,10 @@ urlpatterns = [
         "org-scoped-wizard/<slug:org>/",
         include(views.OrgScopedEditingWizardViewSet.urls()),
     ),
+    path(
+        "walk-counting-wizard/",
+        include(views.WalkCountingWizardViewSet.urls()),
+    ),
     path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
     path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),
     path("escape-advance-wizard/", include(views.EscapeAdvanceWizardViewSet.urls())),

@@ -404,26 +404,6 @@ def test_context_finder_descends_into_branch_default_when_arm_has_no_match():
     assert node.declaration is SecondStepForm
 
 
-def test_context_finder_require_data_skips_steps_with_no_data():
-    from gandalf.runtime import RuntimeStep
-
-    root = RuntimeStep(
-        declaration=tree.Step(FirstStepForm, context={"step_name": "first"}),
-        data=None,
-        next=RuntimeStep(
-            declaration=tree.Step(SecondStepForm, context={"step_name": "first"}),
-            data={"value": 1},
-        ),
-    )
-    finder = tree.ContextFinder({"step_name": "first"}, require_data=True)
-
-    finder.visit(root)
-
-    matches = finder.all()
-    assert len(matches) == 1
-    assert matches[0].data == {"value": 1}
-
-
 def test_context_finder_skips_runtime_branch_with_no_selected_arm():
     from gandalf.runtime import RuntimeBranch, RuntimeStep
 

@@ -13,7 +13,6 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.tree import MultipleStepsReturned
 
 from tests.testapp.forms import (
     AccountTypeForm,
@@ -947,18 +946,20 @@ def test_routed_wizard_invalid_edit_renders_errors_without_redirect(
         routed_wizard_urls(routed_wizard_run, "business_name"),
         data={"business_name": "Acme"},
     )
-    state_before = client.session["gandalf_runs"][routed_wizard_run]["state"]
-
     response = client.post(
         routed_wizard_urls(routed_wizard_run, "business_name"),
         data={"business_name": ""},
+        follow=True,
     )
 
+    # Placement is placement: a rejected submission is kept and parked on,
+    # exactly as for a step being answered the first time. The errors below
+    # come from a *fresh walk* after the redirect, which is only possible if
+    # the rejected data was persisted and replayed.
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors == {
         "business_name": ["This field is required."],
     }
-    assert client.session["gandalf_runs"][routed_wizard_run]["state"] == state_before
 
 
 def test_routed_wizard_dormant_step_url_redirects_instead_of_500(
@@ -1038,9 +1039,13 @@ def test_routed_wizard_first_step_renders_without_back_link(
     assertNotContains(response, ">Back</a>", html=False)
 
 
-def test_routed_wizard_back_link_absent_behind_preserved_branch(
+def test_routed_wizard_step_behind_an_unanswered_step_is_unreachable(
     client, routed_wizard_urls, routed_wizard_run
 ):
+    """A claim is only honoured by arriving at it, and the walk stops at the
+    first unanswered step. So a later step that still holds an answer is not
+    renderable while something before it is missing — its form would
+    otherwise run against a prefix the walk has not proven."""
     session = client.session
     session["gandalf_runs"][routed_wizard_run]["state"] = [
         {"step": None},
@@ -1051,9 +1056,7 @@ def test_routed_wizard_back_link_absent_behind_preserved_branch(
 
     response = client.get(routed_wizard_urls(routed_wizard_run, "review"))
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.context["form"].initial == {"confirmed": "on"}
-    assertNotContains(response, ">Back</a>", html=False)
+    assertRedirects(response, routed_wizard_urls(routed_wizard_run, "account_type"))
 
 
 def test_routed_wizard_final_submit_completes_run(
@@ -1137,7 +1140,7 @@ def test_org_scoped_wizard_invalid_edit_error_render_receives_url_kwargs(
     )
     client.post(step_url, data={"name": "Ada"})
 
-    response = client.post(step_url, data={"name": ""})
+    response = client.post(step_url, data={"name": ""}, follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert response.context["org"] == "acme"
@@ -1245,7 +1248,8 @@ def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == (
-        b"completed edit-cleanup=True nav-probe=True resolve-status=200"
+        b"completed edit-cleanup=True nav-probe=True resolve-status=200 "
+        b"declaration-claim=True ambiguous=True"
     )
 
 
@@ -1302,14 +1306,12 @@ def test_branch_entry_wizard_renders_default_arm_first_step(client):
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_find_step_raises_when_multiple_steps_share_context(client):
-    start_url = reverse("duplicate-context-wizard")
-    client.get(start_url)
-    run_id, _ = get_only_run_info_from_session(client.session)
-    run_url = reverse("duplicate-context-wizard-run", kwargs={"run_id": run_id})
-
-    with pytest.raises(MultipleStepsReturned):
-        client.get(run_url, follow=True)
+def test_duplicate_step_names_are_rejected_when_the_wizard_resolves(client):
+    """Two steps sharing a name is a declaration error, so it is caught when
+    the wizard resolves rather than per request — a walk stops at the cursor
+    and so cannot see a duplicate lying beyond it."""
+    with pytest.raises(ImproperlyConfigured, match="must be unique"):
+        client.get(reverse("duplicate-context-wizard"))
 
 
 def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
@@ -2202,21 +2204,25 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
         },
         follow=True,
     )
-    state_before = client.session["gandalf_runs"][run_id]["state"]
-
     response = client.post(
         _step(file_editing_wizard_run_url(run_id), "photo"),
         data={
             "label": "",
             "photo": SimpleUploadedFile("rejected.jpg", b"rejected-bytes"),
         },
+        follow=True,
     )
 
+    # Placement is placement: a rejected submission is kept and parked on,
+    # exactly as for a step being answered the first time. The errors below
+    # come from a *fresh walk* after the redirect, which is only possible if
+    # the rejected data was persisted and replayed.
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors == {"label": ["This field is required."]}
-    assert client.session["gandalf_runs"][run_id]["state"] == state_before
+    # The rejected submission is what is stored now, so its upload is the live
+    # one and the superseded file is collected rather than left orphaned.
     run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
-    assert sorted(os.listdir(run_dir)) == ["first.jpg"]
+    assert sorted(os.listdir(run_dir)) == ["rejected.jpg"]
 
 
 def test_file_editing_wizard_unknown_step_url_redirects(
@@ -2328,16 +2334,18 @@ def test_branch_edit_rejection_wizard_edit_post_branch_step_with_invalid_keeps_s
         data={"confirmed": "on"},
         follow=True,
     )
-    state_before = client.session["gandalf_runs"][run_id]["state"]
-
     response = client.post(
         _step(branch_edit_rejection_wizard_run_url(run_id), "review"),
         data={"confirmed": ""},
+        follow=True,
     )
 
+    # Placement is placement: a rejected submission is kept and parked on,
+    # exactly as for a step being answered the first time. The errors below
+    # come from a *fresh walk* after the redirect, which is only possible if
+    # the rejected data was persisted and replayed.
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors == {"confirmed": ["This field is required."]}
-    assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 
 def test_branch_edit_rejection_wizard_unvisited_step_url_redirects_to_cursor(
@@ -2388,18 +2396,18 @@ def test_branch_edit_rejection_wizard_edit_in_branch_arm_with_invalid_keeps_stat
         data={"confirmed": "on"},
         follow=True,
     )
-    state_before = client.session["gandalf_runs"][run_id]["state"]
-
     response = client.post(
         _step(branch_edit_rejection_wizard_run_url(run_id), "second"),
         data={"email": "not-an-email"},
+        follow=True,
     )
 
+    # Kept and parked on, like any other rejected submission. These errors
+    # come from a fresh walk after the redirect, so they prove it was stored.
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors == {
         "email": ["Enter a valid email address."]
     }
-    assert client.session["gandalf_runs"][run_id]["state"] == state_before
 
 
 @pytest.fixture
@@ -2496,7 +2504,9 @@ def test_parking_escape_redirects_away_without_storing_the_submission(
     )
 
     assertRedirects(response, reverse("escape-landing"))
-    assert client.session["gandalf_runs"][run_id]["state"] == []
+    # Nothing was ever written: the walk validates before it persists, so a
+    # parking escape simply declines to store rather than storing and undoing.
+    assert client.session["gandalf_runs"][run_id].get("state", []) == []
 
 
 def test_parking_escape_leaves_the_run_on_the_escaping_step(
@@ -2694,7 +2704,7 @@ def test_form_view_step_without_an_escape_advances_normally(
     assert isinstance(response.context["form"], FirstStepForm)
 
 
-def test_editing_a_completed_step_does_not_escape(
+def test_editing_a_completed_step_escapes_like_any_other_placement(
     client,
     escape_editing_wizard_url,
     escape_editing_wizard_run_url,
@@ -2711,12 +2721,13 @@ def test_editing_a_completed_step_does_not_escape(
         data={"email": "existing@example.com"},
     )
 
-    assertRedirects(
-        response,
-        _step(escape_editing_wizard_run_url(run_id), "first"),
-    )
+    # A step that escapes escapes wherever it sits. Swallowing it behind the
+    # cursor let an edit store an answer the form had explicitly rejected —
+    # the opposite of what Park means — so the submit and edit paths now
+    # honour it identically, and Park declines to store.
+    assertRedirects(response, reverse("escape-landing"))
     assert client.session["gandalf_runs"][run_id]["state"] == [
-        {"step": {"email": "existing@example.com"}},
+        {"step": {"email": "new@example.com"}},
     ]
 
 
@@ -2826,7 +2837,9 @@ def test_parking_escape_discards_the_upload_it_escaped_with(
     )
 
     assertRedirects(response, reverse("escape-landing"))
-    assert client.session["gandalf_runs"][run_id]["state"] == []
+    # Nothing was ever written: the walk validates before it persists, so a
+    # parking escape simply declines to store rather than storing and undoing.
+    assert client.session["gandalf_runs"][run_id].get("state", []) == []
     assert not os.path.exists(
         os.path.join(isolated_media_root, "gandalf", run_id, "avatar.jpg")
     )

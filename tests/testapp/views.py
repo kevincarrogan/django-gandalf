@@ -21,6 +21,7 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.storage import SessionStorage
 
+from .counting import CountingCursorWalker, CountingStepDispatcher
 from .forms import (
     AccountTypeForm,
     BareEscapeForm,
@@ -911,7 +912,7 @@ class LookupProbeStepView(FormView):
 
         context = super().get_context_data(**kwargs)
         try:
-            self.request.wizard.render_edit(step_name="second")
+            self.request.wizard.render_step(step_name="second")
         except StepNotFound:
             context["lookup_probe"] = "step-not-found"
         found = self.request.wizard.find_step(name="first")
@@ -944,16 +945,20 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from gandalf import tree as gandalf_tree
-        from gandalf.runtime import BoundWizard, StepNotFound
+        from gandalf.runtime import BoundWizard
 
         upload = SimpleUploadedFile("orphan.txt", b"orphan-bytes")
         ref = bound_wizard.file_storage.save(bound_wizard.run_id, upload)
-        try:
-            bound_wizard.edit({"name": "x"}, files={"upload": ref}, step_name="missing")
-        except StepNotFound:
-            deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
-        else:
-            deleted = False
+        # A claim the run cannot reach places nothing, so the uploads it came
+        # with are the caller's to clean up — which is what the viewset does.
+        walk = bound_wizard.walk(
+            claim={"step_name": "missing"},
+            submission={"name": "x"},
+            files={"upload": ref},
+        )
+        if not walk.reached:
+            bound_wizard.delete_file_refs({"upload": ref})
+        deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
 
         detached = BoundWizard(self.request, bound_wizard.storage)
         cursor = bound_wizard.cursor()
@@ -965,10 +970,28 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
             and bound_wizard.previous_step(cursor, foreign_declaration) is None
         )
-        resolved = bound_wizard.render_edit(step_name="first")
+        resolved = bound_wizard.render_step(step_name="first")
+
+        # A claim can also be a step declaration, for callers that already
+        # hold one rather than resolving a URL segment.
+        first = bound_wizard.find_step(name="first")
+        by_declaration = bound_wizard.walk(claim=first.declaration)
+        declaration_probe = by_declaration.reached and by_declaration.target.data == {
+            "name": "Ada"
+        }
+
+        # A context that matches more than one step refuses to guess.
+        try:
+            bound_wizard.find_step()
+        except gandalf_tree.MultipleStepsReturned:
+            ambiguous_probe = True
+        else:
+            ambiguous_probe = False
+
         return HttpResponse(
             f"completed edit-cleanup={deleted} nav-probe={nav_probe} "
-            f"resolve-status={resolved.status_code}"
+            f"resolve-status={resolved.status_code} "
+            f"declaration-claim={declaration_probe} ambiguous={ambiguous_probe}"
         )
 
 
@@ -1246,6 +1269,30 @@ class EscapeEditingWizardViewSet(WizardViewSet):
     )
 
     url_name = "escape-editing-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class WalkCountingWizardViewSet(WizardViewSet):
+    description = (
+        "Four-step linear wizard wired to counting walker/dispatcher classes, "
+        "so tests can assert exactly how much work one request does."
+    )
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .step(PersonalDetailsForm, name="third")
+        .step(ReviewForm, name="fourth")
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+    url_name = "walk-counting-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")

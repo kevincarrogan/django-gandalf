@@ -709,10 +709,10 @@ before dispatching the step view. Validators that inspect `uploaded_file.content
 (image-only forms, MIME sniffing) see the same value on replay as on the
 original POST.
 
-**Edit semantics.** `bound_wizard.render_edit(...)` merges the opened files
+**Edit semantics.** `bound_wizard.render_step(...)` merges the opened files
 into the form's `initial`, so a `ClearableFileInput` widget displays the
-existing upload alongside the rest of the prior submission. `bound_wizard.edit`
-respects keep-vs-replace per field: a field with no new upload preserves its
+existing upload alongside the rest of the prior submission. Placing a
+submission respects keep-vs-replace per field: a field with no new upload preserves its
 old ref; a field with a new upload saves the new file and deletes the old one
 from storage in a single step.
 
@@ -754,7 +754,8 @@ A wizard often needs an "edit" affordance — a review screen with links back to
 each prior step, or a sidebar that lets the user revisit any completed section.
 Because every step has its own URL, the edit affordance is just a link: a
 completed step's URL renders it pre-filled, and posting the changed answer to
-that URL applies a transactional edit.
+that URL places it there. Editing is not a separate operation — putting an
+answer at a step works the same whether or not that step already had one.
 
 A review template wires per-step edit links from the runtime path:
 
@@ -784,15 +785,16 @@ untouched.
 
 Programmatically, the same operations live on `BoundWizard`:
 
-- `render_edit(**context)` — GET-side. Resolves the targeted runtime step via
-  context matching, then dispatches its form view with the stored submission
-  pre-filled as `initial`.
-- `edit(submission, **context)` — POST-side and transactional. The new
-  submission is validated against the target step first: if it fails, the
-  rendered error response is returned and stored state is left untouched. On
-  success the submission is spliced into the runtime tree, the cursor walker
-  re-validates the run, and the rebuilt state is persisted; `edit()` returns
-  `None`.
+- `render_step(**context)` — GET-side. Walks with `context` as the claim, then
+  dispatches the reached step's form view with the stored submission pre-filled
+  as `initial`. Raises `StepNotFound` when the run cannot reach it.
+- `walk(claim=..., submission=...)` — POST-side, and the only placement
+  operation there is. It replays the stored answers, puts `submission` at the
+  step the claim names, and carries on; the returned `Walk` says whether it
+  `reached` that step. Nothing is written until you call `persist(walk)`, which
+  is what lets the caller settle an escape first. A submission that fails
+  validation is kept and becomes the cursor, exactly as for a step being
+  answered the first time — there is no separate transactional edit path.
 
 ### The re-entrant summary pattern
 
@@ -918,14 +920,15 @@ The request semantics:
 - **GET anything else** — unknown, not yet reached, or parked in a dormant
   arm — → redirects to the cursor's URL. A stale "change" link after a
   diverting edit snaps back to the current step instead of erroring.
-- **POST to the cursor's step URL** → a plain submission; **POST to a
-  completed step's URL** → a transactional edit; **POST to anything else**
-  → redirects to the cursor without storing the payload or its uploads.
-  A submission from a stale tab can therefore never land on the wrong step.
+- **POST to any step the run can reach** → the answer is placed there,
+  whether or not that step already had one; **POST to anything else** →
+  redirects to the cursor without storing the payload or its uploads.
+  Reaching a step means every answer before it validated, so a submission
+  from a stale tab can never land on the wrong step.
 - **Successful POSTs redirect** (POST → redirect → GET), so refreshing
   never re-submits — even after an invalid submission, which persists and
-  re-renders with errors on the following GET. A rejected edit stays a
-  direct render so nothing about it is persisted.
+  re-renders with errors on the following GET. That holds for a step being
+  corrected as much as for one being answered the first time.
 - **The bare run URL redirects** to the cursor's step URL when that step is
   routable, and fires `done()` when the run is complete — once, after which
   the run is finished and the URL resolves to `run_unavailable()`.
