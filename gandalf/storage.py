@@ -30,8 +30,7 @@ class SessionStorage:
     def retrieve_run(self, run_id):
         """Return the run id as given, raising `RunNotFound` when this
         session holds no such run."""
-        if str(run_id) not in self._runs():
-            raise RunNotFound(str(run_id))
+        self.get_run_data(run_id)
         self.request.session.modified = True
         return run_id
 

@@ -346,6 +346,9 @@ class _RoutedViewSet(WizardViewSet):
     def get_step_url(self, run_id, step_segment):
         return f"/wizard/{run_id}/{step_segment}/"
 
+    def get_start_url(self):
+        return "/wizard/"
+
     def done(self, bound_wizard):
         from django.http import HttpResponse
 
@@ -726,3 +729,300 @@ def test_wizard_viewset_post_with_files_stores_uploads_through_file_storage(rf):
     assert response["Location"] == "/wizard/existing-run/second/"
     stored = request.session["gandalf_runs"]["existing-run"]["state"]
     assert stored[0]["files"]["photo"]["name"] == "portrait.jpg"
+
+
+# --- Completion lifecycle -------------------------------------------------
+
+
+def _completed_session():
+    return _Session({"gandalf_runs": {"existing-run": {"completed": True}}})
+
+
+def test_wizard_viewset_finishing_a_run_retires_it(rf):
+    request = rf.post("/wizard/existing-run/review/", data={"confirmed": "on"})
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+        ]
+    )
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="review"
+    )
+
+    assert response.content == b"done"
+    assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
+
+
+def test_wizard_viewset_get_on_a_retired_run_does_not_rerun_done(rf):
+    request = rf.get("/wizard/existing-run/")
+    request.session = _completed_session()
+
+    response = _RoutedViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+    assert response.content != b"done"
+
+
+def test_wizard_viewset_step_get_on_a_retired_run_offers_no_edit(rf):
+    request = rf.get("/wizard/existing-run/first/")
+    request.session = _completed_session()
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+
+
+def test_wizard_viewset_post_to_a_retired_run_stores_nothing(rf):
+    request = rf.post("/wizard/existing-run/first/", data={"name": "Grace"})
+    request.session = _completed_session()
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+    assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
+
+
+def test_wizard_viewset_get_on_an_unknown_run_is_unavailable(rf):
+    request = rf.get("/wizard/missing-run/")
+    request.session = _routed_session([])
+
+    response = _RoutedViewSet.as_view()(request, run_id="missing-run")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+
+
+def test_wizard_viewset_get_without_any_stored_runs_is_unavailable(rf):
+    request = rf.get("/wizard/existing-run/")
+    request.session = _Session()
+
+    response = _RoutedViewSet.as_view()(request, run_id="existing-run")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+
+
+def test_wizard_viewset_post_to_an_unknown_run_is_unavailable(rf):
+    request = rf.post("/wizard/missing-run/first/", data={"name": "Ada"})
+    request.session = _routed_session([])
+
+    response = _RoutedViewSet.as_view()(
+        request, run_id="missing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/"
+    assert "missing-run" not in request.session["gandalf_runs"]
+
+
+def test_wizard_viewset_run_unavailable_hook_receives_the_reason(rf):
+    from django.http import HttpResponse
+
+    reasons = []
+
+    class HookedViewSet(_RoutedViewSet):
+        def run_unavailable(self, bound_wizard, reason):
+            reasons.append(reason)
+            return HttpResponse(b"unavailable")
+
+    completed = rf.get("/wizard/existing-run/")
+    completed.session = _completed_session()
+    HookedViewSet.as_view()(completed, run_id="existing-run")
+
+    unknown = rf.get("/wizard/missing-run/")
+    unknown.session = _routed_session([])
+    HookedViewSet.as_view()(unknown, run_id="missing-run")
+
+    assert reasons == ["completed", "unknown"]
+
+
+def test_wizard_viewset_reuses_an_already_configured_wizard_on_refresh(rf):
+    """A pre-configured wizard is the same object on every resolve, so the
+    post-submission refresh rebinds nothing and skips re-validating it."""
+    validations = []
+
+    class PreConfiguredViewSet(_RoutedViewSet):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, context={"step_name": "first"})
+            .step(SecondStepForm, context={"step_name": "second"})
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+        def _validate_routable(self, wizard):
+            validations.append(wizard)
+            return super()._validate_routable(wizard)
+
+    request = rf.post("/wizard/existing-run/first/", data={"name": "Ada"})
+    request.session = _routed_session([])
+
+    response = PreConfiguredViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="first"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+    assert len(validations) == 1
+
+
+# --- Escape dispositions --------------------------------------------------
+
+
+def _escaping_viewset(*steps, done_body=None):
+    from django.http import HttpResponse
+
+    wizard = Wizard()
+    for form, name in steps:
+        wizard = wizard.step(form, context={"step_name": name})
+
+    class _EscapingViewSet(_RoutedViewSet):
+        pass
+
+    _EscapingViewSet.wizard = wizard
+    if done_body is not None:
+        _EscapingViewSet.done = lambda self, bound_wizard: HttpResponse(
+            done_body(bound_wizard)
+        )
+    return _EscapingViewSet
+
+
+def test_wizard_viewset_parking_escape_rolls_state_back(rf):
+    from django.urls import reverse
+
+    from tests.testapp.forms import EmailLookupForm
+
+    viewset = _escaping_viewset(
+        (EmailLookupForm, "lookup"),
+        (SecondStepForm, "second"),
+    )
+    request = rf.post(
+        "/wizard/existing-run/lookup/", data={"email": "existing@example.com"}
+    )
+    request.session = _routed_session([])
+
+    response = viewset.as_view()(request, run_id="existing-run", gandalf_step="lookup")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == reverse("escape-landing")
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == []
+
+
+def test_wizard_viewset_advancing_escape_keeps_the_stored_answer(rf):
+    from django.urls import reverse
+
+    from tests.testapp.forms import NewsletterForm
+
+    viewset = _escaping_viewset(
+        (NewsletterForm, "newsletter"),
+        (SecondStepForm, "second"),
+    )
+    request = rf.post(
+        "/wizard/existing-run/newsletter/",
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+    request.session = _routed_session([])
+
+    response = viewset.as_view()(
+        request, run_id="existing-run", gandalf_step="newsletter"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == reverse("escape-landing")
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"email": "ada@example.com", "subscribe": "on"}},
+    ]
+
+
+def test_wizard_viewset_obliterating_escape_forgets_the_run(rf):
+    from django.urls import reverse
+
+    from tests.testapp.views import CancelSignupStepView
+
+    viewset = _escaping_viewset(
+        (CancelSignupStepView, "cancel"),
+        (SecondStepForm, "second"),
+    )
+    request = rf.post(
+        "/wizard/existing-run/cancel/",
+        data={"reason": "changed my mind", "cancel": "on"},
+    )
+    request.session = _routed_session([])
+
+    response = viewset.as_view()(request, run_id="existing-run", gandalf_step="cancel")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == reverse("escape-landing")
+    assert "existing-run" not in request.session["gandalf_runs"]
+
+
+def test_wizard_viewset_rejects_an_escape_naming_no_disposition(rf):
+    from tests.testapp.forms import BareEscapeForm
+
+    viewset = _escaping_viewset(
+        (BareEscapeForm, "bare"),
+        (SecondStepForm, "second"),
+    )
+    request = rf.post("/wizard/existing-run/bare/", data={"name": "Ada"})
+    request.session = _routed_session([])
+
+    with pytest.raises(ImproperlyConfigured, match="names no disposition"):
+        viewset.as_view()(request, run_id="existing-run", gandalf_step="bare")
+
+
+def test_wizard_viewset_reconstructs_the_form_of_an_escaped_answer(rf):
+    from tests.testapp.forms import NewsletterForm
+
+    viewset = _escaping_viewset(
+        (NewsletterForm, "newsletter"),
+        done_body=lambda bound_wizard: ",".join(
+            sorted(bound_wizard.runtime_tree.form.cleaned_data)
+        ),
+    )
+    request = rf.get("/wizard/existing-run/")
+    request.session = _routed_session(
+        [{"step": {"email": "ada@example.com", "subscribe": "on"}}]
+    )
+
+    response = viewset.as_view()(request, run_id="existing-run")
+
+    # `.form` swallows the escape the stored answer raises, so the fields
+    # cleaned before the raise stay readable.
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"email,subscribe"
+
+
+def test_wizard_viewset_editing_a_step_into_an_escape_stores_the_edit(rf):
+    from tests.testapp.forms import NewsletterForm
+
+    viewset = _escaping_viewset(
+        (NewsletterForm, "newsletter"),
+        (SecondStepForm, "second"),
+    )
+    request = rf.post(
+        "/wizard/existing-run/newsletter/",
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+    request.session = _routed_session(
+        [{"step": {"email": "ada@example.com", "subscribe": ""}}]
+    )
+
+    response = viewset.as_view()(
+        request, run_id="existing-run", gandalf_step="newsletter"
+    )
+
+    # Editing a completed step never escapes: the raise only marks the step
+    # satisfied, so the edit is stored and the run carries on.
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/wizard/existing-run/second/"
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == [
+        {"step": {"email": "ada@example.com", "subscribe": "on"}},
+    ]

@@ -19,6 +19,7 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from gandalf.escapes import Obliterate
+from gandalf.storage import SessionStorage
 
 from .forms import (
     AccountTypeForm,
@@ -82,6 +83,28 @@ class SingleStepWizardViewSet(WizardViewSet):
     wizard = Wizard().step(FirstStepForm, name="first")
 
     url_name = "single-step-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class TwoTombstoneStorage(SessionStorage):
+    """Keeps only two completion tombstones, so pruning is observable
+    without completing dozens of runs."""
+
+    max_completed_runs = 2
+
+
+class PrunedCompletionWizardViewSet(WizardViewSet):
+    description = (
+        "Single-step wizard whose storage keeps only two completion "
+        "tombstones, exercising the prune of the oldest finished runs."
+    )
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm, name="first")
+    storage_class = TwoTombstoneStorage
+
+    url_name = "pruned-completion-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")

@@ -3037,3 +3037,79 @@ def test_dynamic_wizard_does_not_complete_before_its_generated_steps(client):
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == _step(run_url, "item-0")
     assert client.session["gandalf_runs"][run_id]["state"] == [{"step": {"count": "3"}}]
+
+
+def test_bare_run_url_post_on_a_live_run_redirects_without_storing(
+    client, routed_wizard_urls, routed_wizard_run
+):
+    response = client.post(
+        routed_wizard_urls(routed_wizard_run),
+        data={"account_type": "business"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == routed_wizard_urls(routed_wizard_run, "account_type")
+    assert client.session["gandalf_runs"][routed_wizard_run].get("state", []) == []
+
+
+def test_bare_run_url_post_on_a_complete_but_unfinished_run_returns_to_the_run(
+    client,
+    escape_advance_final_step_wizard_url,
+    escape_advance_final_step_wizard_run_url,
+):
+    client.get(escape_advance_final_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_advance_final_step_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    # Advance deferred done(), so the run is complete with no cursor to point
+    # at — a bare-URL POST goes back to the run URL, which finishes it.
+    response = client.post(
+        escape_advance_final_step_wizard_run_url(run_id),
+        data={"email": "grace@example.com"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == escape_advance_final_step_wizard_run_url(run_id)
+
+
+def test_misconfigured_wizard_unknown_run_raises_improperly_configured(client):
+    from django.core.exceptions import ImproperlyConfigured
+
+    session = client.session
+    session["gandalf_runs"] = {}
+    session.save()
+
+    with pytest.raises(ImproperlyConfigured, match="get_start_url"):
+        client.get(
+            reverse(
+                "misconfigured-wizard-run",
+                kwargs={"run_id": "11111111-1111-1111-1111-111111111111"},
+            )
+        )
+
+
+def test_completion_tombstones_are_pruned_to_the_storage_cap(client):
+    start_url = reverse("pruned-completion-wizard")
+    completed = []
+
+    for name in ("Ada", "Grace", "Mary"):
+        client.get(start_url)
+        run_id = next(
+            key
+            for key, data in client.session["gandalf_runs"].items()
+            if not data.get("completed")
+        )
+        client.post(
+            reverse(
+                "pruned-completion-wizard-step",
+                kwargs={"run_id": run_id, "gandalf_step": "first"},
+            ),
+            data={"name": name},
+        )
+        completed.append(run_id)
+
+    # Storage keeps two tombstones, so the oldest completed run is dropped.
+    assert list(client.session["gandalf_runs"]) == completed[1:]

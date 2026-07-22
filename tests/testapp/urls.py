@@ -12,6 +12,10 @@ urlpatterns = [
     path("wizard/", include(views.SingleStepWizardViewSet.urls())),
     path("run-unavailable-wizard/", include(views.RunUnavailableWizardViewSet.urls())),
     path(
+        "pruned-completion-wizard/",
+        include(views.PrunedCompletionWizardViewSet.urls()),
+    ),
+    path(
         "wizard-without-done/", include(views.SingleStepWizardWithoutDoneViewSet.urls())
     ),
     path("wizard-done-data/", include(views.SingleStepWizardDoneDataViewSet.urls())),
