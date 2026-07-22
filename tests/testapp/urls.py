@@ -104,4 +104,25 @@ urlpatterns = [
         "org-scoped-wizard/<slug:org>/",
         include(views.OrgScopedEditingWizardViewSet.urls()),
     ),
+    path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
+    path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),
+    path("escape-advance-wizard/", include(views.EscapeAdvanceWizardViewSet.urls())),
+    path(
+        "escape-advance-final-step-wizard/",
+        include(views.EscapeAdvanceFinalStepWizardViewSet.urls()),
+    ),
+    path(
+        "escape-obliterate-wizard/",
+        include(views.EscapeObliterateWizardViewSet.urls()),
+    ),
+    path("bare-escape-wizard/", include(views.BareEscapeWizardViewSet.urls())),
+    path("escape-editing-wizard/", include(views.EscapeEditingWizardViewSet.urls())),
+    path(
+        "mid-flow-escape-park-wizard/",
+        include(views.MidFlowEscapeParkWizardViewSet.urls()),
+    ),
+    path(
+        "escape-park-file-wizard/",
+        include(views.EscapeParkFileWizardViewSet.urls()),
+    ),
 ]

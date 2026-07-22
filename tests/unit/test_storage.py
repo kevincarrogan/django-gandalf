@@ -151,3 +151,30 @@ def test_session_storage_set_state_marks_session_modified():
     storage.set_state("existing-run", [{"step": {"name": "Ada"}}])
 
     assert request.session.modified is True
+
+
+def test_session_storage_delete_run_removes_the_run():
+    request = _Request({"gandalf_runs": {"first": {"state": []}, "second": {}}})
+    storage = SessionStorage(request)
+
+    storage.delete_run("first")
+
+    assert request.session["gandalf_runs"] == {"second": {}}
+
+
+def test_session_storage_delete_run_ignores_an_unknown_run():
+    request = _Request({"gandalf_runs": {"first": {}}})
+    storage = SessionStorage(request)
+
+    storage.delete_run("missing")
+
+    assert request.session["gandalf_runs"] == {"first": {}}
+
+
+def test_session_storage_delete_run_marks_session_modified():
+    request = _Request({"gandalf_runs": {"first": {}}})
+    storage = SessionStorage(request)
+
+    storage.delete_run("first")
+
+    assert request.session.modified is True

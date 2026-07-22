@@ -7,6 +7,7 @@ from typing import Any
 from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
+from gandalf.escapes import Escape
 
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,11 @@ class RuntimeStep:
         Customizations beyond composition (overrides of `form_valid()`,
         `post()`, `dispatch()`, or `setup()`) are not surfaced here — `.form`
         does not run the FormView's dispatch pipeline.
+
+        A step whose stored answer escapes from `clean()` still reconstructs,
+        but `cleaned_data` only holds the fields cleaned before the raise.
+        Raise from `form_valid()` instead when the answer must stay wholly
+        readable afterwards.
         """
         form_view_class = self.declaration.form_view
         request = self.bound_wizard.dispatcher.build_request(
@@ -69,7 +75,10 @@ class RuntimeStep:
         view = form_view_class()
         view.setup(request)
         form = view.get_form()
-        form.is_valid()
+        try:
+            form.is_valid()
+        except Escape:
+            pass
         return form
 
     def matches_context(self, **context):
@@ -204,11 +213,24 @@ class Cursor:
     pending submission already placed at the cursor's slot) and carried
     verbatim past it, so serializing it preserves answers positioned after
     the cursor.
+
+    `escapes` records any `Escape` raised while validating a step on this
+    walk, as `(declaration, escape)` pairs. An escape counts as satisfying
+    its step, so the walk continues past it; only the viewset acts on one,
+    and only for the step the user just submitted.
     """
 
     node: tree.Step | None
     state: RuntimeStep | RuntimeBranch | None
     response: Any = None
+    escapes: tuple = ()
+
+    def escape_for(self, declaration):
+        """The escape raised by `declaration` on this walk, or None."""
+        for step_declaration, escape in self.escapes:
+            if step_declaration is declaration:
+                return escape
+        return None
 
 
 def _normalise_step_context(context):
@@ -303,6 +325,19 @@ class BoundWizard:
 
     def get_state(self):
         return self.storage.get_state(self.run_id)
+
+    def set_state(self, entries):
+        self.storage.set_state(self.run_id, entries)
+
+    def obliterate(self):
+        """Forget this run: its uploaded files and its stored state.
+
+        Completion only cleans up files (see `WizardViewSet._finish`),
+        leaving the run readable so revisiting it re-runs `done()`. This
+        removes the run outright, so revisiting starts a fresh one.
+        """
+        self.cleanup_files()
+        self.storage.delete_run(self.run_id)
 
     @property
     def runtime_tree(self):
@@ -476,11 +511,11 @@ class BoundWizard:
             try:
                 target = self._resolve_edit_target(cursor, context)
             except StepNotFound:
-                self._delete_file_refs(files)
+                self.delete_file_refs(files)
                 raise
         response = self._validate_edit(target, submission, files, args, url_kwargs)
         if response is not None:
-            self._delete_file_refs(files)
+            self.delete_file_refs(files)
             return response
         merged_files, replaced_refs = _overlay_file_refs(
             target.files or {}, files or {}
@@ -508,6 +543,11 @@ class BoundWizard:
         rendered response when the submission does not satisfy the step,
         None when it does. The error render happens at the step's own URL,
         so resubmitting the corrected form re-targets the same step.
+
+        An escape raised here only marks the step satisfied — editing a
+        completed step never redirects the user out of the wizard, because
+        the dispositions are defined against the cursor and the edit is
+        behind it.
         """
         validation_refs, _ = _overlay_file_refs(runtime_step.files or {}, files or {})
         request = self.dispatcher.build_request(
@@ -515,14 +555,17 @@ class BoundWizard:
             submission=submission,
             files=_open_file_refs(self, validation_refs),
         )
-        response = self.dispatcher.dispatch(
-            runtime_step.declaration, request, *args, **kwargs
-        )
+        try:
+            response = self.dispatcher.dispatch(
+                runtime_step.declaration, request, *args, **kwargs
+            )
+        except Escape:
+            return None
         if self.dispatcher.response_satisfies_step(response):
             return None
         return response
 
-    def _delete_file_refs(self, refs):
+    def delete_file_refs(self, refs):
         for ref in (refs or {}).values():
             self.file_storage.delete(ref)
 
@@ -594,6 +637,7 @@ class CursorWalker(tree.Interpreter):
         self._head: RuntimeStep | RuntimeBranch | None = None
         self._tail: RuntimeStep | RuntimeBranch | None = None
         self._cursor = None
+        self._escapes = []
 
     @property
     def _sealed(self):
@@ -607,21 +651,31 @@ class CursorWalker(tree.Interpreter):
             if stored is None:
                 self._park(step, keep_data=None, keep_files=stored_files)
                 return
-            response = self._dispatcher.dispatch(
-                step,
-                self._dispatcher.build_request(
-                    "POST",
-                    submission=stored,
-                    files=self._open_files(stored_files),
-                ),
-                *self._args,
-                **self._kwargs,
-            )
-            if not self._dispatcher.response_satisfies_step(response):
-                self._park(
-                    step, keep_data=stored, keep_files=stored_files, response=response
+            try:
+                response = self._dispatcher.dispatch(
+                    step,
+                    self._dispatcher.build_request(
+                        "POST",
+                        submission=stored,
+                        files=self._open_files(stored_files),
+                    ),
+                    *self._args,
+                    **self._kwargs,
                 )
-                return
+            except Escape as escape:
+                # An escape satisfies its step, so the walk carries on past
+                # it. Recording it lets the viewset redirect for the live
+                # submission; on every later replay it is simply satisfied.
+                self._escapes.append((step, escape))
+            else:
+                if not self._dispatcher.response_satisfies_step(response):
+                    self._park(
+                        step,
+                        keep_data=stored,
+                        keep_files=stored_files,
+                        response=response,
+                    )
+                    return
         self._append(
             RuntimeStep(
                 declaration=step,
@@ -658,6 +712,7 @@ class CursorWalker(tree.Interpreter):
                 dormant_arms=dormant_arms,
             )
         )
+        self._escapes.extend(sub._escapes)
         if sub._cursor is not None:
             self._cursor = Cursor(
                 node=sub._cursor.node,
@@ -666,9 +721,10 @@ class CursorWalker(tree.Interpreter):
             )
 
     def cursor(self):
+        escapes = tuple(self._escapes)
         if self._cursor is not None:
-            return self._cursor
-        return Cursor(node=None, state=self._head)
+            return replace(self._cursor, escapes=escapes)
+        return Cursor(node=None, state=self._head, escapes=escapes)
 
     def _park(self, step, keep_data, keep_files, response=None):
         """Mark `step` as the cursor; setting it seals the rest of the walk.

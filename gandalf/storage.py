@@ -31,3 +31,10 @@ class SessionStorage:
         run_data = self.get_run_data(run_id)
         run_data["state"] = state
         self.request.session.modified = True
+
+    def delete_run(self, run_id):
+        """Forget the run entirely. Idempotent: deleting an unknown run is
+        not an error, so callers need not check first."""
+        gandalf_runs = self.request.session[self.SESSION_KEY]
+        gandalf_runs.pop(str(run_id), None)
+        self.request.session.modified = True

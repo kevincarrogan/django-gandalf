@@ -1,9 +1,12 @@
+from copy import deepcopy
+
 from django.core.exceptions import ImproperlyConfigured
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.views import View
 
 from gandalf import tree
+from gandalf.escapes import Advance, Obliterate, Park
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
@@ -158,13 +161,22 @@ class WizardViewSet(View):
         """Apply a routed submission: the cursor's step submits, a completed
         step edits, anything else redirects to the cursor without storing
         the payload or its uploads. Successful writes redirect (PRG); a
-        rejected edit returns its error render directly."""
+        rejected edit returns its error render directly, and a step that
+        escapes returns the escape's redirect."""
         cursor = bound_wizard.cursor(*args, **kwargs)
         target = bound_wizard.find_step_at(cursor, **route_context)
         if target is not None and target.declaration is cursor.node:
             files = self._store_uploads(bound_wizard, self.request.FILES)
+            # `submit()` stores before anything validates the submission, so
+            # a parking escape needs the state from before it to roll back to.
+            previous_entries = deepcopy(bound_wizard.get_state())
             bound_wizard.submit(submission, *args, files=files, **kwargs)
-        elif target is not None and target.data is not None:
+            next_cursor = bound_wizard.cursor(*args, **kwargs)
+            escape = next_cursor.escape_for(target.declaration)
+            if escape is not None:
+                return self._escaped(bound_wizard, escape, previous_entries, files)
+            return self._continue(bound_wizard, next_cursor)
+        if target is not None and target.data is not None:
             files = self._store_uploads(bound_wizard, self.request.FILES)
             bound_wizard.mark_rendering(cursor, target.declaration)
             edit_response = bound_wizard.edit(
@@ -177,13 +189,36 @@ class WizardViewSet(View):
             )
             if edit_response is not None:
                 return edit_response
-        else:
-            return self._redirect_to_cursor(bound_wizard, cursor)
+            return self._continue(bound_wizard, bound_wizard.cursor(*args, **kwargs))
+        return self._redirect_to_cursor(bound_wizard, cursor)
 
-        next_cursor = bound_wizard.cursor(*args, **kwargs)
+    def _continue(self, bound_wizard, next_cursor):
         if next_cursor.node is None:
             return self._finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, next_cursor)
+
+    def _escaped(self, bound_wizard, escape, previous_entries, files):
+        """Settle what the escape leaves behind, then send the user off.
+
+        The escape is only ever acted on for the submission the user just
+        made; replays of a stored escaping answer merely satisfy their step.
+        """
+        if isinstance(escape, Obliterate):
+            bound_wizard.obliterate()
+        elif isinstance(escape, Park):
+            bound_wizard.set_state(previous_entries)
+            bound_wizard.delete_file_refs(files)
+        elif not isinstance(escape, Advance):
+            raise ImproperlyConfigured(
+                "Raise Park, Advance or Obliterate to escape a wizard; "
+                f"{type(escape).__name__} names no disposition for the run."
+            )
+        return redirect(
+            escape.to,
+            *escape.redirect_args,
+            permanent=escape.permanent,
+            **escape.redirect_kwargs,
+        )
 
     def _redirect_to_cursor(self, bound_wizard, cursor):
         if cursor.node is not None:

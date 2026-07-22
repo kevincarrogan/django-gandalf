@@ -246,6 +246,7 @@ Traditional wizard tooling is great for simple, linear steps, but it gets harder
 - **Easy by default**: pass a plain `Form` to `.step()` for the common case.
 - **Django-friendly abstraction**: each step is still treated as a `FormView`-like unit under the hood.
 - **Advanced escape hatch**: pass a full `FormView` to `.step()` when a step needs extra configuration.
+- **A way out**: a step can [escape the wizard](#escaping-the-wizard) entirely, redirecting the user elsewhere mid-flow.
 
 For a runtime-level view of how the pieces fit together, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -957,6 +958,100 @@ wizard = (
     )
 )
 ```
+
+---
+
+## Escaping the wizard
+
+Sometimes an answer means the user should not be in the wizard any more. An
+email lookup finds an existing account, so the right destination is the login
+page, not the next step. A step raises an escape to say so:
+
+```python
+from django import forms
+from django.contrib.auth.models import User
+from django.urls import reverse
+
+from gandalf.escapes import Park
+
+
+class EmailLookupForm(forms.Form):
+    email = forms.EmailField()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if User.objects.filter(email=cleaned_data.get("email")).exists():
+            raise Park(reverse("login"))
+        return cleaned_data
+```
+
+The user is redirected to `reverse("login")` instead of moving on. Escapes are
+ordinary exceptions, in the spirit of `Http404` and `PermissionDenied`, so they
+can be raised from wherever the decision is naturally made — a plain form's
+`clean()` as above, or a step `FormView`'s `form_valid()` when the check needs
+the view:
+
+```python
+from django.urls import reverse
+from django.views.generic.edit import FormView
+
+from gandalf.escapes import Obliterate
+
+
+class CancelSignupStepView(FormView):
+    form_class = CancelSignupForm
+    template_name = "signup/step.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def form_valid(self, form):
+        if form.cleaned_data["cancel"]:
+            raise Obliterate(reverse("home"))
+        return super().form_valid(form)
+```
+
+### What happens to the run
+
+Which exception you raise decides what the user comes back to. All three take
+the same arguments as `django.shortcuts.redirect`, so a URL, a named route with
+arguments, or a model with `get_absolute_url()` all work.
+
+| Exception | The escaping answer | Coming back to the run |
+| --- | --- | --- |
+| `Park` | discarded, with any files it uploaded | the same step, unanswered |
+| `Advance` | stored, and satisfies the step | the next step |
+| `Obliterate` | destroyed with the rest of the run | a fresh run |
+
+`Park` treats the escape as a detour the step never completed — right for the
+email lookup above, where the address was a question rather than an answer.
+`Advance` is for a step that genuinely finished, when the user should be sent
+elsewhere before carrying on. `Obliterate` ends the run: state and uploaded
+files are both removed.
+
+`Escape` is the base class, so `except Escape` catches all three, and you can
+subclass any of them to carry extra context. Raising `Escape` itself is an
+error — it names no disposition for the run, so the viewset rejects it with
+`ImproperlyConfigured`.
+
+### Escapes and re-entrancy
+
+A wizard re-validates every stored answer on each request, so an answer stored
+by `Advance` raises its escape again on every later walk. Those replays only
+mark the step satisfied: the redirect is issued for the submission the user
+actually made, and never again. Two consequences are worth knowing:
+
+- **Editing a completed step never escapes.** An escape raised while validating
+  an edit means the step is satisfied and the edit is stored, so the flow
+  continues as normal. Escapes are for the step the user is on.
+- **`Advance` on the final step defers `done()`.** The escape's redirect is
+  returned rather than the completion response; the run is complete, so
+  returning to it runs `done()` then.
+
+One caveat on reading an escaped answer afterwards: a step that escaped from
+`clean()` still reconstructs via `.form`, but its `cleaned_data` holds only the
+fields cleaned before the raise. Raise from `form_valid()` instead when the
+answer needs to stay wholly readable in `done()`.
 
 ---
 

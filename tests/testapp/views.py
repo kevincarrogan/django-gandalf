@@ -12,15 +12,23 @@ from gandalf.viewsets import WizardViewSet
 
 from django.http import HttpResponse
 from django.urls import reverse
+from django.views import View
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
+from gandalf.escapes import Obliterate
+
 from .forms import (
     AccountTypeForm,
+    BareEscapeForm,
     BusinessDetailsForm,
+    CancelSignupForm,
+    EmailLookupForm,
+    EscapingPhotoForm,
     FirstStepForm,
     ItemCountForm,
     ItemForm,
+    NewsletterForm,
     OptionalPhotoForm,
     PersonalDetailsForm,
     ProfilePhotoForm,
@@ -1036,6 +1044,148 @@ class BranchEditRejectionWizardViewSet(WizardViewSet):
     )
 
     url_name = "branch-edit-rejection-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class EscapeLandingView(View):
+    description = "Where the escaping wizards send the user."
+
+    def get(self, request):
+        return HttpResponse("escaped")
+
+
+class EscapeParkWizardViewSet(WizardViewSet):
+    description = (
+        "First step escapes with Park for a known address: the run stays on "
+        "that step and the answer is not stored."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard().step(EmailLookupForm, name="email").step(FirstStepForm, name="first")
+    )
+
+    url_name = "escape-park-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class EscapeAdvanceWizardViewSet(WizardViewSet):
+    description = (
+        "First step escapes with Advance: the answer is stored and the run "
+        "resumes at the second step."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(NewsletterForm, name="newsletter")
+        .step(FirstStepForm, name="first")
+    )
+
+    url_name = "escape-advance-wizard"
+
+    def done(self, bound_wizard):
+        newsletter = bound_wizard.find_step(name="newsletter")
+        return HttpResponse(f"completed {newsletter.form.cleaned_data['email']}")
+
+
+class EscapeAdvanceFinalStepWizardViewSet(WizardViewSet):
+    description = "Single step escaping with Advance, so the escape defers done()."
+    template_name = "testapp/linear_wizard.html"
+    wizard = Wizard().step(NewsletterForm, name="newsletter")
+
+    url_name = "escape-advance-final-step-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class CancelSignupStepView(FormView):
+    """Escapes from `form_valid()` rather than `clean()`, destroying the run."""
+
+    form_class = CancelSignupForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def form_valid(self, form):
+        if form.cleaned_data["cancel"]:
+            raise Obliterate(reverse("escape-landing"))
+        return super().form_valid(form)
+
+
+class EscapeObliterateWizardViewSet(WizardViewSet):
+    description = (
+        "First step escapes with Obliterate from a user-supplied FormView: "
+        "the run and its files are removed."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(CancelSignupStepView, name="cancel")
+        .step(FirstStepForm, name="first")
+    )
+
+    url_name = "escape-obliterate-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class BareEscapeWizardViewSet(WizardViewSet):
+    description = "Raises the base Escape, which the viewset rejects as misuse."
+    template_name = "testapp/linear_wizard.html"
+    wizard = Wizard().step(BareEscapeForm, name="bare")
+
+    url_name = "bare-escape-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class MidFlowEscapeParkWizardViewSet(WizardViewSet):
+    description = (
+        "Escapes with Park from the second step, so rolling back must leave "
+        "the first step's answer alone."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard().step(FirstStepForm, name="first").step(EmailLookupForm, name="email")
+    )
+
+    url_name = "mid-flow-escape-park-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class EscapeParkFileWizardViewSet(WizardViewSet):
+    description = "Escapes with Park from a step that uploaded a file."
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = (
+        Wizard().step(EscapingPhotoForm, name="photo").step(FirstStepForm, name="first")
+    )
+
+    url_name = "escape-park-file-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class EscapeEditingWizardViewSet(WizardViewSet):
+    description = (
+        "Escaping step followed by another, used to show that editing a "
+        "completed step never escapes."
+    )
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard().step(EmailLookupForm, name="email").step(FirstStepForm, name="first")
+    )
+
+    url_name = "escape-editing-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")

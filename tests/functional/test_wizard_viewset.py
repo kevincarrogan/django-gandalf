@@ -18,6 +18,7 @@ from gandalf.tree import MultipleStepsReturned
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
+    EmailLookupForm,
     FirstStepForm,
     PersonalDetailsForm,
     ReviewForm,
@@ -2402,3 +2403,433 @@ def test_branch_edit_rejection_wizard_edit_in_branch_arm_with_invalid_keeps_stat
         "email": ["Enter a valid email address."]
     }
     assert client.session["gandalf_runs"][run_id]["state"] == state_before
+
+
+@pytest.fixture
+def escape_park_wizard_url():
+    return reverse("escape-park-wizard")
+
+
+@pytest.fixture
+def escape_park_wizard_run_url():
+    def build_url(run_id):
+        return reverse("escape-park-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def escape_advance_wizard_url():
+    return reverse("escape-advance-wizard")
+
+
+@pytest.fixture
+def escape_advance_wizard_run_url():
+    def build_url(run_id):
+        return reverse("escape-advance-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def escape_advance_final_step_wizard_url():
+    return reverse("escape-advance-final-step-wizard")
+
+
+@pytest.fixture
+def escape_advance_final_step_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "escape-advance-final-step-wizard-run", kwargs={"run_id": run_id}
+        )
+
+    return build_url
+
+
+@pytest.fixture
+def escape_obliterate_wizard_url():
+    return reverse("escape-obliterate-wizard")
+
+
+@pytest.fixture
+def escape_obliterate_wizard_run_url():
+    def build_url(run_id):
+        return reverse("escape-obliterate-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def bare_escape_wizard_url():
+    return reverse("bare-escape-wizard")
+
+
+@pytest.fixture
+def bare_escape_wizard_run_url():
+    def build_url(run_id):
+        return reverse("bare-escape-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def escape_editing_wizard_url():
+    return reverse("escape-editing-wizard")
+
+
+@pytest.fixture
+def escape_editing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("escape-editing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_parking_escape_redirects_away_without_storing_the_submission(
+    client,
+    escape_park_wizard_url,
+    escape_park_wizard_run_url,
+):
+    client.get(escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+    assert client.session["gandalf_runs"][run_id]["state"] == []
+
+
+def test_parking_escape_leaves_the_run_on_the_escaping_step(
+    client,
+    escape_park_wizard_url,
+    escape_park_wizard_run_url,
+):
+    client.get(escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    response = client.get(escape_park_wizard_run_url(run_id), follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], EmailLookupForm)
+    assertContains(response, '<input type="email" name="email"')
+
+
+def test_parked_run_still_accepts_a_non_escaping_submission(
+    client,
+    escape_park_wizard_url,
+    escape_park_wizard_run_url,
+):
+    client.get(escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    response = client.post(
+        _step(escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "new@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"email": "new@example.com"}},
+    ]
+
+
+def test_non_escaping_submission_advances_normally(
+    client,
+    escape_park_wizard_url,
+    escape_park_wizard_run_url,
+):
+    client.get(escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "new@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], FirstStepForm)
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"email": "new@example.com"}},
+    ]
+
+
+def test_advancing_escape_redirects_away_and_stores_the_submission(
+    client,
+    escape_advance_wizard_url,
+    escape_advance_wizard_run_url,
+):
+    client.get(escape_advance_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_advance_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"email": "ada@example.com", "subscribe": "on"}},
+    ]
+
+
+def test_advancing_escape_resumes_the_run_at_the_next_step(
+    client,
+    escape_advance_wizard_url,
+    escape_advance_wizard_run_url,
+):
+    client.get(escape_advance_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_advance_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    response = client.get(escape_advance_wizard_run_url(run_id), follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+
+
+def test_run_completes_after_an_advancing_escape(
+    client,
+    escape_advance_wizard_url,
+    escape_advance_wizard_run_url,
+):
+    client.get(escape_advance_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_advance_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    response = client.post(
+        _step(escape_advance_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed ada@example.com"
+
+
+def test_advancing_escape_on_the_final_step_defers_the_done_response(
+    client,
+    escape_advance_final_step_wizard_url,
+    escape_advance_final_step_wizard_run_url,
+):
+    client.get(escape_advance_final_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_advance_final_step_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+
+
+def test_completed_run_returns_done_when_revisited_after_escaping(
+    client,
+    escape_advance_final_step_wizard_url,
+    escape_advance_final_step_wizard_run_url,
+):
+    client.get(escape_advance_final_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_advance_final_step_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    response = client.get(escape_advance_final_step_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_obliterating_escape_removes_the_run(
+    client,
+    escape_obliterate_wizard_url,
+    escape_obliterate_wizard_run_url,
+):
+    client.get(escape_obliterate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_obliterate_wizard_run_url(run_id), "cancel"),
+        data={"reason": "changed my mind", "cancel": "on"},
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+    assert run_id not in client.session["gandalf_runs"]
+
+
+def test_form_view_step_without_an_escape_advances_normally(
+    client,
+    escape_obliterate_wizard_url,
+    escape_obliterate_wizard_run_url,
+):
+    client.get(escape_obliterate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_obliterate_wizard_run_url(run_id), "cancel"),
+        data={"reason": "carrying on"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+
+
+def test_editing_a_completed_step_does_not_escape(
+    client,
+    escape_editing_wizard_url,
+    escape_editing_wizard_run_url,
+):
+    client.get(escape_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_editing_wizard_run_url(run_id), "email"),
+        data={"email": "new@example.com"},
+    )
+
+    response = client.post(
+        _step(escape_editing_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    assertRedirects(
+        response,
+        _step(escape_editing_wizard_run_url(run_id), "first"),
+    )
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"email": "existing@example.com"}},
+    ]
+
+
+def test_bare_escape_is_rejected_as_misuse(
+    client,
+    bare_escape_wizard_url,
+    bare_escape_wizard_run_url,
+):
+    client.get(bare_escape_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    with pytest.raises(ImproperlyConfigured):
+        client.post(
+            _step(bare_escape_wizard_run_url(run_id), "bare"),
+            data={"name": "Ada"},
+        )
+
+
+@pytest.fixture
+def mid_flow_escape_park_wizard_url():
+    return reverse("mid-flow-escape-park-wizard")
+
+
+@pytest.fixture
+def mid_flow_escape_park_wizard_run_url():
+    def build_url(run_id):
+        return reverse("mid-flow-escape-park-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def escape_park_file_wizard_url():
+    return reverse("escape-park-file-wizard")
+
+
+@pytest.fixture
+def escape_park_file_wizard_run_url():
+    def build_url(run_id):
+        return reverse("escape-park-file-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_parking_escape_keeps_answers_from_earlier_steps(
+    client,
+    mid_flow_escape_park_wizard_url,
+    mid_flow_escape_park_wizard_run_url,
+):
+    client.get(mid_flow_escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(mid_flow_escape_park_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+    )
+
+    response = client.post(
+        _step(mid_flow_escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+    ]
+
+
+def test_parked_run_returns_to_the_escaping_step_with_earlier_answers_intact(
+    client,
+    mid_flow_escape_park_wizard_url,
+    mid_flow_escape_park_wizard_run_url,
+):
+    client.get(mid_flow_escape_park_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(mid_flow_escape_park_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+    )
+    client.post(
+        _step(mid_flow_escape_park_wizard_run_url(run_id), "email"),
+        data={"email": "existing@example.com"},
+    )
+
+    response = client.get(mid_flow_escape_park_wizard_run_url(run_id), follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], EmailLookupForm)
+
+
+def test_parking_escape_discards_the_upload_it_escaped_with(
+    client,
+    escape_park_file_wizard_url,
+    escape_park_file_wizard_run_url,
+    isolated_media_root,
+):
+    import os
+
+    client.get(escape_park_file_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(escape_park_file_wizard_run_url(run_id), "photo"),
+        data={
+            "photo": SimpleUploadedFile("avatar.jpg", b"binary"),
+            "abandon": "on",
+        },
+    )
+
+    assertRedirects(response, reverse("escape-landing"))
+    assert client.session["gandalf_runs"][run_id]["state"] == []
+    assert not os.path.exists(
+        os.path.join(isolated_media_root, "gandalf", run_id, "avatar.jpg")
+    )
