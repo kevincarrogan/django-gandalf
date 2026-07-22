@@ -1150,6 +1150,51 @@ answer needs to stay wholly readable in `done()`.
 
 ---
 
+## What replaying costs
+
+Gandalf stores raw submissions and re-proves them, rather than recording how
+far a run got and trusting that. Position, branch selection, editing and
+completion all fall out of one walk that re-validates the answers before the
+cursor. That is what makes stale state impossible; the price is that a form's
+`clean()` runs more than once over a run.
+
+The rule is small enough to keep in your head:
+
+> A form's `clean()` runs **once per completed step per HTTP request.**
+
+So with `k` answers already stored, a request costs `k` replays, and a POST
+costs one more for the answer being submitted. Completing an `N`-step run
+costs `N²` validations end to end, spread over `2N` requests.
+
+**The number that matters is not `N`, it is how many of your steps are
+expensive.** Each completed step is validated exactly once per request, so two
+steps that hit the database cost two queries per request whether the user is on
+step 5 or step 29 — constant in position, not growing with it. `N²` only bites
+when *most* steps are expensive.
+
+Measured on a 2023 laptop with `just bench`, for a linear wizard:
+
+| steps | `clean()` | whole run | final POST |
+|---|---|---|---|
+| 30 | free | 72ms | 1.1ms |
+| 30 | 5ms on *every* step | 6.7s | 222ms |
+
+Gandalf's own share is about a millisecond per request at 30 steps; everything
+else is your forms. So the envelope is: **fine at any realistic length unless
+`clean()` is expensive, and if it is, the cost of a request is roughly the
+number of expensive steps already answered times what each one costs.**
+
+If that is a problem, the options in increasing order of what they give up are:
+keep the expensive work out of `clean()` and do it in `done()`, where it runs
+once; store a cheaply-recheckable token rather than repeating the lookup; or
+accept that some checks belong only at the moment of submission. The last one
+narrows the guarantee from "every stored answer is valid now" to "every stored
+answer was valid when given", so it should be a deliberate, local decision.
+
+`just bench` measures your own shapes if you want numbers rather than
+estimates, and `tests/functional/test_walk_cost.py` pins the counts so they
+cannot regress unnoticed.
+
 ## `django-formtools` to `django-gandalf` examples
 
 These examples show equivalent flow setups, then how `django-gandalf` is intended to express the same thing with chained, declarative syntax.
