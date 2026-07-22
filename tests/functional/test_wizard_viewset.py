@@ -2225,6 +2225,50 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     assert sorted(os.listdir(run_dir)) == ["rejected.jpg"]
 
 
+def test_file_editing_wizard_rejected_upload_survives_the_correction(
+    client,
+    file_editing_wizard_url,
+    file_editing_wizard_run_url,
+    isolated_media_root,
+):
+    """Issue #44: a rejected edit used to delete the upload it arrived with,
+    and browsers cannot repopulate a file input — so correcting the text field
+    silently kept the *old* photo while the user believed the new one had been
+    saved. A rejected submission is now kept whole, upload included, so the
+    correction keeps the photo that came with it."""
+    import os
+
+    client.get(file_editing_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    photo_url = _step(file_editing_wizard_run_url(run_id), "photo")
+    client.post(
+        photo_url,
+        data={
+            "label": "Original",
+            "photo": SimpleUploadedFile("first.jpg", b"first-bytes"),
+        },
+        follow=True,
+    )
+
+    # Pick a replacement photo, but leave a required field blank.
+    client.post(
+        photo_url,
+        data={
+            "label": "",
+            "photo": SimpleUploadedFile("second.jpg", b"second-bytes"),
+        },
+        follow=True,
+    )
+    # Correct the field. No file is re-sent, exactly as a browser would behave.
+    client.post(photo_url, data={"label": "Fixed"}, follow=True)
+
+    state = client.session["gandalf_runs"][run_id]["state"]
+    assert state[0]["step"]["label"] == "Fixed"
+    assert state[0]["files"]["photo"]["name"] == "second.jpg"
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    assert sorted(os.listdir(run_dir)) == ["second.jpg"]
+
+
 def test_file_editing_wizard_unknown_step_url_redirects(
     client,
     file_editing_wizard_url,
