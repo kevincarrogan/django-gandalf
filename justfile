@@ -16,6 +16,9 @@ coverage-unit:
 coverage-functional:
     uv run pytest tests/functional --cov=gandalf --cov-report=term-missing --cov-report=xml:coverage-functional.xml
 
+bench:
+    uv run python -m benchmarks
+
 test-django python_version django_version:
     uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
 
