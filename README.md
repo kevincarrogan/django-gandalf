@@ -12,29 +12,12 @@ It is built for the point where your journey stops being a straight line and sta
 
 Instead of stitching this together with scattered step conditions and navigation overrides, `django-gandalf` aims to let you describe the flow as one explicit tree.
 
-## Relationship to `django-formtools`
-
-[`django-formtools`](https://github.com/jazzband/django-formtools) is the
-de-facto library for multi-step form wizards in Django. It provides
-`SessionWizardView` / `CookieWizardView`, a `form_list` of steps, and a
-`condition_dict` for skipping steps based on prior input. It is solid for
-linear or lightly-conditional flows, and many Django projects already use it.
-
-`django-gandalf` is not a fork of `django-formtools` and does not depend on it.
-It is a separate library that targets the same problem space — multi-step form
-journeys — but takes a different approach aimed at the case where the flow
-becomes a branching tree rather than a list with a few skips. Where formtools
-expresses branching as a `condition_dict` mapping step names to predicate
-callables (with navigation hooks like `get_next_step()` for anything more
-involved), Gandalf expresses the entire flow as a single chained declaration
-built from `.step(...)` and `.branch(...)`.
-
-The examples throughout this README put the two styles side by side. They are
-written that way because `django-formtools` is the most familiar reference
-point for what a Django wizard normally looks like, not because Gandalf is a
-drop-in replacement or a migration target. If your flows are linear, formtools
-is likely the simpler choice; Gandalf is aimed at the branching, tree-shaped
-case described above.
+Already using [`django-formtools`](https://github.com/jazzband/django-formtools)?
+It remains the simpler choice for linear or lightly-conditional flows; Gandalf
+is aimed at the branching, tree-shaped case. Some examples below put the two
+styles side by side because formtools is the familiar reference point — see
+[Coming from django-formtools](#coming-from-django-formtools) for the mapping.
+Gandalf is not a fork of formtools and does not depend on it.
 
 ## The simplest case: a linear wizard with a merged-payload `done()`
 
@@ -1258,11 +1241,17 @@ answer was valid when given", so it should be a deliberate, local decision.
 estimates, and `tests/functional/test_walk_cost.py` pins the counts so they
 cannot regress unnoticed.
 
-## `django-formtools` to `django-gandalf` examples
+## Coming from `django-formtools`
 
-These examples show equivalent flow setups, then how `django-gandalf` is intended to express the same thing with chained, declarative syntax.
+There is no automated migration, and Gandalf is not a drop-in replacement — the
+storage shape, the URL model, and the re-proving walk all differ. What maps
+cleanly is the *declaration*: a `form_list` becomes chained `.step(...)` calls,
+and a `condition_dict` becomes `.branch(condition(predicate, subflow))`. The
+predicates are the same idea — a callable given the request — but a Gandalf
+predicate runs behind a fully-validated prefix, so it can read prior answers
+with `find_step(...).form.cleaned_data` unconditionally.
 
-> Note: `django-gandalf` is still early/prototypal, so these are illustrative API examples.
+The examples below show equivalent setups side by side.
 
 ### 1) Linear 3-step wizard
 
