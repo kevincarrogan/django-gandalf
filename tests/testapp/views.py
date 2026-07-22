@@ -805,6 +805,14 @@ class RoutedWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
+class WizardlessWizardViewSet(WizardViewSet):
+    description = (
+        "Viewset that defines no wizard and does not override "
+        "get_wizard(); any request raises ImproperlyConfigured."
+    )
+    url_name = "wizardless-wizard"
+
+
 class MisconfiguredStepUrlsWizardViewSet(WizardViewSet):
     description = (
         "Wizard registered with hand-written URL patterns but neither "

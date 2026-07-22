@@ -1192,6 +1192,14 @@ def test_misconfigured_wizard_start_raises_improperly_configured(client):
         client.get(reverse("misconfigured-wizard"))
 
 
+def test_wizardless_wizard_raises_improperly_configured(client):
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="WizardlessWizardViewSet has no wizard to run",
+    ):
+        client.get(reverse("wizardless-wizard"))
+
+
 def test_misconfigured_wizard_run_url_raises_improperly_configured(client):
     from django.core.exceptions import ImproperlyConfigured
 

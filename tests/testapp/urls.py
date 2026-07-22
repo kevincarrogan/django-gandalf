@@ -73,6 +73,7 @@ urlpatterns = [
     path("file-uploading-wizard/", include(views.FileUploadingWizardViewSet.urls())),
     path("section-editing-wizard/", include(views.SectionEditingWizardViewSet.urls())),
     path("named-helper-wizard/", include(views.NamedHelperWizardViewSet.urls())),
+    path("wizardless-wizard/", include(views.WizardlessWizardViewSet.urls())),
     path("file-editing-wizard/", include(views.FileEditingWizardViewSet.urls())),
     path(
         "empty-branch-arm-context-finder-wizard/",
