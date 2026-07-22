@@ -331,6 +331,45 @@ def test_wizard_viewset_get_wizard_can_build_tree_from_run_state(rf):
     assert response["Location"] == "/dynamic/existing-run/item-0/"
 
 
+def test_wizard_viewset_dynamic_wizard_walks_again_before_judging_completion(rf):
+    """A dynamic `get_wizard()` derives the tree from stored state, so the
+    answer just written can imply steps that did not exist when the request
+    began. Judging completion against the pre-write tree would fire `done()`
+    mid-run, so the refresh walks again — which a static wizard never does,
+    because re-resolving hands back the very same object."""
+    from tests.testapp.forms import ItemCountForm, ItemForm
+
+    class _DynamicRoutedViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_wizard(self, bound_wizard):
+            state = bound_wizard.get_state()
+            wizard = Wizard().step(ItemCountForm, name="count")
+            if state:
+                for index in range(int(state[0]["step"]["count"])):
+                    wizard = wizard.step(ItemForm, name=f"item-{index}")
+            return wizard
+
+        def get_wizard_url(self, run_id):
+            return f"/dynamic/{run_id}/"
+
+        def get_step_url(self, run_id, step_segment):
+            return f"/dynamic/{run_id}/{step_segment}/"
+
+        def done(self, bound_wizard):  # pragma: no cover - must not fire here
+            raise AssertionError("done() fired before the implied steps existed")
+
+    request = rf.post("/dynamic/existing-run/count/", data={"count": "2"})
+    request.session = _routed_session([])
+
+    response = _DynamicRoutedViewSet.as_view()(
+        request, run_id="existing-run", gandalf_step="count"
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == "/dynamic/existing-run/item-0/"
+
+
 class _RoutedViewSet(WizardViewSet):
     wizard = (
         Wizard()

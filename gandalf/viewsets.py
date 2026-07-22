@@ -76,7 +76,7 @@ class WizardViewSet(View):
         return BoundWizard(request, storage)
 
     def _resolve_wizard(self, bound_wizard):
-        wizard = self.configure_wizard(self.get_wizard(bound_wizard))
+        wizard = self._configured_wizard(self.get_wizard(bound_wizard))
         # Re-resolving a static wizard hands back the same object, so the
         # routability walk is skipped rather than repeated.
         if wizard is not bound_wizard.wizard:
@@ -84,6 +84,29 @@ class WizardViewSet(View):
             bound_wizard.bind(wizard)
         bound_wizard.urls = self
         return bound_wizard
+
+    def _configured_wizard(self, declared):
+        """Configure `declared` at most once per request.
+
+        `configure_wizard()` builds a new `ConfiguredWizard` every time it is
+        called, which re-runs the tree `Configurer` and regenerates a
+        `FormView` class per step. A POST resolves the wizard twice, and for a
+        wizard declared the usual way — a plain `Wizard` class attribute —
+        both resolutions are handed the very same declaration, so the second
+        rebuild produces an object identical to the first and differs only in
+        identity. Caching on the view instance, which Django builds per
+        request, spares that rebuild and lets the identity check above hold,
+        so the refresh walk is skipped too.
+
+        A dynamic `get_wizard()` returns a new declaration each call and
+        correctly gets no reuse — its tree really can have changed.
+        """
+        cached = getattr(self, "_configured", None)
+        if cached is not None and cached[0] is declared:
+            return cached[1]
+        configured = self.configure_wizard(declared)
+        self._configured = (declared, configured)
+        return configured
 
     def _refreshed_cursor(self, bound_wizard, walk, *args, **kwargs):
         """Re-derive the wizard from the state this request just wrote, then
