@@ -622,16 +622,16 @@ Calling `.configure(...)` is optional and only needed when overriding default ru
 
 In the common case, declare the wizard steps and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
 
-When you do need to override a default, pass it as a keyword to `.configure(...)`. For example, storage customization:
+When you do need to override a default, pass it as a keyword to `.configure(...)`. For example, file-storage customization:
 
 ```python
 signup_wizard = (
     wizard.step(AccountForm)
-    .configure(storage_class=CustomSessionStorage)
+    .configure(file_storage_class=TenantFileStorage)
 )
 ```
 
-The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `file_storage_class`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
+The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
 
 - `Wizard()` remains focused on step/branch declaration,
 - `configure(...)` receives configuration touch points,
@@ -642,7 +642,20 @@ The same pattern applies to every other touch point on `ConfiguredWizard` (`form
 
 Wizard state is backed by a session storage class. Gandalf provides
 `SessionStorage` as its only built-in storage class, and users may pass a
-compatible custom session-backed class with `Wizard().configure(storage_class=...)`.
+compatible custom session-backed class as `WizardViewSet.storage_class`:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    storage_class = CustomSessionStorage
+```
+
+Storage is the one touch point that lives on the viewset rather than on
+`configure(...)`, because it has to exist *before* the wizard does: the
+viewset builds the `BoundWizard` first, then hands it to `get_wizard()` so a
+dynamic wizard can read stored state to shape itself. A wizard therefore
+cannot supply the storage used to resolve it, and
+`Wizard().configure(storage_class=...)` raises `ImproperlyConfigured`
+pointing here rather than silently doing nothing.
 
 Gandalf does not ship a `CookieStorage` option. Wizard state can include enough
 structured form data and runtime metadata that cookie-backed storage is too

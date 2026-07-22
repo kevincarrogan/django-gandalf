@@ -12,6 +12,7 @@ import gandalf.wizard
 from gandalf import tree
 from gandalf.file_storage import WizardFileStorage
 from gandalf.runtime import BoundWizard
+from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
     AccountTypeForm,
@@ -34,8 +35,10 @@ def _replay(bound_wizard, *args, **kwargs):
     return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
 
 
-def _make_bound_wizard(wizard, request):
-    return BoundWizard(request, wizard.storage_class(request), wizard=wizard)
+def _make_bound_wizard(wizard, request, storage_class=SessionStorage):
+    """Mirrors `WizardViewSet._make_bound_wizard`: storage comes from the
+    viewset, not the wizard, because it has to exist before the wizard does."""
+    return BoundWizard(request, storage_class(request), wizard=wizard)
 
 
 @pytest.fixture
@@ -481,18 +484,29 @@ def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
     assert not hasattr(wizard, "bind")
 
 
-def test_get_bound_wizard_uses_configured_storage_class(request_with_session_factory):
+def test_bound_wizard_uses_the_storage_class_it_is_given(
+    request_with_session_factory,
+):
     class FakeStorage:
         def __init__(self, request):
             self.request = request
 
     request = request_with_session_factory()
-    wizard = Wizard().configure(storage_class=FakeStorage)
+    wizard = Wizard().configure()
 
-    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard = _make_bound_wizard(wizard, request, storage_class=FakeStorage)
 
     assert isinstance(bound_wizard.storage, FakeStorage)
     assert bound_wizard.storage.request is request
+
+
+def test_configuring_storage_class_on_a_wizard_is_rejected():
+    class FakeStorage:
+        def __init__(self, request):
+            self.request = request
+
+    with pytest.raises(ImproperlyConfigured, match="WizardViewSet.storage_class"):
+        Wizard().configure(storage_class=FakeStorage)
 
 
 def test_configured_wizard_uses_configured_step_dispatcher_class(

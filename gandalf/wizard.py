@@ -10,7 +10,6 @@ from gandalf.runtime import (
     StateSerializer,
     StepDispatcher,
 )
-from gandalf.storage import SessionStorage
 
 
 __all__ = [
@@ -121,7 +120,6 @@ class Wizard:
 
 
 class ConfiguredWizard:
-    storage_class = SessionStorage
     file_storage_class = WizardFileStorage
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
@@ -130,12 +128,19 @@ class ConfiguredWizard:
     step_router_class = StepNameRouter
 
     def __init__(self, *, tree, configuration):
+        if "storage_class" in configuration:
+            raise ImproperlyConfigured(
+                "storage_class belongs on the WizardViewSet, not the wizard. "
+                "Storage has to exist before the wizard does — get_wizard() "
+                "is handed a BoundWizard that can already read stored state — "
+                "so the wizard cannot supply it. Set "
+                "WizardViewSet.storage_class instead."
+            )
         self.configuration = configuration
         self.form_view_factory = configuration.get(
             "form_view_factory", self.form_view_factory
         )
         self.tree = self._configure_tree(tree)
-        self.storage_class = configuration.get("storage_class", self.storage_class)
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
         )

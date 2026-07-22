@@ -407,6 +407,24 @@ class InvalidWizardViewSet(WizardViewSet):
     wizard = object()
 
 
+class WizardConfiguredStorageViewSet(WizardViewSet):
+    description = (
+        "Configures storage_class on the wizard instead of the viewset; "
+        "visiting should error rather than silently ignore it."
+    )
+    url_name = "wizard-configured-storage"
+    template_name = "testapp/single_step_wizard.html"
+
+    def get_wizard(self, bound_wizard):
+        # Built per request: configuring it at class level would raise on
+        # import and take the whole test app with it.
+        return (
+            Wizard()
+            .step(FirstStepForm, name="first")
+            .configure(storage_class=TwoTombstoneStorage)
+        )
+
+
 FirstStepFormView = form_view_factory(
     FirstStepForm,
     template_name="testapp/single_step_wizard.html",

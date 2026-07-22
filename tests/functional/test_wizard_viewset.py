@@ -3113,3 +3113,10 @@ def test_completion_tombstones_are_pruned_to_the_storage_cap(client):
 
     # Storage keeps two tombstones, so the oldest completed run is dropped.
     assert list(client.session["gandalf_runs"]) == completed[1:]
+
+
+def test_wizard_configured_storage_class_raises_improperly_configured(client):
+    from django.core.exceptions import ImproperlyConfigured
+
+    with pytest.raises(ImproperlyConfigured, match="WizardViewSet.storage_class"):
+        client.get(reverse("wizard-configured-storage"))
