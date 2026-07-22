@@ -117,6 +117,19 @@ urlpatterns = [
         "walk-counting-wizard/",
         include(views.WalkCountingWizardViewSet.urls()),
     ),
+    path("expand-wizard/", include(views.ExpandWizardViewSet.urls())),
+    path(
+        "empty-expand-wizard/",
+        include(views.EmptyExpandWizardViewSet.urls()),
+    ),
+    path(
+        "sealable-expand-wizard/",
+        include(views.SealableExpandWizardViewSet.urls()),
+    ),
+    path(
+        "branching-expand-wizard/",
+        include(views.BranchingExpandWizardViewSet.urls()),
+    ),
     path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
     path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),
     path("escape-advance-wizard/", include(views.EscapeAdvanceWizardViewSet.urls())),

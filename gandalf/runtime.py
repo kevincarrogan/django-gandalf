@@ -146,6 +146,57 @@ class PreservedBranch:
         return transformer.visit_preserved_branch(self, next_result)
 
 
+@dataclass
+class RuntimeExpand:
+    """Runtime mirror of a declared `tree.Expand`: the subtree its builder
+    produced on this walk, mirrored like a branch's selected arm. There are
+    no dormant arms — an expansion is a single computed subtree — so its
+    stored entries are a plain positional list, `{"expand": [...]}`.
+    """
+
+    declaration: tree.Expand
+    selected_arm: "RuntimeStep | RuntimeBranch | None" = None
+    next: "RuntimeStep | RuntimeBranch | None" = None
+
+    def accept_reduce(self, reducer):
+        sub_result = reducer.reduce(self.selected_arm)
+        return reducer.visit_expand(self, sub_result)
+
+    def accept_transform(self, transformer):
+        transformed_arm = transformer.transform(self.selected_arm)
+        next_result = transformer.transform(self.next)
+        return transformer.visit_expand(self, transformed_arm, next_result)
+
+
+@dataclass
+class PreservedExpand:
+    """Verbatim passthrough of a stored expansion entry positioned after the
+    cursor — the counterpart to `PreservedBranch`. The builder is not run
+    (it may depend on answers not yet re-supplied), so the raw entry rides
+    through serialization untouched and is re-interpreted on a later walk."""
+
+    entry: dict
+    next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
+
+    # Opaque to context lookups and route iteration, exactly like a
+    # preserved branch region.
+    selected_arm = None
+
+    def accept_reduce(self, reducer):
+        return self.entry
+
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_preserved_expand(self, next_result)
+
+
+def _expand_sub_entries(entry):
+    """The stored entries for an expansion, a plain positional list."""
+    if entry is None:
+        return []
+    return entry["expand"]
+
+
 def _branch_sub_entries(entry, arm_id):
     """Split a stored branch entry into (active sub-entries, dormant arms)
     for the derived `arm_id`. A bare-list entry is the pre-per-arm legacy
@@ -196,6 +247,8 @@ def _trim_trailing_holes(entries):
 def _is_empty_entry(entry):
     if "branch" in entry:
         return not entry["branch"]
+    if "expand" in entry:
+        return not entry["expand"]
     return entry.get("step") is None and not entry.get("files")
 
 
@@ -530,6 +583,22 @@ class BoundWizard:
         """
         self.file_storage.delete_run(self.run_id)
 
+    def _build_expansion(self, expand_node, partial_runtime_head=None):
+        """Run an expansion's builder and return its configured subtree.
+
+        The builder sees the prefix validated so far through the same
+        `_predicate_runtime_tree` handoff a branch predicate uses, so
+        `find_step(...)` inside it reads prior answers and nothing after the
+        cursor. The subtree it returns is configured and vetted (routable
+        names, no nested expansion) before it is walked."""
+        request = self.dispatcher.build_request("GET")
+        self._predicate_runtime_tree = partial_runtime_head
+        try:
+            built = expand_node.builder(request)
+        finally:
+            self._predicate_runtime_tree = None
+        return self.wizard.configure_expansion(built)
+
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
         """Derive the active arm for a branch, returning `(arm_id, subtree)`.
 
@@ -724,6 +793,42 @@ class CursorWalker(tree.Interpreter):
                 response=sub._cursor.response,
             )
 
+    def visit_expand(self, expand):
+        entry = next(self._entries_iter, None)
+        if self._sealed:
+            self._append(
+                PreservedExpand(entry=entry if entry is not None else {"expand": []})
+            )
+            return
+        # Build the subtree from the prefix validated so far — the same
+        # partial-tree handoff a branch predicate gets — then walk it inline,
+        # exactly like a branch arm. Nothing distinguishes an expanded step
+        # from a declared one once it is in the tree.
+        subtree = self._bound_wizard._build_expansion(expand, self._head)
+        sub = type(self)(
+            self._dispatcher,
+            _expand_sub_entries(entry),
+            self._args,
+            self._kwargs,
+            self._bound_wizard,
+            claim=None if self.reached else self._claim,
+            submission=None if self.reached else self._submission,
+            files=self._files,
+        )
+        sub.walk(subtree)
+        self._append(RuntimeExpand(declaration=expand, selected_arm=sub._head))
+        self._escapes.extend(sub._escapes)
+        if sub.reached:
+            self.reached = True
+            self.target = sub.target
+            self.replaced_refs = sub.replaced_refs
+        if sub._cursor is not None:
+            self._cursor = Cursor(
+                node=sub._cursor.node,
+                state=self._head,
+                response=sub._cursor.response,
+            )
+
     def cursor(self):
         escapes = tuple(self._escapes)
         if self._cursor is not None:
@@ -764,6 +869,9 @@ class StateSerializer(tree.Reducer):
             arms[runtime_branch.selected_arm_id] = sub_result
         return {"branch": arms}
 
+    def visit_expand(self, runtime_expand, sub_result):
+        return {"expand": sub_result}
+
 
 class PathFlattener(tree.Transformer):
     """Transformer that turns a runtime tree into a linked chain of
@@ -779,7 +887,10 @@ class PathFlattener(tree.Transformer):
     def visit_preserved_branch(self, preserved_branch, next_result):
         return next_result
 
-    def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
+    def visit_preserved_expand(self, preserved_expand, next_result):
+        return next_result
+
+    def _splice(self, transformed_selected_arm, next_result):
         if transformed_selected_arm is None:
             return next_result
         tail = transformed_selected_arm
@@ -787,6 +898,12 @@ class PathFlattener(tree.Transformer):
             tail = tail.next
         tail.next = next_result
         return transformed_selected_arm
+
+    def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
+        return self._splice(transformed_selected_arm, next_result)
+
+    def visit_expand(self, runtime_expand, transformed_selected_arm, next_result):
+        return self._splice(transformed_selected_arm, next_result)
 
 
 class MergeCleanedData(tree.Reducer):
@@ -810,4 +927,7 @@ class MergeCleanedData(tree.Reducer):
         return runtime_step.form.cleaned_data
 
     def visit_branch(self, runtime_branch, sub_result):
+        return sub_result
+
+    def visit_expand(self, runtime_expand, sub_result):
         return sub_result

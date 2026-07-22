@@ -9,7 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from gandalf.form_views import form_view_factory
 
 
-Node = "Step | Branch"
+Node = "Step | Branch | Expand"
 
 
 class MultipleStepsReturned(ValueError):
@@ -72,11 +72,57 @@ class Branch:
         )
 
 
+@dataclass(frozen=True)
+class Expand:
+    """A point where the tree grows during the walk.
+
+    `builder(request)` returns a `Wizard` whose steps are spliced in here.
+    It is called mid-walk, behind a fully-validated prefix — the same
+    contract a branch predicate has — so it can read prior answers
+    (`request.wizard.find_step(...).form.cleaned_data`) and produce however
+    many steps they imply. The declared node carries only the builder; the
+    subtree does not exist until the walk reaches it, which is why an
+    expansion's steps are validated when built rather than at resolve time.
+    """
+
+    builder: Callable
+    next: Node | None = None
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return _format_tree(self)
+
+    def __iter__(self):
+        yield self
+        if self.next is not None:
+            yield from self.next
+
+    def accept_interpret(self, interpreter):
+        return interpreter.visit_expand(self)
+
+    def accept_transform(self, transformer):
+        next_result = transformer.transform(self.next)
+        return transformer.visit_expand(self, next_result)
+
+
 def build(declarations: list[Node]) -> Node | None:
     head: Node | None = None
     for declaration in reversed(declarations):
         head = replace(declaration, next=head)
     return head
+
+
+def iter_nodes(root):
+    """Yield every node in a declaration tree, descending branch arms and
+    the default. An `Expand`'s subtree is built at walk time and so has
+    nothing to descend into; the `Expand` node itself is still yielded."""
+    node = root
+    while node is not None:
+        yield node
+        if isinstance(node, Branch):
+            for _, arm in node.arms:
+                yield from iter_nodes(arm)
+            yield from iter_nodes(node.default)
+        node = node.next
 
 
 class Transformer:
@@ -161,6 +207,9 @@ class Formatter(Interpreter):  # pragma: no cover
             sub.walk(branch.default)
             self.lines.extend(sub.lines)
 
+    def visit_expand(self, expand):
+        self.lines.append(f"{self._indent}- Expand({expand.builder.__name__})")
+
 
 def _format_tree(root) -> str:  # pragma: no cover
     formatter = Formatter()
@@ -209,6 +258,11 @@ class Configurer(Transformer):
             next=next_result,
         )
 
+    def visit_expand(self, expand, next_result):
+        # The builder's subtree does not exist yet; it is configured when the
+        # walk builds it. Only the node's position in the chain is set here.
+        return replace(expand, next=next_result)
+
 
 class ContextFinder:
     """Locates steps in a tree (declaration or runtime) matching a context,
@@ -236,6 +290,10 @@ class ContextFinder:
             elif hasattr(node, "selected_arm"):
                 if node.selected_arm is not None:
                     self._walk(node.selected_arm, path)
+            elif hasattr(node, "builder"):
+                # A declaration Expand: its subtree is built at walk time, so
+                # there is nothing to descend into statically.
+                pass
             else:
                 for _, arm in node.arms:
                     self._walk(arm, path)

@@ -112,6 +112,17 @@ class Wizard:
         declarations.append(tree.Branch(arms=arms, default=default_tree))
         return self.__class__(tree=tree.build(declarations))
 
+    def expand(self, builder):
+        """Grow the tree here from `builder(request)`, called mid-walk.
+
+        `builder` returns a `Wizard` whose steps are spliced in at this point.
+        It runs behind a fully-validated prefix, so it can read prior answers
+        to decide how many steps to produce. See `tree.Expand`.
+        """
+        declarations = list(self.tree) if self.tree is not None else []
+        declarations.append(tree.Expand(builder=builder))
+        return self.__class__(tree=tree.build(declarations))
+
     def configure(self, **configuration):
         return ConfiguredWizard(
             tree=self.tree,
@@ -166,3 +177,33 @@ class ConfiguredWizard:
             template_name=template_name,
             form_view_factory=self.form_view_factory,
         ).transform(root)
+
+    def configure_expansion(self, built):
+        """Configure and vet a subtree an `Expand` builder returned.
+
+        The builder hands back a bare `Wizard`; it gets the same `Configurer`
+        pass a declared tree does, then two checks the declared tree already
+        has run for it but this subtree has not: every step must be routable,
+        and an expansion may not itself contain an expansion. Both are raised
+        here — at the moment of building — because the subtree does not exist
+        until then.
+        """
+        subtree = self._configure_tree(built.tree)
+        router = self.step_router_class()
+        finder = tree.ContextFinder({})
+        finder.visit(subtree)
+        steps = finder.all()
+        unroutable = [step for step in steps if router.reverse(step) is None]
+        if unroutable:
+            names = ", ".join(step.declaration.__name__ for step in unroutable)
+            raise ImproperlyConfigured(
+                "Every expanded step needs a routable name; build steps with "
+                f".step(..., name=...). Unroutable steps: {names}."
+            )
+        if any(isinstance(node, tree.Expand) for node in tree.iter_nodes(subtree)):
+            raise ImproperlyConfigured(
+                "An expansion cannot contain another expansion. A branch "
+                "inside an expansion, and an expansion inside a branch arm, "
+                "are both fine — only expand-within-expand is rejected."
+            )
+        return subtree

@@ -1296,3 +1296,144 @@ class WalkCountingWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+def build_item_steps(request):
+    """Expansion builder: read the count answered earlier and produce that
+    many item steps. Runs mid-walk, behind the validated count."""
+    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
+    steps = Wizard()
+    for index in range(count):
+        steps = steps.step(ItemForm, name=f"item-{index}")
+    return steps
+
+
+class ExpandWizardViewSet(WizardViewSet):
+    description = (
+        "Pick a count, then .expand() grows that many item steps in the same "
+        "walk, followed by a shared review step."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(ItemCountForm, name="count")
+        .expand(build_item_steps)
+        .step(ReviewForm, name="review")
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+    url_name = "expand-wizard"
+
+    def done(self, bound_wizard):
+        names = [
+            step.data["name"]
+            for step in _iter_path(bound_wizard)
+            if "name" in (step.data or {})
+        ]
+        return HttpResponse(f"completed items={','.join(names)}")
+
+
+class EmptyExpandWizardViewSet(WizardViewSet):
+    description = "An expansion that returns no steps, so the run skips it."
+    template_name = "testapp/linear_wizard.html"
+    # Two steps trail the expansion, so building the chain iterates through the
+    # Expand node while it already has a `next`.
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .expand(lambda request: Wizard())
+        .step(ReviewForm, name="review")
+        .step(SecondStepForm, name="last")
+    )
+
+    url_name = "empty-expand-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class PathReadingGate(FormView):
+    """A step that reads `request.wizard.path` as it renders, so a run whose
+    expansion is sealed behind this cursor exercises flattening over a
+    `PreservedExpand`."""
+
+    form_class = FirstStepForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Only read `path` on the real GET render, where the viewset has
+        # recorded the render walk to reuse. During the throwaway validation
+        # render inside a walk there is no such context, and reading `path`
+        # would start a fresh walk that re-dispatches this very step.
+        if self.request.method == "GET":
+            names = []
+            node = self.request.wizard.path
+            while node is not None:
+                names.append(node.declaration.context.get("step_name"))
+                node = node.next
+            context["path_names"] = names
+        return context
+
+
+class SealableExpandWizardViewSet(WizardViewSet):
+    description = (
+        "A gate step sits between the count and the expansion, so the run can "
+        "park before the expansion and hold it sealed."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(ItemCountForm, name="count")
+        .step(PathReadingGate, name="gate")
+        .expand(build_item_steps)
+        .step(ReviewForm, name="review")
+    )
+
+    url_name = "sealable-expand-wizard"
+
+    def done(self, bound_wizard):
+        merged = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+        return HttpResponse(f"count={merged['count']} name={merged.get('name', '')}")
+
+
+def build_branching_items(request):
+    """An expansion whose subtree contains a branch — allowed, since only
+    expand-within-expand is barred."""
+    return Wizard().branch(
+        condition(
+            lambda request: True,
+            Wizard().step(BusinessDetailsForm, name="biz"),
+        ),
+        default=Wizard().step(PersonalDetailsForm, name="pers"),
+    )
+
+
+class BranchingExpandWizardViewSet(WizardViewSet):
+    description = "An expansion that builds a branch rather than a flat list."
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(ItemCountForm, name="count")
+        .expand(build_branching_items)
+        .step(ReviewForm, name="review")
+    )
+
+    url_name = "branching-expand-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+def _iter_path(bound_wizard):
+    node = bound_wizard.path
+    while node is not None:
+        yield node
+        node = node.next
