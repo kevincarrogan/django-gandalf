@@ -184,6 +184,69 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
     assert found.declaration.context == {"step_name": "second"}
 
 
+def test_bound_wizard_find_step_accepts_name_shorthand(
+    request_with_session_factory,
+    linear_wizard,
+):
+    from gandalf.runtime import RuntimeStep
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    found = bound_wizard.find_step(name="second")
+
+    assert isinstance(found, RuntimeStep)
+    assert found.declaration.declaration is SecondStepForm
+    assert found.declaration.context == {"step_name": "second"}
+
+
+def test_bound_wizard_find_step_rejects_name_and_step_name_together(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    with pytest.raises(TypeError, match="name or step_name, not both"):
+        bound_wizard.find_step(name="first", step_name="first")
+
+
+def test_bound_wizard_filter_steps_accepts_name_shorthand(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    matches = bound_wizard.filter_steps(name="first")
+
+    assert [match.declaration.declaration for match in matches] == [FirstStepForm]
+
+
 def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
     request_with_session_factory,
 ):

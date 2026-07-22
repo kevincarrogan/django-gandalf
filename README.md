@@ -1018,7 +1018,7 @@ class CompanyWizard(SessionWizardView):
 
 ```python
 def needs_vat(request):
-    company_step = request.wizard.find_step(step_name="company")
+    company_step = request.wizard.find_step(name="company")
     return company_step.form.cleaned_data.get("is_business")
 
 
@@ -1032,7 +1032,7 @@ company_wizard = (
 )
 ```
 
-`BoundWizard.find_step(**context)` returns the matching `RuntimeStep` from the active runtime tree. Branch conditions run after the prior steps have completed, so reading `step.form.cleaned_data` from there is safe.
+`BoundWizard.find_step(**context)` returns the matching `RuntimeStep` from the active runtime tree; `name=` is shorthand for the `step_name` context key, mirroring `.step(..., name=...)` (`filter_steps` accepts it too). Branch conditions run after the prior steps have completed, so reading `step.form.cleaned_data` from there is safe.
 
 What improves here:
 

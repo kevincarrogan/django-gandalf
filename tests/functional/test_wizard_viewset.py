@@ -1226,6 +1226,8 @@ def test_programmatic_lookup_wizard_probes_step_not_found_mid_run(client):
 
     assert response.status_code == HTTPStatus.OK
     assert response.context["lookup_probe"] == "step-not-found"
+    assert response.context["name_lookup_probe"] == "first"
+    assert response.context["ambiguous_lookup_probe"] == "type-error"
 
 
 def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(

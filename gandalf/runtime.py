@@ -211,6 +211,18 @@ class Cursor:
     response: Any = None
 
 
+def _normalise_step_context(context):
+    """`.step(..., name=...)` stores the name under the `step_name` context
+    key; accept the same `name` shorthand when querying steps."""
+    if "name" not in context:
+        return context
+    if "step_name" in context:
+        raise TypeError("Pass name or step_name, not both.")
+    context = dict(context)
+    context["step_name"] = context.pop("name")
+    return context
+
+
 class StepDispatcher:
     """HTTP adapter: builds request snapshots, dispatches step form views,
     decides whether a step's response represents a valid submission, and
@@ -314,7 +326,10 @@ class BoundWizard:
         return self.runtime_tree
 
     def find_step(self, **context):
-        finder = tree.ContextFinder(context)
+        """Return the single step matching `context` from the active runtime
+        tree. `name=` is shorthand for the `step_name` context key, mirroring
+        `.step(..., name=...)`."""
+        finder = tree.ContextFinder(_normalise_step_context(context))
         finder.visit(self._current_runtime_tree())
         return finder.one()
 
@@ -325,7 +340,7 @@ class BoundWizard:
         Unlike `find_step` this never evaluates branch predicates past the
         cursor, so it is safe on incomplete runs; steps parked in dormant
         arms are not visible (their branch regions are opaque)."""
-        finder = tree.ContextFinder(context)
+        finder = tree.ContextFinder(_normalise_step_context(context))
         finder.visit(cursor.state)
         return finder.one()
 
@@ -375,7 +390,9 @@ class BoundWizard:
         return self.urls.get_step_url(self.run_id, segment)
 
     def filter_steps(self, **context):
-        finder = tree.ContextFinder(context)
+        """Return every step matching `context` in walk order. Accepts the
+        same `name=` shorthand as `find_step`."""
+        finder = tree.ContextFinder(_normalise_step_context(context))
         finder.visit(self._current_runtime_tree())
         return finder.all()
 
@@ -492,9 +509,7 @@ class BoundWizard:
         None when it does. The error render happens at the step's own URL,
         so resubmitting the corrected form re-targets the same step.
         """
-        validation_refs, _ = _overlay_file_refs(
-            runtime_step.files or {}, files or {}
-        )
+        validation_refs, _ = _overlay_file_refs(runtime_step.files or {}, files or {})
         request = self.dispatcher.build_request(
             "POST",
             submission=submission,
@@ -520,7 +535,7 @@ class BoundWizard:
         self.file_storage.delete_run(self.run_id)
 
     def _resolve_edit_target(self, cursor, context):
-        finder = tree.ContextFinder(context, require_data=True)
+        finder = tree.ContextFinder(_normalise_step_context(context), require_data=True)
         finder.visit(cursor.state)
         match = finder.one_with_path()
         if match is None:
@@ -665,9 +680,7 @@ class CursorWalker(tree.Interpreter):
         previously stored files."""
         if self._pending_submission is not None:
             data = self._pending_submission
-            files, _ = _overlay_file_refs(
-                keep_files or {}, self._pending_files or {}
-            )
+            files, _ = _overlay_file_refs(keep_files or {}, self._pending_files or {})
             if not files:
                 files = None
         else:
@@ -798,5 +811,3 @@ class SpliceSubmission(tree.Transformer):
             dormant_arms=runtime_branch.dormant_arms,
             next=next_result,
         )
-
-

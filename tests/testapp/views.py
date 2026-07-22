@@ -829,7 +829,8 @@ class MisconfiguredStepUrlsWizardViewSet(WizardViewSet):
 class LookupProbeStepView(FormView):
     """Step view that probes render_edit for its own (still unanswered)
     step while rendering: `require_data` skips the match, so the probe
-    observes StepNotFound mid-run."""
+    observes StepNotFound mid-run. Also probes the `name=` lookup
+    shorthand and the TypeError for passing it alongside `step_name`."""
 
     form_class = SecondStepForm
     template_name = "testapp/editing_wizard.html"
@@ -845,6 +846,12 @@ class LookupProbeStepView(FormView):
             self.request.wizard.render_edit(step_name="second")
         except StepNotFound:
             context["lookup_probe"] = "step-not-found"
+        found = self.request.wizard.find_step(name="first")
+        context["name_lookup_probe"] = found.declaration.context["step_name"]
+        try:
+            self.request.wizard.find_step(name="first", step_name="first")
+        except TypeError:
+            context["ambiguous_lookup_probe"] = "type-error"
         return context
 
 
