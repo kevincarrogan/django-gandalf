@@ -383,21 +383,26 @@ signup_wizard = (
 )
 ```
 
-`.step()` can also accept another `Wizard`, which makes reusable subflows easy
-to compose inline:
+`.step()` takes a single `Form` or `FormView`, never another `Wizard`.
+Reusable subflows compose through `.branch()`, which unwraps a sub-`Wizard`
+into the arm it selects:
 
 ```python
-address_flow = (
-    wizard.step(AddressForm)
-    .step(PostcodeLookupForm)
+address_flow = Wizard().step(AddressForm, name="address").step(
+    PostcodeLookupForm, name="postcode"
 )
 
 checkout_wizard = (
-    wizard.step(CustomerForm)
-    .step(address_flow)
-    .step(ConfirmForm)
+    Wizard()
+    .step(CustomerForm, name="customer")
+    .branch(condition(needs_shipping, address_flow), default=None)
+    .step(ConfirmForm, name="confirm")
 )
 ```
+
+When the subflow's shape depends on a prior answer — N steps for a count, one
+per item in a collection — reach for [`.expand()`](#expand-grow-the-wizard-from-a-prior-answer)
+instead, which builds the sub-`Wizard` during the walk.
 
 So the intended progression is:
 
@@ -741,10 +746,62 @@ weekday_or_weekend_wizard = (
         condition(is_weekend, WeekendForm),
         default=WeekdayForm,
     )
-    .step(CommonDetailsForm)
-    .step(ConfirmationForm)
+    .step(CommonDetailsForm, name="details")
+    .step(ConfirmationForm, name="confirm")
 )
 ```
+
+---
+
+## `.expand()`: grow the wizard from a prior answer
+
+A branch chooses between subflows you declared up front. Sometimes the *shape*
+of the flow is not known until the run supplies it: N item steps for a count
+the user just typed, one step per row in a collection they selected. `.expand()`
+covers that — it grows the tree during the walk from a builder you provide.
+
+```python
+def build_item_steps(request):
+    count = request.wizard.find_step(name="count").form.cleaned_data["count"]
+    steps = Wizard()
+    for index in range(count):
+        steps = steps.step(ItemForm, name=f"item-{index}")
+    return steps
+
+
+items_wizard = (
+    Wizard()
+    .step(ItemCountForm, name="count")
+    .expand(build_item_steps)
+    .step(ReviewForm, name="review")
+)
+```
+
+`build_item_steps(request)` returns a `Wizard` whose steps are spliced in where
+`.expand()` sits. It runs **mid-walk, behind a fully-validated prefix** — the
+same contract a branch predicate has — so `find_step(...).form.cleaned_data`
+reads the count that shapes it from an answer that has already validated on this
+same walk. That is the whole point: answering the count parks the user on the
+first grown step in a *single* request, where a `get_wizard()` that reads stored
+state has to walk twice (once to notice its own submission changed the shape).
+
+Things worth knowing:
+
+- **The builder reaches back by name.** It reads prior answers with
+  `find_step(name=...)`, so renaming an upstream step can break a builder —
+  they are coupled by that name.
+- **Grown answers store positionally**, as `{"expand": [...]}`. Raising the
+  count keeps the answers already given and appends an empty slot; lowering it
+  drops the trailing answers. Inserting or reordering *within* a collection is
+  the case positional storage does not preserve — a name-keyed format for that
+  is future work.
+- **The subtree is vetted when it is built, not when the wizard resolves**,
+  because it does not exist until then: every grown step must be routable
+  (`name=`), and an expansion may not contain another expansion. A branch inside
+  an expansion, and an expansion inside a branch arm, are both fine.
+- **Introspection is opaque until the answer arrives.** `find_step` cannot see
+  a grown step before the answer that produces it exists, exactly as it cannot
+  see into an unreached branch arm.
 
 ---
 
@@ -813,15 +870,18 @@ wizard as the change actually invalidates — usually nothing:
   that genuinely needs attention; the user answers only those steps, and the
   wizard fast-forwards through every still-valid downstream answer back to
   the summary.
-- **Invalid edit** — rejected outright. The error render comes back, stored
-  state is untouched, and nothing downstream is lost to a typo.
+- **Invalid edit** — the new answer fails validation, so it is kept and
+  becomes the cursor, re-rendering with its errors on the redirect that
+  follows. It is stored like any other answer — there is no separate
+  transactional path — and nothing downstream is lost to a typo, because the
+  sealed tail is carried verbatim.
 - **Flip-flop** — answers for a de-selected branch arm are kept as dormant
   memory. Changing account type from business to personal and back restores
   the business answers (re-validated like any stored data) instead of
   re-asking them.
 
 Under the hood this works because state is a full-tree mirror with holes
-rather than a truncate-on-change prefix: after `edit()` splices the new
+rather than a truncate-on-change prefix: after `walk()` places the new
 submission into the runtime tree, `CursorWalker` re-validates entries up to
 the first missing or no-longer-valid answer, then carries everything after it
 verbatim. Branch entries are stored per arm (`{"branch": {"0": [...],
@@ -1135,9 +1195,12 @@ by `Advance` raises its escape again on every later walk. Those replays only
 mark the step satisfied: the redirect is issued for the submission the user
 actually made, and never again. Two consequences are worth knowing:
 
-- **Editing a completed step never escapes.** An escape raised while validating
-  an edit means the step is satisfied and the edit is stored, so the flow
-  continues as normal. Escapes are for the step the user is on.
+- **A step escapes wherever it sits.** Because placing an answer is one
+  operation, a POST that edits an already-answered step is walked with that
+  step as its target, and an escape its form raises is acted on exactly as it
+  would be the first time. Only escapes *replayed* while re-validating earlier
+  answers are silently satisfied — the viewset acts on an escape only for the
+  step the current submission targets.
 - **`Advance` on the final step defers `done()`.** The escape's redirect is
   returned rather than the completion response; the run is complete but not
   yet finished, so returning to it runs `done()` then — and only then, since
