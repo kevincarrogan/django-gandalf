@@ -8,7 +8,7 @@ from django.views import View
 from gandalf import tree
 from gandalf.escapes import Advance, Obliterate, Park
 from gandalf.runtime import BoundWizard
-from gandalf.storage import SessionStorage
+from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
 
@@ -79,10 +79,28 @@ class WizardViewSet(View):
 
     def _resolve_wizard(self, bound_wizard):
         wizard = self.configure_wizard(self.get_wizard(bound_wizard))
-        self._validate_routable(wizard)
-        bound_wizard.bind(wizard)
+        # Re-resolving a static wizard hands back the same object, so the
+        # routability walk is skipped rather than repeated.
+        if wizard is not bound_wizard.wizard:
+            self._validate_routable(wizard)
+            bound_wizard.bind(wizard)
         bound_wizard.urls = self
         return bound_wizard
+
+    def _refreshed_cursor(self, bound_wizard, *args, **kwargs):
+        """Re-derive the wizard from the state this request just wrote, then
+        walk it.
+
+        A dynamic `get_wizard()` reads stored state, so the tree resolved at
+        the start of a POST predates that POST's own submission: answering
+        the step that decides the shape — a count, a branch key — yields a
+        tree that does not yet hold the steps it implies. Judging completion
+        against that stale tree fires `done()` mid-run. The recorded render
+        context is dropped with it, since the write invalidated that walk.
+        """
+        bound_wizard.clear_rendering()
+        self._resolve_wizard(bound_wizard)
+        return bound_wizard.cursor(*args, **kwargs)
 
     def _validate_routable(self, wizard):
         """Every step must be routable: steps are addressed by URL, so each
@@ -106,7 +124,9 @@ class WizardViewSet(View):
             self._resolve_wizard(bound_wizard)
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
-        bound_wizard.retrieve(run_id)
+        unavailable = self._retrieve_run(bound_wizard, run_id)
+        if unavailable is not None:
+            return unavailable
         self._resolve_wizard(bound_wizard)
 
         router = bound_wizard.wizard.step_router_class()
@@ -122,7 +142,9 @@ class WizardViewSet(View):
 
     def post(self, request, *args, run_id, **kwargs):
         bound_wizard = self._make_bound_wizard(request)
-        bound_wizard.retrieve(run_id)
+        unavailable = self._retrieve_run(bound_wizard, run_id)
+        if unavailable is not None:
+            return unavailable
         self._resolve_wizard(bound_wizard)
 
         router = bound_wizard.wizard.step_router_class()
@@ -136,6 +158,35 @@ class WizardViewSet(View):
         return self._routed_post(
             bound_wizard, route_context, submission, *args, **kwargs
         )
+
+    def _retrieve_run(self, bound_wizard, run_id):
+        """Load the run, or return the response for one that cannot be run.
+
+        The availability guard runs before the wizard is resolved: a
+        completed run has no state left, and a dynamic `get_wizard()` is
+        entitled to read state. Returns None when the run is live and the
+        request should carry on.
+        """
+        try:
+            bound_wizard.retrieve(run_id)
+        except RunNotFound:
+            return self.run_unavailable(bound_wizard, reason="unknown")
+        if bound_wizard.is_complete:
+            return self.run_unavailable(bound_wizard, reason="completed")
+        return None
+
+    def run_unavailable(self, bound_wizard, reason):
+        """Response for a run this request cannot continue.
+
+        `reason` is `"completed"` — the run finished and `done()` has already
+        fired for it — or `"unknown"`: no such run, whether never started,
+        obliterated, or lost with an expired session. The default sends the
+        user to the wizard's start URL, so refreshing a completion page
+        quietly begins a fresh run rather than re-firing `done()`'s side
+        effects. Override to render a completion page, raise `Http404`, or
+        treat the two reasons differently.
+        """
+        return redirect(self.get_start_url())
 
     def _routed_get(self, bound_wizard, route_context, *args, **kwargs):
         """Render the step a routed URL addresses.
@@ -172,10 +223,14 @@ class WizardViewSet(View):
             previous_entries = deepcopy(bound_wizard.get_state())
             bound_wizard.submit(submission, *args, files=files, **kwargs)
             next_cursor = bound_wizard.cursor(*args, **kwargs)
+            # The escape is matched against the tree this request was
+            # resolved with, before any refresh replaces its declarations.
             escape = next_cursor.escape_for(target.declaration)
             if escape is not None:
                 return self._escaped(bound_wizard, escape, previous_entries, files)
-            return self._continue(bound_wizard, next_cursor)
+            return self._continue(
+                bound_wizard, self._refreshed_cursor(bound_wizard, *args, **kwargs)
+            )
         if target is not None and target.data is not None:
             files = self._store_uploads(bound_wizard, self.request.FILES)
             bound_wizard.mark_rendering(cursor, target.declaration)
@@ -189,7 +244,9 @@ class WizardViewSet(View):
             )
             if edit_response is not None:
                 return edit_response
-            return self._continue(bound_wizard, bound_wizard.cursor(*args, **kwargs))
+            return self._continue(
+                bound_wizard, self._refreshed_cursor(bound_wizard, *args, **kwargs)
+            )
         return self._redirect_to_cursor(bound_wizard, cursor)
 
     def _continue(self, bound_wizard, next_cursor):
@@ -247,6 +304,18 @@ class WizardViewSet(View):
             if key not in self.reserved_url_kwargs
         }
 
+    def get_start_url(self):
+        """Reverse the start URL — the one that begins a fresh run. The
+        default uses the `<url_name>` pattern published by `urls()`,
+        forwarding any mount-prefix kwargs via `get_url_kwargs()`; override
+        for a custom URL scheme.
+        """
+        if self.url_name is None:
+            raise ImproperlyConfigured(
+                "Set url_name (or override get_start_url) on this WizardViewSet."
+            )
+        return reverse(self.url_name, kwargs=self.get_url_kwargs())
+
     def get_wizard_url(self, run_id):
         """Reverse the bare run URL. The default uses the `<url_name>-run`
         pattern published by `urls()`, forwarding any mount-prefix kwargs
@@ -281,8 +350,15 @@ class WizardViewSet(View):
         )
 
     def _finish(self, bound_wizard):
+        """Complete the run: `done()` fires once, then the run is tombstoned
+        so nothing can fire it again.
+
+        The mark is written after `done()` returns, so a `done()` that raises
+        leaves the run resumable rather than stranded half-finished.
+        """
         response = self.done(bound_wizard)
         bound_wizard.cleanup_files()
+        bound_wizard.complete()
         return response
 
     def _store_uploads(self, bound_wizard, uploaded_files):

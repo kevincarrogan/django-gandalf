@@ -603,6 +603,7 @@ def test_wizard_viewset_default_url_hooks_reverse_url_name_patterns():
     viewset = NamedViewSet()
     run_id = "11111111-1111-1111-1111-111111111111"
 
+    assert viewset.get_start_url() == "/routed-wizard/"
     assert viewset.get_wizard_url(run_id) == f"/routed-wizard/{run_id}/"
     assert viewset.get_step_url(run_id, "first") == f"/routed-wizard/{run_id}/first/"
 
@@ -629,6 +630,7 @@ def test_wizard_viewset_default_url_hooks_forward_mount_prefix_kwargs():
     viewset.kwargs = {"org": "acme"}
     run_id = "11111111-1111-1111-1111-111111111111"
 
+    assert viewset.get_start_url() == "/org-scoped-wizard/acme/"
     assert viewset.get_wizard_url(run_id) == f"/org-scoped-wizard/acme/{run_id}/"
     assert (
         viewset.get_step_url(run_id, "first")
@@ -641,6 +643,8 @@ def test_wizard_viewset_default_url_hooks_require_url_name():
 
     viewset = WizardViewSet()
 
+    with pytest.raises(ImproperlyConfigured, match="get_start_url"):
+        viewset.get_start_url()
     with pytest.raises(ImproperlyConfigured, match="get_wizard_url"):
         viewset.get_wizard_url("existing-run")
     with pytest.raises(ImproperlyConfigured, match="get_step_url"):

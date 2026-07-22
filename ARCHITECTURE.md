@@ -8,7 +8,7 @@
 | `gandalf/wizard.py` | Declarative builder — `Wizard` (fluent `.step()` / `.branch()` API) and `ConfiguredWizard` (post-`.configure()`, holds the configured tree and pluggable class slots: `storage_class`, `cursor_walker_class`, `state_serializer_class`, `step_router_class`, `form_view_factory`) |
 | `gandalf/form_views.py` | `form_view_factory()` — generates a `FormView` subclass from a plain `Form` class |
 | `gandalf/escapes.py` | The escape exceptions a step raises to leave the wizard — `Escape` (base) and `Park` / `Advance` / `Obliterate`, which differ in what they leave of the run |
-| `gandalf/storage.py` | `SessionStorage` — JSON persistence to `request.session`. Knows nothing about tree shape; reads and writes a `state` list per `run_id` |
+| `gandalf/storage.py` | `SessionStorage` — JSON persistence to `request.session`. Knows nothing about tree shape; reads and writes a `state` list per `run_id`, swaps it for a completion marker when a run finishes, and raises `RunNotFound` for a run the session does not hold |
 | `gandalf/runtime.py` | Request-bound runtime. `BoundWizard` orchestrates `cursor()`, `submit()`, and the transactional `edit()`. `CursorWalker` (an `Interpreter`) locates the cursor and builds the one runtime tree everything uses — validated up to the cursor, carried verbatim past it; `runtime_tree`, `path`, `find_step`, and edit resolution all derive from it. `Cursor` is the decision object — `(node, state, response, escapes)`. `StateSerializer` (a `Reducer`) flattens a runtime tree back into the stored list shape. `RuntimeStep` / `RuntimeBranch` are the per-request mirrors of declared nodes; `PreservedBranch` is the opaque passthrough for branch entries positioned after the cursor |
 | `gandalf/viewsets.py` | `WizardViewSet` — Django `View` subclass; HTTP boundary for GET and POST. Every request routes through step URLs (`_routed_get` / `_routed_post`); `urls()` publishes the patterns from `url_name`, and `get_wizard_url` / `get_step_url` reverse them |
 
@@ -27,7 +27,7 @@ class Cursor:
     escapes: tuple = ()                               # (declaration, Escape) pairs raised on this walk
 ```
 
-- `node is None` → wizard is complete; viewset calls `done()`.
+- `node is None` → wizard is complete; viewset calls `done()` and retires the run, so it fires exactly once.
 - `response is not None` → re-validation of stored data failed; return that rendered response directly.
 - otherwise → dispatch a GET to `node.form_view` to render the step.
 - `state` is what `submit()` re-serializes back to storage to advance the wizard. It spans the whole declaration tree: entries before the cursor are validated, the cursor's slot holds the pending submission (or the kept invalid/missing data), and entries after the cursor ride along verbatim so answers past the cursor are never lost.
@@ -124,11 +124,14 @@ sequenceDiagram
 
     Django->>WVS: GET /wizard/<run_id>/
     WVS->>BW: retrieve(run_id)
+    alt run is unknown or already finished
+        WVS-->>Django: run_unavailable() — 302 → start URL by default
+    end
     WVS->>BW: cursor()
     BW->>CWK: CursorWalker(bound, entries, pending=None).walk(tree)
     CWK-->>BW: Cursor(node, state, response)
     alt cursor.node is None
-        WVS-->>Django: done() response
+        WVS-->>Django: done() response, then the run is retired
     else
         WVS-->>Django: 302 → step URL for cursor.node
     end
@@ -196,8 +199,11 @@ sequenceDiagram
     alt the submitted step escaped
         Note over WVS: settle the run per the escape:<br/>Park rolls state back, Obliterate deletes it,<br/>Advance keeps what submit() stored
         WVS-->>Django: 302 → the escape's target
-    else next cursor.node is None
-        WVS-->>Django: done() response
+    end
+    Note over WVS: re-resolve the wizard from the state just written —<br/>a dynamic get_wizard() would otherwise judge completion<br/>against a tree that predates this submission
+    WVS->>BW: cursor()
+    alt next cursor.node is None
+        WVS-->>Django: done() response, then the run is retired
     else
         WVS-->>Django: 302 → next cursor's step URL (PRG)
     end
@@ -300,3 +306,5 @@ This yields a guarantee: because the sealed walk is the only thing that ever sel
 Steps are addressed by URL — there is no unrouted mode. `StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps the `gandalf_step` URL kwarg to a step-context lookup and reverses a step declaration back into a URL segment (`step_name` context by default; subclass to route on another key). The viewset validates at request time that the configured router can reverse every declared step, raising `ImproperlyConfigured` for unnamed steps.
 
 On a step-URL request the viewset derives the cursor, resolves the claimed step with `BoundWizard.find_step_at(cursor, **context)` — a `ContextFinder` pass over the **sealed walk's tree** rather than `RuntimeTreeBuilder`'s, so no branch predicate ever runs past the cursor and dormant arms are invisible — and then: the cursor's step renders/submits, a data-bearing step renders pre-filled/edits, anything else redirects to the cursor's URL. The bare run URL redirects to the cursor's step URL (or fires `done()` on completion), and a bare-URL POST redirects without storing. Successful POSTs redirect (POST→redirect→GET); the URL is never trusted to *set* position, only checked against the derived cursor.
+
+All of that presumes a live run. A run that is finished — or one the session never held — is intercepted before the wizard is even resolved (a completed run has no state left, and a dynamic `get_wizard()` is entitled to read state), and answered by `WizardViewSet.run_unavailable(bound_wizard, reason)`. That single interception is what makes `done()` exactly-once: no URL under a retired run can reach the cursor machinery again.

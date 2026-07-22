@@ -652,6 +652,12 @@ size-constrained.
 pickled Python objects or live runtime objects. Django's configured session
 backend then handles the actual serialization and persistence.
 
+A run's answers live there only while it is in progress. Finishing a run
+replaces them with a completion marker (see
+[Completion](#completion-done-runs-exactly-once)), and asking for a run the
+session does not hold raises `gandalf.storage.RunNotFound`, which the viewset
+turns into a `run_unavailable()` response.
+
 ### File uploads
 
 Wizard steps may declare `forms.FileField` and friends. Uploaded files cannot
@@ -893,7 +899,9 @@ The request semantics:
 - **GET the cursor's step URL** → renders the form (with errors if the
   stored answer no longer validates).
 - **GET a completed step's URL** → renders it pre-filled — this *is* the
-  edit affordance; summary "change" links are just step URLs.
+  edit affordance; summary "change" links are just step URLs. "Completed"
+  means answered on a run still in progress; once the *run* finishes, every
+  one of its URLs goes to `run_unavailable()` instead.
 - **GET anything else** — unknown, not yet reached, or parked in a dormant
   arm — → redirects to the cursor's URL. A stale "change" link after a
   diverting edit snaps back to the current step instead of erroring.
@@ -906,7 +914,8 @@ The request semantics:
   re-renders with errors on the following GET. A rejected edit stays a
   direct render so nothing about it is persisted.
 - **The bare run URL redirects** to the cursor's step URL when that step is
-  routable, and still fires `done()` when the run is complete.
+  routable, and fires `done()` when the run is complete — once, after which
+  the run is finished and the URL resolves to `run_unavailable()`.
 
 Because history then contains only GETs of step URLs, the browser back
 button works naturally: going back shows an earlier answer pre-filled, and
@@ -958,6 +967,75 @@ wizard = (
     )
 )
 ```
+
+---
+
+## Completion: `done()` runs exactly once
+
+A run finishes the first time the wizard is walked and every slot is
+satisfied. `done()` is called there, its files are cleaned up, and the run is
+then **retired**: its answers are dropped and a small completion marker takes
+their place.
+
+That marker is what makes the guarantee enforceable. Once a run is retired,
+every request for it — the bare run URL, any step URL, GET or POST — is
+answered by `run_unavailable()` without ever reaching the wizard. So:
+
+- a stale tab re-POSTing the final form cannot finalize a second time,
+- a bookmarked completion page cannot re-charge a card on refresh,
+- a completed run's step URLs stop offering edits, because there is nothing
+  left to edit.
+
+Put side effects in `done()` and they happen once, full stop.
+
+```python
+class CheckoutWizardViewSet(WizardViewSet):
+    url_name = "checkout"
+
+    def done(self, bound_wizard):
+        order = create_order(MergeCleanedData().reduce(bound_wizard.path))
+        charge(order)                      # happens exactly once
+        return redirect("order-detail", pk=order.pk)
+```
+
+The marker is written *after* `done()` returns, so a `done()` that raises
+leaves the run intact and resumable rather than stranded half-finished. Retired
+runs are pruned to the most recent `SessionStorage.max_completed_runs` (25 by
+default), so completed runs cannot grow a session without bound.
+
+### `run_unavailable()`
+
+One hook answers every request that cannot be run, with `reason` saying which:
+
+| `reason` | Meaning |
+| --- | --- |
+| `"completed"` | the run finished; `done()` has already fired for it |
+| `"unknown"` | no such run — never started, obliterated, or lost with an expired session |
+
+The default redirects to the wizard's start URL, so a refreshed completion page
+quietly begins a fresh run rather than erroring. Override it to say something
+more specific:
+
+```python
+class CheckoutWizardViewSet(WizardViewSet):
+    def run_unavailable(self, bound_wizard, reason):
+        if reason == "completed":
+            return redirect("order-thanks")
+        raise Http404("That checkout has expired.")
+```
+
+Because the hook covers unknown runs too, a tampered or long-bookmarked run URL
+is an ordinary redirect rather than a `KeyError`.
+
+### Completion and dynamic wizards
+
+A dynamic `get_wizard()` is built from stored state, so the tree resolved at
+the start of a POST predates that POST's own submission. Gandalf re-derives the
+wizard after a submission is stored and judges completion against *that* tree —
+otherwise answering the step that decides the shape (a count, a branch key)
+would look like finishing a wizard whose generated steps do not exist yet.
+Nothing is required of you here; it is why a `get_wizard()` that reads
+`bound_wizard.get_state()` behaves as written.
 
 ---
 
@@ -1045,8 +1123,9 @@ actually made, and never again. Two consequences are worth knowing:
   an edit means the step is satisfied and the edit is stored, so the flow
   continues as normal. Escapes are for the step the user is on.
 - **`Advance` on the final step defers `done()`.** The escape's redirect is
-  returned rather than the completion response; the run is complete, so
-  returning to it runs `done()` then.
+  returned rather than the completion response; the run is complete but not
+  yet finished, so returning to it runs `done()` then — and only then, since
+  finishing the run retires it.
 
 One caveat on reading an escaped answer afterwards: a step that escaped from
 `clean()` still reconstructs via `.form`, but its `cleaned_data` holds only the

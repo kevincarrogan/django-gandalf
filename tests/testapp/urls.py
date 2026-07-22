@@ -10,6 +10,7 @@ urlpatterns = [
         name="index",
     ),
     path("wizard/", include(views.SingleStepWizardViewSet.urls())),
+    path("run-unavailable-wizard/", include(views.RunUnavailableWizardViewSet.urls())),
     path(
         "wizard-without-done/", include(views.SingleStepWizardWithoutDoneViewSet.urls())
     ),

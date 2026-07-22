@@ -259,23 +259,25 @@ def test_single_step_wizard_valid_post_returns_done_response(
     assert response.content == f"completed {run_id}".encode()
 
 
-def test_single_step_wizard_get_after_valid_post_returns_done_response(
+def test_single_step_wizard_revisit_after_completion_does_not_rerun_done(
     client,
     single_step_wizard_url,
     single_step_wizard_run_url,
 ):
     client.get(single_step_wizard_url)
     run_id, _ = get_only_run_info_from_session(client.session)
-    client.post(
+    completion = client.post(
         _step(single_step_wizard_run_url(run_id), "first"),
         data={"name": "Ada"},
         follow=True,
     )
+    assert completion.content == f"completed {run_id}".encode()
 
-    response = client.get(single_step_wizard_run_url(run_id), follow=True)
+    response = client.get(single_step_wizard_run_url(run_id))
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == f"completed {run_id}".encode()
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+    assert response.content != f"completed {run_id}".encode()
 
 
 def test_single_step_wizard_done_can_read_submitted_form_data(
@@ -380,29 +382,25 @@ def test_linear_wizard_replaces_invalid_submission_on_next_post(
     ]
 
 
-def test_linear_wizard_preserves_valid_previous_submission_when_posting_next_step(
-    client,
-    done_linear_wizard_url,
-    done_linear_wizard_run_url,
+def test_wizard_preserves_valid_previous_submission_when_posting_next_step(
+    client, routed_wizard_urls, routed_wizard_run
 ):
-    client.get(done_linear_wizard_url)
-    run_id, _ = get_only_run_info_from_session(client.session)
-
+    # Uses a three-step wizard so the run is still live after the second
+    # POST: a completed run is tombstoned, so its state is deliberately no
+    # longer inspectable.
     client.post(
-        _step(done_linear_wizard_run_url(run_id), "first"),
-        data={"name": "Ada"},
-        follow=True,
+        routed_wizard_urls(routed_wizard_run, "account_type"),
+        data={"account_type": "business"},
     )
     response = client.post(
-        _step(done_linear_wizard_run_url(run_id), "second"),
-        data={"email": "ada@example.com"},
-        follow=True,
+        routed_wizard_urls(routed_wizard_run, "business_name"),
+        data={"business_name": "Acme"},
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert client.session["gandalf_runs"][run_id]["state"] == [
-        {"step": {"name": "Ada"}},
-        {"step": {"email": "ada@example.com"}},
+    assert response.status_code == HTTPStatus.FOUND
+    assert client.session["gandalf_runs"][routed_wizard_run]["state"] == [
+        {"step": {"account_type": "business"}},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
 
 
@@ -429,7 +427,7 @@ def test_linear_wizard_done_can_read_submitted_form_data_from_each_step(
     assert response.content == b"completed Ada at ada@example.com"
 
 
-def test_linear_wizard_does_not_append_submission_after_done(
+def test_linear_wizard_bare_url_post_after_done_neither_stores_nor_reruns_done(
     client,
     done_linear_wizard_url,
     done_linear_wizard_run_url,
@@ -442,23 +440,21 @@ def test_linear_wizard_does_not_append_submission_after_done(
         data={"name": "Ada"},
         follow=True,
     )
-    client.post(
+    completion = client.post(
         _step(done_linear_wizard_run_url(run_id), "second"),
         data={"email": "ada@example.com"},
         follow=True,
     )
+    assert completion.content == b"completed Ada at ada@example.com"
+
     response = client.post(
         done_linear_wizard_run_url(run_id),
         data={"email": "grace@example.com"},
-        follow=True,
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"completed Ada at ada@example.com"
-    assert client.session["gandalf_runs"][run_id]["state"] == [
-        {"step": {"name": "Ada"}},
-        {"step": {"email": "ada@example.com"}},
-    ]
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == done_linear_wizard_url
+    assert client.session["gandalf_runs"][run_id] == {"completed": True}
 
 
 def test_linear_wizard_get_after_valid_first_step_renders_next_declared_form(
@@ -1081,7 +1077,7 @@ def test_routed_wizard_final_submit_completes_run(
     assert response.content == f"completed {routed_wizard_run}".encode()
 
 
-def test_routed_wizard_unknown_step_url_on_completed_run_redirects_to_run_url(
+def test_routed_wizard_unknown_step_url_on_completed_run_redirects_to_start(
     client, routed_wizard_urls, routed_wizard_run
 ):
     client.post(
@@ -1099,8 +1095,10 @@ def test_routed_wizard_unknown_step_url_on_completed_run_redirects_to_run_url(
 
     response = client.get(routed_wizard_urls(routed_wizard_run, "missing"))
 
+    # The run is finished, so there is no cursor to send the user back to —
+    # every URL under a completed run resolves to `run_unavailable()`.
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == routed_wizard_urls(routed_wizard_run)
+    assert response["Location"] == reverse("routed-wizard")
 
 
 def test_unroutable_wizard_raises_improperly_configured(client):
@@ -1507,13 +1505,14 @@ def test_dynamic_wizard_generates_step_per_chosen_count(client):
         response = client.get(run_url, follow=True)
         assert response.status_code == HTTPStatus.OK
         assert "name" in response.context["form"].fields
-        client.post(
+        done_response = client.post(
             _step(run_url, f"item-{index}"),
             data={"name": name},
             follow=True,
         )
 
-    done_response = client.get(run_url, follow=True)
+    # The final item's POST completes the run and fires done() there; the
+    # run is tombstoned afterwards, so nothing re-fires it.
     assert done_response.status_code == HTTPStatus.OK
     assert done_response.content == b"completed Ada, Grace, Mary"
 
@@ -1541,13 +1540,11 @@ def test_dynamic_list_payload_wizard_condenses_items_into_list(client):
         data={"name": "Grace"},
         follow=True,
     )
-    client.post(
+    response = client.post(
         _step(run_url, "item-2"),
         data={"name": "Mary"},
         follow=True,
     )
-
-    response = client.get(run_url, follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert json.loads(response.content) == {
@@ -2833,3 +2830,210 @@ def test_parking_escape_discards_the_upload_it_escaped_with(
     assert not os.path.exists(
         os.path.join(isolated_media_root, "gandalf", run_id, "avatar.jpg")
     )
+
+
+# --- Completion lifecycle -------------------------------------------------
+#
+# `done()` fires exactly once per run. The run is tombstoned once it has,
+# so every later request for it — and every request for a run that never
+# existed — resolves to `run_unavailable()`.
+
+
+@pytest.fixture
+def run_unavailable_wizard_url():
+    return reverse("run-unavailable-wizard")
+
+
+@pytest.fixture
+def run_unavailable_wizard_run_url():
+    def build_url(run_id):
+        return reverse("run-unavailable-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def _complete_single_step_run(client, start_url, run_url_for):
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    response = client.post(
+        _step(run_url_for(run_id), "first"),
+        data={"name": "Ada"},
+    )
+    return run_id, response
+
+
+def test_completing_a_run_replaces_its_state_with_a_tombstone(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    run_id, _ = _complete_single_step_run(
+        client, single_step_wizard_url, single_step_wizard_run_url
+    )
+
+    assert client.session["gandalf_runs"][run_id] == {"completed": True}
+
+
+def test_completed_run_step_url_no_longer_renders_an_edit_form(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    run_id, _ = _complete_single_step_run(
+        client, single_step_wizard_url, single_step_wizard_run_url
+    )
+
+    response = client.get(_step(single_step_wizard_run_url(run_id), "first"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+
+
+def test_reposting_a_completed_runs_final_step_neither_edits_nor_reruns_done(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    run_id, completion = _complete_single_step_run(
+        client, single_step_wizard_url, single_step_wizard_run_url
+    )
+    assert completion.content == f"completed {run_id}".encode()
+
+    response = client.post(
+        _step(single_step_wizard_run_url(run_id), "first"),
+        data={"name": "Grace"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+    assert response.content != f"completed {run_id}".encode()
+    assert client.session["gandalf_runs"][run_id] == {"completed": True}
+
+
+def test_unknown_run_redirects_to_the_start_url(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    client.get(single_step_wizard_url)
+
+    response = client.get(
+        single_step_wizard_run_url("11111111-1111-1111-1111-111111111111")
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+
+
+def test_run_url_with_no_session_at_all_redirects_to_the_start_url(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    response = client.get(
+        single_step_wizard_run_url("11111111-1111-1111-1111-111111111111")
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+
+
+def test_post_to_an_unknown_run_redirects_without_starting_one(
+    client, single_step_wizard_url, single_step_wizard_run_url
+):
+    run_url = single_step_wizard_run_url("11111111-1111-1111-1111-111111111111")
+
+    response = client.post(_step(run_url, "first"), data={"name": "Ada"})
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == single_step_wizard_url
+    assert client.session.get("gandalf_runs", {}) == {}
+
+
+def test_obliterated_run_revisit_redirects_to_the_start_url(
+    client,
+    escape_obliterate_wizard_url,
+    escape_obliterate_wizard_run_url,
+):
+    client.get(escape_obliterate_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_obliterate_wizard_run_url(run_id), "cancel"),
+        data={"reason": "changed my mind", "cancel": "on"},
+    )
+
+    response = client.get(escape_obliterate_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == escape_obliterate_wizard_url
+
+
+def test_advancing_escape_on_the_final_step_still_defers_done_to_the_revisit(
+    client,
+    escape_advance_final_step_wizard_url,
+    escape_advance_final_step_wizard_run_url,
+):
+    client.get(escape_advance_final_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(escape_advance_final_step_wizard_run_url(run_id), "newsletter"),
+        data={"email": "ada@example.com", "subscribe": "on"},
+    )
+
+    # The escape deferred done(), so the run is complete but unfinished: the
+    # first revisit is what fires done(), and it tombstones the run.
+    first = client.get(escape_advance_final_step_wizard_run_url(run_id))
+    assert first.status_code == HTTPStatus.OK
+    assert first.content == f"completed {run_id}".encode()
+
+    second = client.get(escape_advance_final_step_wizard_run_url(run_id))
+
+    assert second.status_code == HTTPStatus.FOUND
+    assert second["Location"] == escape_advance_final_step_wizard_url
+    assert client.session["gandalf_runs"][run_id] == {"completed": True}
+
+
+def test_run_unavailable_override_is_told_the_run_completed(
+    client, run_unavailable_wizard_url, run_unavailable_wizard_run_url
+):
+    run_id, _ = _complete_single_step_run(
+        client, run_unavailable_wizard_url, run_unavailable_wizard_run_url
+    )
+
+    response = client.get(run_unavailable_wizard_run_url(run_id))
+
+    assert response.status_code == HTTPStatus.GONE
+    assert response.content == b"unavailable: completed"
+
+
+def test_run_unavailable_override_is_told_the_run_is_unknown(
+    client, run_unavailable_wizard_url, run_unavailable_wizard_run_url
+):
+    client.get(run_unavailable_wizard_url)
+
+    response = client.get(
+        run_unavailable_wizard_run_url("11111111-1111-1111-1111-111111111111")
+    )
+
+    assert response.status_code == HTTPStatus.GONE
+    assert response.content == b"unavailable: unknown"
+
+
+def test_completed_run_redirect_keeps_the_mount_prefix_kwargs(client):
+    start_url = reverse("org-scoped-wizard", kwargs={"org": "acme"})
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("org-scoped-wizard-run", kwargs={"org": "acme", "run_id": run_id})
+    client.post(_step(run_url, "first"), data={"name": "Ada"})
+    client.post(_step(run_url, "review"), data={"confirmed": "on"})
+
+    response = client.get(run_url)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == start_url
+
+
+def test_dynamic_wizard_does_not_complete_before_its_generated_steps(client):
+    start_url = reverse("dynamic-wizard")
+    client.get(start_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    run_url = reverse("dynamic-wizard-run", kwargs={"run_id": run_id})
+
+    response = client.post(_step(run_url, "count"), data={"count": "3"})
+
+    # The tree resolved at the start of this POST had no item steps yet, so
+    # completion has to be judged against the tree the submission implies —
+    # otherwise the run finishes here and done() fires three steps early.
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == _step(run_url, "item-0")
+    assert client.session["gandalf_runs"][run_id]["state"] == [{"step": {"count": "3"}}]

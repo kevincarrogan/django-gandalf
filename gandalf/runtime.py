@@ -332,12 +332,23 @@ class BoundWizard:
     def obliterate(self):
         """Forget this run: its uploaded files and its stored state.
 
-        Completion only cleans up files (see `WizardViewSet._finish`),
-        leaving the run readable so revisiting it re-runs `done()`. This
-        removes the run outright, so revisiting starts a fresh one.
+        Completion discards state too (see `WizardViewSet._finish`) but
+        leaves a tombstone behind, so a revisit can still be answered as
+        finished. This removes the run outright, leaving nothing to tell it
+        apart from a run that never existed.
         """
         self.cleanup_files()
         self.storage.delete_run(self.run_id)
+
+    def complete(self):
+        """Tombstone this run: its answers are discarded and it is marked
+        finished, so `done()` can never fire for it again."""
+        self.storage.complete_run(self.run_id)
+
+    @property
+    def is_complete(self):
+        """True once this run has finished and been tombstoned."""
+        return self.storage.is_run_complete(self.run_id)
 
     @property
     def runtime_tree(self):
@@ -399,6 +410,12 @@ class BoundWizard:
         properties can derive URLs lazily. Called by the viewset before
         dispatching a step render; reuses the cursor it already computed."""
         self._render_context = (cursor, target_declaration)
+
+    def clear_rendering(self):
+        """Forget the recorded render context, so `runtime_tree` and the
+        navigation properties stop reusing a walk that a later write has
+        invalidated."""
+        self._render_context = None
 
     @property
     def run_url(self):

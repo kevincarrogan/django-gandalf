@@ -10,6 +10,8 @@ from gandalf.wizard import (
 )
 from gandalf.viewsets import WizardViewSet
 
+from http import HTTPStatus
+
 from django.http import HttpResponse
 from django.urls import reverse
 from django.views import View
@@ -83,6 +85,23 @@ class SingleStepWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class RunUnavailableWizardViewSet(WizardViewSet):
+    description = (
+        "Single-step wizard overriding run_unavailable() so finished and "
+        "unknown runs answer differently instead of redirecting to the start."
+    )
+    template_name = "testapp/single_step_wizard.html"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+    url_name = "run-unavailable-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+    def run_unavailable(self, bound_wizard, reason):
+        return HttpResponse(f"unavailable: {reason}", status=HTTPStatus.GONE)
 
 
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
