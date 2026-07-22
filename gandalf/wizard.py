@@ -67,9 +67,7 @@ class StepNameRouter:
 
     def clean_url_kwargs(self, url_kwargs):
         return {
-            key: value
-            for key, value in url_kwargs.items()
-            if key != self.url_kwarg
+            key: value for key, value in url_kwargs.items() if key != self.url_kwarg
         }
 
 

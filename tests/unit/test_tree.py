@@ -453,5 +453,3 @@ def test_context_finder_handles_declared_branch_with_no_default():
     finder.visit(root)
 
     assert len(finder.all()) == 1
-
-
