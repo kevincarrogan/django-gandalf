@@ -16,36 +16,36 @@ import pytest
 from pytest_django.asserts import assertContains, assertRedirects
 
 
-def start_url(name):
-    return reverse(name)
+def start_url(name, url_kwargs=None):
+    return reverse(name, kwargs=url_kwargs or None)
 
 
-def run_url(name, run_id):
-    return reverse(f"{name}-run", kwargs={"run_id": run_id})
+def run_url(name, run_id, url_kwargs=None):
+    return reverse(f"{name}-run", kwargs={**(url_kwargs or {}), "run_id": run_id})
 
 
-def step_url(name, run_id, step):
-    return f"{run_url(name, run_id)}{step}/"
+def step_url(name, run_id, step, url_kwargs=None):
+    return f"{run_url(name, run_id, url_kwargs)}{step}/"
 
 
-def start_run(client, name):
+def start_run(client, name, url_kwargs=None):
     """GET the start URL and return the freshly created run id."""
-    client.get(start_url(name))
+    client.get(start_url(name, url_kwargs))
     runs = client.session["gandalf_runs"]
     assert len(runs) == 1
     return next(iter(runs))
 
 
-def drive(client, name, steps):
+def drive(client, name, steps, url_kwargs=None):
     """Run a wizard to completion, POSTing ``steps`` as ``(step, data)`` pairs.
 
     Returns the final (followed) response.
     """
-    run_id = start_run(client, name)
+    run_id = start_run(client, name, url_kwargs)
     response = None
     for step, data in steps:
         response = client.post(
-            step_url(name, run_id, step), data=data, follow=True
+            step_url(name, run_id, step, url_kwargs), data=data, follow=True
         )
     return response, run_id
 
@@ -54,23 +54,22 @@ def drive(client, name, steps):
 
 
 @pytest.mark.parametrize(
-    "name",
+    "name, url_kwargs",
     [
-        "readme-signup",
-        "readme-branching",
-        "readme-dynamic",
-        "readme-expand",
-        "readme-file-upload",
-        "readme-escape",
-        "readme-editing",
+        ("readme-signup", None),
+        ("readme-branching", None),
+        ("readme-onboarding", {"plan": "solo"}),
+        ("readme-expand", None),
+        ("readme-file-upload", None),
+        ("readme-escape", None),
+        ("readme-editing", None),
     ],
 )
-def test_readme_example_start_url_is_reachable(client, name):
-    response = client.get(start_url(name))
+def test_readme_example_start_url_is_reachable(client, name, url_kwargs):
+    response = client.get(start_url(name, url_kwargs))
 
     # The start URL creates a run and redirects to it, so the link is live.
     assert response.status_code == HTTPStatus.FOUND
-    assert reverse(name) == start_url(name)
 
 
 # --- Quickstart: linear signup ----------------------------------------------
@@ -126,19 +125,35 @@ def test_branching_wizard_takes_personal_arm(client):
 # --- Dynamic wizards: get_wizard() ------------------------------------------
 
 
-def test_dynamic_wizard_generates_steps_from_the_count(client):
+def test_onboarding_solo_plan_skips_the_company_step(client):
     response, _ = drive(
         client,
-        "readme-dynamic",
+        "readme-onboarding",
         [
-            ("count", {"count": "2"}),
-            ("item-0", {"name": "first"}),
-            ("item-1", {"name": "second"}),
+            ("name", {"name": "Ada"}),
+            ("email", {"email": "ada@example.com"}),
         ],
+        url_kwargs={"plan": "solo"},
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Collected first, second"
+    assert response.content == b"Onboarded Ada on the solo plan"
+
+
+def test_onboarding_team_plan_inserts_the_company_step(client):
+    response, _ = drive(
+        client,
+        "readme-onboarding",
+        [
+            ("name", {"name": "Ada"}),
+            ("company", {"business_name": "Acme"}),
+            ("email", {"email": "ada@example.com"}),
+        ],
+        url_kwargs={"plan": "team"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"Onboarded Ada on the team plan"
 
 
 # --- .expand() --------------------------------------------------------------
@@ -238,3 +253,48 @@ def test_editing_wizard_renders_a_completed_step_prefilled(client):
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'name="account_type"')
+
+
+# --- Dormant memory: flipping a branch and back -----------------------------
+
+
+def test_flip_flop_wizard_restores_a_dormant_arm_answer(client):
+    name = "readme-flip-flop"
+    run_id = start_run(client, name)
+
+    # Business arm: answer the account type and the company name.
+    client.post(
+        step_url(name, run_id, "account_type"),
+        data={"account_type": "business"},
+        follow=True,
+    )
+    client.post(
+        step_url(name, run_id, "business_name"),
+        data={"business_name": "Acme"},
+        follow=True,
+    )
+
+    # Edit the account type to personal — the business arm goes dormant.
+    client.post(
+        step_url(name, run_id, "account_type"),
+        data={"account_type": "personal"},
+        follow=True,
+    )
+    # Flip back to business — the dormant "Acme" is restored, not re-asked.
+    client.post(
+        step_url(name, run_id, "account_type"),
+        data={"account_type": "business"},
+        follow=True,
+    )
+
+    # The company step is satisfied again from dormant memory: GETting it shows
+    # Acme pre-filled, and completing the run reports it without re-entry.
+    prefilled = client.get(step_url(name, run_id, "business_name"), follow=True)
+    assertContains(prefilled, "Acme")
+
+    response = client.post(
+        step_url(name, run_id, "review"), data={"confirmed": "on"}, follow=True
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"Onboarded Acme"

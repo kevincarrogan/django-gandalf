@@ -154,7 +154,7 @@ body:
 
 That is the whole thing: two forms, a viewset, one URL include.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L37-L59)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L36-L58)
 
 ---
 
@@ -257,40 +257,48 @@ the branch has already validated on this same walk — so it can dereference
 answers.
 
 Because arms are sub-`Wizard`s, they compose: define a subflow once and drop it
-into several branches. Answers for a de-selected arm are kept as dormant memory,
-so flipping account type from business to personal and back restores the earlier
-business answers instead of re-asking them.
+into several branches. And a de-selected arm's answers are not thrown away — see
+[Dormant memory](#dormant-memory-flipping-a-branch-and-back) below.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L64-L90)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L63-L89)
 
 ---
 
 ## Dynamic wizards: `get_wizard()`
 
-When the shape of the flow depends on **request context** — tenant, permissions,
-locale, feature flags — override `get_wizard(self, bound_wizard)` instead of
-setting a class-level `wizard`. It is called with the `BoundWizard` for the
-current request, and it can read stored state to shape itself:
+When the shape of the flow depends on **request context** — tenant, plan,
+permissions, locale, feature flags — override `get_wizard(self, bound_wizard)`
+instead of setting a class-level `wizard`. It is called per request, so the
+same view can build a different flow for each caller. Here the plan is captured
+in the URL, and the team plan gets an extra company step:
 
 ```python
-class DynamicWizardViewSet(WizardViewSet):
-    url_name = "collect-items"
-    template_name = "collect/step.html"
+class OnboardingWizardViewSet(WizardViewSet):
+    url_name = "onboarding"
+    template_name = "onboarding/step.html"
 
     def get_wizard(self, bound_wizard):
-        state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, name="count")
-        if state:
-            count = int(state[0]["step"]["count"])
-            for index in range(count):
-                wizard = wizard.step(ItemForm, name=f"item-{index}")
-        return wizard
+        wizard = Wizard().step(NameForm, name="name")
+        if self.kwargs["plan"] == "team":
+            wizard = wizard.step(CompanyForm, name="company")
+        return wizard.step(EmailForm, name="email")
 ```
 
-Here the user picks a count, and the same view regenerates that many item steps
-from the stored count on each request.
+```python
+urlpatterns = [
+    path("onboarding/<slug:plan>/", include(OnboardingWizardViewSet.urls())),
+]
+```
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/dynamic/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L95-L116)
+The mount prefix can capture kwargs of its own; the default URL hooks forward
+them into every redirect, so `self.kwargs["plan"]` is available on each request
+of the run. Reach for `get_wizard()` when the shape depends on the *request*;
+when it depends on a prior *answer* the user just gave, reach for
+[`.expand()`](#expand-grow-the-wizard-from-a-prior-answer) instead — it grows
+the tree in a single walk without re-reading stored state.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/onboarding/solo/ or
+> [/team/](http://127.0.0.1:8000/readme/onboarding/team/) &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L94-L110)
 
 ---
 
@@ -332,7 +340,7 @@ an upstream step can break it; grown answers store positionally, so raising a
 count keeps the answers already given and lowering it drops the trailing ones;
 and every grown step must be routable (carry a `name`).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L121-L154)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L115-L141)
 
 ---
 
@@ -380,7 +388,46 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 {% endif %}
 ```
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L195-L217)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L182-L204)
+
+---
+
+## Dormant memory: flipping a branch and back
+
+Editing an answer that flips a branch does not discard the arm you leave. A
+de-selected arm's answers are kept as **dormant memory**, re-validated and
+restored if you flip back — so the user never re-types an answer they already
+gave.
+
+Take the branching wizard: pick a business account, fill in the company name,
+then edit the account type to personal. The business arm is now inactive, but
+its answer is not gone. Flip the account type back to business and the company
+name is already there — the run fast-forwards past it to the summary instead of
+asking again.
+
+```python
+class FlipFlopWizardViewSet(WizardViewSet):
+    url_name = "flip-flop"
+    template_name = "onboarding/editing.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            condition(is_business_account, Wizard().step(CompanyForm, name="company")),
+            default=Wizard().step(PersonalForm, name="preferred_name"),
+        )
+        .step(ReviewForm, name="review")
+    )
+```
+
+Dormant arms live in the session until the run completes, and arm identity is
+positional (declaration order) — so a dynamic `get_wizard()` that reorders
+branch arms between requests would misattribute the memory, the same
+positional-alignment rule that applies to steps.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/flip-flop/ (choose business,
+> fill the company name, then edit the account type to personal and back)
+> &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L210-L234)
 
 ---
 
@@ -424,7 +471,7 @@ The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere (S3, a per-tenant location) by subclassing
 `WizardFileStorage` and passing it to `.configure(file_storage_class=...)`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L159-L172)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L146-L159)
 
 ---
 
@@ -466,7 +513,7 @@ Escapes can also be raised from a `FormView`'s `form_valid()` when the decision
 needs the view. `Escape` is the base class, so `except Escape` catches all
 three.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L178-L189)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L165-L176)
 > &nbsp; (enter `existing@example.com` to trigger the park)
 
 ---

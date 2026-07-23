@@ -15,7 +15,6 @@ plain form templates already bundled with the test app.
 from django import forms
 from django.http import HttpResponse
 
-from gandalf.escapes import Park
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData, Wizard, condition
 
@@ -92,27 +91,22 @@ class BranchingWizardViewSet(WizardViewSet):
 # --- Dynamic wizards: get_wizard() ------------------------------------------
 
 
-class DynamicWizardViewSet(WizardViewSet):
-    description = "Dynamic: pick a count, then get that many item steps."
-    url_name = "readme-dynamic"
+class OnboardingWizardViewSet(WizardViewSet):
+    description = "Dynamic: the flow varies by the plan captured in the URL."
+    url_name = "readme-onboarding"
     template_name = "testapp/linear_wizard.html"
 
     def get_wizard(self, bound_wizard):
-        state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, name="count")
-        if state:
-            count = int(state[0]["step"]["count"])
-            for index in range(count):
-                wizard = wizard.step(ItemForm, name=f"item-{index}")
-        return wizard
+        wizard = Wizard().step(NameForm, name="name")
+        if self.kwargs["plan"] == "team":
+            wizard = wizard.step(BusinessDetailsForm, name="company")
+        return wizard.step(EmailForm, name="email")
 
     def done(self, bound_wizard):
-        node = bound_wizard.runtime_tree.next
-        names = []
-        while node is not None:
-            names.append(node.data["name"])
-            node = node.next
-        return HttpResponse(f"Collected {', '.join(names)}")
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(
+            f"Onboarded {payload['name']} on the {self.kwargs['plan']} plan"
+        )
 
 
 # --- .expand(): grow the tree from a prior answer ---------------------------
@@ -208,3 +202,33 @@ class EditingWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"Onboarded {bound_wizard.run_id}")
+
+
+# --- Dormant memory: flipping a branch arm and back -------------------------
+
+
+class FlipFlopWizardViewSet(WizardViewSet):
+    description = "Dormant memory: a de-selected arm's answers survive a flip."
+    url_name = "readme-flip-flop"
+    template_name = "testapp/editing_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(
+                    BusinessDetailsForm, context={"step_name": "business_name"}
+                ),
+            ),
+            default=Wizard().step(
+                PersonalDetailsForm, context={"step_name": "preferred_name"}
+            ),
+        )
+        .step(ReviewForm, context={"step_name": "review"})
+    )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        detail = payload.get("business_name") or payload.get("preferred_name")
+        return HttpResponse(f"Onboarded {detail}")
