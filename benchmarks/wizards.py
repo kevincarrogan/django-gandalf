@@ -61,7 +61,7 @@ def _naming(segment):
     nothing and lets the harness be checked out against older commits to
     bisect a cost change — which is most of the value of counting at all.
     """
-    return {"context": {"step_name": segment}}
+    return {"context": {"name": segment}}
 
 
 def _class_name(segment, suffix="Form"):
@@ -96,7 +96,7 @@ def _chose(segment, value):
     """
 
     def predicate(request):
-        step = request.wizard.path.find_step(step_name=segment)
+        step = request.wizard.path.find_step(name=segment)
         return step.form.cleaned_data["choice"] == value
 
     predicate.__name__ = f"chose_{value}_at_{segment.replace('-', '_')}"

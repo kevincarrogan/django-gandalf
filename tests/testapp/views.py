@@ -89,7 +89,7 @@ def _iter_leaf_patterns(patterns):
 
 
 def is_business_account(request):
-    account_step = request.wizard.path.find_step(step_name="account_type")
+    account_step = request.wizard.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -266,7 +266,7 @@ class BranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
@@ -282,7 +282,7 @@ class BranchingWizardViewSet(WizardViewSet):
 
 class SectionRouter(StepNameRouter):
     """Custom router keying step URLs on a `section` context entry rather
-    than `step_name`."""
+    than `name`."""
 
     context_key = "section"
 
@@ -290,7 +290,7 @@ class SectionRouter(StepNameRouter):
 class SectionEditingWizardViewSet(WizardViewSet):
     description = (
         "Wizard configuring a custom `step_router_class` that routes step "
-        "URLs by a `section` context entry rather than `step_name`."
+        "URLs by a `section` context entry rather than `name`."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
@@ -318,19 +318,19 @@ class EditingBranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
                 Wizard().step(
-                    BusinessDetailsForm, context={"step_name": "business_name"}
+                    BusinessDetailsForm, context={"name": "business_name"}
                 ),
             ),
             default=Wizard().step(
-                PersonalDetailsForm, context={"step_name": "preferred_name"}
+                PersonalDetailsForm, context={"name": "preferred_name"}
             ),
         )
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(ReviewForm, context={"name": "review"})
     )
 
     url_name = "editing-branching-wizard"
@@ -341,24 +341,24 @@ class EditingBranchingWizardViewSet(WizardViewSet):
 
 class DoneBranchingWizardViewSet(WizardViewSet):
     description = (
-        "Branching wizard exercising step_name context, find_step / filter_steps, "
+        "Branching wizard exercising name context, find_step / filter_steps, "
         "and ContextFinder over the declared tree."
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"step_name": "business"}),
+                Wizard().step(BusinessDetailsForm, context={"name": "business"}),
             ),
             default=Wizard().step(
                 PersonalDetailsForm,
-                context={"step_name": "personal"},
+                context={"name": "personal"},
             ),
         )
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(ReviewForm, context={"name": "review"})
         .step(SecondStepForm, name="second")
     )
 
@@ -368,9 +368,9 @@ class DoneBranchingWizardViewSet(WizardViewSet):
         from gandalf import tree as tree_module
 
         all_steps = bound_wizard.path.filter_steps()
-        review_step = bound_wizard.path.find_step(step_name="review")
-        missing_step = bound_wizard.path.find_step(step_name="nonexistent")
-        account_steps = bound_wizard.path.filter_steps(step_name="account_type")
+        review_step = bound_wizard.path.find_step(name="review")
+        missing_step = bound_wizard.path.find_step(name="nonexistent")
+        account_steps = bound_wizard.path.filter_steps(name="account_type")
 
         declared_finder = tree_module.ContextFinder({})
         declared_finder.visit(bound_wizard.wizard.tree)
@@ -399,19 +399,19 @@ class BranchEntryWizardViewSet(WizardViewSet):
 
 
 class DuplicateContextWizardViewSet(WizardViewSet):
-    description = "Two steps sharing the same step_name; done() shows find_step raising on ambiguity."
+    description = "Two steps sharing the same name; done() shows find_step raising on ambiguity."
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"step_name": "duplicate"})
-        .step(SecondStepForm, context={"step_name": "duplicate"})
+        .step(FirstStepForm, context={"name": "duplicate"})
+        .step(SecondStepForm, context={"name": "duplicate"})
     )
 
     url_name = "duplicate-context-wizard"
 
     def done(self, bound_wizard):
         try:
-            bound_wizard.path.find_step(step_name="duplicate")
+            bound_wizard.path.find_step(name="duplicate")
         except Exception as exc:
             return HttpResponse(f"raised {type(exc).__name__}")
         return HttpResponse("no raise")
@@ -569,7 +569,7 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
-        wizard.step(AccountTypeForm, context={"step_name": "account_type"})
+        wizard.step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
@@ -613,7 +613,7 @@ class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
         .branch(
             condition(_never_matches, wizard.step(SecondStepForm, name="second")),
         )
-        .step(AccountTypeForm, context={"step_name": "skip_branch_account"})
+        .step(AccountTypeForm, context={"name": "skip_branch_account"})
     )
 
     url_name = "empty-branch-arm-merged-payload-wizard"
@@ -632,7 +632,7 @@ class RuntimeTreeBranchingMergeViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
-        wizard.step(AccountTypeForm, context={"step_name": "account_type"})
+        wizard.step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
@@ -701,7 +701,7 @@ class DynamicWizardViewSet(WizardViewSet):
 
     def get_wizard(self, bound_wizard):
         state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, context={"step_name": "count"})
+        wizard = Wizard().step(ItemCountForm, context={"name": "count"})
         if state:
             count = int(state[0]["step"]["count"])
             for index in range(count):
@@ -756,14 +756,14 @@ class FileUploadingWizardViewSet(WizardViewSet):
     template_name = "testapp/file_upload_wizard.html"
     wizard = (
         Wizard()
-        .step(ProfilePhotoForm, context={"step_name": "photo"})
+        .step(ProfilePhotoForm, context={"name": "photo"})
         .step(FirstStepForm, name="first")
     )
 
     url_name = "file-uploading-wizard"
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.path.find_step(step_name="photo")
+        photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"completed {filename}")
 
@@ -777,7 +777,7 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
 
     def get_wizard(self, bound_wizard):
         state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, context={"step_name": "count"})
+        wizard = Wizard().step(ItemCountForm, context={"name": "count"})
         if state:
             count = int(state[0]["step"]["count"])
             for index in range(count):
@@ -809,8 +809,8 @@ class NamedHelperWizardViewSet(WizardViewSet):
     url_name = "named-helper-wizard"
 
     def done(self, bound_wizard):
-        first = bound_wizard.path.find_step(step_name="first")
-        second = bound_wizard.path.find_step(step_name="second")
+        first = bound_wizard.path.find_step(name="first")
+        second = bound_wizard.path.find_step(name="second")
         return HttpResponse(
             f"completed first={first.form.cleaned_data['name']} "
             f"second={second.form.cleaned_data['email']}"
@@ -825,14 +825,14 @@ class FileEditingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(OptionalPhotoForm, context={"step_name": "photo"})
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(OptionalPhotoForm, context={"name": "photo"})
+        .step(ReviewForm, context={"name": "review"})
     )
 
     url_name = "file-editing-wizard"
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.path.find_step(step_name="photo")
+        photo_step = bound_wizard.path.find_step(name="photo")
         photo_ref = (photo_step.files or {}).get("photo")
         filename = photo_ref["name"] if photo_ref else "no-photo"
         return HttpResponse(f"completed {filename}")
@@ -921,8 +921,7 @@ class MisconfiguredStepUrlsWizardViewSet(WizardViewSet):
 class LookupProbeStepView(FormView):
     """Step view that probes render_edit for its own (still unanswered)
     step while rendering: `require_data` skips the match, so the probe
-    observes StepNotFound mid-run. Also probes the `name=` lookup
-    shorthand and the TypeError for passing it alongside `step_name`."""
+    observes StepNotFound mid-run. Also probes a `name=` context lookup."""
 
     form_class = SecondStepForm
     template_name = "testapp/editing_wizard.html"
@@ -935,15 +934,11 @@ class LookupProbeStepView(FormView):
 
         context = super().get_context_data(**kwargs)
         try:
-            self.request.wizard.render_step(step_name="second")
+            self.request.wizard.render_step(name="second")
         except StepNotFound:
             context["lookup_probe"] = "step-not-found"
         found = self.request.wizard.path.find_step(name="first")
-        context["name_lookup_probe"] = found.declaration.context["step_name"]
-        try:
-            self.request.wizard.path.find_step(name="first", step_name="first")
-        except TypeError:
-            context["ambiguous_lookup_probe"] = "type-error"
+        context["name_lookup_probe"] = found.declaration.context["name"]
         return context
 
 
@@ -975,7 +970,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
         # A claim the run cannot reach places nothing, so the uploads it came
         # with are the caller's to clean up — which is what the viewset does.
         walk = bound_wizard.walk(
-            claim={"step_name": "missing"},
+            claim={"name": "missing"},
             submission={"name": "x"},
             files={"upload": ref},
         )
@@ -993,7 +988,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
             and bound_wizard.previous_step(cursor, foreign_declaration) is None
         )
-        resolved = bound_wizard.render_step(step_name="first")
+        resolved = bound_wizard.render_step(name="first")
 
         # A claim can also be a step declaration, for callers that already
         # hold one rather than resolving a URL segment.
@@ -1019,7 +1014,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
 
 
 def _business_was_acme(request):
-    business_step = request.wizard.path.find_step(step_name="business_name")
+    business_step = request.wizard.path.find_step(name="business_name")
     return business_step.data["business_name"] == "Acme"
 
 
@@ -1037,7 +1032,7 @@ class PathProbeStepView(FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         names = [
-            step.declaration.context["step_name"]
+            step.declaration.context["name"]
             for step in self.request.wizard.path
         ]
         context["path_names"] = names
@@ -1114,8 +1109,8 @@ class OrgScopedEditingWizardViewSet(WizardViewSet):
     url_name = "org-scoped-wizard"
     wizard = (
         Wizard()
-        .step(OrgScopedStepView, context={"step_name": "first"})
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(OrgScopedStepView, context={"name": "first"})
+        .step(ReviewForm, context={"name": "review"})
     )
 
     def done(self, bound_wizard):
@@ -1137,15 +1132,15 @@ class BranchEditRejectionWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"step_name": "first"})
+        .step(FirstStepForm, context={"name": "first"})
         .branch(
             condition(
                 _always_true,
-                Wizard().step(SecondStepForm, context={"step_name": "second"}),
+                Wizard().step(SecondStepForm, context={"name": "second"}),
             ),
         )
-        .step(ReviewForm, context={"step_name": "review"})
-        .step(AccountTypeForm, context={"step_name": "tail"})
+        .step(ReviewForm, context={"name": "review"})
+        .step(AccountTypeForm, context={"name": "tail"})
     )
 
     url_name = "branch-edit-rejection-wizard"
@@ -1397,7 +1392,7 @@ class PathReadingGate(FormView):
         # would start a fresh walk that re-dispatches this very step.
         if self.request.method == "GET":
             names = [
-                step.declaration.context.get("step_name")
+                step.declaration.context.get("name")
                 for step in self.request.wizard.path
             ]
             context["path_names"] = names

@@ -234,20 +234,20 @@ def test_branch_iter_yields_only_self_when_next_is_none():
 
 
 def test_step_matches_context_returns_true_when_all_kwargs_match():
-    step = tree.Step(FirstStepForm, context={"step_name": "first", "kind": "form"})
+    step = tree.Step(FirstStepForm, context={"name": "first", "kind": "form"})
 
-    assert step.matches_context(step_name="first") is True
-    assert step.matches_context(step_name="first", kind="form") is True
+    assert step.matches_context(name="first") is True
+    assert step.matches_context(name="first", kind="form") is True
 
 
 def test_step_matches_context_returns_false_when_value_differs():
-    step = tree.Step(FirstStepForm, context={"step_name": "first"})
+    step = tree.Step(FirstStepForm, context={"name": "first"})
 
-    assert step.matches_context(step_name="second") is False
+    assert step.matches_context(name="second") is False
 
 
 def test_step_matches_context_returns_false_when_key_missing():
-    step = tree.Step(FirstStepForm, context={"step_name": "first"})
+    step = tree.Step(FirstStepForm, context={"name": "first"})
 
     assert step.matches_context(kind="form") is False
 
@@ -261,7 +261,7 @@ def test_step_matches_context_returns_true_when_no_kwargs_given():
 def test_step_matches_context_returns_false_when_step_has_no_context():
     step = tree.Step(FirstStepForm)
 
-    assert step.matches_context(step_name="first") is False
+    assert step.matches_context(name="first") is False
 
 
 def test_interpreter_walk_traverses_chain():
@@ -288,24 +288,24 @@ def test_interpreter_walk_traverses_chain():
 def test_context_finder_collects_matching_steps():
     root = tree.Step(
         FirstStepForm,
-        context={"step_name": "first"},
-        next=tree.Step(SecondStepForm, context={"step_name": "second"}),
+        context={"name": "first"},
+        next=tree.Step(SecondStepForm, context={"name": "second"}),
     )
-    finder = tree.ContextFinder({"step_name": "second"})
+    finder = tree.ContextFinder({"name": "second"})
 
     finder.visit(root)
 
-    assert finder.all() == [tree.Step(SecondStepForm, context={"step_name": "second"})]
+    assert finder.all() == [tree.Step(SecondStepForm, context={"name": "second"})]
 
 
 def test_context_finder_descends_into_branch_arms():
-    arm_step = tree.Step(FirstStepForm, context={"step_name": "business"})
-    default_step = tree.Step(SecondStepForm, context={"step_name": "personal"})
+    arm_step = tree.Step(FirstStepForm, context={"name": "business"})
+    default_step = tree.Step(SecondStepForm, context={"name": "personal"})
     root = tree.Branch(
         arms=((_is_business, arm_step),),
         default=default_step,
     )
-    finder = tree.ContextFinder({"step_name": "personal"})
+    finder = tree.ContextFinder({"name": "personal"})
 
     finder.visit(root)
 
@@ -313,8 +313,8 @@ def test_context_finder_descends_into_branch_arms():
 
 
 def test_context_finder_one_returns_single_match():
-    root = tree.Step(FirstStepForm, context={"step_name": "first"})
-    finder = tree.ContextFinder({"step_name": "first"})
+    root = tree.Step(FirstStepForm, context={"name": "first"})
+    finder = tree.ContextFinder({"name": "first"})
 
     finder.visit(root)
 
@@ -322,8 +322,8 @@ def test_context_finder_one_returns_single_match():
 
 
 def test_context_finder_one_returns_none_when_no_match():
-    root = tree.Step(FirstStepForm, context={"step_name": "first"})
-    finder = tree.ContextFinder({"step_name": "missing"})
+    root = tree.Step(FirstStepForm, context={"name": "first"})
+    finder = tree.ContextFinder({"name": "missing"})
 
     finder.visit(root)
 
@@ -333,10 +333,10 @@ def test_context_finder_one_returns_none_when_no_match():
 def test_context_finder_one_raises_when_multiple_matches():
     root = tree.Step(
         FirstStepForm,
-        context={"step_name": "shared"},
-        next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+        context={"name": "shared"},
+        next=tree.Step(SecondStepForm, context={"name": "shared"}),
     )
-    finder = tree.ContextFinder({"step_name": "shared"})
+    finder = tree.ContextFinder({"name": "shared"})
 
     finder.visit(root)
 
@@ -347,30 +347,30 @@ def test_context_finder_one_raises_when_multiple_matches():
 def test_context_finder_all_returns_matches_in_walk_order():
     root = tree.Step(
         FirstStepForm,
-        context={"step_name": "shared"},
-        next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+        context={"name": "shared"},
+        next=tree.Step(SecondStepForm, context={"name": "shared"}),
     )
-    finder = tree.ContextFinder({"step_name": "shared"})
+    finder = tree.ContextFinder({"name": "shared"})
 
     finder.visit(root)
 
     assert finder.all() == [
         tree.Step(
             FirstStepForm,
-            context={"step_name": "shared"},
-            next=tree.Step(SecondStepForm, context={"step_name": "shared"}),
+            context={"name": "shared"},
+            next=tree.Step(SecondStepForm, context={"name": "shared"}),
         ),
-        tree.Step(SecondStepForm, context={"step_name": "shared"}),
+        tree.Step(SecondStepForm, context={"name": "shared"}),
     ]
 
 
 def test_context_finder_one_with_path_returns_position_for_a_flat_match():
     root = tree.Step(
         FirstStepForm,
-        context={"step_name": "first"},
-        next=tree.Step(SecondStepForm, context={"step_name": "second"}),
+        context={"name": "first"},
+        next=tree.Step(SecondStepForm, context={"name": "second"}),
     )
-    finder = tree.ContextFinder({"step_name": "second"})
+    finder = tree.ContextFinder({"name": "second"})
 
     finder.visit(root)
 
@@ -380,8 +380,8 @@ def test_context_finder_one_with_path_returns_position_for_a_flat_match():
 
 
 def test_context_finder_one_with_path_returns_none_when_no_match():
-    root = tree.Step(FirstStepForm, context={"step_name": "first"})
-    finder = tree.ContextFinder({"step_name": "missing"})
+    root = tree.Step(FirstStepForm, context={"name": "first"})
+    finder = tree.ContextFinder({"name": "missing"})
 
     finder.visit(root)
 
@@ -389,13 +389,13 @@ def test_context_finder_one_with_path_returns_none_when_no_match():
 
 
 def test_context_finder_descends_into_branch_default_when_arm_has_no_match():
-    arm_step = tree.Step(FirstStepForm, context={"step_name": "business"})
-    default_step = tree.Step(SecondStepForm, context={"step_name": "personal"})
+    arm_step = tree.Step(FirstStepForm, context={"name": "business"})
+    default_step = tree.Step(SecondStepForm, context={"name": "personal"})
     root = tree.Branch(
         arms=((_is_business, arm_step),),
         default=default_step,
     )
-    finder = tree.ContextFinder({"step_name": "personal"})
+    finder = tree.ContextFinder({"name": "personal"})
 
     finder.visit(root)
 
@@ -408,14 +408,14 @@ def test_context_finder_skips_runtime_branch_with_no_selected_arm():
     from gandalf.runtime import RuntimeBranch, RuntimeStep
 
     root = RuntimeStep(
-        declaration=tree.Step(FirstStepForm, context={"step_name": "first"}),
+        declaration=tree.Step(FirstStepForm, context={"name": "first"}),
         data={"value": 1},
         next=RuntimeBranch(
             declaration=tree.Branch(arms=()),
             selected_arm=None,
         ),
     )
-    finder = tree.ContextFinder({"step_name": "first"})
+    finder = tree.ContextFinder({"name": "first"})
 
     finder.visit(root)
 
@@ -426,31 +426,31 @@ def test_context_finder_descends_active_runtime_branch_arm():
     from gandalf.runtime import RuntimeBranch, RuntimeStep
 
     arm_step = RuntimeStep(
-        declaration=tree.Step(SecondStepForm, context={"step_name": "arm"}),
+        declaration=tree.Step(SecondStepForm, context={"name": "arm"}),
         data={"value": 2},
     )
     root = RuntimeStep(
-        declaration=tree.Step(FirstStepForm, context={"step_name": "first"}),
+        declaration=tree.Step(FirstStepForm, context={"name": "first"}),
         data={"value": 1},
         next=RuntimeBranch(
             declaration=tree.Branch(arms=()),
             selected_arm=arm_step,
         ),
     )
-    finder = tree.ContextFinder({"step_name": "arm"})
+    finder = tree.ContextFinder({"name": "arm"})
 
     finder.visit(root)
 
-    assert [node.declaration.context["step_name"] for node in finder.all()] == ["arm"]
+    assert [node.declaration.context["name"] for node in finder.all()] == ["arm"]
 
 
 def test_context_finder_handles_declared_branch_with_no_default():
-    arm_step = tree.Step(FirstStepForm, context={"step_name": "match"})
+    arm_step = tree.Step(FirstStepForm, context={"name": "match"})
     root = tree.Branch(
         arms=((_is_business, arm_step),),
         default=None,
     )
-    finder = tree.ContextFinder({"step_name": "match"})
+    finder = tree.ContextFinder({"name": "match"})
 
     finder.visit(root)
 

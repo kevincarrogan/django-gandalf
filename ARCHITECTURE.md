@@ -284,12 +284,12 @@ Branch predicates receive a wizard-shaped request whose `.wizard` attribute is t
 from gandalf.wizard import Wizard, condition
 
 def is_business(request):
-    step = request.wizard.path.find_step(step_name="account")
+    step = request.wizard.path.find_step(name="account")
     return step.data["account_type"] == "business"
 
 wizard = (
     Wizard()
-    .step(AccountTypeForm, context={"step_name": "account"})
+    .step(AccountTypeForm, context={"name": "account"})
     .branch(
         condition(is_business, Wizard().step(BusinessDetailsForm)),
         default=Wizard().step(PersonalDetailsForm),
@@ -306,7 +306,7 @@ This yields a guarantee: because the sealed walk is the only thing that ever sel
 
 ## Step URL routing
 
-Steps are addressed by URL — there is no unrouted mode. `StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps the `gandalf_step` URL kwarg to a step-context lookup and reverses a step declaration back into a URL segment (`step_name` context by default; subclass to route on another key). The viewset validates at request time that the configured router can reverse every declared step, raising `ImproperlyConfigured` for unnamed steps.
+Steps are addressed by URL — there is no unrouted mode. `StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps the `gandalf_step` URL kwarg to a step-context lookup and reverses a step declaration back into a URL segment (`name` context by default; subclass to route on another key). The viewset validates at request time that the configured router can reverse every declared step, raising `ImproperlyConfigured` for unnamed steps.
 
 On a step-URL request the viewset hands the claim to the walk. Reaching the claimed step *is* the authorisation: the walk only arrives there by validating everything before it, so a URL naming a step this run cannot reach — unknown, not yet reached, or parked in a dormant arm — never becomes a placement, and redirects to the cursor's URL instead. A reached step renders (pre-filled if it already has an answer) or takes the submission. The bare run URL redirects to the cursor's step URL (or fires `done()` on completion), and a bare-URL POST redirects without storing. Successful POSTs redirect (POST→redirect→GET); the URL is never trusted to *set* position, only checked against the derived cursor.
 

@@ -78,7 +78,7 @@ def test_expand_builds_the_subtree_from_a_prior_answer(request_factory):
     # The count is answered, so the expansion built two item steps; the walk
     # parks on the first of them, which is a step that did not exist in the
     # declared tree at all.
-    assert walk.cursor.node.context["step_name"] == "item-0"
+    assert walk.cursor.node.context["name"] == "item-0"
 
 
 def test_expanded_answers_serialise_as_a_positional_list(request_factory):
@@ -93,7 +93,7 @@ def test_expanded_answers_serialise_as_a_positional_list(request_factory):
 
     walk = bound.walk()
 
-    assert walk.cursor.node.context["step_name"] == "review"
+    assert walk.cursor.node.context["name"] == "review"
     node = walk.cursor.state.next
     assert isinstance(node, RuntimeExpand)
     assert bound.wizard.state_serializer_class().reduce(walk.cursor.state) == [
@@ -114,7 +114,7 @@ def test_an_expansion_before_the_cursor_is_preserved_verbatim(request_factory):
 
     walk = bound.walk()
 
-    assert walk.cursor.node.context["step_name"] == "count"
+    assert walk.cursor.node.context["name"] == "count"
     preserved = walk.cursor.state.next
     assert isinstance(preserved, PreservedExpand)
     # Serializing keeps the sealed region exactly as stored.
@@ -162,7 +162,7 @@ def test_path_inlines_an_active_expansion(request_factory):
         ],
     )
 
-    names = [step.declaration.context.get("step_name") for step in bound.path]
+    names = [step.declaration.context.get("name") for step in bound.path]
 
     # The expanded item steps are spliced into the active route inline,
     # between the count and wherever the run has reached.
@@ -172,7 +172,7 @@ def test_path_inlines_an_active_expansion(request_factory):
 def test_a_submission_can_be_placed_into_an_expanded_step(request_factory):
     bound = _bound(_expand_wizard(), request_factory(), [{"step": {"count": "2"}}])
 
-    walk = bound.walk(claim={"step_name": "item-0"}, submission={"name": "Grace"})
+    walk = bound.walk(claim={"name": "item-0"}, submission={"name": "Grace"})
 
     # The claim reaches a step that only exists inside the expansion — the
     # cursor of the sub-walk — so the placement is carried back out of the
@@ -193,7 +193,7 @@ def test_a_wizard_can_carry_steps_after_an_expansion():
     # Iterating the declared chain reaches the steps after the expansion,
     # which means the Expand node was threaded through the chain correctly.
     names = [
-        node.context.get("step_name")
+        node.context.get("name")
         for node in tree.iter_nodes(wizard.tree)
         if isinstance(node, tree.Step)
     ]

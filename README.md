@@ -175,7 +175,7 @@ customer_wizard = base.step(ProfileForm, name="profile")
 ```
 
 **Every step is named, and every step gets its own URL.** `name="email"` is
-shorthand for `context={"step_name": "email"}`. From `url_name`, `urls()`
+shorthand for `context={"name": "email"}`. From `url_name`, `urls()`
 publishes three patterns — the start URL, the bare run URL
 (`signup/<run_id>/`), and the step URL (`signup/<run_id>/email/`). A step URL is
 a *claim*: it either renders that step or redirects to wherever the run actually
@@ -358,8 +358,8 @@ A review template wires per-step edit links from the runtime path:
 <ul>
   {% for step in request.wizard.path %}
     <li>
-      <a href="../{{ step.declaration.context.step_name }}/">
-        Edit {{ step.declaration.context.step_name }}
+      <a href="../{{ step.declaration.context.name }}/">
+        Edit {{ step.declaration.context.name }}
       </a>
     </li>
   {% endfor %}

@@ -1229,7 +1229,6 @@ def test_programmatic_lookup_wizard_probes_step_not_found_mid_run(client):
     assert response.status_code == HTTPStatus.OK
     assert response.context["lookup_probe"] == "step-not-found"
     assert response.context["name_lookup_probe"] == "first"
-    assert response.context["ambiguous_lookup_probe"] == "type-error"
 
 
 def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
@@ -1306,7 +1305,7 @@ def test_branch_entry_wizard_renders_default_arm_first_step(client):
     assert isinstance(response.context["form"], SecondStepForm)
 
 
-def test_duplicate_step_names_are_rejected_when_the_wizard_resolves(client):
+def test_duplicate_names_are_rejected_when_the_wizard_resolves(client):
     """Two steps sharing a name is a declaration error, so it is caught when
     the wizard resolves rather than per request — a walk stops at the cursor
     and so cannot see a duplicate lying beyond it."""

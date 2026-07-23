@@ -28,11 +28,11 @@ __all__ = [
 
 
 def named(name, form_class_or_form_view_class):
-    """Shorthand for declaring a step with `context={"step_name": name}`.
+    """Shorthand for declaring a step with `context={"name": name}`.
     Pass the result to `Wizard().step(...)`. Equivalent to the `name=`
     keyword on `.step()`, which is the preferred spelling.
     """
-    return form_class_or_form_view_class, {"step_name": name}
+    return form_class_or_form_view_class, {"name": name}
 
 
 class StepNameRouter:
@@ -49,7 +49,7 @@ class StepNameRouter:
     """
 
     url_kwarg = "gandalf_step"
-    context_key = "step_name"
+    context_key = "name"
 
     def resolve(self, url_kwargs):
         value = url_kwargs.get(self.url_kwarg)
@@ -93,7 +93,7 @@ class Wizard:
             form_class_or_form_view_class, base_context = form_class_or_form_view_class
             context = {**base_context, **(context or {})}
         if name is not None:
-            context = {**(context or {}), "step_name": name}
+            context = {**(context or {}), "name": name}
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(

@@ -185,19 +185,19 @@ class EditingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
                 Wizard().step(
-                    BusinessDetailsForm, context={"step_name": "business_name"}
+                    BusinessDetailsForm, context={"name": "business_name"}
                 ),
             ),
             default=Wizard().step(
-                PersonalDetailsForm, context={"step_name": "preferred_name"}
+                PersonalDetailsForm, context={"name": "preferred_name"}
             ),
         )
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(ReviewForm, context={"name": "review"})
     )
 
     def done(self, bound_wizard):
@@ -213,19 +213,19 @@ class FlipFlopWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"step_name": "account_type"})
+        .step(AccountTypeForm, context={"name": "account_type"})
         .branch(
             condition(
                 is_business_account,
                 Wizard().step(
-                    BusinessDetailsForm, context={"step_name": "business_name"}
+                    BusinessDetailsForm, context={"name": "business_name"}
                 ),
             ),
             default=Wizard().step(
-                PersonalDetailsForm, context={"step_name": "preferred_name"}
+                PersonalDetailsForm, context={"name": "preferred_name"}
             ),
         )
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(ReviewForm, context={"name": "review"})
     )
 
     def done(self, bound_wizard):

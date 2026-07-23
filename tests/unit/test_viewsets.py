@@ -20,17 +20,17 @@ class _Session(dict):
     modified = False
 
 
-def test_step_name_router_resolves_step_name_context_from_url_kwargs():
+def test_name_router_resolves_name_context_from_url_kwargs():
     from gandalf.wizard import StepNameRouter
 
     router = StepNameRouter()
 
     assert router.resolve({"gandalf_step": "account_type"}) == {
-        "step_name": "account_type",
+        "name": "account_type",
     }
 
 
-def test_step_name_router_returns_none_without_url_kwarg():
+def test_name_router_returns_none_without_url_kwarg():
     from gandalf.wizard import StepNameRouter
 
     router = StepNameRouter()
@@ -40,19 +40,19 @@ def test_step_name_router_returns_none_without_url_kwarg():
     assert router.resolve({"org": "acme"}) is None
 
 
-def test_step_name_router_reverses_step_declaration_to_segment():
+def test_name_router_reverses_step_declaration_to_segment():
     from gandalf import tree
     from gandalf.wizard import StepNameRouter
 
     router = StepNameRouter()
-    named_step = tree.Step(FirstStepForm, context={"step_name": "first"})
+    named_step = tree.Step(FirstStepForm, context={"name": "first"})
     unnamed_step = tree.Step(FirstStepForm)
 
     assert router.reverse(named_step) == "first"
     assert router.reverse(unnamed_step) is None
 
 
-def test_step_name_router_clean_url_kwargs_strips_marker():
+def test_name_router_clean_url_kwargs_strips_marker():
     from gandalf.wizard import StepNameRouter
 
     router = StepNameRouter()
@@ -373,9 +373,9 @@ def test_wizard_viewset_dynamic_wizard_walks_again_before_judging_completion(rf)
 class _RoutedViewSet(WizardViewSet):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"step_name": "first"})
-        .step(SecondStepForm, context={"step_name": "second"})
-        .step(ReviewForm, context={"step_name": "review"})
+        .step(FirstStepForm, context={"name": "first"})
+        .step(SecondStepForm, context={"name": "second"})
+        .step(ReviewForm, context={"name": "review"})
     )
     template_name = "testapp/linear_wizard.html"
 
@@ -899,8 +899,8 @@ def test_wizard_viewset_reuses_an_already_configured_wizard_on_refresh(rf):
     class PreConfiguredViewSet(_RoutedViewSet):
         wizard = (
             Wizard()
-            .step(FirstStepForm, context={"step_name": "first"})
-            .step(SecondStepForm, context={"step_name": "second"})
+            .step(FirstStepForm, context={"name": "first"})
+            .step(SecondStepForm, context={"name": "second"})
             .configure(template_name="testapp/linear_wizard.html")
         )
 
@@ -928,7 +928,7 @@ def _escaping_viewset(*steps, done_body=None):
 
     wizard = Wizard()
     for form, name in steps:
-        wizard = wizard.step(form, context={"step_name": name})
+        wizard = wizard.step(form, context={"name": name})
 
     class _EscapingViewSet(_RoutedViewSet):
         pass
@@ -1074,7 +1074,7 @@ def test_wizard_viewset_placing_an_escaping_answer_on_a_completed_step(rf):
     ]
 
 
-def test_wizard_viewset_rejects_duplicate_step_names(rf):
+def test_wizard_viewset_rejects_duplicate_names(rf):
     """Two steps sharing a name is a declaration error: a URL segment has to
     name exactly one step, and a walk stops at the cursor so it could not see
     a duplicate lying beyond it."""
