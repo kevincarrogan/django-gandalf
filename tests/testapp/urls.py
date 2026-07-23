@@ -1,6 +1,6 @@
 from django.urls import include, path
 
-from . import views
+from . import readme_examples, views
 
 
 urlpatterns = [
@@ -9,6 +9,18 @@ urlpatterns = [
         views.IndexView.as_view(),
         name="index",
     ),
+    # Runnable counterparts to the README's worked examples (see
+    # tests/testapp/readme_examples.py and tests/functional/test_readme_examples.py).
+    path("readme/signup/", include(readme_examples.SignupWizardViewSet.urls())),
+    path("readme/branching/", include(readme_examples.BranchingWizardViewSet.urls())),
+    path("readme/dynamic/", include(readme_examples.DynamicWizardViewSet.urls())),
+    path("readme/expand/", include(readme_examples.ExpandWizardViewSet.urls())),
+    path(
+        "readme/file-upload/",
+        include(readme_examples.FileUploadWizardViewSet.urls()),
+    ),
+    path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
+    path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
     path("wizard/", include(views.SingleStepWizardViewSet.urls())),
     path("run-unavailable-wizard/", include(views.RunUnavailableWizardViewSet.urls())),
     path(

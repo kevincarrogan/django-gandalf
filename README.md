@@ -1,70 +1,112 @@
 # django-gandalf
 
-`django-gandalf` helps you declare **complex, tree-like Django form flows** as readable, composable code.
+`django-gandalf` lets you declare **multi-step, tree-shaped Django form flows**
+as readable, composable code.
 
-It is built for the point where your journey stops being a straight line and starts branching repeatedly:
+You build a flow with a small, immutable builder — `.step()` to add a form,
+`.branch()` to fork on an answer, `.expand()` to grow steps from an answer — and
+mount it as an ordinary Django view. Gandalf handles the per-step URLs, the
+session state, back-navigation, editing, file uploads, and running your
+completion logic exactly once.
 
-- user type branches (business vs individual),
-- regional branches (domestic vs international),
-- nested compliance/risk sub-flows,
-- optional setup paths,
-- reusable path fragments shared across journeys.
-
-Instead of stitching this together with scattered step conditions and navigation overrides, `django-gandalf` aims to let you describe the flow as one explicit tree.
-
-Already using [`django-formtools`](https://github.com/jazzband/django-formtools)?
-It remains the simpler choice for linear or lightly-conditional flows; Gandalf
-is aimed at the branching, tree-shaped case. Some examples below put the two
-styles side by side because formtools is the familiar reference point — see
-[Coming from django-formtools](#coming-from-django-formtools) for the mapping.
-Gandalf is not a fork of formtools and does not depend on it.
-
-## The simplest case: a linear wizard with a merged-payload `done()`
-
-Before the branching examples, here is the shortest end-to-end flow:
-a linear two-step signup wizard that collects form data and dispatches a
-merged payload from `done()`. This is the shape you start with; the
-branching examples below show how the same declarations grow.
-
-### formtools style
+It is built for the point where a journey stops being a straight line and starts
+branching: business vs individual, domestic vs international, nested
+compliance sub-flows, optional setup paths, and path fragments reused across
+journeys. Instead of scattered step conditions and navigation overrides, you
+describe the flow as one explicit tree.
 
 ```python
-from django import forms
-from django.http import HttpResponse
-from formtools.wizard.views import SessionWizardView
+from gandalf.wizard import Wizard, condition
 
-
-class NameForm(forms.Form):
-    name = forms.CharField()
-
-
-class EmailForm(forms.Form):
-    email = forms.EmailField()
-
-
-class SignupWizard(SessionWizardView):
-    form_list = [
-        ("name", NameForm),
-        ("email", EmailForm),
-    ]
-    template_name = "signup/step.html"
-
-    def done(self, form_list, **kwargs):
-        payload = {}
-        for form in form_list:
-            payload.update(form.cleaned_data)
-        create_account(**payload)
-        return HttpResponse("Thanks!")
+onboarding = (
+    Wizard()
+    .step(AccountTypeForm, name="account_type")
+    .branch(
+        condition(is_business_account, Wizard().step(BusinessDetailsForm, name="business")),
+        default=Wizard().step(PersonalDetailsForm, name="personal"),
+    )
+    .step(ReviewForm, name="review")
+)
 ```
 
-### django-gandalf style
+The only dependency is Django. Coming from `django-formtools`? See
+[Coming from django-formtools](#coming-from-django-formtools) at the end for a
+declaration-by-declaration mapping.
+
+---
+
+## Installation & setup
+
+```bash
+pip install django-gandalf   # or: uv add django-gandalf
+```
+
+Gandalf ships no models or migrations, but it does rely on a few pieces of
+standard Django plumbing:
+
+```python
+# settings.py
+INSTALLED_APPS = [
+    # ...
+    "django.contrib.sessions",   # wizard state lives in the session
+    "gandalf",
+]
+
+MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",  # required
+    "django.middleware.csrf.CsrfViewMiddleware",
+    # ...
+]
+
+TEMPLATES = [
+    {
+        # ...
+        "OPTIONS": {
+            "context_processors": [
+                # required so `request.wizard` is reachable in step templates
+                "django.template.context_processors.request",
+            ],
+        },
+    }
+]
+```
+
+Requires Python 3.10+ and Django 4.2+.
+
+### Try the examples locally
+
+Every worked example in this README is a real, runnable wizard bundled with the
+repository. Boot the demo app with:
+
+```bash
+just serve
+```
+
+That starts Django at **http://127.0.0.1:8000/**, whose index page links to
+every wizard. Each section below ends with a **▶ Try it live** link to that
+example's start URL, e.g. http://127.0.0.1:8000/readme/signup/. These are local
+URLs — they only resolve while `just serve` is running.
+
+The code for these examples lives in
+[`tests/testapp/readme_examples.py`](tests/testapp/readme_examples.py), and
+[`tests/functional/test_readme_examples.py`](tests/functional/test_readme_examples.py)
+drives each one through the Django test client — so the snippets below are
+checked in CI, not just prose.
+
+---
+
+## Quickstart: a linear wizard
+
+The shortest end-to-end flow is a linear wizard that collects a couple of forms
+and does something with the combined result when it finishes.
 
 ```python
 from django import forms
 from django.http import HttpResponse
-from gandalf.wizard import Wizard, condition
+from django.urls import include, path
+
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
+from gandalf.wizard import MergeCleanedData, Wizard
 
 
 class NameForm(forms.Form):
@@ -77,746 +119,234 @@ class EmailForm(forms.Form):
 
 class SignupWizardViewSet(WizardViewSet):
     url_name = "signup"
+    template_name = "signup/step.html"
     wizard = (
-        Wizard().step(NameForm, name="name")
+        Wizard()
+        .step(NameForm, name="name")
         .step(EmailForm, name="email")
-        .configure(template_name="signup/step.html")
     )
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.path)
-        create_account(**payload)
+        create_account(**payload)          # runs exactly once
         return HttpResponse("Thanks!")
 ```
 
-mounted with a single include:
+Mount it with a single `include`:
 
 ```python
-from django.urls import include, path
-
 urlpatterns = [
     path("signup/", include(SignupWizardViewSet.urls())),
 ]
 ```
 
-A few things to notice:
-
-- The wizard is declared as a chained builder rather than a list of
-  `(name, form)` tuples. Each `.step(...)` returns a new `Wizard`; nothing
-  mutates in place.
-- Every step is named, and every step gets its own URL
-  (`signup/<run_id>/name/`, `signup/<run_id>/email/`) derived from
-  `url_name` by `urls()`.
-- `bound_wizard.path` is the linked chain of completed steps for the
-  current run, in execution order.
-- `MergeCleanedData` is a `tree.Reducer` that folds each step's
-  `form.cleaned_data` into a single dict using last-write-wins. The merge
-  policy lives in the reducer, not in the wizard — subclass
-  `MergeCleanedData` (or write your own `tree.Reducer`) for a different
-  policy.
-- `done()` receives the `BoundWizard` itself rather than a list of forms,
-  so it can also inspect the path, look up steps by context, or read the
-  raw storage state as needed.
-
-Gandalf is not dramatically shorter for the linear case. The point is
-that the same declaration grows naturally into the tree-shaped flows
-shown below; you do not switch APIs when the flow gets complex.
-
-## The core aim (up front): model branching flows cleanly
-
-Here is the same branching onboarding idea in both styles.
-
-### formtools style (when the flow becomes tree-like)
-
-```python
-from formtools.wizard.views import SessionWizardView
-
-
-def is_business_account(wizard):
-    account_type = wizard.get_cleaned_data_for_step("account_type") or {}
-    return account_type.get("account_type") == "business"
-
-
-def needs_international_checks(wizard):
-    account_type = wizard.get_cleaned_data_for_step("account_type") or {}
-    return account_type.get("region") == "international"
-
-
-class OnboardingWizard(SessionWizardView):
-    form_list = [
-        ("account_type", AccountTypeForm),
-        ("biz_details", BizDetailsForm),
-        ("biz_compliance", BizComplianceForm),
-        ("intl_tax", IntlTaxForm),
-        ("intl_kyc", IntlKYCForm),
-        ("profile", ProfileForm),
-        ("review", ReviewForm),
-        ("confirmation", ConfirmationForm),
-    ]
-
-    condition_dict = {
-        "biz_details": is_business_account,
-        "biz_compliance": is_business_account,
-        "intl_tax": needs_international_checks,
-        "intl_kyc": needs_international_checks,
-        "profile": lambda wizard: not is_business_account(wizard),
-    }
-```
-
-### django-gandalf style (same flow, explicit as a tree)
-
-```python
-international_flow = (
-    Wizard()
-    .step(IntlTaxForm, name="intl_tax")
-    .step(IntlKYCForm, name="intl_kyc")
-)
-business_flow = (
-    Wizard()
-    .step(BizDetailsForm, name="biz_details")
-    .step(BizComplianceForm, name="biz_compliance")
-    .branch(
-        condition(needs_international_checks, international_flow),
-        default=None,
-    )
-)
-personal_flow = (
-    Wizard()
-    .branch(
-        condition(needs_international_checks, international_flow),
-        default=None,
-    )
-    .step(ProfileForm, name="profile")
-)
-
-onboarding_wizard = (
-    Wizard()
-    .step(AccountTypeForm, name="account_type")
-    .branch(
-        condition(is_business_account, business_flow),
-        default=personal_flow,
-    )
-    .step(ReviewForm, name="review")
-    .step(ConfirmationForm, name="confirm")
-)
-```
-
-Branch selection is **first-match-wins**. Gandalf evaluates branch conditions in
-the order you declare them and short-circuits on the first truthy condition,
-then routes into only that branch for the active execution path.
-
-Why this is better in this project’s sweet spot (complex branching):
-
-- Branch condition and target flow stay together (no separate lookup table).
-- Branch targets can be reusable subflows (`business_flow`, `international_flow`, etc.).
-- The overall journey is visible in one declaration as a tree.
-- You avoid growing custom step-navigation plumbing as branches multiply.
-
-This is the project’s focus: make real-world flow trees clear and composable, not just linear demos.
-
----
-
-## Why this exists
-
-Traditional wizard tooling is great for simple, linear steps, but it gets harder to reason about once branching and nested subflows become the norm.
-
-`django-gandalf` is intended to make tree-style journeys easier to express than `django-formtools` by favoring explicit, composable flow declarations.
-
----
-
-## Design goals
-
-- **Declarative flow definitions**: read the flow structure in one place.
-- **Chainable API**: build flows with `.step()` and `.branch()`.
-- **Branching as a first-class concept**: nested and conditional flows should be easy to model.
-- **Reusable flow fragments**: define mini-wizards and compose them into larger trees.
-- **Easy by default**: pass a plain `Form` to `.step()` for the common case.
-- **Django-friendly abstraction**: each step is still treated as a `FormView`-like unit under the hood.
-- **Advanced escape hatch**: pass a full `FormView` to `.step()` when a step needs extra configuration.
-- **A way out**: a step can [escape the wizard](#escaping-the-wizard) entirely, redirecting the user elsewhere mid-flow.
-
-For a runtime-level view of how the pieces fit together, see [ARCHITECTURE.md](ARCHITECTURE.md).
-
----
-
-## Core API shape (early)
-
-Flow construction follows this style:
-
-```python
-signup_wizard = (
-    Wizard()
-    .step(FirstForm, name="first")
-    .step(SecondForm, name="second")
-    .branch(
-        condition(
-            is_this,
-            Wizard().step(AForm, name="a").step(BForm, name="b"),
-        ),
-        condition(is_that, some_other_wizard),
-        default=Wizard().step(FallbackForm, name="fallback"),
-    )
-    .step(FinalForm, name="final")
-)
-```
-
-Every step carries a `name` — it becomes the step's URL segment, and the
-wizard refuses to resolve a step it cannot name. Branch arms are sub-`Wizard`s
-(or `None` for "nothing extra here"), never bare forms.
-
-This reads like a flow graph rather than a list of ad hoc callbacks.
-
-Wizard declarations should use this parenthesized, one-builder-call-per-line
-style throughout tests and documentation. Even short one-step examples should
-prefer the same shape so wizard declarations remain visually consistent as they
-grow.
-
-### Builder calls are immutable (ORM-style)
-
-`Wizard()` is intended to behave like Django `QuerySet` chaining: each call to
-`.step()` or `.branch()` returns a **new wizard instance** instead of mutating
-the existing one in place.
-
-That makes it safer to define reusable bases and derive variants without
-unexpected side effects:
-
-```python
-base_wizard = Wizard().step(AccountForm, name="account")
-
-staff_wizard = base_wizard.step(InternalReviewForm, name="internal_review")
-customer_wizard = base_wizard.step(ProfileForm, name="profile")
-```
-
-In the example above, `base_wizard` still contains only `AccountForm`, while
-`staff_wizard` and `customer_wizard` each represent their own extended flow.
-
-### `WizardViewSet.get_wizard()` can be dynamic per request
-
-You can still declare a static class-level wizard when that is enough:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    wizard = onboarding_wizard
-```
-
-But the viewset can also provide a request-aware `get_wizard()` hook that
-builds or selects the wizard at runtime. `get_wizard()` is called with the
-`BoundWizard` for the current request, so you can vary the flow by request
-context — tenant, permissions, feature flags, locale:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    def get_wizard(self, bound_wizard):
-        flow = Wizard().step(AccountStepView, name="account")
-
-        if self.request.user.is_staff:
-            flow = flow.step(InternalReviewStepView, name="internal_review")
-        else:
-            flow = flow.step(ProfileStepView, name="profile")
-
-        return flow.step(ConfirmStepView, name="confirm")
-```
-
-When `get_wizard()` returns a plain `Wizard`, the viewset configures it with
-defaults before executing it.
-
-When the shape depends on a prior *answer* rather than on request context —
-N steps for a count the user typed — prefer [`.expand()`](#expand-grow-the-wizard-from-a-prior-answer):
-it grows the tree mid-walk in a single request, where a state-reading
-`get_wizard()` resolves the tree before this request's own answer is stored and
-so has to walk twice.
-
-This allows flow shape to change by tenant, permissions, feature flags, locale,
-or any other request context, while keeping the same `WizardViewSet` entry
-point.
-
-### `.step()` accepts either a `Form` or a `FormView`
-
-The default, easy case is to pass a Django `Form` directly:
-
-```python
-signup_wizard = (
-    Wizard()
-    .step(AccountForm, name="account")
-    .step(ProfileForm, name="profile")
-    .step(ConfirmForm, name="confirm")
-)
-```
-
-In that case, Gandalf automatically generates the corresponding `FormView` under the hood for you.
-
-The important idea is the illusion: the `FormView` handling a step is not operating on the original incoming request unchanged. Instead, the wizard prepares a request object for that step so the view experiences what looks like an ordinary Django request/response cycle.
-
-In other words, the step-level `FormView` should still be able to behave as if it lives in normal Django control flow. The wizard maintains that illusion by shaping the request so the step can keep its normal assumptions, while Gandalf itself handles the extra bookkeeping needed to move through a multi-step tree.
-
-That illusion is where a lot of the power comes from: because the wizard owns the transformed request/response boundary, it can inspect, augment, and process those step interactions as the flow progresses without forcing each `FormView` to understand wizard mechanics directly.
-
-When a step `FormView` chooses to return its own `HttpResponse`, the default behavior should still be that the `WizardViewSet` swallows that response and decides what to do from the status code. Gandalf stores raw submissions, then replays those submissions through the step `FormView`s in order. A `200 OK` response is treated as the first step that needs user attention, while a redirect response is treated as a successful outcome and traversal continues to the next step.
-
-That default can still be overridden on a per-step basis when a particular step needs different semantics, but the out-of-the-box rule should be that Gandalf remains in control of the boundary and interprets the step response rather than passing it straight through unchanged.
-
-Crucially, the wizard context is still available to the step view when it needs it. Even though the request seen by the step is a wizard-shaped request, `self.request.wizard` is still present, so an explicit `FormView` can tell that it is running inside Gandalf and can inspect wizard state when that is useful.
-
-You only need to provide a full `FormView` yourself when you want extra per-step configuration, such as custom `get_initial()`, `form_valid()`, or other view-level behavior.
-
-```python
-from django.views.generic.edit import FormView
-
-
-class AccountStepView(FormView):
-    form_class = AccountForm
-
-    def get_initial(self):
-        return {"email": self.request.user.email}
-
-
-signup_wizard = (
-    Wizard()
-    .step(AccountStepView, name="account")
-    .step(ProfileForm, name="profile")
-    .step(ConfirmForm, name="confirm")
-)
-```
-
-`.step()` takes a single `Form` or `FormView`, never another `Wizard`.
-Reusable subflows compose through `.branch()`, which unwraps a sub-`Wizard`
-into the arm it selects:
-
-```python
-address_flow = Wizard().step(AddressForm, name="address").step(
-    PostcodeLookupForm, name="postcode"
-)
-
-checkout_wizard = (
-    Wizard()
-    .step(CustomerForm, name="customer")
-    .branch(condition(needs_shipping, address_flow), default=None)
-    .step(ConfirmForm, name="confirm")
-)
-```
-
-When the subflow's shape depends on a prior answer — N steps for a count, one
-per item in a collection — reach for [`.expand()`](#expand-grow-the-wizard-from-a-prior-answer)
-instead, which builds the sub-`Wizard` during the walk.
-
-So the intended progression is:
-
-- start with plain `Form`s for the common case,
-- let Gandalf create the `FormView`s automatically,
-- and only reach for a custom `FormView` when a step needs more configuration.
-
-#### What's automatic when you bring your own `FormView`
-
-When Gandalf needs to recover a completed step's `cleaned_data` — for
-`MergeCleanedData`, `request.wizard.path.form.cleaned_data`, or any other
-context-aware read — it does so by driving the step's `FormView` through its
-public composition API. That means the following overrides on your `FormView`
-are honored automatically:
-
-- `form_class` (static attribute)
-- `get_form_class()` (dynamic form-class selection)
-- `get_form_kwargs()` (extra kwargs like `user=self.request.user` or
-  `instance=obj`)
-- `get_initial()`, `get_prefix()`
-
-What's not automatic, because `.form` recovers cleaned data without running
-the full dispatch pipeline:
-
-- Side effects or data transformations performed in `form_valid()` — Gandalf
-  reads `cleaned_data` straight from `form.is_valid()`, not from anything
-  `form_valid()` does to it.
-- Overrides of `post()`, `dispatch()`, or `setup()` that change how the
-  request flows through the view.
-- `FormView`s that return non-redirect responses on success.
-
-The recovered request also uses the *current* request — so
-`self.request.user` reflects whoever is currently driving the wizard, not
-necessarily whoever originally submitted the step (relevant only for flows
-where one user edits another's run).
-
-### Why standalone `FormView` + wizard step reuse matters
-
-One practical payoff of this design is that a configured `FormView` can be
-reused in two contexts:
-
-1. as a step inside a wizard flow, and
-2. as a normal standalone Django view outside any wizard.
-
-That lets teams keep form behavior in one place instead of duplicating it for
-“create in wizard” vs “edit later” screens.
-
-For example, imagine onboarding captures a billing profile in a multi-step
-wizard. Later, users can edit that same billing profile from account settings.
-
-```python
-from django.views.generic.edit import FormView
-
-
-class BillingProfileStepView(FormView):
-    form_class = BillingProfileForm
-    template_name = "account/billing_profile_form.html"
-
-    def get_initial(self):
-        initial = super().get_initial()
-        customer = getattr(self.request.user, "customer", None)
-        if customer:
-            initial["company_name"] = customer.company_name
-            initial["vat_id"] = customer.vat_id
-        return initial
-
-
-onboarding_wizard = (
-    Wizard()
-    .step(AccountForm, name="account")
-    .step(BillingProfileStepView, name="billing")  # same configured view
-    .step(ConfirmForm, name="confirm")
-)
-
-
-class BillingProfileEditView(BillingProfileStepView):
-    """Standalone edit screen reusing the same form/view configuration."""
-```
-
-In this setup, validation rules, initial-data behavior, template choice, and
-any custom view hooks live in one shared step view. The wizard gains that
-behavior during onboarding, while the account settings page reuses it later
-without a separate implementation.
-
-### `WizardViewSet.template_name` is applied to auto-generated step `FormView`s
-
-When a step is declared with a plain `Form`, Gandalf generates the step
-`FormView` and lets the viewset-level `template_name` control which template it
-renders:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    template_name = "signup/step.html"
-    wizard = Wizard().step(AccountForm, name="account")
-```
-
-If you pass your own `FormView` to `.step()`, that step keeps its own
-`template_name` instead of inheriting the one from the `WizardViewSet`:
-
-```python
-from django.views.generic.edit import FormView
-
-
-class ProfileStepView(FormView):
-    form_class = ProfileForm
-    template_name = "signup/profile_step.html"
-
-
-class SignupWizardViewSet(WizardViewSet):
-    template_name = "signup/step.html"
-    wizard = (
-        Wizard()
-        .step(AccountForm, name="account")
-        .step(ProfileStepView, name="profile")
-    )
-```
-
-In that example, `AccountForm` is rendered with `signup/step.html` because
-Gandalf generated the step `FormView`, while `ProfileStepView` is rendered with
-`signup/profile_step.html` because the step supplied its own `FormView`.
-
-The same idea applies more generally to `FormView` behavior on the
-`WizardViewSet`. If Gandalf is generating the step `FormView` for you, methods
-defined on the `WizardViewSet` can act as the corresponding `FormView` methods
-for that generated step view.
-
-For example, a viewset-level `get_context_data()` can be used by the
-auto-generated `FormView`:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    template_name = "signup/step.html"
-    wizard = (
-        Wizard().step(AccountForm, name="account")
-    )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["product_name"] = "Gandalf Pro"
-        return context
-```
-
-That inheritance only applies when Gandalf is generating the step view. If you
-pass an explicit `FormView` to `.step()`, Gandalf uses that `FormView` as-is
-instead of taking the corresponding method from the `WizardViewSet`:
-
-```python
-from django.views.generic.edit import FormView
-
-
-class AccountStepView(FormView):
-    form_class = AccountForm
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["product_name"] = "Step-specific value"
-        return context
-
-
-class SignupWizardViewSet(WizardViewSet):
-    template_name = "signup/step.html"
-    wizard = (
-        Wizard().step(AccountStepView, name="account")
-    )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["product_name"] = "Viewset value"
-        return context
-```
-
-In that case, `AccountStepView.get_context_data()` is the method that runs for
-that step, because the user-supplied `FormView` always takes precedence over
-the auto-generated one.
-
-Step templates need no wizard-specific markup — a plain Django form template
-works as-is. Gandalf derives the user's position from stored state on every
-request, so unlike `django-formtools` there is no management form to include
-and no step bookkeeping travels in the POST body:
+The step template is a plain Django form — no management form, no wizard-specific
+markup, because Gandalf keeps position in the session rather than in the POST
+body:
 
 ```django
 <form method="post">
   {% csrf_token %}
   {{ form.as_p }}
+  <button type="submit">Continue</button>
 </form>
 ```
 
-### Every step is named; `.step()` can also carry arbitrary context
+That is the whole thing: two forms, a viewset, one URL include.
 
-Steps are addressed by URL, so every step needs a name. The canonical
-spelling is the `name=` keyword:
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/
+
+---
+
+## How it works
+
+A few ideas carry the rest of the library.
+
+**The builder is immutable.** Every `.step()` / `.branch()` / `.expand()`
+returns a *new* `Wizard`, like Django `QuerySet` chaining — nothing mutates in
+place. That makes reusable bases safe:
 
 ```python
-signup_wizard = (
-    Wizard().step(AccountForm, name="account")
-    .step(ProfileForm, name="profile")
-    .step(ConfirmForm, name="confirm")
-)
+base = Wizard().step(AccountForm, name="account")
+
+staff_wizard = base.step(InternalReviewForm, name="internal_review")
+customer_wizard = base.step(ProfileForm, name="profile")
+# `base` still contains only AccountForm.
 ```
 
-`name="account"` is shorthand for `context={"step_name": "account"}` — the
-name lives in the step's context like any other metadata, and the default
-`StepNameRouter` turns it into the step's URL segment. The `named()` helper
-(`.step(named("account", AccountForm))`) is an equivalent older spelling.
+**Every step is named, and every step gets its own URL.** `name="email"` is
+shorthand for `context={"step_name": "email"}`. From `url_name`, `urls()`
+publishes three patterns — the start URL, the bare run URL
+(`signup/<run_id>/`), and the step URL (`signup/<run_id>/email/`). A step URL is
+a *claim*: it either renders that step or redirects to wherever the run actually
+is, so a stale link can never land an answer on the wrong step.
 
-Step declarations can also include a `context` dict for any other metadata
-that belongs to the step definition rather than the submitted form data.
-That metadata is exposed again on the runtime tree as `node.context`, so a
-project can build its own lookup helpers and conventions on top of the tree:
+**A run re-proves itself on every request.** Gandalf stores raw submissions, not
+"how far you got". On each request it replays the stored answers through their
+forms up to the first missing or no-longer-valid one — that is what makes
+position, branch selection, editing, and completion all fall out of a single
+walk, and what makes stale state impossible. (The cost of that replay is
+covered in [What replaying costs](#what-replaying-costs).)
 
-```python
-signup_wizard = (
-    Wizard().step(AccountForm, name="account", context={"analytics_key": "signup-account"})
-    .step(ProfileForm, name="profile", context={"analytics_key": "signup-profile"})
-    .step(ConfirmForm, name="confirm", context={"analytics_key": "signup-confirm"})
-)
-```
+**`done(self, bound_wizard)` receives the run, not a list of forms**, so it can
+read the answers however it needs:
 
-### Additional configuration follows the same pattern
+- `bound_wizard.path` — the linked chain of completed steps, in order. Each is a
+  `RuntimeStep` exposing `.form.cleaned_data`, `.data` (raw submission), and
+  `.files`.
+- `MergeCleanedData().reduce(bound_wizard.path)` — folds every step's
+  `cleaned_data` into one dict (last-write-wins). Subclass it for a different
+  merge policy.
+- `bound_wizard.find_step(name=...)` / `filter_steps(...)` — look a step up by
+  name or any context key.
+- `bound_wizard.runtime_tree` — the head of the walked tree (`.next` to the
+  following step).
+- `bound_wizard.get_state()` / `get_run_data()` — the raw stored JSON.
 
-Calling `.configure(...)` is optional and only needed when overriding default runtime configuration. A `WizardViewSet` can receive a plain `Wizard` declaration and will configure it automatically with defaults.
+**Plain `Form` or full `FormView`.** Pass a plain `Form` and Gandalf generates
+the step's `FormView` for you, rendered with the viewset's `template_name`. Pass
+your own `FormView` when a step needs `get_initial()`, `get_form_kwargs()`, a
+per-step template, or other view-level behavior — it keeps its own configuration
+and can be reused as a standalone view outside the wizard. Inside the wizard the
+step still sees `self.request.wizard`, so it can inspect run state when useful.
 
-In the common case, declare the wizard steps and rely on Gandalf defaults (for example, for generating step `FormView` classes from plain forms).
+---
 
-When you do need to override a default, pass it as a keyword to `.configure(...)`. For example, file-storage customization:
+## Branching
 
-```python
-signup_wizard = (
-    Wizard().step(AccountForm, name="account")
-    .configure(file_storage_class=TenantFileStorage)
-)
-```
-
-The same pattern applies to every other touch point on `ConfiguredWizard` (`form_view_factory`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class`). That keeps the mental model consistent:
-
-- `Wizard()` remains focused on step/branch declaration,
-- `configure(...)` receives configuration touch points,
-- each touch point has a sensible default so you only configure what you need,
-- and future configuration hooks should follow this same `configure(...)` pattern instead of introducing unrelated mechanisms.
-
-### Storage
-
-Wizard state is backed by a session storage class. Gandalf provides
-`SessionStorage` as its only built-in storage class, and users may pass a
-compatible custom session-backed class as `WizardViewSet.storage_class`:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    storage_class = CustomSessionStorage
-```
-
-Storage is the one touch point that lives on the viewset rather than on
-`configure(...)`, because it has to exist *before* the wizard does: the
-viewset builds the `BoundWizard` first, then hands it to `get_wizard()` so a
-dynamic wizard can read stored state to shape itself. A wizard therefore
-cannot supply the storage used to resolve it, and
-`Wizard().configure(storage_class=...)` raises `ImproperlyConfigured`
-pointing here rather than silently doing nothing.
-
-Gandalf does not ship a `CookieStorage` option. Wizard state can include enough
-structured form data and runtime metadata that cookie-backed storage is too
-size-constrained.
-
-`SessionStorage` stores plain JSON-compatible data in `request.session`, not
-pickled Python objects or live runtime objects. Django's configured session
-backend then handles the actual serialization and persistence.
-
-A run's answers live there only while it is in progress. Finishing a run
-replaces them with a completion marker (see
-[Completion](#completion-done-runs-exactly-once)), and asking for a run the
-session does not hold raises `gandalf.storage.RunNotFound`, which the viewset
-turns into a `run_unavailable()` response.
-
-### File uploads
-
-Wizard steps may declare `forms.FileField` and friends. Uploaded files cannot
-live in `request.session` (session backends serialize to JSON or pickled bytes,
-neither is appropriate for binary blobs), so Gandalf persists them through a
-companion `WizardFileStorage` class. The wizard state in the session carries
-only string refs (a per-field dict capturing the storage key plus original
-`name`/`content_type`/`size`/`charset`); the actual bytes live behind whatever
-Django `Storage` backend you configure.
-
-The default `file_storage_class` wraps `django.core.files.storage.default_storage`
-and writes under a `gandalf/<run_id>/` prefix. Swap it via
-`Wizard.configure(file_storage_class=...)` — the same shape as `storage_class`.
-For example, to keep wizard uploads in their own backend (S3, encrypted store,
-per-tenant location), subclass `WizardFileStorage` and point its `backend` at
-a different `Storage` instance:
+`.branch()` forks the flow on a prior answer. Each arm is a sub-`Wizard` (or
+`None` for "nothing extra here"); a `condition(predicate, arm)` pairs a
+`predicate(request)` with the arm it selects. Selection is **first-match-wins**,
+falling back to `default`.
 
 ```python
-from django.core.files.storage import FileSystemStorage
-from gandalf.wizard import WizardFileStorage
+from gandalf.wizard import Wizard, condition
 
 
-class TenantFileStorage(WizardFileStorage):
-    def __init__(self):
-        super().__init__(backend=FileSystemStorage(location="/var/tenant-uploads"))
+def is_business_account(request):
+    account_step = request.wizard.find_step(name="account_type")
+    return account_step.form.cleaned_data["account_type"] == "business"
 
 
-tenant_wizard = Wizard().step(AccountForm, name="account").configure(
-    file_storage_class=TenantFileStorage
-)
-```
-
-**Replay semantics.** `CursorWalker.visit_step` re-runs form validation on
-every replay. For file steps it opens each stored ref via
-`file_storage.open(ref)`, rebuilds an `InMemoryUploadedFile` with the original
-filename, content-type, size, and charset, then injects it into `request.FILES`
-before dispatching the step view. Validators that inspect `uploaded_file.content_type`
-(image-only forms, MIME sniffing) see the same value on replay as on the
-original POST.
-
-**Edit semantics.** `bound_wizard.render_step(...)` merges the opened files
-into the form's `initial`, so a `ClearableFileInput` widget displays the
-existing upload alongside the rest of the prior submission. Placing a
-submission respects keep-vs-replace per field: a field with no new upload preserves its
-old ref; a field with a new upload saves the new file and deletes the old one
-from storage in a single step.
-
-**Cleanup.** `WizardViewSet` invokes `bound_wizard.cleanup_files()` automatically
-after `done()` returns — successful completion wipes everything under the
-run's prefix. Abandoned runs (the user closes the tab before finishing) leave
-their uploads in place; a periodic TTL sweep over the storage prefix is future
-work. If you need files to survive past `done()` (e.g. an asynchronous job
-that consumes them after the response renders), override `_finish()` or
-arrange the work to capture what it needs synchronously before returning.
-
-### Branching from the beginning
-
-You can also branch immediately based on runtime context (for example, the current day of the week):
-
-```python
-from datetime import date
-
-
-def is_weekend(_request):
-    return date.today().weekday() >= 5
-
-
-weekday_or_weekend_wizard = (
-    Wizard().branch(
-        condition(is_weekend, Wizard().step(WeekendForm, name="weekend")),
-        default=Wizard().step(WeekdayForm, name="weekday"),
+class BranchingWizardViewSet(WizardViewSet):
+    url_name = "onboarding"
+    template_name = "onboarding/step.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, name="business"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
+        )
+        .step(ReviewForm, name="review")
     )
-    .step(CommonDetailsForm, name="details")
-    .step(ConfirmationForm, name="confirm")
-)
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        ...
 ```
+
+A predicate always runs **behind a fully-validated prefix** — every step before
+the branch has already validated on this same walk — so it can dereference
+`find_step(...).form.cleaned_data` unconditionally without guarding for missing
+answers.
+
+Because arms are sub-`Wizard`s, they compose: define a subflow once and drop it
+into several branches. Answers for a de-selected arm are kept as dormant memory,
+so flipping account type from business to personal and back restores the earlier
+business answers instead of re-asking them.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/
+
+---
+
+## Dynamic wizards: `get_wizard()`
+
+When the shape of the flow depends on **request context** — tenant, permissions,
+locale, feature flags — override `get_wizard(self, bound_wizard)` instead of
+setting a class-level `wizard`. It is called with the `BoundWizard` for the
+current request, and it can read stored state to shape itself:
+
+```python
+class DynamicWizardViewSet(WizardViewSet):
+    url_name = "collect-items"
+    template_name = "collect/step.html"
+
+    def get_wizard(self, bound_wizard):
+        state = bound_wizard.get_state()
+        wizard = Wizard().step(ItemCountForm, name="count")
+        if state:
+            count = int(state[0]["step"]["count"])
+            for index in range(count):
+                wizard = wizard.step(ItemForm, name=f"item-{index}")
+        return wizard
+```
+
+Here the user picks a count, and the same view regenerates that many item steps
+from the stored count on each request.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/dynamic/
 
 ---
 
 ## `.expand()`: grow the wizard from a prior answer
 
 A branch chooses between subflows you declared up front. Sometimes the *shape*
-of the flow is not known until the run supplies it: N item steps for a count
-the user just typed, one step per row in a collection they selected. `.expand()`
-covers that — it grows the tree during the walk from a builder you provide.
+of the flow is not known until a prior **answer** supplies it — N item steps for
+a count the user just typed. `.expand()` grows the tree during the walk from a
+builder you provide:
 
 ```python
 def build_item_steps(request):
-    count = request.wizard.find_step(name="count").form.cleaned_data["count"]
+    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
     return steps
 
 
-items_wizard = (
-    Wizard()
-    .step(ItemCountForm, name="count")
-    .expand(build_item_steps)
-    .step(ReviewForm, name="review")
-)
+class ExpandWizardViewSet(WizardViewSet):
+    url_name = "collect-items"
+    template_name = "collect/step.html"
+    wizard = (
+        Wizard()
+        .step(ItemCountForm, name="count")
+        .expand(build_item_steps)
+        .step(ReviewForm, name="review")
+    )
 ```
 
-`build_item_steps(request)` returns a `Wizard` whose steps are spliced in where
-`.expand()` sits. It runs **mid-walk, behind a fully-validated prefix** — the
-same contract a branch predicate has — so `find_step(...).form.cleaned_data`
-reads the count that shapes it from an answer that has already validated on this
-same walk. That is the whole point: answering the count parks the user on the
-first grown step in a *single* request, where a `get_wizard()` that reads stored
-state has to walk twice (once to notice its own submission changed the shape).
+The builder runs mid-walk, behind the validated count, and its steps are spliced
+in where `.expand()` sits. That is the difference from a state-reading
+`get_wizard()`: answering the count parks the user on the first grown step in a
+*single* request, where `get_wizard()` has to walk twice (once to notice its own
+submission changed the shape).
 
-Things worth knowing:
+Good to know: the builder reaches back to prior answers **by name**, so renaming
+an upstream step can break it; grown answers store positionally, so raising a
+count keeps the answers already given and lowering it drops the trailing ones;
+and every grown step must be routable (carry a `name`).
 
-- **The builder reaches back by name.** It reads prior answers with
-  `find_step(name=...)`, so renaming an upstream step can break a builder —
-  they are coupled by that name.
-- **Grown answers store positionally**, as `{"expand": [...]}`. Raising the
-  count keeps the answers already given and appends an empty slot; lowering it
-  drops the trailing answers. Inserting or reordering *within* a collection is
-  the case positional storage does not preserve — a name-keyed format for that
-  is future work.
-- **The subtree is vetted when it is built, not when the wizard resolves**,
-  because it does not exist until then: every grown step must be routable
-  (`name=`), and an expansion may not contain another expansion. A branch inside
-  an expansion, and an expansion inside a branch arm, are both fine.
-- **Introspection is opaque until the answer arrives.** `find_step` cannot see
-  a grown step before the answer that produces it exists, exactly as it cannot
-  see into an unreached branch arm.
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/
 
 ---
 
 ## Back-navigation: editing earlier steps
 
-A wizard often needs an "edit" affordance — a review screen with links back to
-each prior step, or a sidebar that lets the user revisit any completed section.
-Because every step has its own URL, the edit affordance is just a link: a
-completed step's URL renders it pre-filled, and posting the changed answer to
-that URL places it there. Editing is not a separate operation — putting an
-answer at a step works the same whether or not that step already had one.
+Because every step has its own URL, an "edit" affordance is just a link. GET a
+completed step's URL to render it pre-filled; POST the changed answer back to it
+to place it there. Editing is not a separate operation — putting an answer at a
+step works the same whether or not it already had one.
 
 A review template wires per-step edit links from the runtime path:
 
-```html
+```django
 <h1>Review your details</h1>
 <ul>
-  {% for step in wizard.path %}
+  {% for step in request.wizard.path %}
     <li>
       <a href="../{{ step.declaration.context.step_name }}/">
         Edit {{ step.declaration.context.step_name }}
@@ -831,180 +361,16 @@ A review template wires per-step edit links from the runtime path:
 </form>
 ```
 
-The per-step edit form is the ordinary step form — it posts back to its own
-step URL, so no marker fields or wizard-specific markup are needed. A valid
-edit redirects back to wherever the wizard's cursor is (usually the summary);
-an invalid edit re-renders at the same URL with errors and stored state
-untouched.
+The promise is that changing an answer costs the user only as much of the wizard
+as the change actually invalidates — usually nothing. A trivial edit lands
+straight back on the summary; an edit that flips a branch parks only at the
+steps that now need attention, then fast-forwards through every still-valid
+answer. Nothing downstream is lost to a typo, because an invalid edit is kept
+and re-rendered with its errors while the sealed tail is carried verbatim.
 
-Programmatically, the same operations live on `BoundWizard`:
-
-- `render_step(**context)` — GET-side. Walks with `context` as the claim, then
-  dispatches the reached step's form view with the stored submission pre-filled
-  as `initial`. Raises `StepNotFound` when the run cannot reach it.
-- `walk(claim=..., submission=...)` — POST-side, and the only placement
-  operation there is. It replays the stored answers, puts `submission` at the
-  step the claim names, and carries on; the returned `Walk` says whether it
-  `reached` that step. Nothing is written until you call `persist(walk)`, which
-  is what lets the caller settle an escape first. A submission that fails
-  validation is kept and becomes the cursor, exactly as for a step being
-  answered the first time — there is no separate transactional edit path.
-
-### The re-entrant summary pattern
-
-The edit operations exist to serve one very common flow: a wizard that runs
-linearly to a summary screen where every answer has a "change" link. The
-promise is that changing an answer costs the user exactly as much of the
-wizard as the change actually invalidates — usually nothing:
-
-- **Trivial edit** — the new answer validates and no branch re-routes. Every
-  other stored answer still validates, so the first unanswered step is the
-  summary itself and the edit POST lands the user straight back on it. There
-  is no step pointer to rewind and no re-cycling through completed steps;
-  position is always derived from state.
-- **Diverting edit** — the new answer flips a branch arm (or makes a
-  dependent step's stored data invalid). The cursor parks at the first step
-  that genuinely needs attention; the user answers only those steps, and the
-  wizard fast-forwards through every still-valid downstream answer back to
-  the summary.
-- **Invalid edit** — the new answer fails validation, so it is kept and
-  becomes the cursor, re-rendering with its errors on the redirect that
-  follows. It is stored like any other answer — there is no separate
-  transactional path — and nothing downstream is lost to a typo, because the
-  sealed tail is carried verbatim.
-- **Flip-flop** — answers for a de-selected branch arm are kept as dormant
-  memory. Changing account type from business to personal and back restores
-  the business answers (re-validated like any stored data) instead of
-  re-asking them.
-
-Under the hood this works because state is a full-tree mirror with holes
-rather than a truncate-on-change prefix: after `walk()` places the new
-submission into the runtime tree, `CursorWalker` re-validates entries up to
-the first missing or no-longer-valid answer, then carries everything after it
-verbatim. Branch entries are stored per arm (`{"branch": {"0": [...],
-"default": [...]}}`), so the active arm is still re-derived from your
-predicates on every walk while inactive arms simply wait. A stored answer
-that no longer validates keeps its data and replays as the errored form, so
-the user corrects it rather than retyping it.
-
-Some practical caveats:
-
-- Dormant arms live in the session until the run completes, so state grows
-  by the size of the abandoned arms.
-- Arm identity is positional (declaration order), so a dynamic
-  `get_wizard()` that reorders branch arms between requests will
-  misattribute dormant memory — the same positional-alignment rule that
-  already applies to steps.
-- Preservation applies to *every* still-valid answer, including a
-  confirmation step that was already answered: after a diverting edit the
-  stored confirmation stays confirmed, and once the diverted steps are
-  answered the wizard completes without re-showing it. If your flow
-  requires re-confirmation after changes, model that explicitly (keep the
-  confirmation as the final unanswered step until the user truly submits
-  it, or make its validation depend on the answers it confirms).
-- While a divert is in progress, `bound_wizard.path` includes preserved
-  downstream steps that hold data but have not been re-validated on the
-  current walk — treat mid-run `path` reads as "answered", not
-  "confirmed-valid". Steps inside branch regions that cannot be reached
-  yet are invisible to `path` and `find_step` until the answers they
-  depend on exist — which is also why branch predicates can dereference
-  prior answers unconditionally: they only ever run behind a
-  fully-validated prefix.
-
-## Step URLs
-
-Every step is addressed by its own URL. Steps are named at declaration time
-(`.step(..., name=...)`, or the `named()` helper, or a
-`context={"step_name": ...}` entry), the name becomes a URL segment, and the
-name is resolved back to a step by context lookup on every request. The bare
-run URL stays canonical and the cursor keeps sole authority over position; a
-step URL is a *claim* that either resolves or redirects to where the wizard
-actually is. Gandalf takes an opinionated stance here — unlike some wizard
-tooling there is no unrouted mode, so every step must carry a routable name;
-the viewset raises `ImproperlyConfigured` at request time for a wizard with
-an unnamed step.
-
-A wizard needs three URL patterns (start, bare run URL, step URL). Set
-`url_name` and mount `urls()` to get them, plus the reverse hooks, for free:
-
-```python
-from django.http import HttpResponse
-from django.urls import include, path
-
-from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import Wizard
-
-
-class OnboardingViewSet(WizardViewSet):
-    url_name = "onboarding"
-    template_name = "onboarding/step.html"
-    wizard = (
-        Wizard()
-        .step(AccountForm, name="account")
-        .step(ProfileForm, name="profile")
-        .step(ReviewForm, name="review")
-    )
-
-    def done(self, bound_wizard):
-        return HttpResponse("Thanks!")
-
-
-urlpatterns = [
-    path("onboarding/", include(OnboardingViewSet.urls())),
-]
-```
-
-`urls()` publishes `onboarding` (start), `onboarding-run`
-(`onboarding/<uuid:run_id>/`), and `onboarding-step`
-(`onboarding/<uuid:run_id>/<slug:gandalf_step>/`). The mount prefix can
-capture kwargs of its own — `path("<slug:team>/onboarding/",
-include(OnboardingViewSet.urls()))` — and the default reverse hooks
-forward them into every redirect via `get_url_kwargs()`, which returns
-the current request's captured kwargs minus the wizard-owned `run_id` /
-`gandalf_step`. For a custom URL scheme (different converters, reverse
-context not captured in the URL), write the patterns yourself and
-override `get_wizard_url(run_id)` / `get_step_url(run_id, step_segment)`
-instead of setting `url_name`.
-
-The request semantics:
-
-- **GET the cursor's step URL** → renders the form (with errors if the
-  stored answer no longer validates).
-- **GET a completed step's URL** → renders it pre-filled — this *is* the
-  edit affordance; summary "change" links are just step URLs. "Completed"
-  means answered on a run still in progress; once the *run* finishes, every
-  one of its URLs goes to `run_unavailable()` instead.
-- **GET anything else** — unknown, not yet reached, or parked in a dormant
-  arm — → redirects to the cursor's URL. A stale "change" link after a
-  diverting edit snaps back to the current step instead of erroring.
-- **POST to any step the run can reach** → the answer is placed there,
-  whether or not that step already had one; **POST to anything else** →
-  redirects to the cursor without storing the payload or its uploads.
-  Reaching a step means every answer before it validated, so a submission
-  from a stale tab can never land on the wrong step.
-- **Successful POSTs redirect** (POST → redirect → GET), so refreshing
-  never re-submits — even after an invalid submission, which persists and
-  re-renders with errors on the following GET. That holds for a step being
-  corrected as much as for one being answered the first time.
-- **The bare run URL redirects** to the cursor's step URL when that step is
-  routable, and fires `done()` when the run is complete — once, after which
-  the run is finished and the URL resolves to `run_unavailable()`.
-
-Because history then contains only GETs of step URLs, the browser back
-button works naturally: going back shows an earlier answer pre-filled, and
-re-submitting it is just an edit that returns you to the cursor.
-
-For an explicit in-page back link, the wizard object exposes two lazy
-navigation properties, reachable from any step template via
-`request.wizard`:
-
-- `request.wizard.back_url` — the previous active-route step's URL
-  (branch-aware: on a branch arm's first step it points at the step before
-  the branch). `None` on the first step, so templates can show the link
-  conditionally.
-- `request.wizard.run_url` — the bare run URL, which redirects to the
-  current step; useful as a "cancel, return to where I was" affordance on
-  edit pages.
+For an explicit in-page back link, any step template can reach
+`request.wizard.back_url` (the previous step's URL, branch-aware; `None` on the
+first step) and `request.wizard.run_url` (a "return to where I was" link):
 
 ```django
 {% if request.wizard.back_url %}
@@ -1012,114 +378,62 @@ navigation properties, reachable from any step template via
 {% endif %}
 ```
 
-Going back is non-destructive by construction: nothing after the step you
-return to is discarded, and re-submitting an unchanged answer is a trivial
-edit that redirects straight back to the cursor.
-
-Like every other touch point, the router is pluggable — subclass
-`StepNameRouter` (or supply your own with `resolve(url_kwargs)`,
-`reverse(step)`, and `clean_url_kwargs(url_kwargs)`) via
-`Wizard.configure(step_router_class=...)` to route on a different context
-key or a composite lookup:
-
-```python
-from gandalf.wizard import StepNameRouter, Wizard
-
-
-class SectionRouter(StepNameRouter):
-    context_key = "section"
-
-
-wizard = (
-    Wizard()
-    .step(AccountForm, context={"section": "account"})
-    .step(ProfileForm, context={"section": "profile"})
-    .configure(
-        template_name="onboarding/wizard.html",
-        step_router_class=SectionRouter,
-    )
-)
-```
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/
 
 ---
 
-## Completion: `done()` runs exactly once
+## File uploads
 
-A run finishes the first time the wizard is walked and every slot is
-satisfied. `done()` is called there, its files are cleaned up, and the run is
-then **retired**: its answers are dropped and a small completion marker takes
-their place.
+Steps may declare `forms.FileField`. Uploaded bytes cannot live in the session,
+so Gandalf persists them through a companion `WizardFileStorage`; the session
+carries only a small ref (storage key plus original name/content-type/size). The
+step template just needs the usual `enctype`:
 
-That marker is what makes the guarantee enforceable. Once a run is retired,
-every request for it — the bare run URL, any step URL, GET or POST — is
-answered by `run_unavailable()` without ever reaching the wizard. So:
-
-- a stale tab re-POSTing the final form cannot finalize a second time,
-- a bookmarked completion page cannot re-charge a card on refresh,
-- a completed run's step URLs stop offering edits, because there is nothing
-  left to edit.
-
-Put side effects in `done()` and they happen once, full stop.
+```django
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Continue</button>
+</form>
+```
 
 ```python
-class CheckoutWizardViewSet(WizardViewSet):
-    url_name = "checkout"
+class FileUploadWizardViewSet(WizardViewSet):
+    url_name = "profile"
+    template_name = "profile/step.html"
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm, name="photo")
+        .step(NameForm, name="name")
+    )
 
     def done(self, bound_wizard):
-        order = create_order(MergeCleanedData().reduce(bound_wizard.path))
-        charge(order)                      # happens exactly once
-        return redirect("order-detail", pk=order.pk)
+        photo_step = bound_wizard.find_step(name="photo")
+        filename = photo_step.files["photo"]["name"]
+        ...
 ```
 
-The marker is written *after* `done()` returns, so a `done()` that raises
-leaves the run intact and resumable rather than stranded half-finished. Retired
-runs are pruned to the most recent `SessionStorage.max_completed_runs` (25 by
-default), so completed runs cannot grow a session without bound.
+On replay, Gandalf reopens each stored file and re-injects it into
+`request.FILES` before re-validating the step, so validators that inspect the
+upload see the same value they saw originally. Editing respects keep-vs-replace
+per field. After `done()` returns, the run's files are cleaned up automatically.
 
-### `run_unavailable()`
+The default storage writes under a `gandalf/<run_id>/` prefix of Django's
+default storage; point it elsewhere (S3, a per-tenant location) by subclassing
+`WizardFileStorage` and passing it to `.configure(file_storage_class=...)`.
 
-One hook answers every request that cannot be run, with `reason` saying which:
-
-| `reason` | Meaning |
-| --- | --- |
-| `"completed"` | the run finished; `done()` has already fired for it |
-| `"unknown"` | no such run — never started, obliterated, or lost with an expired session |
-
-The default redirects to the wizard's start URL, so a refreshed completion page
-quietly begins a fresh run rather than erroring. Override it to say something
-more specific:
-
-```python
-class CheckoutWizardViewSet(WizardViewSet):
-    def run_unavailable(self, bound_wizard, reason):
-        if reason == "completed":
-            return redirect("order-thanks")
-        raise Http404("That checkout has expired.")
-```
-
-Because the hook covers unknown runs too, a tampered or long-bookmarked run URL
-is an ordinary redirect rather than a `KeyError`.
-
-### Completion and dynamic wizards
-
-A dynamic `get_wizard()` is built from stored state, so the tree resolved at
-the start of a POST predates that POST's own submission. Gandalf re-derives the
-wizard after a submission is stored and judges completion against *that* tree —
-otherwise answering the step that decides the shape (a count, a branch key)
-would look like finishing a wizard whose generated steps do not exist yet.
-Nothing is required of you here; it is why a `get_wizard()` that reads
-`bound_wizard.get_state()` behaves as written.
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/
 
 ---
 
 ## Escaping the wizard
 
-Sometimes an answer means the user should not be in the wizard any more. An
+Sometimes an answer means the user should not be in the wizard any more — an
 email lookup finds an existing account, so the right destination is the login
-page, not the next step. A step raises an escape to say so:
+page, not the next step. A step says so by raising an escape, an ordinary
+exception in the spirit of `Http404`:
 
 ```python
-from django import forms
 from django.contrib.auth.models import User
 from django.urls import reverse
 
@@ -1136,37 +450,9 @@ class EmailLookupForm(forms.Form):
         return cleaned_data
 ```
 
-The user is redirected to `reverse("login")` instead of moving on. Escapes are
-ordinary exceptions, in the spirit of `Http404` and `PermissionDenied`, so they
-can be raised from wherever the decision is naturally made — a plain form's
-`clean()` as above, or a step `FormView`'s `form_valid()` when the check needs
-the view:
-
-```python
-from django.urls import reverse
-from django.views.generic.edit import FormView
-
-from gandalf.escapes import Obliterate
-
-
-class CancelSignupStepView(FormView):
-    form_class = CancelSignupForm
-    template_name = "signup/step.html"
-
-    def get_success_url(self):
-        return self.request.path
-
-    def form_valid(self, form):
-        if form.cleaned_data["cancel"]:
-            raise Obliterate(reverse("home"))
-        return super().form_valid(form)
-```
-
-### What happens to the run
-
-Which exception you raise decides what the user comes back to. All three take
-the same arguments as `django.shortcuts.redirect`, so a URL, a named route with
-arguments, or a model with `get_absolute_url()` all work.
+All three escapes take the same arguments as `django.shortcuts.redirect` (a URL,
+a named route, or a model with `get_absolute_url()`); which one you raise decides
+what the user comes back to:
 
 | Exception | The escaping answer | Coming back to the run |
 | --- | --- | --- |
@@ -1174,63 +460,97 @@ arguments, or a model with `get_absolute_url()` all work.
 | `Advance` | stored, and satisfies the step | the next step |
 | `Obliterate` | destroyed with the rest of the run | a fresh run |
 
-`Park` treats the escape as a detour the step never completed — right for the
-email lookup above, where the address was a question rather than an answer.
-`Advance` is for a step that genuinely finished, when the user should be sent
-elsewhere before carrying on. `Obliterate` ends the run: state and uploaded
-files are both removed.
+Escapes can also be raised from a `FormView`'s `form_valid()` when the decision
+needs the view. `Escape` is the base class, so `except Escape` catches all
+three.
 
-`Escape` is the base class, so `except Escape` catches all three, and you can
-subclass any of them to carry extra context. Raising `Escape` itself is an
-error — it names no disposition for the run, so the viewset rejects it with
-`ImproperlyConfigured`.
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ (enter
+> `existing@example.com` to trigger the park)
 
-### Escapes and re-entrancy
+---
 
-A wizard re-validates every stored answer on each request, so an answer stored
-by `Advance` raises its escape again on every later walk. Those replays only
-mark the step satisfied: the redirect is issued for the submission the user
-actually made, and never again. Two consequences are worth knowing:
+## Completion and storage
 
-- **A step escapes wherever it sits.** Because placing an answer is one
-  operation, a POST that edits an already-answered step is walked with that
-  step as its target, and an escape its form raises is acted on exactly as it
-  would be the first time. Only escapes *replayed* while re-validating earlier
-  answers are silently satisfied — the viewset acts on an escape only for the
-  step the current submission targets.
-- **`Advance` on the final step defers `done()`.** The escape's redirect is
-  returned rather than the completion response; the run is complete but not
-  yet finished, so returning to it runs `done()` then — and only then, since
-  finishing the run retires it.
+**`done()` runs exactly once.** A run finishes the first time it is walked and
+every step is satisfied; `done()` is called, its files are cleaned up, and the
+run is retired — its answers are dropped and a small completion marker takes
+their place. After that, every request for it (bare run URL or any step URL, GET
+or POST) is answered by `run_unavailable()` without reaching the wizard. So a
+stale tab cannot finalize twice, and a refreshed completion page cannot re-charge
+a card. Put side effects in `done()` and they happen once, full stop.
 
-One caveat on reading an escaped answer afterwards: a step that escaped from
-`clean()` still reconstructs via `.form`, but its `cleaned_data` holds only the
-fields cleaned before the raise. Raise from `form_valid()` instead when the
-answer needs to stay wholly readable in `done()`.
+The marker is written *after* `done()` returns, so a `done()` that raises leaves
+the run intact and resumable.
+
+`run_unavailable(self, bound_wizard, reason)` answers everything that cannot be
+run — `reason` is `"completed"` (finished) or `"unknown"` (never started,
+obliterated, or a lost session). The default redirects to the start URL; override
+it to say something more specific:
+
+```python
+class CheckoutWizardViewSet(WizardViewSet):
+    def run_unavailable(self, bound_wizard, reason):
+        if reason == "completed":
+            return redirect("order-thanks")
+        raise Http404("That checkout has expired.")
+```
+
+**Storage** is session-backed. Gandalf ships `SessionStorage`, which keeps plain
+JSON in `request.session` (Django's session backend handles persistence). It is
+the one touch point set on the viewset rather than via `.configure(...)`, because
+it must exist *before* the wizard does — a dynamic `get_wizard()` reads stored
+state to shape itself:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    storage_class = CustomSessionStorage
+```
+
+Retired runs are pruned to the most recent `SessionStorage.max_completed_runs`
+(25 by default), so completed runs cannot grow a session without bound.
+
+---
+
+## Configuration
+
+Declaring steps is usually all you need; `.configure(...)` overrides a runtime
+default when you want one. It is optional — a `WizardViewSet` configures a plain
+`Wizard` with defaults automatically.
+
+```python
+signup_wizard = (
+    Wizard()
+    .step(AccountForm, name="account")
+    .configure(file_storage_class=TenantFileStorage)
+)
+```
+
+The same keyword pattern applies to every touch point on the configured wizard —
+`form_view_factory`, `cursor_walker_class`, `step_dispatcher_class`,
+`state_serializer_class`, and `step_router_class`. Each has a sensible default,
+so you only configure what you need. For a custom URL scheme, subclass
+`StepNameRouter` (routing on a different context key) and pass it as
+`step_router_class`, or write the URL patterns yourself and override
+`get_wizard_url()` / `get_step_url()` on the viewset.
+
+For a runtime-level view of how the pieces fit together, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
 ## What replaying costs
 
-Gandalf stores raw submissions and re-proves them, rather than recording how
-far a run got and trusting that. Position, branch selection, editing and
-completion all fall out of one walk that re-validates the answers before the
-cursor. That is what makes stale state impossible; the price is that a form's
-`clean()` runs more than once over a run.
-
+Gandalf re-proves stored submissions rather than trusting a recorded position.
 The rule is small enough to keep in your head:
 
 > A form's `clean()` runs **once per completed step per HTTP request.**
 
-So with `k` answers already stored, a request costs `k` replays, and a POST
-costs one more for the answer being submitted. Completing an `N`-step run
-costs `N²` validations end to end, spread over `2N` requests.
-
-**The number that matters is not `N`, it is how many of your steps are
-expensive.** Each completed step is validated exactly once per request, so two
-steps that hit the database cost two queries per request whether the user is on
-step 5 or step 29 — constant in position, not growing with it. `N²` only bites
-when *most* steps are expensive.
+So with `k` answers stored, a request costs `k` replays, and a POST costs one
+more for the answer being submitted; completing an `N`-step run costs `N²`
+validations end to end, spread over `2N` requests. **The number that matters is
+not `N`, it is how many of your steps are expensive** — each completed step is
+validated once per request whether the user is on step 5 or step 29, so `N²`
+only bites when *most* steps do real work in `clean()`.
 
 Measured on a 2023 laptop with `just bench`, for a linear wizard:
 
@@ -1240,130 +560,81 @@ Measured on a 2023 laptop with `just bench`, for a linear wizard:
 | 30 | 5ms on *every* step | 6.7s | 222ms |
 
 Gandalf's own share is about a millisecond per request at 30 steps; everything
-else is your forms. So the envelope is: **fine at any realistic length unless
-`clean()` is expensive, and if it is, the cost of a request is roughly the
-number of expensive steps already answered times what each one costs.**
+else is your forms. If expensive `clean()` becomes a problem, move the work into
+`done()` (where it runs once), store a cheaply-recheckable token, or accept that
+some checks belong only at submission time. `just bench` measures your own
+shapes, and `tests/functional/test_walk_cost.py` pins the counts so they cannot
+regress unnoticed.
 
-If that is a problem, the options in increasing order of what they give up are:
-keep the expensive work out of `clean()` and do it in `done()`, where it runs
-once; store a cheaply-recheckable token rather than repeating the lookup; or
-accept that some checks belong only at the moment of submission. The last one
-narrows the guarantee from "every stored answer is valid now" to "every stored
-answer was valid when given", so it should be a deliberate, local decision.
-
-`just bench` measures your own shapes if you want numbers rather than
-estimates, and `tests/functional/test_walk_cost.py` pins the counts so they
-cannot regress unnoticed.
+---
 
 ## Coming from `django-formtools`
 
-There is no automated migration, and Gandalf is not a drop-in replacement — the
-storage shape, the URL model, and the re-proving walk all differ. What maps
-cleanly is the *declaration*: a `form_list` becomes chained `.step(...)` calls,
-and a `condition_dict` becomes `.branch(condition(predicate, subflow))`. The
-predicates are the same idea — a callable given the request — but a Gandalf
-predicate runs behind a fully-validated prefix, so it can read prior answers
-with `find_step(...).form.cleaned_data` unconditionally.
+Gandalf neither forks nor depends on `django-formtools` — the storage shape, the
+URL model, and the re-proving walk all differ, so there is no drop-in
+replacement. What maps cleanly is the *declaration*: a `form_list` becomes
+chained `.step(...)` calls, and a `condition_dict` becomes
+`.branch(condition(predicate, subflow))`. The predicates are the same idea — a
+callable given the request — but a Gandalf predicate runs behind a
+fully-validated prefix, so it reads prior answers with
+`find_step(...).form.cleaned_data` unconditionally.
 
-The examples below show equivalent setups side by side.
-
-### 1) Linear 3-step wizard
-
-#### formtools style
+### Linear wizard
 
 ```python
-from formtools.wizard.views import SessionWizardView
-
+# formtools
 class CheckoutWizard(SessionWizardView):
     form_list = [CustomerForm, AddressForm, ConfirmForm]
-```
 
-#### gandalf style
-
-```python
+# gandalf
 checkout_wizard = (
-    Wizard().step(CustomerForm, name="customer")
+    Wizard()
+    .step(CustomerForm, name="customer")
     .step(AddressForm, name="address")
     .step(ConfirmForm, name="confirm")
 )
 ```
 
-What improves here:
-
-- Same readability for linear flows.
-- Keeps the same API style you will use for branching and nested flows.
-
-### 2) Conditional step inclusion
-
-#### formtools style (`condition_dict`)
+### Conditional step inclusion
 
 ```python
-from formtools.wizard.views import SessionWizardView
-
-
+# formtools — a condition_dict keyed by step name
 def needs_vat(wizard):
     cleaned = wizard.get_cleaned_data_for_step("company") or {}
     return cleaned.get("is_business")
 
-
 class CompanyWizard(SessionWizardView):
-    form_list = [
-        ("company", CompanyForm),
-        ("vat", VATForm),
-        ("summary", SummaryForm),
-    ]
+    form_list = [("company", CompanyForm), ("vat", VATForm), ("summary", SummaryForm)]
     condition_dict = {"vat": needs_vat}
-```
 
-#### gandalf style
-
-```python
+# gandalf — the condition lives next to the step it guards
 def needs_vat(request):
     company_step = request.wizard.find_step(name="company")
     return company_step.form.cleaned_data.get("is_business")
 
-
 company_wizard = (
-    Wizard().step(CompanyForm, name="company")
+    Wizard()
+    .step(CompanyForm, name="company")
     .branch(
         condition(needs_vat, Wizard().step(VATForm, name="vat")),
-        default=None,  # skip VAT if condition is false
+        default=None,  # skip VAT when the condition is false
     )
     .step(SummaryForm, name="summary")
 )
 ```
 
-`BoundWizard.find_step(**context)` returns the matching `RuntimeStep` from the active runtime tree; `name=` is shorthand for the `step_name` context key, mirroring `.step(..., name=...)` (`filter_steps` accepts it too). Branch conditions run after the prior steps have completed, so reading `step.form.cleaned_data` from there is safe.
-
-What improves here:
-
-- Conditional routing is represented directly in the flow tree.
-- No step-name-to-condition lookup table; condition and target live together.
-
-### 3) Tree-like branching with reusable subflows
-
-#### formtools style (custom step navigation)
+### Tree-like branching with reusable subflows
 
 ```python
-from formtools.wizard.views import SessionWizardView
-
+# formtools — branching lives in imperative get_next_step() logic
 class OnboardingWizard(SessionWizardView):
     form_list = [AccountTypeForm, BizAForm, BizBForm, PersonAForm, FinalForm]
 
     def get_next_step(self, step=None):
-        # custom branching logic based on cleaned step data
-        # ... return the next step name dynamically
-        ...
-```
+        ...  # custom, dynamic next-step logic
 
-#### gandalf style
-
-```python
-business_flow = (
-    Wizard()
-    .step(BizAForm, name="biz_a")
-    .step(BizBForm, name="biz_b")
-)
+# gandalf — the shape is the declaration
+business_flow = Wizard().step(BizAForm, name="biz_a").step(BizBForm, name="biz_b")
 personal_flow = Wizard().step(PersonAForm, name="person_a")
 
 onboarding_wizard = (
@@ -1377,28 +648,13 @@ onboarding_wizard = (
 )
 ```
 
-What improves here:
-
-- Branch targets can be full reusable sub-wizards.
-- Flow shape is explicit and visible in one declaration.
-- Less bespoke navigation plumbing for tree-style journeys.
-
----
-
-## How this is better for complex trees
-
-Compared with traditional wizard configuration approaches, this style is designed to make complex flows easier to reason about because:
-
-- flow shape is explicit in one declaration,
-- nesting mirrors the real decision tree,
-- conditions are attached directly to branches,
-- and reusable sub-wizards reduce duplication across similar journeys.
-
-In short: if your journey behaves like a tree, the API should look like a tree.
+The payoff for tree-shaped journeys: branch condition and target stay together,
+arms are reusable sub-wizards, and the whole flow is visible in one declaration
+instead of growing bespoke navigation plumbing as branches multiply.
 
 ---
 
 ## Contributing
 
-See `CONTRIBUTING.md` for local setup, workflow expectations, separated unit
-and functional test commands, and commit message conventions.
+See `CONTRIBUTING.md` for local setup, workflow expectations, separated unit and
+functional test commands, and commit message conventions.
