@@ -338,9 +338,6 @@ class Path:
     def __bool__(self):
         return self.head is not None
 
-    def __len__(self):
-        return sum(1 for _ in self)
-
     def find_step(self, **context):
         """Return the single answered step matching `context`, or None. `name=`
         is shorthand for the `step_name` context key, mirroring

@@ -598,6 +598,10 @@ def _never_matches(request):
     return False
 
 
+def _always_matches(request):
+    return True
+
+
 class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
     description = (
         "Wizard with a branch whose condition never matches and which has no "
@@ -836,16 +840,20 @@ class FileEditingWizardViewSet(WizardViewSet):
 
 class EmptyBranchArmContextFinderViewSet(WizardViewSet):
     description = (
-        "Wizard with an unmatched no-default branch; done() runs ContextFinder "
-        "over both the declared tree (covers the no-default branch arc) and "
-        "the runtime tree (covers the empty-selected-arm branch arc)."
+        "Wizard with a matched and an unmatched no-default branch; done() runs "
+        "ContextFinder over the declared tree (covers the no-default branch "
+        "arc) and the runtime tree (covers both the active-selected-arm and "
+        "empty-selected-arm branch arcs)."
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
         .step(named("first", FirstStepForm))
         .branch(
-            condition(_never_matches, Wizard().step(SecondStepForm, name="second")),
+            condition(_always_matches, Wizard().step(named("matched", SecondStepForm))),
+        )
+        .branch(
+            condition(_never_matches, Wizard().step(named("skipped", ReviewForm))),
         )
         .step(named("review", ReviewForm))
     )
