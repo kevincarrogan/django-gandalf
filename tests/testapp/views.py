@@ -45,25 +45,31 @@ class IndexView(TemplateView):
     template_name = "testapp/index.html"
 
     def get_context_data(self, **kwargs):
-        from django.urls import get_resolver
+        from django.urls import NoReverseMatch, get_resolver
 
         context = super().get_context_data(**kwargs)
         entries = []
-        for pattern in get_resolver(None).url_patterns:
-            if not hasattr(pattern, "callback"):
+        for pattern in _iter_leaf_patterns(get_resolver(None).url_patterns):
+            # Wizards mount via include(), so every start URL is a leaf inside a
+            # URLResolver — descend to reach them. Skip the per-run/-step URLs
+            # (they carry run_id) and keep only the start URL of each view.
+            if pattern.name in (None, "index"):
                 continue
             if "run_id" in pattern.pattern.converters:
                 continue
-            if pattern.name == "index":
-                continue
-            callback = pattern.callback
-            view_class = getattr(callback, "view_class", None)
+            view_class = getattr(pattern.callback, "view_class", None)
             if view_class is None:
+                continue
+            try:
+                url = reverse(pattern.name)
+            except NoReverseMatch:
+                # Mounted under an extra kwarg (e.g. a tenant/plan slug), so it
+                # cannot be reversed without one — reach it via its own link.
                 continue
             entries.append(
                 {
                     "name": pattern.name,
-                    "url": reverse(pattern.name),
+                    "url": url,
                     "view_name": view_class.__name__,
                     "description": getattr(view_class, "description", ""),
                 }
@@ -71,6 +77,15 @@ class IndexView(TemplateView):
         entries.sort(key=lambda e: e["view_name"])
         context["entries"] = entries
         return context
+
+
+def _iter_leaf_patterns(patterns):
+    """Yield every leaf URLPattern, descending into include()d resolvers."""
+    for pattern in patterns:
+        if hasattr(pattern, "url_patterns"):
+            yield from _iter_leaf_patterns(pattern.url_patterns)
+        elif hasattr(pattern, "callback"):
+            yield pattern
 
 
 def is_business_account(request):

@@ -63,6 +63,7 @@ def drive(client, name, steps, url_kwargs=None):
         ("readme-file-upload", None),
         ("readme-escape", None),
         ("readme-editing", None),
+        ("readme-flip-flop", None),
     ],
 )
 def test_readme_example_start_url_is_reachable(client, name, url_kwargs):
@@ -70,6 +71,15 @@ def test_readme_example_start_url_is_reachable(client, name, url_kwargs):
 
     # The start URL creates a run and redirects to it, so the link is live.
     assert response.status_code == HTTPStatus.FOUND
+
+
+def test_demo_index_page_lists_the_example_wizards(client):
+    # `just serve` lands on this page; it must render and link to the examples.
+    response = client.get(reverse("index"))
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, reverse("readme-signup"))
+    assertContains(response, reverse("readme-flip-flop"))
 
 
 # --- Quickstart: linear signup ----------------------------------------------

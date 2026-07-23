@@ -82,10 +82,10 @@ repository. Boot the demo app with:
 just serve
 ```
 
-That starts Django at **http://127.0.0.1:8000/**, whose index page links to
-every wizard. Each section below ends with a **▶ Try it live** link to that
-example's start URL, e.g. http://127.0.0.1:8000/readme/signup/. These are local
-URLs — they only resolve while `just serve` is running.
+That starts Django at **http://127.0.0.1:8000/**, whose index page links to the
+bundled example wizards. Each section below ends with a **▶ Try it live** link
+to that example's start URL, e.g. http://127.0.0.1:8000/readme/signup/. These
+are local URLs — they only resolve while `just serve` is running.
 
 The code for these examples lives in
 [`tests/testapp/readme_examples.py`](tests/testapp/readme_examples.py), and
