@@ -46,7 +46,7 @@ def request_factory(rf):
 
 
 def _build_items(request):
-    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
+    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -131,7 +131,7 @@ def test_path_skips_a_preserved_expansion(request_factory):
 
     # `path` flattens the active route; a sealed expansion is opaque, so it
     # contributes nothing and the path is empty before the unanswered count.
-    assert bound.path is None
+    assert not bound.path
 
 
 def test_merge_cleaned_data_folds_over_an_expansion(request_factory):
@@ -162,11 +162,7 @@ def test_path_inlines_an_active_expansion(request_factory):
         ],
     )
 
-    names = []
-    node = bound.path
-    while node is not None:
-        names.append(node.declaration.context.get("step_name"))
-        node = node.next
+    names = [step.declaration.context.get("step_name") for step in bound.path]
 
     # The expanded item steps are spliced into the active route inline,
     # between the count and wherever the run has reached.

@@ -191,14 +191,16 @@ covered in [What replaying costs](#what-replaying-costs).)
 **`done(self, bound_wizard)` receives the run, not a list of forms**, so it can
 read the answers however it needs:
 
-- `bound_wizard.path` — the linked chain of completed steps, in order. Each is a
-  `RuntimeStep` exposing `.form.cleaned_data`, `.data` (raw submission), and
-  `.files`.
+- `bound_wizard.path` — the resolved route: the answered steps in order,
+  iterable, each a `RuntimeStep` exposing `.form.cleaned_data`, `.data` (raw
+  submission), and `.files`.
 - `MergeCleanedData().reduce(bound_wizard.path)` — folds every step's
   `cleaned_data` into one dict (last-write-wins). Subclass it for a different
   merge policy.
-- `bound_wizard.find_step(name=...)` / `filter_steps(...)` — look a step up by
-  name or any context key.
+- `bound_wizard.path.find_step(name=...)` / `path.filter_steps(...)` — look a
+  step up by name or any context key. These live on `path`, so they only ever
+  see steps actually on the resolved route — prior answers, never the current
+  (unanswered) step or a step not yet reached.
 - `bound_wizard.runtime_tree` — the head of the walked tree (`.next` to the
   following step).
 - `bound_wizard.get_state()` / `get_run_data()` — the raw stored JSON.
@@ -224,7 +226,7 @@ from gandalf.wizard import Wizard, condition
 
 
 def is_business_account(request):
-    account_step = request.wizard.find_step(name="account_type")
+    account_step = request.wizard.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -251,7 +253,7 @@ class BranchingWizardViewSet(WizardViewSet):
 
 A predicate always runs **behind a fully-validated prefix** — every step before
 the branch has already validated on this same walk — so it can dereference
-`find_step(...).form.cleaned_data` unconditionally without guarding for missing
+`path.find_step(...).form.cleaned_data` unconditionally without guarding for missing
 answers.
 
 Because arms are sub-`Wizard`s, they compose: define a subflow once and drop it
@@ -301,7 +303,7 @@ builder you provide:
 
 ```python
 def build_item_steps(request):
-    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
+    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -408,7 +410,7 @@ class FileUploadWizardViewSet(WizardViewSet):
     )
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.find_step(name="photo")
+        photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         ...
 ```
@@ -577,7 +579,7 @@ chained `.step(...)` calls, and a `condition_dict` becomes
 `.branch(condition(predicate, subflow))`. The predicates are the same idea — a
 callable given the request — but a Gandalf predicate runs behind a
 fully-validated prefix, so it reads prior answers with
-`find_step(...).form.cleaned_data` unconditionally.
+`path.find_step(...).form.cleaned_data` unconditionally.
 
 ### Linear wizard
 
@@ -609,7 +611,7 @@ class CompanyWizard(SessionWizardView):
 
 # gandalf — the condition lives next to the step it guards
 def needs_vat(request):
-    company_step = request.wizard.find_step(name="company")
+    company_step = request.wizard.path.find_step(name="company")
     return company_step.form.cleaned_data.get("is_business")
 
 company_wizard = (
