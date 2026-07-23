@@ -2330,6 +2330,11 @@ def test_empty_branch_arm_context_finder_walks_both_trees(
         data={"name": "Ada"},
         follow=True,
     )
+    client.post(
+        _step(empty_branch_arm_context_finder_wizard_run_url(run_id), "matched"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
     response = client.post(
         _step(empty_branch_arm_context_finder_wizard_run_url(run_id), "review"),
         data={"confirmed": "on"},
@@ -2337,10 +2342,10 @@ def test_empty_branch_arm_context_finder_walks_both_trees(
     )
 
     assert response.status_code == HTTPStatus.OK
-    # Declared tree finder visits the unmatched-arm step (2) plus the two outer
-    # steps (first + review) = 3 matches. Runtime tree finder visits only the
-    # outer steps along the active path = 2 matches.
-    assert response.content == b"completed declared=3 runtime=2"
+    # Declared tree finder visits both arm steps (matched + skipped) plus the
+    # two outer steps (first + review) = 4. Runtime tree finder descends the
+    # active arm (matched) and skips the empty one: first + matched + review = 3.
+    assert response.content == b"completed declared=4 runtime=3"
 
 
 @pytest.fixture
