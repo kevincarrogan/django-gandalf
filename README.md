@@ -154,7 +154,7 @@ body:
 
 That is the whole thing: two forms, a viewset, one URL include.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L37-L59)
 
 ---
 
@@ -259,7 +259,7 @@ into several branches. Answers for a de-selected arm are kept as dormant memory,
 so flipping account type from business to personal and back restores the earlier
 business answers instead of re-asking them.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L64-L90)
 
 ---
 
@@ -288,7 +288,7 @@ class DynamicWizardViewSet(WizardViewSet):
 Here the user picks a count, and the same view regenerates that many item steps
 from the stored count on each request.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/dynamic/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/dynamic/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L95-L116)
 
 ---
 
@@ -330,7 +330,7 @@ an upstream step can break it; grown answers store positionally, so raising a
 count keeps the answers already given and lowering it drops the trailing ones;
 and every grown step must be routable (carry a `name`).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L121-L154)
 
 ---
 
@@ -378,7 +378,7 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 {% endif %}
 ```
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L195-L217)
 
 ---
 
@@ -422,7 +422,7 @@ The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere (S3, a per-tenant location) by subclassing
 `WizardFileStorage` and passing it to `.configure(file_storage_class=...)`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L159-L172)
 
 ---
 
@@ -464,8 +464,8 @@ Escapes can also be raised from a `FormView`'s `form_valid()` when the decision
 needs the view. `Escape` is the base class, so `except Escape` catches all
 three.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ (enter
-> `existing@example.com` to trigger the park)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L178-L189)
+> &nbsp; (enter `existing@example.com` to trigger the park)
 
 ---
 
