@@ -315,6 +315,48 @@ def _normalise_step_context(context):
     return context
 
 
+class Path:
+    """The resolved route through a run: the answered steps in walk order,
+    with selected branch arms inlined.
+
+    `find_step` / `filter_steps` search only these steps, so they only ever
+    see answers that are actually on the taken path — never the current
+    (unanswered) step, a step not yet reached, or a step in a preserved or
+    dormant branch arm. Iterate it for the steps themselves; it is falsy when
+    the run has completed no steps yet.
+    """
+
+    def __init__(self, head):
+        self.head = head
+
+    def __iter__(self):
+        node = self.head
+        while node is not None:
+            yield node
+            node = node.next
+
+    def __bool__(self):
+        return self.head is not None
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def find_step(self, **context):
+        """Return the single answered step matching `context`, or None. `name=`
+        is shorthand for the `step_name` context key, mirroring
+        `.step(..., name=...)`. Raises `MultipleStepsReturned` on ambiguity."""
+        finder = tree.ContextFinder(_normalise_step_context(context))
+        finder.visit(self.head)
+        return finder.one()
+
+    def filter_steps(self, **context):
+        """Return every answered step matching `context` in walk order. Accepts
+        the same `name=` shorthand as `find_step`."""
+        finder = tree.ContextFinder(_normalise_step_context(context))
+        finder.visit(self.head)
+        return finder.all()
+
+
 class StepDispatcher:
     """HTTP adapter: builds request snapshots, dispatches step form views,
     decides whether a step's response represents a valid submission, and
@@ -431,20 +473,16 @@ class BoundWizard:
 
     @property
     def path(self):
-        return PathFlattener().transform(self.runtime_tree)
+        """The resolved route as a `Path` — the answered steps in walk order.
+        Built from the predicate-aware runtime tree, so inside a branch
+        predicate or expand builder `request.wizard.path` is the validated
+        prefix so far, and `path.find_step(...)` reads prior answers."""
+        return Path(PathFlattener().transform(self._current_runtime_tree()))
 
     def _current_runtime_tree(self):
         if self._predicate_runtime_tree is not None:
             return self._predicate_runtime_tree
         return self.runtime_tree
-
-    def find_step(self, **context):
-        """Return the single step matching `context` from the active runtime
-        tree. `name=` is shorthand for the `step_name` context key, mirroring
-        `.step(..., name=...)`."""
-        finder = tree.ContextFinder(_normalise_step_context(context))
-        finder.visit(self._current_runtime_tree())
-        return finder.one()
 
     def previous_step(self, cursor, target_declaration):
         """The step immediately before `target_declaration` in active-route
@@ -496,13 +534,6 @@ class BoundWizard:
             return None
         segment = self.wizard.step_router_class().reverse(previous.declaration)
         return self.urls.get_step_url(self.run_id, segment)
-
-    def filter_steps(self, **context):
-        """Return every step matching `context` in walk order. Accepts the
-        same `name=` shorthand as `find_step`."""
-        finder = tree.ContextFinder(_normalise_step_context(context))
-        finder.visit(self._current_runtime_tree())
-        return finder.all()
 
     def walk(self, *args, claim=None, submission=None, files=None, **kwargs):
         """Replay the stored answers in order; where `claim` names a step,
@@ -588,8 +619,8 @@ class BoundWizard:
 
         The builder sees the prefix validated so far through the same
         `_predicate_runtime_tree` handoff a branch predicate uses, so
-        `find_step(...)` inside it reads prior answers and nothing after the
-        cursor. The subtree it returns is configured and vetted (routable
+        `path.find_step(...)` inside it reads prior answers and nothing after
+        the cursor. The subtree it returns is configured and vetted (routable
         names, no nested expansion) before it is walked."""
         request = self.dispatcher.build_request("GET")
         self._predicate_runtime_tree = partial_runtime_head

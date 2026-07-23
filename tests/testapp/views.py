@@ -74,7 +74,7 @@ class IndexView(TemplateView):
 
 
 def is_business_account(request):
-    account_step = request.wizard.find_step(step_name="account_type")
+    account_step = request.wizard.path.find_step(step_name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -352,10 +352,10 @@ class DoneBranchingWizardViewSet(WizardViewSet):
     def done(self, bound_wizard):
         from gandalf import tree as tree_module
 
-        all_steps = bound_wizard.filter_steps()
-        review_step = bound_wizard.find_step(step_name="review")
-        missing_step = bound_wizard.find_step(step_name="nonexistent")
-        account_steps = bound_wizard.filter_steps(step_name="account_type")
+        all_steps = bound_wizard.path.filter_steps()
+        review_step = bound_wizard.path.find_step(step_name="review")
+        missing_step = bound_wizard.path.find_step(step_name="nonexistent")
+        account_steps = bound_wizard.path.filter_steps(step_name="account_type")
 
         declared_finder = tree_module.ContextFinder({})
         declared_finder.visit(bound_wizard.wizard.tree)
@@ -396,7 +396,7 @@ class DuplicateContextWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         try:
-            bound_wizard.find_step(step_name="duplicate")
+            bound_wizard.path.find_step(step_name="duplicate")
         except Exception as exc:
             return HttpResponse(f"raised {type(exc).__name__}")
         return HttpResponse("no raise")
@@ -496,8 +496,8 @@ class EmailStepPrefilledFromPath(FormView):
     def get_initial(self):
         initial = super().get_initial()
         path = self.request.wizard.path
-        if path is not None:
-            name = path.form.cleaned_data["name"]
+        if path:
+            name = path.head.form.cleaned_data["name"]
             initial["email"] = f"{name.lower()}@example.com"
         return initial
 
@@ -744,7 +744,7 @@ class FileUploadingWizardViewSet(WizardViewSet):
     url_name = "file-uploading-wizard"
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.find_step(step_name="photo")
+        photo_step = bound_wizard.path.find_step(step_name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"completed {filename}")
 
@@ -790,8 +790,8 @@ class NamedHelperWizardViewSet(WizardViewSet):
     url_name = "named-helper-wizard"
 
     def done(self, bound_wizard):
-        first = bound_wizard.find_step(step_name="first")
-        second = bound_wizard.find_step(step_name="second")
+        first = bound_wizard.path.find_step(step_name="first")
+        second = bound_wizard.path.find_step(step_name="second")
         return HttpResponse(
             f"completed first={first.form.cleaned_data['name']} "
             f"second={second.form.cleaned_data['email']}"
@@ -813,7 +813,7 @@ class FileEditingWizardViewSet(WizardViewSet):
     url_name = "file-editing-wizard"
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.find_step(step_name="photo")
+        photo_step = bound_wizard.path.find_step(step_name="photo")
         photo_ref = (photo_step.files or {}).get("photo")
         filename = photo_ref["name"] if photo_ref else "no-photo"
         return HttpResponse(f"completed {filename}")
@@ -915,10 +915,10 @@ class LookupProbeStepView(FormView):
             self.request.wizard.render_step(step_name="second")
         except StepNotFound:
             context["lookup_probe"] = "step-not-found"
-        found = self.request.wizard.find_step(name="first")
+        found = self.request.wizard.path.find_step(name="first")
         context["name_lookup_probe"] = found.declaration.context["step_name"]
         try:
-            self.request.wizard.find_step(name="first", step_name="first")
+            self.request.wizard.path.find_step(name="first", step_name="first")
         except TypeError:
             context["ambiguous_lookup_probe"] = "type-error"
         return context
@@ -974,7 +974,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
 
         # A claim can also be a step declaration, for callers that already
         # hold one rather than resolving a URL segment.
-        first = bound_wizard.find_step(name="first")
+        first = bound_wizard.path.find_step(name="first")
         by_declaration = bound_wizard.walk(claim=first.declaration)
         declaration_probe = by_declaration.reached and by_declaration.target.data == {
             "name": "Ada"
@@ -982,7 +982,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
 
         # A context that matches more than one step refuses to guess.
         try:
-            bound_wizard.find_step()
+            bound_wizard.path.find_step()
         except gandalf_tree.MultipleStepsReturned:
             ambiguous_probe = True
         else:
@@ -996,7 +996,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
 
 
 def _business_was_acme(request):
-    business_step = request.wizard.find_step(step_name="business_name")
+    business_step = request.wizard.path.find_step(step_name="business_name")
     return business_step.data["business_name"] == "Acme"
 
 
@@ -1013,11 +1013,10 @@ class PathProbeStepView(FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        names = []
-        node = self.request.wizard.path
-        while node is not None:
-            names.append(node.declaration.context["step_name"])
-            node = node.next
+        names = [
+            step.declaration.context["step_name"]
+            for step in self.request.wizard.path
+        ]
         context["path_names"] = names
         return context
 
@@ -1170,7 +1169,7 @@ class EscapeAdvanceWizardViewSet(WizardViewSet):
     url_name = "escape-advance-wizard"
 
     def done(self, bound_wizard):
-        newsletter = bound_wizard.find_step(name="newsletter")
+        newsletter = bound_wizard.path.find_step(name="newsletter")
         return HttpResponse(f"completed {newsletter.form.cleaned_data['email']}")
 
 
@@ -1301,7 +1300,7 @@ class WalkCountingWizardViewSet(WizardViewSet):
 def build_item_steps(request):
     """Expansion builder: read the count answered earlier and produce that
     many item steps. Runs mid-walk, behind the validated count."""
-    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
+    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -1374,11 +1373,10 @@ class PathReadingGate(FormView):
         # render inside a walk there is no such context, and reading `path`
         # would start a fresh walk that re-dispatches this very step.
         if self.request.method == "GET":
-            names = []
-            node = self.request.wizard.path
-            while node is not None:
-                names.append(node.declaration.context.get("step_name"))
-                node = node.next
+            names = [
+                step.declaration.context.get("step_name")
+                for step in self.request.wizard.path
+            ]
             context["path_names"] = names
         return context
 
@@ -1433,7 +1431,4 @@ class BranchingExpandWizardViewSet(WizardViewSet):
 
 
 def _iter_path(bound_wizard):
-    node = bound_wizard.path
-    while node is not None:
-        yield node
-        node = node.next
+    yield from bound_wizard.path

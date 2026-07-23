@@ -96,7 +96,7 @@ def _chose(segment, value):
     """
 
     def predicate(request):
-        step = request.wizard.find_step(step_name=segment)
+        step = request.wizard.path.find_step(step_name=segment)
         return step.form.cleaned_data["choice"] == value
 
     predicate.__name__ = f"chose_{value}_at_{segment.replace('-', '_')}"

@@ -422,6 +422,28 @@ def test_context_finder_skips_runtime_branch_with_no_selected_arm():
     assert len(finder.all()) == 1
 
 
+def test_context_finder_descends_active_runtime_branch_arm():
+    from gandalf.runtime import RuntimeBranch, RuntimeStep
+
+    arm_step = RuntimeStep(
+        declaration=tree.Step(SecondStepForm, context={"step_name": "arm"}),
+        data={"value": 2},
+    )
+    root = RuntimeStep(
+        declaration=tree.Step(FirstStepForm, context={"step_name": "first"}),
+        data={"value": 1},
+        next=RuntimeBranch(
+            declaration=tree.Branch(arms=()),
+            selected_arm=arm_step,
+        ),
+    )
+    finder = tree.ContextFinder({"step_name": "arm"})
+
+    finder.visit(root)
+
+    assert [node.declaration.context["step_name"] for node in finder.all()] == ["arm"]
+
+
 def test_context_finder_handles_declared_branch_with_no_default():
     arm_step = tree.Step(FirstStepForm, context={"step_name": "match"})
     root = tree.Branch(

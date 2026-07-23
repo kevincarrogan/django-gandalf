@@ -62,7 +62,7 @@ class SignupWizardViewSet(WizardViewSet):
 
 
 def is_business_account(request):
-    account_step = request.wizard.find_step(name="account_type")
+    account_step = request.wizard.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -119,7 +119,7 @@ class DynamicWizardViewSet(WizardViewSet):
 
 
 def build_item_steps(request):
-    count = int(request.wizard.find_step(name="count").form.cleaned_data["count"])
+    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -140,17 +140,10 @@ class ExpandWizardViewSet(WizardViewSet):
     def done(self, bound_wizard):
         names = [
             step.data["name"]
-            for step in _iter_path(bound_wizard)
+            for step in bound_wizard.path
             if step.data and "name" in step.data
         ]
         return HttpResponse(f"Collected {', '.join(names)}")
-
-
-def _iter_path(bound_wizard):
-    node = bound_wizard.path
-    while node is not None:
-        yield node
-        node = node.next
 
 
 # --- File uploads -----------------------------------------------------------
@@ -167,7 +160,7 @@ class FileUploadWizardViewSet(WizardViewSet):
     )
 
     def done(self, bound_wizard):
-        photo_step = bound_wizard.find_step(name="photo")
+        photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"Uploaded {filename}")
 

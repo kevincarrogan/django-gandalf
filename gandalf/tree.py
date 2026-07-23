@@ -79,7 +79,7 @@ class Expand:
     `builder(request)` returns a `Wizard` whose steps are spliced in here.
     It is called mid-walk, behind a fully-validated prefix — the same
     contract a branch predicate has — so it can read prior answers
-    (`request.wizard.find_step(...).form.cleaned_data`) and produce however
+    (`request.wizard.path.find_step(...).form.cleaned_data`) and produce however
     many steps they imply. The declared node carries only the builder; the
     subtree does not exist until the walk reaches it, which is why an
     expansion's steps are validated when built rather than at resolve time.
@@ -153,6 +153,9 @@ class Reducer:
     """
 
     def reduce(self, root):
+        # `bound_wizard.path` is a `Path` wrapper; reduce over its head chain.
+        # Raw runtime nodes and None have no `head`, so they pass through.
+        root = getattr(root, "head", root)
         accumulator = self.initial()
         node = root
         while node is not None:

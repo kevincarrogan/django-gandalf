@@ -201,12 +201,21 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
     )
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    found = bound_wizard.find_step(step_name="second")
+    found = bound_wizard.path.find_step(step_name="second")
 
     assert isinstance(found, RuntimeStep)
     assert found.declaration.declaration is SecondStepForm
@@ -226,12 +235,21 @@ def test_bound_wizard_find_step_accepts_name_shorthand(
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
     )
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    found = bound_wizard.find_step(name="second")
+    found = bound_wizard.path.find_step(name="second")
 
     assert isinstance(found, RuntimeStep)
     assert found.declaration.declaration is SecondStepForm
@@ -253,7 +271,7 @@ def test_bound_wizard_find_step_rejects_name_and_step_name_together(
     bound_wizard.retrieve("existing-run")
 
     with pytest.raises(TypeError, match="name or step_name, not both"):
-        bound_wizard.find_step(name="first", step_name="first")
+        bound_wizard.path.find_step(name="first", step_name="first")
 
 
 def test_bound_wizard_filter_steps_accepts_name_shorthand(
@@ -266,12 +284,16 @@ def test_bound_wizard_filter_steps_accepts_name_shorthand(
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
+        session={
+            "gandalf_runs": {
+                "existing-run": {"state": [{"step": {"name": "Ada"}}]},
+            },
+        },
     )
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    matches = bound_wizard.filter_steps(name="first")
+    matches = bound_wizard.path.filter_steps(name="first")
 
     assert [match.declaration.declaration for match in matches] == [FirstStepForm]
 
@@ -303,7 +325,10 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
         session={
             "gandalf_runs": {
                 "existing-run": {
-                    "state": [{"step": {"account_type": "personal"}}],
+                    "state": [
+                        {"step": {"account_type": "personal"}},
+                        {"branch": {"default": [{"step": {"preferred_name": "Ada"}}]}},
+                    ],
                 },
             },
         },
@@ -311,7 +336,7 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    personal_step = bound_wizard.find_step(step_name="personal")
+    personal_step = bound_wizard.path.find_step(step_name="personal")
 
     assert isinstance(personal_step, RuntimeStep)
     assert personal_step.declaration.declaration is PersonalDetailsForm
@@ -344,10 +369,10 @@ def test_bound_wizard_find_step_returns_none_inside_unreached_branch(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    assert bound_wizard.find_step(step_name="personal") is None
-    review_step = bound_wizard.find_step(step_name="review")
-    assert review_step is not None
-    assert review_step.data is None
+    # The run is empty, so nothing is on the resolved path yet: neither the
+    # step inside the unreached branch nor the review step sitting past it.
+    assert bound_wizard.path.find_step(step_name="personal") is None
+    assert bound_wizard.path.find_step(step_name="review") is None
 
 
 def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
@@ -377,7 +402,7 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    assert bound_wizard.find_step(step_name="business") is None
+    assert bound_wizard.path.find_step(step_name="business") is None
 
 
 def test_bound_wizard_find_step_returns_none_when_no_match(
@@ -394,7 +419,7 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    assert bound_wizard.find_step(step_name="missing") is None
+    assert bound_wizard.path.find_step(step_name="missing") is None
 
 
 def test_reducer_supports_custom_initial_and_combine_for_non_list_folds():
@@ -454,12 +479,21 @@ def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
-        session={"gandalf_runs": {"existing-run": {}}},
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
     )
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    matches = bound_wizard.filter_steps(kind="data")
+    matches = bound_wizard.path.filter_steps(kind="data")
 
     assert [step.declaration.declaration for step in matches] == [
         FirstStepForm,
@@ -577,7 +611,7 @@ def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -942,7 +976,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
         confirmed = forms.BooleanField()
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -979,7 +1013,7 @@ def test_bound_wizard_renders_first_step_in_default_branch(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1016,7 +1050,7 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1058,7 +1092,7 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
     request_with_session_factory,
 ):
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1314,7 +1348,7 @@ def test_bound_wizard_render_step_finds_step_inside_branch(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1492,7 +1526,7 @@ def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1537,7 +1571,7 @@ def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1584,7 +1618,7 @@ def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1629,7 +1663,7 @@ def _branching_review_wizard():
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     return (
@@ -1752,9 +1786,17 @@ def test_bound_wizard_previous_step_walks_the_active_route(
     bound_wizard.retrieve("existing-run")
     cursor = bound_wizard.cursor()
 
-    account = bound_wizard.find_step(step_name="account_type")
-    business = bound_wizard.find_step(step_name="business_name")
-    review = bound_wizard.find_step(step_name="review")
+    # `review` is the unanswered cursor, so it is not on `path`; take every
+    # declaration from the runtime route, which still mirrors the sealed step.
+    from gandalf.runtime import _iter_route_steps
+
+    route = {
+        node.declaration.context["step_name"]: node
+        for node in _iter_route_steps(cursor.state)
+    }
+    account = route["account_type"]
+    business = route["business_name"]
+    review = route["review"]
 
     assert bound_wizard.previous_step(cursor, account.declaration) is None
     assert (
@@ -1790,11 +1832,11 @@ def _cross_branch_wizard():
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     def business_was_acme(request):
-        business_step = request.wizard.find_step(step_name="business_name")
+        business_step = request.wizard.path.find_step(step_name="business_name")
         return business_step.data["business_name"] == "Acme"
 
     return (
@@ -1874,10 +1916,7 @@ def test_bound_wizard_path_is_safe_with_cross_branch_predicate_mid_divert(
 
 
 def _iter_path(bound_wizard):
-    node = bound_wizard.path
-    while node is not None:
-        yield node
-        node = node.next
+    yield from bound_wizard.path
 
 
 class _StubUrls:
@@ -2181,7 +2220,7 @@ def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -2252,7 +2291,7 @@ def test_bound_wizard_find_step_raises_when_context_matches_multiple_steps(
     # Placement no longer needs to detect this — a wizard with duplicate names
     # is rejected when it resolves — but lookups still have to refuse to guess.
     with pytest.raises(tree.MultipleStepsReturned):
-        bound_wizard.find_step(step_name="duplicate")
+        bound_wizard.path.find_step(step_name="duplicate")
 
 
 def test_bound_wizard_edit_does_not_mutate_original_stored_state(
@@ -2261,7 +2300,7 @@ def test_bound_wizard_edit_does_not_mutate_original_stored_state(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -2415,7 +2454,7 @@ def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
     assert first_step.form.cleaned_data == {"count": 42}
 
 
-def test_bound_wizard_path_is_none_when_no_steps_complete(
+def test_bound_wizard_path_is_empty_when_no_steps_complete(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -2425,7 +2464,8 @@ def test_bound_wizard_path_is_none_when_no_steps_complete(
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    assert bound_wizard.path is None
+    assert not bound_wizard.path
+    assert list(bound_wizard.path) == []
 
 
 def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
@@ -2446,12 +2486,12 @@ def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
     bound_wizard = _make_bound_wizard(linear_wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    path = bound_wizard.path
+    steps = list(bound_wizard.path)
 
-    assert isinstance(path, RuntimeStep)
-    assert path.declaration.declaration is FirstStepForm
-    assert path.data == {"name": "Ada"}
-    assert path.next is None
+    assert len(steps) == 1
+    assert isinstance(steps[0], RuntimeStep)
+    assert steps[0].declaration.declaration is FirstStepForm
+    assert steps[0].data == {"name": "Ada"}
 
 
 def test_bound_wizard_path_inlines_completed_branch_arm_steps(
@@ -2460,7 +2500,7 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
     from gandalf.runtime import RuntimeStep
 
     def is_business(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -2491,13 +2531,13 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    path = bound_wizard.path
+    steps = list(bound_wizard.path)
 
-    assert isinstance(path, RuntimeStep)
-    assert path.declaration.declaration is AccountTypeForm
-    assert isinstance(path.next, RuntimeStep)
-    assert path.next.declaration.declaration is BusinessDetailsForm
-    assert path.next.next is None
+    assert all(isinstance(step, RuntimeStep) for step in steps)
+    assert [step.declaration.declaration for step in steps] == [
+        AccountTypeForm,
+        BusinessDetailsForm,
+    ]
 
 
 def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
@@ -2719,13 +2759,13 @@ def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    path = bound_wizard.path
+    steps = list(bound_wizard.path)
 
-    assert isinstance(path, RuntimeStep)
-    assert path.declaration.declaration is FirstStepForm
-    assert isinstance(path.next, RuntimeStep)
-    assert path.next.declaration.declaration is AccountTypeForm
-    assert path.next.next is None
+    assert all(isinstance(step, RuntimeStep) for step in steps)
+    assert [step.declaration.declaration for step in steps] == [
+        FirstStepForm,
+        AccountTypeForm,
+    ]
 
 
 def test_bound_wizard_path_walks_multi_step_branch_arm(
@@ -2734,7 +2774,7 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
     from gandalf.runtime import RuntimeStep
 
     def is_business(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -2771,14 +2811,15 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
     bound_wizard = _make_bound_wizard(wizard, request)
     bound_wizard.retrieve("existing-run")
 
-    path = bound_wizard.path
+    steps = list(bound_wizard.path)
 
-    assert isinstance(path, RuntimeStep)
-    assert path.declaration.declaration is AccountTypeForm
-    assert path.next.declaration.declaration is BusinessDetailsForm
-    assert path.next.next.declaration.declaration is SecondStepForm
-    assert path.next.next.next.declaration.declaration is ReviewForm
-    assert path.next.next.next.next is None
+    assert all(isinstance(step, RuntimeStep) for step in steps)
+    assert [step.declaration.declaration for step in steps] == [
+        AccountTypeForm,
+        BusinessDetailsForm,
+        SecondStepForm,
+        ReviewForm,
+    ]
 
 
 def test_merge_cleaned_data_folds_path_into_dict(
@@ -2813,7 +2854,7 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
     from gandalf.wizard import MergeCleanedData
 
     def is_business(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -2866,7 +2907,7 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
         def get_initial(self):
             path = self.request.wizard.path
             captured["path_head_name"] = (
-                path.form.cleaned_data["name"] if path else None
+                path.head.form.cleaned_data["name"] if path else None
             )
             return super().get_initial()
 
@@ -3358,7 +3399,7 @@ def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
     import gandalf.wizard
 
     def is_business_account(request):
-        account_step = request.wizard.find_step(step_name="account_type")
+        account_step = request.wizard.path.find_step(step_name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
