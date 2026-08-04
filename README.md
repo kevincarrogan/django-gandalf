@@ -154,7 +154,7 @@ body:
 
 That is the whole thing: two forms, a viewset, one URL include.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L36-L58)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L37-L54)
 
 ---
 
@@ -211,6 +211,8 @@ your own `FormView` when a step needs `get_initial()`, `get_form_kwargs()`, a
 per-step template, or other view-level behavior — it keeps its own configuration
 and can be reused as a standalone view outside the wizard. Inside the wizard the
 step still sees `self.request.wizard`, so it can inspect run state when useful.
+See [Step views](#step-views-bringing-your-own-formview) for what such a view
+must provide and where it may read run state.
 
 ---
 
@@ -260,7 +262,7 @@ Because arms are sub-`Wizard`s, they compose: define a subflow once and drop it
 into several branches. And a de-selected arm's answers are not thrown away — see
 [Dormant memory](#dormant-memory-flipping-a-branch-and-back) below.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L63-L89)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L60-L85)
 
 ---
 
@@ -298,7 +300,7 @@ when it depends on a prior *answer* the user just gave, reach for
 the tree in a single walk without re-reading stored state.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/onboarding/solo/ or
-> [/team/](http://127.0.0.1:8000/readme/onboarding/team/) &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L94-L110)
+> [/team/](http://127.0.0.1:8000/readme/onboarding/team/) &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L91-L106)
 
 ---
 
@@ -340,7 +342,7 @@ an upstream step can break it; grown answers store positionally, so raising a
 count keeps the answers already given and lowering it drops the trailing ones;
 and every grown step must be routable (carry a `name`).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L115-L141)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L112-L137)
 
 ---
 
@@ -388,7 +390,7 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 {% endif %}
 ```
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L182-L204)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L221-L243)
 
 ---
 
@@ -427,7 +429,7 @@ positional-alignment rule that applies to steps.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/flip-flop/ (choose business,
 > fill the company name, then edit the account type to personal and back)
-> &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L210-L234)
+> &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L249-L273)
 
 ---
 
@@ -471,7 +473,97 @@ The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere (S3, a per-tenant location) by subclassing
 `WizardFileStorage` and passing it to `.configure(file_storage_class=...)`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L146-L159)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L143-L152)
+
+---
+
+## Step views: bringing your own `FormView`
+
+Pass a plain `Form` and Gandalf generates the step's view. Pass your own
+`FormView` when the step needs view-level behavior — a per-step template,
+`get_initial()`, `get_form_kwargs()`, a custom `form_valid()`.
+
+A step view is dispatched as an ordinary Django view, so it needs the two things
+any standalone `FormView` needs. Gandalf supplies neither for a view you bring
+yourself:
+
+- **`template_name`** (or `get_template_names()`). A step with its own view does
+  *not* inherit the viewset's `template_name` — that default only reaches the
+  views Gandalf generates. Without one, rendering raises `ImproperlyConfigured`.
+- **`get_success_url()`** (or `success_url`). Gandalf reads only the *status
+  code* of the step's response — a 3xx means "this answer stands, carry on" —
+  and discards the response, so the URL is never followed. `self.request.path`
+  is the idiomatic no-op, and is what the generated views use. Without one, a
+  valid POST raises `ImproperlyConfigured`.
+
+```python
+from django.views.generic.edit import FormView
+
+
+class BillingStepView(FormView):
+    form_class = BillingForm
+    template_name = "billing/step.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["country"] = self.request.GET.get("country", "GB")
+        return initial
+
+
+class FormViewStepWizardViewSet(WizardViewSet):
+    url_name = "billing"
+    template_name = "billing/step.html"
+    wizard = (
+        Wizard()
+        .step(EmailForm, name="account")
+        .step(BillingStepView, name="billing")
+        .step(ReviewForm, name="confirm")
+    )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(f"Billing {payload['company']} ({payload['country']})")
+```
+
+Mixing the two styles is the normal case: `billing` brings its own view, while
+`account` and `confirm` stay plain `Form`s and get theirs generated with the
+viewset's `template_name`. Nothing else changes — the step is still named, still
+gets its own URL, and still contributes its `cleaned_data` to `bound_wizard.path`.
+
+Because the view keeps its own configuration, the same class can also be
+mounted as an ordinary standalone view outside the wizard — one place for the
+form's behavior across "create in wizard" and "edit later" screens. Give the
+standalone subclass a real `get_success_url()`; only the in-wizard one wants the
+`self.request.path` no-op.
+
+### Reading run state from a step view
+
+The step runs on a wizard-shaped request, so `self.request.wizard` is the same
+`BoundWizard` the rest of the flow sees — `path` for the resolved route,
+`path.find_step(name=...)` to address a prior answer:
+
+```python
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        account = self.request.wizard.path.find_step(name="account")
+        context["account_email"] = account.form.cleaned_data["email"]
+        return context
+```
+
+**Read run state from `get_context_data()`, not from the form-composition
+hooks.** `get_context_data()` runs only when the step is actually being
+rendered, which is the safe moment. `get_form_class()`, `get_form_kwargs()`,
+`get_initial()` and `get_prefix()` are re-entered every time Gandalf replays
+this step during a walk, so a `request.wizard` read from one of them re-enters
+the walk that is calling it and recurses
+([#54](https://github.com/kevincarrogan/django-gandalf/issues/54)). Prefill a
+field from something already on the request, as `get_initial()` does above — not
+from a lookup into the run.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/form-view/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L158-L202)
 
 ---
 
@@ -513,7 +605,7 @@ Escapes can also be raised from a `FormView`'s `form_valid()` when the decision
 needs the view. `Escape` is the base class, so `except Escape` catches all
 three.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L165-L176)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L208-L215)
 > &nbsp; (enter `existing@example.com` to trigger the park)
 
 ---

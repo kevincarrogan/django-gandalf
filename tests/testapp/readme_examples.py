@@ -14,6 +14,7 @@ plain form templates already bundled with the test app.
 
 from django import forms
 from django.http import HttpResponse
+from django.views.generic.edit import FormView
 
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData, Wizard, condition
@@ -45,11 +46,7 @@ class SignupWizardViewSet(WizardViewSet):
     description = "Quickstart: a two-step linear signup wizard."
     url_name = "readme-signup"
     template_name = "testapp/linear_wizard.html"
-    wizard = (
-        Wizard()
-        .step(NameForm, name="name")
-        .step(EmailForm, name="email")
-    )
+    wizard = Wizard().step(NameForm, name="name").step(EmailForm, name="email")
 
     def done(self, bound_wizard):
         payload = MergeCleanedData().reduce(bound_wizard.path)
@@ -147,16 +144,62 @@ class FileUploadWizardViewSet(WizardViewSet):
     description = "File upload: the first step accepts a photo."
     url_name = "readme-file-upload"
     template_name = "testapp/file_upload_wizard.html"
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm, name="photo")
-        .step(NameForm, name="name")
-    )
+    wizard = Wizard().step(ProfilePhotoForm, name="photo").step(NameForm, name="name")
 
     def done(self, bound_wizard):
         photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"Uploaded {filename}")
+
+
+# --- Step views: bringing your own FormView ---------------------------------
+
+
+class BillingForm(forms.Form):
+    company = forms.CharField()
+    country = forms.CharField()
+
+
+class BillingStepView(FormView):
+    """A step that brings its own view instead of a plain `Form`.
+
+    Carries the two things Gandalf does not supply for a user-supplied step
+    view — its own `template_name` and a `get_success_url()` — plus the
+    view-level behavior that is the reason to bring a `FormView` at all.
+    """
+
+    form_class = BillingForm
+    template_name = "testapp/other_linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["country"] = self.request.GET.get("country", "GB")
+        return initial
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        account = self.request.wizard.path.find_step(name="account")
+        context["account_email"] = account.form.cleaned_data["email"]
+        return context
+
+
+class FormViewStepWizardViewSet(WizardViewSet):
+    description = "A step that brings its own FormView, mixed with plain Form steps."
+    url_name = "readme-form-view"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(EmailForm, name="account")
+        .step(BillingStepView, name="billing")
+        .step(ReviewForm, name="confirm")
+    )
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(f"Billing {payload['company']} ({payload['country']})")
 
 
 # --- Escaping the wizard ----------------------------------------------------
@@ -166,11 +209,7 @@ class EscapeWizardViewSet(WizardViewSet):
     description = "Escape: a known email parks the run and redirects to login."
     url_name = "readme-escape"
     template_name = "testapp/linear_wizard.html"
-    wizard = (
-        Wizard()
-        .step(EmailLookupForm, name="email")
-        .step(NameForm, name="name")
-    )
+    wizard = Wizard().step(EmailLookupForm, name="email").step(NameForm, name="name")
 
     def done(self, bound_wizard):
         return HttpResponse(f"Signed up {bound_wizard.run_id}")

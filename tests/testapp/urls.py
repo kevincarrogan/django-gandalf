@@ -22,6 +22,10 @@ urlpatterns = [
         "readme/file-upload/",
         include(readme_examples.FileUploadWizardViewSet.urls()),
     ),
+    path(
+        "readme/form-view/",
+        include(readme_examples.FormViewStepWizardViewSet.urls()),
+    ),
     path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
     path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
     path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),

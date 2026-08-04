@@ -13,7 +13,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
 import pytest
-from pytest_django.asserts import assertContains, assertRedirects
+from pytest_django.asserts import (
+    assertContains,
+    assertRedirects,
+    assertTemplateUsed,
+)
 
 
 def start_url(name, url_kwargs=None):
@@ -61,6 +65,7 @@ def drive(client, name, steps, url_kwargs=None):
         ("readme-onboarding", {"plan": "solo"}),
         ("readme-expand", None),
         ("readme-file-upload", None),
+        ("readme-form-view", None),
         ("readme-escape", None),
         ("readme-editing", None),
         ("readme-flip-flop", None),
@@ -211,6 +216,54 @@ def test_file_upload_wizard_stores_and_reports_the_upload(client):
     assert response.content == b"Uploaded avatar.png"
 
 
+# --- Step views: bringing your own FormView ---------------------------------
+
+
+def test_form_view_step_uses_its_own_template_and_initial(client):
+    run_id = start_run(client, "readme-form-view")
+
+    response = client.post(
+        step_url("readme-form-view", run_id, "account"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    # The step's own template wins over the viewset's, and get_initial() runs.
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/other_linear_wizard.html")
+    assert response.context["form"]["country"].value() == "GB"
+
+
+def test_form_view_step_reads_a_prior_answer_from_get_context_data(client):
+    run_id = start_run(client, "readme-form-view")
+
+    response = client.post(
+        step_url("readme-form-view", run_id, "account"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    assert response.context["account_email"] == "ada@example.com"
+
+
+def test_form_view_step_survives_being_walked_past(client):
+    # The step view reads run state, and every later request replays it. This
+    # drives the wizard through and past that step, which is what a read from
+    # one of the form-composition hooks would not survive (see issue #54).
+    response, _ = drive(
+        client,
+        "readme-form-view",
+        [
+            ("account", {"email": "ada@example.com"}),
+            ("billing", {"company": "Acme", "country": "IE"}),
+            ("confirm", {"confirmed": "on"}),
+        ],
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"Billing Acme (IE)"
+
+
 # --- Escaping the wizard ----------------------------------------------------
 
 
@@ -224,9 +277,7 @@ def test_escape_wizard_parks_a_known_email(client):
 
     # Park redirects the user out (to the landing page) and does not store the
     # answer, so the run keeps no stored steps and stays on the email step.
-    assertRedirects(
-        response, reverse("escape-landing"), fetch_redirect_response=False
-    )
+    assertRedirects(response, reverse("escape-landing"), fetch_redirect_response=False)
     assert client.session["gandalf_runs"][run_id].get("state", []) == []
 
 
