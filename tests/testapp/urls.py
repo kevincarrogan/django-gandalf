@@ -41,6 +41,7 @@ urlpatterns = [
     ),
     path("linear-wizard/", include(views.LinearWizardViewSet.urls())),
     path("done-linear-wizard/", include(views.DoneLinearWizardViewSet.urls())),
+    path("multi-value-wizard/", include(views.MultiValueWizardViewSet.urls())),
     path("other-linear-wizard/", include(views.OtherLinearWizardViewSet.urls())),
     path(
         "recreated-linear-wizard/", include(views.RecreatedLinearWizardViewSet.urls())

@@ -33,6 +33,20 @@ class ReviewForm(forms.Form):
     confirmed = forms.BooleanField()
 
 
+class ToppingsForm(forms.Form):
+    """A field whose widget posts one HTML input per selected value, so the
+    submission is multi-valued rather than a single string per name."""
+
+    toppings = forms.MultipleChoiceField(
+        choices=[
+            ("cheese", "Cheese"),
+            ("olives", "Olives"),
+            ("basil", "Basil"),
+        ],
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+
 class ItemCountForm(forms.Form):
     count = forms.IntegerField(min_value=1, max_value=5)
 

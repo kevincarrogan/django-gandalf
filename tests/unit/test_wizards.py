@@ -23,6 +23,7 @@ from tests.testapp.forms import (
     ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
+    ToppingsForm,
 )
 
 
@@ -2423,6 +2424,31 @@ def test_runtime_step_data_still_exposes_raw_submission(
     first_step = bound_wizard.runtime_tree
 
     assert first_step.data == {"name": "Ada"}
+
+
+def test_runtime_step_form_reads_a_stored_multi_valued_answer_as_a_list(
+    request_with_session_factory,
+):
+    wizard = (
+        Wizard()
+        .step(ToppingsForm)
+        .configure(template_name="testapp/single_step_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [{"step": {"toppings": ["cheese", "basil"]}}],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    toppings_step = bound_wizard.runtime_tree
+
+    assert toppings_step.form.cleaned_data == {"toppings": ["cheese", "basil"]}
 
 
 def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(

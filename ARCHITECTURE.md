@@ -182,7 +182,7 @@ sequenceDiagram
 
     Django->>WVS: POST /wizard/<run_id>/<gandalf_step>/
     WVS->>BW: retrieve(run_id)
-    WVS->>BW: walk(claim=route_context, submission=request.POST.dict())
+    WVS->>BW: walk(claim=route_context, submission=submission_from_post(request.POST))
     Note over CWK: replay stored answers; at the claimed step put the<br/>submission there instead; carry on; stop where it stops
     CWK-->>BW: Walk(cursor, reached, target)
     alt not reached
@@ -227,6 +227,8 @@ State is stored in `request.session["gandalf_runs"][run_id]["state"]` as a list 
 {"step": None}                                 # a hole — the slot exists but has no valid answer yet
 {"branch": {"<arm_id>": [{…sub-entries…}]}}    # a tree.Branch node — sub-entries keyed per arm
 ```
+
+A step's form data is the submission flattened out of the POST `QueryDict`: a key the browser sent more than once (`CheckboxSelectMultiple` renders one input per selected value) stores the full list of values, and every other key stores its single value. Replay rebuilds a `QueryDict` from the stored mapping before it reaches a form, so widgets keep their `getlist` semantics and a multi-valued field reads a list back even when only one value was submitted.
 
 Branch entries are keyed by arm id — the arm's declaration-order index as a string, or `"default"`. The active arm's answers live under its key; other keys are **dormant memory**: they are carried verbatim (never validated, never descended into) so that changing a branch answer parks the old arm's data instead of discarding it, and flipping back restores it. A missing key means that arm has never been answered. Bare-list branch entries (the pre-per-arm shape) are still read, treated as belonging to whichever arm is derived on that walk — a best-effort adoption: a request-dependent predicate (user role, feature flag) that derives a different arm than the legacy entries were recorded under will misattribute them, the same exposure the pre-per-arm code had.
 

@@ -5,7 +5,7 @@ from django.views import View
 
 from gandalf import tree
 from gandalf.escapes import Advance, Obliterate, Park
-from gandalf.runtime import BoundWizard
+from gandalf.runtime import BoundWizard, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
@@ -194,7 +194,7 @@ class WizardViewSet(View):
             return self._redirect_to_cursor(
                 bound_wizard, bound_wizard.cursor(*args, **kwargs)
             )
-        submission = request.POST.dict()
+        submission = submission_from_post(request.POST)
         return self._routed_post(
             bound_wizard, route_context, submission, *args, **kwargs
         )

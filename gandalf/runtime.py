@@ -4,6 +4,7 @@ from dataclasses import dataclass, field as dataclass_field, replace
 from http import HTTPStatus
 from typing import Any
 
+from django.http import QueryDict
 from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
@@ -11,6 +12,37 @@ from gandalf.escapes import Escape
 
 
 logger = logging.getLogger(__name__)
+
+
+def submission_from_post(post):
+    """Flatten a POST `QueryDict` into the stored submission shape.
+
+    A key the browser sent more than once — one input per selected value,
+    as `CheckboxSelectMultiple` renders — keeps every value it was sent
+    with; every other key stores its single value. A stored submission is
+    always rebuilt into a `QueryDict` before it reaches a widget, so a
+    multi-valued field still reads a list back even when only one value was
+    submitted.
+    """
+    return {
+        key: values[0] if len(values) == 1 else values for key, values in post.lists()
+    }
+
+
+def _as_post_data(submission):
+    """Restore a stored submission to the multi-value mapping widgets read.
+
+    `SelectMultiple` and friends pull their value through `getlist`, which a
+    plain dict does not offer: handed one, a `MultipleChoiceField` sees a
+    bare string and rejects it with "Enter a list of values".
+    """
+    data = QueryDict(mutable=True)
+    for key, value in submission.items():
+        if isinstance(value, (list, tuple)):
+            data.setlist(key, list(value))
+        else:
+            data[key] = value
+    return data
 
 
 class StepNotFound(LookupError):
@@ -373,7 +405,7 @@ class StepDispatcher:
         request.method = method
         request.wizard = self._bound_wizard
         if method == "POST":
-            request.POST = submission
+            request.POST = _as_post_data(submission)
             if files is not None:
                 request._files = files
         return request

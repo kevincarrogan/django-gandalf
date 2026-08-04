@@ -106,6 +106,19 @@ def done_linear_wizard_run_url():
 
 
 @pytest.fixture
+def multi_value_wizard_url():
+    return reverse("multi-value-wizard")
+
+
+@pytest.fixture
+def multi_value_wizard_run_url():
+    def build_url(run_id):
+        return reverse("multi-value-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
 def other_linear_wizard_url():
     return reverse("other-linear-wizard")
 
@@ -401,6 +414,97 @@ def test_wizard_preserves_valid_previous_submission_when_posting_next_step(
         {"step": {"account_type": "business"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
+
+
+def test_multi_value_wizard_valid_multi_select_renders_next_declared_form(
+    client,
+    multi_value_wizard_url,
+    multi_value_wizard_run_url,
+):
+    client.get(multi_value_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(multi_value_wizard_run_url(run_id), "toppings"),
+        data={"toppings": ["cheese", "basil"]},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    assert isinstance(response.context["form"], SecondStepForm)
+    assert response.context["form"].errors == {}
+    assert client.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"toppings": ["cheese", "basil"]}},
+    ]
+
+
+def test_multi_value_wizard_single_selection_cleans_back_to_a_list(
+    client,
+    multi_value_wizard_url,
+    multi_value_wizard_run_url,
+):
+    client.get(multi_value_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        _step(multi_value_wizard_run_url(run_id), "toppings"),
+        data={"toppings": ["cheese"]},
+        follow=True,
+    )
+    response = client.post(
+        _step(multi_value_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed cheese for ada@example.com"
+
+
+def test_multi_value_wizard_done_reads_every_selected_value(
+    client,
+    multi_value_wizard_url,
+    multi_value_wizard_run_url,
+):
+    client.get(multi_value_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        _step(multi_value_wizard_run_url(run_id), "toppings"),
+        data={"toppings": ["cheese", "basil"]},
+        follow=True,
+    )
+    response = client.post(
+        _step(multi_value_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed cheese,basil for ada@example.com"
+
+
+def test_multi_value_wizard_stored_multi_select_replays_without_errors(
+    client,
+    multi_value_wizard_url,
+    multi_value_wizard_run_url,
+):
+    client.get(multi_value_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+    client.post(
+        _step(multi_value_wizard_run_url(run_id), "toppings"),
+        data={"toppings": ["cheese", "basil"]},
+        follow=True,
+    )
+
+    response = client.get(
+        _step(multi_value_wizard_run_url(run_id), "second"),
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], SecondStepForm)
 
 
 def test_linear_wizard_done_can_read_submitted_form_data_from_each_step(

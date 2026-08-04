@@ -38,6 +38,7 @@ from .forms import (
     ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
+    ToppingsForm,
 )
 
 
@@ -215,6 +216,35 @@ class DoneLinearWizardViewSet(WizardViewSet):
         return HttpResponse(
             f"completed {first.form.cleaned_data['name']} "
             f"at {second.form.cleaned_data['email']}"
+        )
+
+
+class MultiValueWizardViewSet(WizardViewSet):
+    description = (
+        "Two-step wizard whose first step posts a multi-valued field, so the "
+        "submission carries more than one value under one name."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            ToppingsForm,
+            name="toppings",
+        )
+        .step(
+            SecondStepForm,
+            name="second",
+        )
+    )
+
+    url_name = "multi-value-wizard"
+
+    def done(self, bound_wizard):
+        toppings = bound_wizard.path.find_step(name="toppings")
+        second = bound_wizard.path.find_step(name="second")
+        return HttpResponse(
+            f"completed {','.join(toppings.form.cleaned_data['toppings'])} "
+            f"for {second.form.cleaned_data['email']}"
         )
 
 
@@ -1037,8 +1067,7 @@ class PathProbeStepView(FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         names = [
-            step.declaration.context["step_name"]
-            for step in self.request.wizard.path
+            step.declaration.context["step_name"] for step in self.request.wizard.path
         ]
         context["path_names"] = names
         return context
