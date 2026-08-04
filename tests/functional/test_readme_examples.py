@@ -219,7 +219,7 @@ def test_file_upload_wizard_stores_and_reports_the_upload(client):
 # --- Step views: bringing your own FormView ---------------------------------
 
 
-def test_form_view_step_uses_its_own_template_and_initial(client):
+def test_form_view_step_uses_its_own_template(client):
     run_id = start_run(client, "readme-form-view")
 
     response = client.post(
@@ -228,13 +228,12 @@ def test_form_view_step_uses_its_own_template_and_initial(client):
         follow=True,
     )
 
-    # The step's own template wins over the viewset's, and get_initial() runs.
+    # The step's own template wins over the viewset's.
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/other_linear_wizard.html")
-    assert response.context["form"]["country"].value() == "GB"
 
 
-def test_form_view_step_reads_a_prior_answer_from_get_context_data(client):
+def test_form_view_step_prefills_from_a_prior_answer(client):
     run_id = start_run(client, "readme-form-view")
 
     response = client.post(
@@ -243,13 +242,13 @@ def test_form_view_step_reads_a_prior_answer_from_get_context_data(client):
         follow=True,
     )
 
-    assert response.context["account_email"] == "ada@example.com"
+    # get_initial() read the account step's answer off request.wizard.path.
+    assert response.context["form"]["company"].value() == "example.com"
 
 
 def test_form_view_step_survives_being_walked_past(client):
-    # The step view reads run state, and every later request replays it. This
-    # drives the wizard through and past that step, which is what a read from
-    # one of the form-composition hooks would not survive (see issue #54).
+    # The step's get_initial() reads run state, and every later request
+    # replays the step — re-entering that read from inside the walk.
     response, _ = drive(
         client,
         "readme-form-view",

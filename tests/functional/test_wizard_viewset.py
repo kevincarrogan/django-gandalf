@@ -1811,6 +1811,138 @@ def test_step_view_can_pre_fill_initial_from_path_with_form_view_upstream(
 
 
 @pytest.fixture
+def path_aware_walked_past_wizard_url():
+    return reverse("path-aware-walked-past-wizard")
+
+
+@pytest.fixture
+def path_aware_walked_past_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "path-aware-walked-past-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_step_reading_the_run_from_get_initial_survives_being_walked_past(
+    client,
+    path_aware_walked_past_wizard_url,
+    path_aware_walked_past_wizard_run_url,
+):
+    # Answering the path-reading step leaves it behind the cursor, so every
+    # later request replays it — re-entering the read from inside the walk.
+    client.get(path_aware_walked_past_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    client.post(
+        _step(path_aware_walked_past_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+    response = client.post(
+        _step(path_aware_walked_past_wizard_run_url(run_id), "second"),
+        data={"email": "ada@example.com"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], ReviewForm)
+
+
+def test_step_reading_the_run_from_get_initial_completes_the_run(
+    client,
+    path_aware_walked_past_wizard_url,
+    path_aware_walked_past_wizard_run_url,
+):
+    # done() reduces over the path, which reconstructs every step's form —
+    # including the reading step's, driving its get_initial() once more.
+    client.get(path_aware_walked_past_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    for step, data in (
+        ("first", {"name": "Ada"}),
+        ("second", {"email": "ada@example.com"}),
+        ("third", {"confirmed": "on"}),
+    ):
+        response = client.post(
+            _step(path_aware_walked_past_wizard_run_url(run_id), step),
+            data=data,
+            follow=True,
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed Ada at ada@example.com"
+
+
+@pytest.fixture
+def empty_path_first_step_wizard_url():
+    return reverse("empty-path-first-step-wizard")
+
+
+@pytest.fixture
+def empty_path_first_step_wizard_run_url():
+    def build_url(run_id):
+        return reverse(
+            "empty-path-first-step-wizard-run",
+            kwargs={"run_id": run_id},
+        )
+
+    return build_url
+
+
+def test_first_step_reading_the_run_sees_an_empty_path(
+    client,
+    empty_path_first_step_wizard_url,
+):
+    # The prefix before the first step is empty, which must read as an empty
+    # path rather than sending the read off to start its own walk.
+    response = client.get(empty_path_first_step_wizard_url, follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'value="seen-0"')
+
+
+def test_first_step_reading_the_run_sees_an_empty_path_on_replay(
+    client,
+    empty_path_first_step_wizard_url,
+    empty_path_first_step_wizard_run_url,
+):
+    # Rendering the first step is served from the recorded render context, so
+    # the empty prefix only reaches the walk once the step is behind the
+    # cursor and every later request replays it.
+    client.get(empty_path_first_step_wizard_url)
+    run_id, _ = get_only_run_info_from_session(client.session)
+
+    response = client.post(
+        _step(empty_path_first_step_wizard_run_url(run_id), "first"),
+        data={"name": "Ada"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], SecondStepForm)
+
+
+@pytest.fixture
+def empty_path_branch_wizard_url():
+    return reverse("empty-path-branch-wizard")
+
+
+def test_branch_predicate_at_position_zero_sees_an_empty_path(
+    client,
+    empty_path_branch_wizard_url,
+):
+    # Same empty prefix, reached through a branch predicate instead of a step
+    # view: the predicate reads no prior answers and takes the first arm.
+    response = client.get(empty_path_branch_wizard_url, follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert isinstance(response.context["form"], FirstStepForm)
+
+
+@pytest.fixture
 def branching_merged_payload_wizard_url():
     return reverse("branching-merged-payload-wizard")
 

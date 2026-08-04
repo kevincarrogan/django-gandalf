@@ -212,7 +212,7 @@ per-step template, or other view-level behavior — it keeps its own configurati
 and can be reused as a standalone view outside the wizard. Inside the wizard the
 step still sees `self.request.wizard`, so it can inspect run state when useful.
 See [Step views](#step-views-bringing-your-own-formview) for what such a view
-must provide and where it may read run state.
+must provide and what it sees when it reads run state.
 
 ---
 
@@ -390,7 +390,7 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 {% endif %}
 ```
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L221-L243)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L216-L238)
 
 ---
 
@@ -429,7 +429,7 @@ positional-alignment rule that applies to steps.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/flip-flop/ (choose business,
 > fill the company name, then edit the account type to personal and back)
-> &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L249-L273)
+> &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L244-L268)
 
 ---
 
@@ -509,7 +509,8 @@ class BillingStepView(FormView):
 
     def get_initial(self):
         initial = super().get_initial()
-        initial["country"] = self.request.GET.get("country", "GB")
+        account = self.request.wizard.path.find_step(name="account")
+        initial["company"] = account.form.cleaned_data["email"].partition("@")[2]
         return initial
 
 
@@ -543,27 +544,23 @@ standalone subclass a real `get_success_url()`; only the in-wizard one wants the
 
 The step runs on a wizard-shaped request, so `self.request.wizard` is the same
 `BoundWizard` the rest of the flow sees — `path` for the resolved route,
-`path.find_step(name=...)` to address a prior answer:
+`path.find_step(name=...)` to address a prior answer, as `get_initial()` does
+above. That works from anywhere in the view: `get_initial()`,
+`get_form_kwargs()`, `get_context_data()`, `form_valid()`.
 
-```python
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        account = self.request.wizard.path.find_step(name="account")
-        context["account_email"] = account.form.cleaned_data["email"]
-        return context
-```
+**What a step view sees is the prefix before it** — the answers the walk has
+already validated on this request, never the step's own answer and nothing
+after it. That is the same contract a branch predicate gets, and it holds
+whether the step is being rendered or replayed behind the cursor. A step is
+replayed on every later request, so its reads run again each time; keep them
+cheap for the same reason you keep `clean()` cheap (see
+[What replaying costs](#what-replaying-costs)).
 
-**Read run state from `get_context_data()`, not from the form-composition
-hooks.** `get_context_data()` runs only when the step is actually being
-rendered, which is the safe moment. `get_form_class()`, `get_form_kwargs()`,
-`get_initial()` and `get_prefix()` are re-entered every time Gandalf replays
-this step during a walk, so a `request.wizard` read from one of them re-enters
-the walk that is calling it and recurses
-([#54](https://github.com/kevincarrogan/django-gandalf/issues/54)). Prefill a
-field from something already on the request, as `get_initial()` does above — not
-from a lookup into the run.
+`find_step()` returns `None` for a step the run cannot see, so guard the lookup
+when the step you want is not unconditionally upstream of this one. The example
+above does not guard, because `account` always precedes `billing`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/form-view/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L158-L202)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/form-view/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L158-L197)
 
 ---
 
@@ -605,7 +602,7 @@ Escapes can also be raised from a `FormView`'s `form_valid()` when the decision
 needs the view. `Escape` is the base class, so `except Escape` catches all
 three.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L208-L215)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/escape/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L203-L210)
 > &nbsp; (enter `existing@example.com` to trigger the park)
 
 ---

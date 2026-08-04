@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field as dataclass_field, replace
 from http import HTTPStatus
@@ -48,6 +49,13 @@ def _as_post_data(submission):
 class StepNotFound(LookupError):
     """Raised when a context-based edit targets a step that is not on the
     active runtime path or has no stored submission."""
+
+
+# Sentinel for "no walk is in progress". Distinct from `None`, which is a
+# *valid* partial head: the prefix before the very first step is empty, and
+# reading the run from there must yield an empty path rather than starting a
+# nested walk.
+_NO_WALK = object()
 
 
 def _open_file_refs(bound_wizard, file_refs):
@@ -433,7 +441,7 @@ class BoundWizard:
         self.storage = storage
         self.run_id = None
         self.urls = None
-        self._predicate_runtime_tree = None
+        self._partial_runtime_head = _NO_WALK
         self._render_context = None
         self._dispatcher = None
         self._file_storage = None
@@ -494,8 +502,14 @@ class BoundWizard:
         the cursor, carried verbatim past it, with unreached branch regions
         opaque. On a complete run this is the full tree. Reuses the render
         context's walk when the viewset recorded one; otherwise walks once.
-        Branch predicates therefore only ever run behind a fully-validated
-        prefix."""
+
+        While a walk is in progress this is the prefix validated so far (see
+        `walking()`), because that is the only tree that exists yet — which
+        is what lets a branch predicate, an expansion builder, or a step view
+        read the run without starting a nested walk.
+        """
+        if self._partial_runtime_head is not _NO_WALK:
+            return self._partial_runtime_head
         if self._render_context is not None:
             return self._render_context[0].state
         return self.cursor().state
@@ -503,15 +517,33 @@ class BoundWizard:
     @property
     def path(self):
         """The resolved route as a `Path` — the answered steps in walk order.
-        Built from the predicate-aware runtime tree, so inside a branch
-        predicate or expand builder `request.wizard.path` is the validated
-        prefix so far, and `path.find_step(...)` reads prior answers."""
-        return Path(PathFlattener().transform(self._current_runtime_tree()))
+        Built from the runtime tree, so anything running inside a walk sees
+        the validated prefix so far and `path.find_step(...)` reads prior
+        answers."""
+        return Path(PathFlattener().transform(self.runtime_tree))
 
-    def _current_runtime_tree(self):
-        if self._predicate_runtime_tree is not None:
-            return self._predicate_runtime_tree
-        return self.runtime_tree
+    @contextmanager
+    def walking(self, partial_runtime_head):
+        """Expose `partial_runtime_head` as the runtime tree for the duration
+        of the block.
+
+        Everything the walk calls out to — branch predicates, expansion
+        builders, and the step views dispatched to validate stored answers —
+        runs *inside* a walk. Without this handoff, reading `path` or
+        `runtime_tree` from one of them would start a fresh walk, which would
+        call out to the same code again and recurse forever. With it, those
+        reads see the prefix already validated on this walk: prior answers,
+        never the step being visited or anything after it.
+
+        Restores the enclosing head rather than clearing it, so a nested walk
+        (a branch arm, an expansion subtree) hands back correctly.
+        """
+        previous = self._partial_runtime_head
+        self._partial_runtime_head = partial_runtime_head
+        try:
+            yield
+        finally:
+            self._partial_runtime_head = previous
 
     def previous_step(self, cursor, target_declaration):
         """The step immediately before `target_declaration` in active-route
@@ -647,16 +679,13 @@ class BoundWizard:
         """Run an expansion's builder and return its configured subtree.
 
         The builder sees the prefix validated so far through the same
-        `_predicate_runtime_tree` handoff a branch predicate uses, so
-        `path.find_step(...)` inside it reads prior answers and nothing after
-        the cursor. The subtree it returns is configured and vetted (routable
-        names, no nested expansion) before it is walked."""
+        `walking()` handoff a branch predicate uses, so `path.find_step(...)`
+        inside it reads prior answers and nothing after the cursor. The
+        subtree it returns is configured and vetted (routable names, no
+        nested expansion) before it is walked."""
         request = self.dispatcher.build_request("GET")
-        self._predicate_runtime_tree = partial_runtime_head
-        try:
+        with self.walking(partial_runtime_head):
             built = expand_node.builder(request)
-        finally:
-            self._predicate_runtime_tree = None
         return self.wizard.configure_expansion(built)
 
     def _select_branch_arm(self, branch_node, partial_runtime_head=None):
@@ -667,14 +696,11 @@ class BoundWizard:
         itself is never persisted; only per-arm memory is keyed by it.
         """
         request = self.dispatcher.build_request("GET")
-        self._predicate_runtime_tree = partial_runtime_head
-        try:
+        with self.walking(partial_runtime_head):
             for index, (predicate, subtree) in enumerate(branch_node.arms):
                 if predicate(request):
                     return str(index), subtree
             return "default", branch_node.default
-        finally:
-            self._predicate_runtime_tree = None
 
 
 class CursorWalker(tree.Interpreter):
@@ -736,20 +762,28 @@ class CursorWalker(tree.Interpreter):
 
     def _satisfies(self, step, data, files):
         """Dispatch `data` at `step`. Returns whether it satisfies the step,
-        and the rendered response when it does not."""
+        and the rendered response when it does not.
+
+        Dispatched behind the `walking()` handoff, so a step view that reads
+        `request.wizard` sees the prefix validated so far instead of starting
+        a nested walk. `self._head` is the prefix *excluding* this step — it
+        is appended only once the dispatch returns — which is exactly the
+        "prior answers, never the current step" contract `path` promises.
+        """
         if data is None:
             return False, None
         try:
-            response = self._dispatcher.dispatch(
-                step,
-                self._dispatcher.build_request(
-                    "POST",
-                    submission=data,
-                    files=self._open_files(files),
-                ),
-                *self._args,
-                **self._kwargs,
-            )
+            with self._bound_wizard.walking(self._head):
+                response = self._dispatcher.dispatch(
+                    step,
+                    self._dispatcher.build_request(
+                        "POST",
+                        submission=data,
+                        files=self._open_files(files),
+                    ),
+                    *self._args,
+                    **self._kwargs,
+                )
         except Escape as escape:
             # An escape satisfies its step, so the walk carries on past it.
             # Recording it lets the viewset redirect for the live submission;

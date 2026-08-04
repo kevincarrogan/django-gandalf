@@ -300,9 +300,21 @@ wizard = (
 )
 ```
 
-`BoundWizard._select_branch_arm()` (called from inside `CursorWalker` when it hits a `tree.Branch`) temporarily sets `self._predicate_runtime_tree` to the partial runtime head built up to the branch, evaluates each arm predicate in declaration order, and returns `(arm_id, subtree)` for the first matching arm — or `("default", Branch.default)`. The partial-tree handoff is what lets predicates see prior answers without seeing future ones; the arm id keys which per-arm memory in the branch's stored entry is live for this walk.
+`BoundWizard._select_branch_arm()` (called from inside `CursorWalker` when it hits a `tree.Branch`) enters `BoundWizard.walking()` with the partial runtime head built up to the branch, evaluates each arm predicate in declaration order, and returns `(arm_id, subtree)` for the first matching arm — or `("default", Branch.default)`. The partial-tree handoff is what lets predicates see prior answers without seeing future ones; the arm id keys which per-arm memory in the branch's stored entry is live for this walk.
 
 This yields a guarantee: because the sealed walk is the only thing that ever selects arms, **a branch predicate only ever runs behind a fully-validated prefix** — every step before the branch is answered and currently valid when the predicate executes. Predicates can dereference prior answers (`path.find_step(...).data["key"]`) unconditionally. The corollary is that steps off the resolved route are invisible to `path.find_step`: it returns `None` for the current unanswered step, any step not yet reached, and steps inside a branch whose arm cannot be derived yet.
+
+### The `walking()` handoff
+
+`walking(partial_runtime_head)` is what makes any of those reads possible. While it is held, `runtime_tree` (and therefore `path`) resolves to the prefix validated so far instead of walking the run afresh. Three callers enter it, all from inside `CursorWalker`:
+
+- `_select_branch_arm()`, around the arm predicates;
+- `_build_expansion()`, around the expansion builder;
+- `CursorWalker._satisfies()`, around the step-view dispatch that validates a stored answer.
+
+The third is the one that makes a user-supplied step `FormView` safe. `.form` reconstruction and step dispatch drive the view's composition hooks (`get_form_class()`, `get_form_kwargs()`, `get_initial()`, `get_prefix()`), so a view that reads `request.wizard` there is reading *from inside* a walk. Without the handoff that read starts a nested walk, which dispatches the same view, which reads again — unbounded recursion. With it, the read sees the prefix already validated on this walk.
+
+The sentinel matters: "no walk in progress" is `_NO_WALK`, not `None`, because `None` is a legitimate partial head — the prefix before the first step, and before a branch or expansion in first position, is empty. Conflating the two sends exactly those reads off to start a nested walk.
 
 ---
 

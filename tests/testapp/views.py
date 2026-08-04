@@ -1482,5 +1482,93 @@ class BranchingExpandWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
+class PathAwareWalkedPastWizardViewSet(WizardViewSet):
+    """A step that reads the run from `get_initial()` with a step after it.
+
+    `get_initial()` is one of the composition hooks Gandalf re-enters every
+    time it replays a stored answer, so every request past the second step
+    re-runs that read *inside* the walk. Without the `walking()` handoff it
+    started a nested walk and recursed.
+    """
+
+    description = (
+        "Path-reading step with a step after it, so the walk replays the "
+        "read on every later request."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(EmailStepPrefilledFromPath, name="second")
+        .step(ReviewForm, name="third")
+    )
+
+    url_name = "path-aware-walked-past-wizard"
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        return HttpResponse(f"completed {payload['name']} at {payload['email']}")
+
+
+class EmptyPathReadingStepView(FormView):
+    """First-step view that reads the run before any answer exists.
+
+    The prefix handed to a first step is empty, which must read as an empty
+    path rather than as "no walk in progress".
+    """
+
+    form_class = FirstStepForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["name"] = f"seen-{len(list(self.request.wizard.path))}"
+        return initial
+
+
+class EmptyPathFirstStepWizardViewSet(WizardViewSet):
+    description = "First step reads request.wizard.path, which is empty there."
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(EmptyPathReadingStepView, name="first")
+        .step(SecondStepForm, name="second")
+    )
+
+    url_name = "empty-path-first-step-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+def has_no_prior_answers(request):
+    """Branch predicate reading the run from position 0, where it is empty."""
+    return len(list(request.wizard.path)) == 0
+
+
+class EmptyPathBranchWizardViewSet(WizardViewSet):
+    description = "Branch at position 0 whose predicate reads the empty path before it."
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .branch(
+            condition(
+                has_no_prior_answers,
+                Wizard().step(FirstStepForm, name="first"),
+            ),
+            default=Wizard().step(SecondStepForm, name="second"),
+        )
+        .step(ReviewForm, name="review")
+    )
+
+    url_name = "empty-path-branch-wizard"
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
 def _iter_path(bound_wizard):
     yield from bound_wizard.path

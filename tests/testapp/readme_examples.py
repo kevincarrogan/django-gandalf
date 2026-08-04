@@ -176,14 +176,9 @@ class BillingStepView(FormView):
 
     def get_initial(self):
         initial = super().get_initial()
-        initial["country"] = self.request.GET.get("country", "GB")
-        return initial
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
         account = self.request.wizard.path.find_step(name="account")
-        context["account_email"] = account.form.cleaned_data["email"]
-        return context
+        initial["company"] = account.form.cleaned_data["email"].partition("@")[2]
+        return initial
 
 
 class FormViewStepWizardViewSet(WizardViewSet):

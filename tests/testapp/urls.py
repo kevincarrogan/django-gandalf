@@ -29,6 +29,18 @@ urlpatterns = [
     path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
     path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
     path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),
+    path(
+        "path-aware-walked-past-wizard/",
+        include(views.PathAwareWalkedPastWizardViewSet.urls()),
+    ),
+    path(
+        "empty-path-first-step-wizard/",
+        include(views.EmptyPathFirstStepWizardViewSet.urls()),
+    ),
+    path(
+        "empty-path-branch-wizard/",
+        include(views.EmptyPathBranchWizardViewSet.urls()),
+    ),
     path("wizard/", include(views.SingleStepWizardViewSet.urls())),
     path("run-unavailable-wizard/", include(views.RunUnavailableWizardViewSet.urls())),
     path(
