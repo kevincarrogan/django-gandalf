@@ -29,6 +29,7 @@ urlpatterns = [
     path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
     path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
     path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),
+    path("readme/summary/", include(readme_examples.SummaryWizardViewSet.urls())),
     path("readme/stash/", include(readme_examples.ContactSectionWizardViewSet.urls())),
     path(
         "readme/stash-reopen/",
@@ -207,6 +208,15 @@ urlpatterns = [
         "required-photo-stashing-wizard-resurrect/",
         views.resurrect_required_photo_stash,
         name="required-photo-stashing-wizard-resurrect",
+    ),
+    path("summary-wizard/", include(views.SummaryWizardViewSet.urls())),
+    path(
+        "custom-summary-wizard/",
+        include(views.CustomSummaryWizardViewSet.urls()),
+    ),
+    path(
+        "summary-display-wizard/",
+        include(views.SummaryDisplayWizardViewSet.urls()),
     ),
     path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
     path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),

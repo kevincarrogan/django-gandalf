@@ -18,6 +18,7 @@ from django.shortcuts import redirect
 from django.views.generic.edit import FormView
 
 from gandalf.storage import SessionStashStore, StashNotFound
+from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import InvalidStash, MergeCleanedData, Wizard, condition
 
@@ -300,3 +301,39 @@ def reopen_contact(request):
     except (StashNotFound, InvalidStash):
         return redirect("readme-stash")  # nothing stashed — start fresh
     return redirect(url)
+
+
+# --- Summary: a check-your-answers step -------------------------------------
+
+
+class DeliveryForm(forms.Form):
+    method = forms.ChoiceField(
+        label="Delivery method",
+        choices=[("standard", "Standard"), ("express", "Express")],
+    )
+    leave_with_neighbour = forms.BooleanField(
+        label="Leave with a neighbour", required=False
+    )
+
+
+class ReviewStepView(SummaryMixin, FormView):
+    form_class = ReviewForm
+    template_name = "testapp/summary_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+
+class SummaryWizardViewSet(WizardViewSet):
+    description = "Summary: a check-your-answers step with a change link per answer."
+    url_name = "readme-summary"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name", context={"label": "Your name"})
+        .step(DeliveryForm, name="delivery", context={"label": "Delivery"})
+        .step(ReviewStepView, name="review")
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse("Order placed")

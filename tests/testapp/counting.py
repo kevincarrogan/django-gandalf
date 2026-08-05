@@ -5,10 +5,11 @@ outright where a wall-clock timing could only be flaky. They are installed
 through `configure()`, so nothing in `gandalf` knows they exist.
 
 `benchmarks/instrumentation.py` carries a richer version for the benchmark
-harness (walk call sites, `RuntimeStep.form` reconstructions). This is
-deliberately the minimum the test suite needs: `validations` counts dispatches
-made by the walk, so it undercounts for wizards with branch predicates, which
-reach `RuntimeStep.form` without going through the dispatcher.
+harness (walk call sites). This is deliberately the minimum the test suite
+needs: `validations` counts dispatches made by the walk, and `form_rebuilds`
+counts the `RuntimeStep.form` reconstructions the walk never sees — branch
+predicates and summary rows, which build a form without going through the
+dispatcher.
 """
 
 from contextlib import contextmanager
@@ -25,6 +26,14 @@ class WalkCount:
     validations: int = 0
     # GET dispatches that render a step for the user.
     renders: int = 0
+    # POST requests built without being dispatched: every walk dispatch is
+    # preceded by exactly one build, so the difference is the number of
+    # `RuntimeStep.form` reconstructions.
+    post_builds: int = 0
+
+    @property
+    def form_rebuilds(self):
+        return self.post_builds - self.validations
 
 
 _active = []
@@ -51,6 +60,11 @@ class CountingStepDispatcher(StepDispatcher):
             else:
                 counts.renders += 1
         return super().dispatch(step, request, *args, **kwargs)
+
+    def build_request(self, method, *args, **kwargs):
+        if _active and method == "POST":
+            _active[-1].post_builds += 1
+        return super().build_request(method, *args, **kwargs)
 
 
 class CountingCursorWalker(CursorWalker):

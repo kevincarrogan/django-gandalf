@@ -36,6 +36,7 @@ from gandalf.testing import stored_stash
         ("readme-form-view", None),
         ("readme-escape", None),
         ("readme-editing", None),
+        ("readme-summary", None),
         ("readme-flip-flop", None),
         ("readme-stash", None),
     ],
@@ -263,6 +264,33 @@ def test_editing_wizard_renders_a_completed_step_prefilled(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'name="account_type"')
+
+
+# --- Summary: a check-your-answers step -------------------------------------
+
+
+def test_summary_wizard_lists_every_answer_with_a_change_link(wizard_driver):
+    run = wizard_driver("readme-summary").start()
+    run.post_steps(
+        [
+            ("name", {"name": "Ada"}),
+            ("delivery", {"method": "express", "leave_with_neighbour": "on"}),
+        ]
+    )
+
+    response = run.get_step("review")
+
+    assert response.status_code == HTTPStatus.OK
+    rows = response.context["summary"]
+    assert [(row.label, row.url) for row in rows] == [
+        ("Your name", run.step_url("name")),
+        ("Delivery", run.step_url("delivery")),
+    ]
+    # The stored answers, as display text rather than raw values.
+    assert [field.value for field in rows[1].fields] == ["Express", "Yes"]
+    assertContains(
+        response, f'<a href="{run.step_url("name")}">Change Your name</a>', html=True
+    )
 
 
 # --- Dormant memory: flipping a branch and back -----------------------------

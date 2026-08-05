@@ -2014,6 +2014,59 @@ def test_bound_wizard_nav_urls_are_none_without_reverser_or_render_context(
     assert bound_wizard.run_url == "/wizard/existing-run/"
 
 
+@pytest.fixture
+def business_run(request_with_session_factory):
+    """A branching run with the business arm answered, parked on review."""
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+                    ],
+                },
+            },
+        },
+    )
+    bound_wizard = _make_bound_wizard(_branching_review_wizard(), request)
+    bound_wizard.retrieve("existing-run")
+    return bound_wizard
+
+
+def test_runtime_step_carries_its_name_and_its_own_url(business_run):
+    business_run.urls = _StubUrls()
+
+    steps = list(business_run.path)
+
+    assert [step.name for step in steps] == ["account_type", "business_name"]
+    assert [step.url for step in steps] == [
+        "/wizard/existing-run/account_type/",
+        "/wizard/existing-run/business_name/",
+    ]
+
+
+def test_bound_wizard_builds_a_step_url_from_a_declaration(business_run):
+    business_run.urls = _StubUrls()
+    step = business_run.path.find_step(name="business_name")
+
+    assert business_run.step_url(step.declaration) == step.url
+
+
+def test_step_url_is_none_without_a_url_reverser(business_run):
+    step = business_run.path.find_step(name="account_type")
+
+    assert step.url is None
+    assert business_run.step_url(step) is None
+
+
+def test_runtime_step_builds_its_form_once(business_run):
+    step = business_run.path.find_step(name="account_type")
+
+    assert step.form is step.form
+    assert step.form.cleaned_data == {"account_type": "business"}
+
+
 def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
     request_with_session_factory,
 ):

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<body>
+  <h1>Check your answers</h1>
+  <dl>
+    {% for row in summary %}
+      <dt>{{ row.label }}</dt>
+      <dd>
+        {% for field in row.fields %}
+          <span>{{ field.label }}: {{ field.value }}</span>
+        {% endfor %}
+        <a href="{{ row.url }}">Change {{ row.label }}</a>
+      </dd>
+    {% endfor %}
+  </dl>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Confirm</button>
+  </form>
+</body>
+</html>

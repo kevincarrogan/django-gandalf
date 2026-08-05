@@ -47,6 +47,49 @@ class ToppingsForm(forms.Form):
     )
 
 
+class SummaryFieldsForm(forms.Form):
+    """One of each answer a summary page has to render as text rather than
+    as the raw stored value."""
+
+    contact_method = forms.ChoiceField(
+        label="Contact method",
+        choices=[
+            ("email", "Email"),
+            ("post", "Post"),
+        ],
+    )
+    toppings = forms.MultipleChoiceField(
+        label="Toppings",
+        choices=[
+            ("cheese", "Cheese"),
+            ("olives", "Olives"),
+            ("basil", "Basil"),
+        ],
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+    )
+    marketing = forms.BooleanField(label="Marketing emails", required=False)
+    starts_on = forms.DateField(label="Start date")
+    note = forms.CharField(label="Note", required=False)
+
+
+class SummaryDisplayForm(forms.Form):
+    """Answers whose display text is nothing like the stored value: a
+    grouped choice, a date and time, and an upload."""
+
+    delivery = forms.ChoiceField(
+        label="Delivery",
+        choices=[
+            ("Digital", [("email", "Email"), ("sms", "SMS")]),
+            ("Physical", [("post", "Post")]),
+        ],
+    )
+    collect_at = forms.DateTimeField(label="Collect at")
+    opens_at = forms.TimeField(label="Opens at")
+    photo = forms.FileField(label="Photo")
+    note = forms.CharField(label="Note", required=False)
+
+
 class ItemCountForm(forms.Form):
     count = forms.IntegerField(min_value=1, max_value=5)
 

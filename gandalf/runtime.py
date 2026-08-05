@@ -2,6 +2,7 @@ import logging
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
+from functools import cached_property
 from http import HTTPStatus
 from typing import Any
 
@@ -124,8 +125,27 @@ class RuntimeStep:
     )
 
     @property
+    def name(self):
+        """The step's routable name — its `step_name` context, the `name=`
+        `.step()` was declared with. None for a step declared without one."""
+        return (self.declaration.context or {}).get("step_name")
+
+    @property
+    def url(self):
+        """This step's own URL: a GET renders its answer for editing, so it
+        is the "change this" link for a summary page. None without a URL
+        reverser (programmatic use — see `BoundWizard.step_url`)."""
+        return self.bound_wizard.step_url(self.declaration)
+
+    @cached_property
     def form(self):
         """Reconstruct a bound, validated form for this step.
+
+        Built once per node: a request that reads a step's answer several
+        times — a summary page listing every field, a template reaching for
+        `cleaned_data` twice — pays one form validation, not one per read.
+        `path` builds fresh nodes on each access, so hold the steps you are
+        iterating rather than re-reading `wizard.path` per field.
 
         Drives the step's `FormView` through its public composition API:
         instantiates the view, calls `view.setup()` with a synthetic POST
@@ -679,6 +699,21 @@ class BoundWizard:
         if self.urls is None:
             return None
         return self.urls.get_wizard_url(self.run_id)
+
+    def step_url(self, step):
+        """The URL of `step` — a `RuntimeStep` or the declaration behind one.
+
+        A step URL renders that step pre-filled, so this is the "change this
+        answer" link a summary page hangs off each row. Unlike `back_url` it
+        needs no render context: any step the caller can name, it can link
+        to. None without a URL reverser (set by the viewset via
+        `bound_wizard.urls`).
+        """
+        if self.urls is None:
+            return None
+        declaration = step.declaration if isinstance(step, RuntimeStep) else step
+        segment = self.wizard.step_router_class().reverse(declaration)
+        return self.urls.get_step_url(self.run_id, segment)
 
     @property
     def back_url(self):

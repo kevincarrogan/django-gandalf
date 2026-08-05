@@ -222,7 +222,8 @@ read the answers however it needs:
 
 - `bound_wizard.path` — the resolved route: the answered steps in order,
   iterable, each a `RuntimeStep` exposing `.form.cleaned_data`, `.data` (raw
-  submission), and `.files`.
+  submission), `.files`, and — for linking back to a step — `.name` and
+  `.url`.
 - `MergeCleanedData().reduce(bound_wizard.path)` — folds every step's
   `cleaned_data` into one dict (last-write-wins). Subclass it for a different
   merge policy.
@@ -382,17 +383,14 @@ completed step's URL to render it pre-filled; POST the changed answer back to it
 to place it there. Editing is not a separate operation — putting an answer at a
 step works the same whether or not it already had one.
 
-A review template wires per-step edit links from the runtime path:
+A review template wires per-step edit links from the runtime path. Every step
+on the route carries its own `name` and `url`, so the link is the step:
 
 ```django
 <h1>Review your details</h1>
 <ul>
   {% for step in request.wizard.path %}
-    <li>
-      <a href="../{{ step.declaration.context.step_name }}/">
-        Edit {{ step.declaration.context.step_name }}
-      </a>
-    </li>
+    <li><a href="{{ step.url }}">Edit {{ step.name }}</a></li>
   {% endfor %}
 </ul>
 <form method="post">
@@ -401,6 +399,10 @@ A review template wires per-step edit links from the runtime path:
   <button type="submit">Confirm</button>
 </form>
 ```
+
+To show the answers themselves alongside those links, reach for
+[`SummaryMixin`](#summary-pages-check-your-answers) rather than growing this
+loop.
 
 The promise is that changing an answer costs the user only as much of the wizard
 as the change actually invalidates — usually nothing. A trivial edit lands
@@ -420,6 +422,102 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 ```
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/editing/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L216-L238)
+
+---
+
+## Summary pages: check your answers
+
+A "check your answers" step asks the same three questions of every answer —
+what is it called, what does it say, and where do I go to change it — so
+`SummaryMixin` answers them once. Mix it into the step's `FormView` and the
+template gets a `summary` list, one row per answered step:
+
+```python
+from django.views.generic.edit import FormView
+
+from gandalf.summary import SummaryMixin
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import Wizard
+
+
+class ReviewStepView(SummaryMixin, FormView):
+    form_class = ConfirmForm
+    template_name = "checkout/review.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+
+class SummaryWizardViewSet(WizardViewSet):
+    url_name = "checkout"
+    template_name = "checkout/step.html"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name", context={"label": "Your name"})
+        .step(DeliveryForm, name="delivery", context={"label": "Delivery"})
+        .step(ReviewStepView, name="review")
+    )
+```
+
+```django
+<h1>Check your answers</h1>
+<dl>
+  {% for row in summary %}
+    <dt>{{ row.label }}</dt>
+    <dd>
+      {% for field in row.fields %}
+        <span>{{ field.label }}: {{ field.value }}</span>
+      {% endfor %}
+      <a href="{{ row.url }}">Change {{ row.label }}</a>
+    </dd>
+  {% endfor %}
+</dl>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Confirm</button>
+</form>
+```
+
+The rows come from `request.wizard.path`, so they are the answers on the run's
+resolved route, in walk order, with the selected branch arm inlined — never the
+step doing the summarising, and never an answer left behind in a dormant arm.
+Each row carries `label`, `fields`, `url`, `name`, the `step` it came from, and
+its `form`; each field carries `label`, `value`, `name`, and the `bound_field`
+the value came from.
+
+**Values are display text, not stored data.** A choice shows its label, a
+boolean shows Yes/No, dates and times take the active locale's format, an
+upload shows its filename, a multi-valued answer is comma-joined, and an
+unanswered optional field is blank rather than "None". Anything else is its
+`str()`.
+
+**Every decision is a hook.** Override on the view, deferring to `super()` for
+the cases you do not special-case:
+
+| Hook | Decides |
+| --- | --- |
+| `get_summary_steps()` | which steps get a row (default: every answered step) |
+| `get_summary_label(step)` | a row's heading — the step's `label` context, else its name made readable |
+| `include_summary_field(step, bound_field)` | whether a field earns a line |
+| `format_value(bound_field, value)` | how one answer reads |
+| `summary_context_name` | the context variable's name (default `summary`) |
+
+```python
+class ReviewStepView(SummaryMixin, FormView):
+    def format_value(self, bound_field, value):
+        if bound_field.name == "born_on":
+            return value.strftime("%d %B %Y")
+        return super().format_value(bound_field, value)
+```
+
+**One form per row.** Reading a step's answers means reconstructing its form
+(see [What replaying costs](#what-replaying-costs)), so a page that reached for
+`step.form` per field would pay a validation per field. The mixin builds each
+row from a single form, and `RuntimeStep.form` is itself built once per step
+per request — so a five-field row costs one reconstruction, not five.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/summary/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L309-L339)
 
 ---
 
@@ -1037,6 +1135,12 @@ Gandalf re-proves stored submissions rather than trusting a recorded position.
 The rule is small enough to keep in your head:
 
 > A form's `clean()` runs **once per completed step per HTTP request.**
+
+That holds however many times the request *reads* an answer: `RuntimeStep.form`
+is built once per step per request, so a summary page listing every field of
+every step costs one reconstruction per step, not one per field. (`path` builds
+fresh step nodes on each access, so iterate the steps you hold rather than
+re-reading `wizard.path` per field.)
 
 So with `k` answers stored, a request costs `k` replays, and a POST costs one
 more for the answer being submitted; completing an `N`-step run costs `N²`

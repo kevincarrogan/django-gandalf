@@ -22,6 +22,7 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
+from gandalf.summary import SummaryMixin
 
 from .counting import CountingCursorWalker, CountingStepDispatcher
 from .forms import (
@@ -40,6 +41,8 @@ from .forms import (
     ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
+    SummaryDisplayForm,
+    SummaryFieldsForm,
     ToppingsForm,
 )
 
@@ -1021,6 +1024,7 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
         nav_probe = (
             detached.run_url is None
             and detached.back_url is None
+            and detached.step_url(foreign_declaration) is None
             and bound_wizard.back_url is None
             and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
             and bound_wizard.previous_step(cursor, foreign_declaration) is None
@@ -1720,3 +1724,94 @@ def resurrect_empty_stash(request):
     land on, the only URL is the bare run one, which completes on arrival."""
     url = EmptyWizardViewSet.resurrect(request, {"version": STASH_VERSION, "state": []})
     return redirect(url)
+
+
+class SummaryStepView(SummaryMixin, FormView):
+    """A check-your-answers step: `SummaryMixin` puts one row per answered
+    step in the context, each with its formatted fields and change link."""
+
+    form_class = ReviewForm
+    template_name = "testapp/summary_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+
+class SummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary: a check-your-answers step listing every answer, formatted, "
+        "with a change link per step."
+    )
+    url_name = "summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type", context={"label": "Account type"})
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, name="business_name"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
+        )
+        .step(SummaryFieldsForm, name="preferences", context={"label": "Preferences"})
+        .step(SummaryStepView, name="summary")
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class CustomSummaryStepView(SummaryMixin, FormView):
+    """Every hook the mixin exposes, overridden: the step label, the value
+    formatting, and which fields appear at all."""
+
+    form_class = ReviewForm
+    template_name = "testapp/summary_wizard.html"
+
+    def get_success_url(self):
+        return self.request.path
+
+    def get_summary_label(self, step):
+        return super().get_summary_label(step).upper()
+
+    def include_summary_field(self, step, bound_field):
+        return bound_field.name != "note"
+
+    def format_value(self, bound_field, value):
+        if bound_field.name == "starts_on":
+            return value.strftime("%d/%m/%Y")
+        return super().format_value(bound_field, value)
+
+
+class CustomSummaryWizardViewSet(WizardViewSet):
+    description = "Summary with the label, field selection and formatting overridden."
+    url_name = "custom-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(SummaryFieldsForm, name="preferences")
+        .step(CustomSummaryStepView, name="summary")
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class SummaryDisplayWizardViewSet(WizardViewSet):
+    description = "Summary of answers a page cannot show raw: files, times, groups."
+    url_name = "summary-display-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(SummaryDisplayForm, name="delivery")
+        .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
