@@ -126,9 +126,9 @@ class RuntimeStep:
 
     @property
     def name(self):
-        """The step's routable name — its `step_name` context, the `name=`
+        """The step's routable name — its `name` context, the `name=`
         `.step()` was declared with. None for a step declared without one."""
-        return (self.declaration.context or {}).get("step_name")
+        return (self.declaration.context or {}).get("name")
 
     @property
     def url(self):
@@ -416,18 +416,6 @@ class Walk:
     replaced_refs: tuple = ()
 
 
-def _normalise_step_context(context):
-    """`.step(..., name=...)` stores the name under the `step_name` context
-    key; accept the same `name` shorthand when querying steps."""
-    if "name" not in context:
-        return context
-    if "step_name" in context:
-        raise TypeError("Pass name or step_name, not both.")
-    context = dict(context)
-    context["step_name"] = context.pop("name")
-    return context
-
-
 class Path:
     """The resolved route through a run: the answered steps in walk order,
     with selected branch arms inlined.
@@ -452,17 +440,17 @@ class Path:
         return self.head is not None
 
     def find_step(self, **context):
-        """Return the single answered step matching `context`, or None. `name=`
-        is shorthand for the `step_name` context key, mirroring
-        `.step(..., name=...)`. Raises `MultipleStepsReturned` on ambiguity."""
-        finder = tree.ContextFinder(_normalise_step_context(context))
+        """Return the single answered step matching `context`, or None —
+        `name=` matches the name `.step(..., name=...)` declared. Raises
+        `MultipleStepsReturned` on ambiguity."""
+        finder = tree.ContextFinder(context)
         finder.visit(self.head)
         return finder.one()
 
     def filter_steps(self, **context):
-        """Return every answered step matching `context` in walk order. Accepts
-        the same `name=` shorthand as `find_step`."""
-        finder = tree.ContextFinder(_normalise_step_context(context))
+        """Return every answered step matching `context` in walk order. Takes
+        the same lookups as `find_step`."""
+        finder = tree.ContextFinder(context)
         finder.visit(self.head)
         return finder.all()
 
@@ -823,9 +811,7 @@ class BoundWizard:
         if url_kwargs is None:
             url_kwargs = {}
         if target is None:
-            walk = self.walk(
-                *args, claim=_normalise_step_context(context), **url_kwargs
-            )
+            walk = self.walk(*args, claim=context, **url_kwargs)
             if not walk.reached or walk.target.data is None:
                 raise StepNotFound(context)
             target = walk.target

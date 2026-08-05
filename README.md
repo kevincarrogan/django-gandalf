@@ -203,7 +203,7 @@ customer_wizard = base.step(ProfileForm, name="profile")
 ```
 
 **Every step is named, and every step gets its own URL.** `name="email"` is
-shorthand for `context={"step_name": "email"}`. From `url_name`, `urls()`
+shorthand for `context={"name": "email"}`. From `url_name`, `urls()`
 publishes three patterns — `signup` (the start URL), `signup-run`
 (`signup/<run_id>/`), and `signup-step` (`signup/<run_id>/email/`); see
 [URLs and routing](#urls-and-routing). A step URL is a *claim*: it either
@@ -803,7 +803,7 @@ If all you wanted was to avoid a name clash, prefixing `url_name` itself
 ### Custom step segments
 
 The step segment comes from `StepNameRouter`, which reads each step's
-`step_name` context and reverses it back into a slug. Routing is an add-on: it
+`name` context and reverses it back into a slug. Routing is an add-on: it
 activates only because the published pattern captures `<slug:gandalf_step>`.
 Subclass the router to key off different context and pass it as
 `step_router_class`:
@@ -826,7 +826,7 @@ wizard = (
 )
 ```
 
-(`name="email"` is only shorthand for `context={"step_name": "email"}`, so a
+(`name="email"` is only shorthand for `context={"name": "email"}`, so a
 router keyed on `slug` wants the context spelled out.)
 
 Every step must be reversible and every segment unique. Both are checked when

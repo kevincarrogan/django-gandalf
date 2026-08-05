@@ -299,7 +299,7 @@ def test_a_stripped_required_file_step_parks_the_cursor_there(request_factory):
     )
     cursor = bound.cursor()
 
-    assert cursor.node.context["step_name"] == "photo"
+    assert cursor.node.context["name"] == "photo"
 
 
 def test_a_stripped_optional_file_step_still_validates(request_factory):
@@ -335,5 +335,5 @@ def test_a_tampered_answer_parks_the_cursor_with_an_errored_render(
     )
     cursor = bound.cursor()
 
-    assert cursor.node.context["step_name"] == "second"
+    assert cursor.node.context["name"] == "second"
     assert cursor.response is not None
