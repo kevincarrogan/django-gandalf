@@ -1,11 +1,16 @@
-<!doctype html>
-<html lang="en">
-<body>
-  <h1>Recreated linear wizard</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Continue</button>
-  </form>
-</body>
-</html>
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/recreated_linear_wizard.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.wizard.back_url %}
+            <p><a href="{{ request.wizard.back_url }}">Back</a></p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}

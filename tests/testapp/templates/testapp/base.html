@@ -1,0 +1,283 @@
+{% load testapp_examples %}<!doctype html>
+{% comment %}
+The shell every demo page sits in: the stylesheet, a bar back to the index,
+and the banner naming whichever example you have landed in.
+
+Wizard templates override two blocks — `content` for the page itself, and
+`template_name` to declare their own path, because several examples exist
+only to prove which template got picked and the page is the only place that
+can say which one it is.
+{% endcomment %}
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}django-gandalf examples{% endblock %}</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f6f7f9;
+            --surface: #ffffff;
+            --text: #1c2024;
+            --muted: #5c6670;
+            --border: #dfe3e8;
+            --accent: #2f5d8c;
+            --accent-soft: #eaf1f8;
+            --warn: #8a4b00;
+            --warn-soft: #fdf1e2;
+            --radius: 8px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #14171a;
+                --surface: #1c2126;
+                --text: #e6e9ec;
+                --muted: #9aa4ae;
+                --border: #2c333a;
+                --accent: #82b1de;
+                --accent-soft: #1e2933;
+                --warn: #e8b57a;
+                --warn-soft: #2a2118;
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            line-height: 1.5;
+        }
+
+        a { color: var(--accent); }
+
+        code, .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.85em;
+        }
+
+        .topbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1rem;
+            align-items: baseline;
+            padding: 0.75rem 1.25rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .topbar__home { font-weight: 600; text-decoration: none; }
+        .topbar__group { color: var(--muted); font-size: 0.9rem; }
+
+        .page {
+            max-width: 46rem;
+            margin: 0 auto;
+            padding: 1.5rem 1.25rem 4rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+        }
+
+        /* --- the banner naming the current example --------------------- */
+
+        .example {
+            max-width: 46rem;
+            margin: 1.5rem auto 0;
+            padding: 1rem 1.25rem;
+            background: var(--accent-soft);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: var(--radius);
+        }
+
+        .example h2 { margin: 0; font-size: 1.05rem; }
+        .example p { margin: 0.4rem 0 0; }
+        .example__description { color: var(--muted); font-size: 0.92rem; }
+
+        .example__note {
+            font-size: 0.92rem;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            background: var(--warn-soft);
+            color: var(--warn);
+        }
+
+        .facts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem 1.25rem;
+            margin: 0.75rem 0 0;
+            font-size: 0.8rem;
+        }
+
+        .facts > div { display: flex; gap: 0.35rem; }
+        .facts dt { color: var(--muted); margin: 0; }
+        .facts dd { margin: 0; font-family: ui-monospace, Menlo, monospace; }
+
+        /* --- forms ------------------------------------------------------ */
+
+        form p { margin: 0 0 1rem; }
+        form label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+
+        form label[for^="id_"] + input[type="checkbox"],
+        form input[type="checkbox"] + label { display: inline; }
+
+        input[type="text"], input[type="email"], input[type="number"],
+        input[type="date"], input[type="time"], input[type="url"],
+        input[type="password"], input[type="file"], select, textarea {
+            width: 100%;
+            padding: 0.45rem 0.6rem;
+            font: inherit;
+            color: inherit;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        input:focus-visible, select:focus-visible, textarea:focus-visible,
+        button:focus-visible, a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .helptext { display: block; color: var(--muted); font-size: 0.85rem; }
+
+        ul.errorlist {
+            list-style: none;
+            margin: 0 0 0.35rem;
+            padding: 0;
+            color: #b3261e;
+            font-size: 0.9rem;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            ul.errorlist { color: #f2a6a0; }
+        }
+
+        button, input[type="submit"] {
+            font: inherit;
+            font-weight: 600;
+            padding: 0.5rem 1.1rem;
+            color: #fff;
+            background: var(--accent);
+            border: 1px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            button, input[type="submit"] { color: #14171a; }
+        }
+
+        /* --- hub task lists --------------------------------------------- */
+
+        .task-list { list-style: none; margin: 0; padding: 0; }
+
+        .task-list__item {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tag {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0.2rem 0.5rem;
+            border-radius: 999px;
+            background: var(--border);
+            color: var(--muted);
+        }
+
+        .tag--incomplete { background: var(--warn-soft); color: var(--warn); }
+        .tag--complete { background: var(--accent-soft); color: var(--accent); }
+
+        /* --- check-your-answers ------------------------------------------ */
+
+        .summary { margin: 0 0 1.5rem; }
+
+        .summary dt {
+            font-weight: 600;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .summary dd {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem 1rem;
+            justify-content: space-between;
+            margin: 0.25rem 0 0.75rem;
+        }
+
+        .summary dd span { color: var(--muted); }
+
+        .step-heading {
+            margin: 0 0 1rem;
+            font-size: 1.4rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        /* --- index -------------------------------------------------------- */
+
+        .lede { color: var(--muted); }
+
+        .group { margin: 2.5rem 0 0; }
+        .group > h2 { margin: 0 0 0.35rem; font-size: 1.15rem; }
+        .group__blurb { margin: 0 0 1rem; color: var(--muted); font-size: 0.92rem; }
+
+        .examples { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+
+        .examples li {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.7rem 0.9rem;
+        }
+
+        .examples a { font-weight: 600; text-decoration: none; }
+        .examples a:hover { text-decoration: underline; }
+        .examples .mono { color: var(--muted); margin-left: 0.5rem; }
+        .examples p { margin: 0.2rem 0 0; font-size: 0.92rem; color: var(--muted); }
+        .examples .note { color: var(--warn); }
+    </style>
+</head>
+<body>
+    {% current_example as example %}
+    <header class="topbar">
+        <a class="topbar__home" href="{% url 'index' %}">django-gandalf examples</a>
+        {% if example.group %}<span class="topbar__group">{{ example.group.title }}</span>{% endif %}
+    </header>
+
+    {% if example.entry %}
+        <aside class="example">
+            <h2>{{ example.entry.label }}</h2>
+            <p class="example__description">{{ example.entry.description }}</p>
+            {% if example.entry.note %}<p class="example__note">{{ example.entry.note }}</p>{% endif %}
+            <dl class="facts">
+                <div><dt>URL name</dt><dd>{{ example.entry.url_name }}</dd></div>
+                <div><dt>Rendered by</dt><dd>{% block template_name %}(unnamed){% endblock %}</dd></div>
+                {% if example.step %}<div><dt>Step</dt><dd>{{ example.step }}</dd></div>{% endif %}
+                {% if example.run_id %}<div><dt>Run</dt><dd>{{ example.run_id }}</dd></div>{% endif %}
+            </dl>
+        </aside>
+    {% endif %}
+
+    <main class="page">
+        {% if example.step %}<h1 class="step-heading">{{ example.step }}</h1>{% endif %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

@@ -1,30 +1,37 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>django-gandalf test wizards</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-        h1 { margin-bottom: 0.25rem; }
-        p.lead { color: #555; margin-top: 0; }
-        ul { list-style: none; padding: 0; }
-        li { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 6px; }
-        li a { font-weight: 600; text-decoration: none; }
-        li .name { font-family: ui-monospace, monospace; color: #888; font-size: 0.85rem; margin-left: 0.5rem; }
-        li p { margin: 0.25rem 0 0; color: #444; }
-    </style>
-</head>
-<body>
-    <h1>django-gandalf test wizards</h1>
-    <p class="lead">Entry points exposed by the test app for manual smoke testing.</p>
-    <ul>
-        {% for entry in entries %}
-            <li>
-                <a href="{{ entry.url }}">{{ entry.view_name }}</a>
-                <span class="name">{{ entry.name }}</span>
-                <p>{{ entry.description|default:"(no description)" }}</p>
-            </li>
-        {% endfor %}
-    </ul>
-</body>
-</html>
+{% extends "testapp/base.html" %}
+
+{% block title %}django-gandalf examples{% endblock %}
+
+{% block content %}
+    <h1>django-gandalf examples</h1>
+    <p class="lede">
+        Every wizard the test app mounts, grouped by the thing it demonstrates.
+        These are the same viewsets the test suite drives, so anything you can
+        click through here is behaviour something asserts on — and each page
+        carries a banner naming the example, its description and the template
+        rendering it.
+    </p>
+    <p class="lede">
+        Finishing a wizard lands you on a plain-text page rather than a styled
+        one. That is deliberate: <code>done()</code> returns a bare
+        <code>HttpResponse</code> whose exact bytes the tests assert on. Use
+        the browser's back button, or the bar above, to get out.
+    </p>
+
+    {% for group in groups %}
+        <section class="group">
+            <h2>{{ group.title }}</h2>
+            <p class="group__blurb">{{ group.blurb }}</p>
+            <ul class="examples">
+                {% for example in group.examples %}
+                    <li>
+                        <a href="{{ example.url }}">{{ example.label }}</a>
+                        <span class="mono">{{ example.url_name }}</span>
+                        <p>{{ example.description|default:"(no description)" }}</p>
+                        {% if example.note %}<p class="note">{{ example.note }}</p>{% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+{% endblock %}

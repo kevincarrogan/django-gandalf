@@ -1,20 +1,29 @@
-<!doctype html>
-<html lang="en">
-<body>
-  <h1>Editing branching wizard</h1>
-  {% if request.wizard.back_url %}
-    <p><a href="{{ request.wizard.back_url }}">Back</a></p>
-  {% endif %}
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Continue</button>
-  </form>
-  <h2>Edit prior answers</h2>
-  <ul>
-    <li><a href="../account_type/">Edit account type</a></li>
-    <li><a href="../business_name/">Edit business name</a></li>
-    <li><a href="../preferred_name/">Edit preferred name</a></li>
-  </ul>
-</body>
-</html>
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/editing_wizard.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.wizard.back_url %}
+            <p><a href="{{ request.wizard.back_url }}">Back</a></p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+
+        <h2>Edit prior answers</h2>
+        <p class="lede">
+            Hard-coded step URLs, so they only name real steps in the branching
+            examples. Elsewhere they are a demonstration in themselves: a step
+            URL is a claim, and one the run cannot reach redirects you back to
+            where the wizard actually is.
+        </p>
+        <ul>
+            <li><a href="../account_type/">Edit account type</a></li>
+            <li><a href="../business_name/">Edit business name</a></li>
+            <li><a href="../preferred_name/">Edit preferred name</a></li>
+        </ul>
+    </div>
+{% endblock %}

@@ -1,11 +1,13 @@
-<!doctype html>
-<html lang="en">
-<body>
-  <h1>First step</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Continue</button>
-  </form>
-</body>
-</html>
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/single_step_wizard.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}
