@@ -154,6 +154,34 @@ body:
 
 That is the whole thing: two forms, a viewset, one URL include.
 
+### Linking to the wizard
+
+`urls()` derives three URL names from `url_name`, so getting a user into the
+wizard is ordinary Django reversing:
+
+| URL name | Pattern | What it is |
+| --- | --- | --- |
+| `signup` | `signup/` | **the start URL** — begins a fresh run |
+| `signup-run` | `signup/<run_id>/` | a run — redirects to wherever it has got to |
+| `signup-step` | `signup/<run_id>/email/` | one step of a run |
+
+The start URL is the one you publish, and its name is `url_name` verbatim:
+
+```python
+from django.urls import reverse
+
+reverse("signup")            # "/signup/"
+```
+
+```django
+<a href="{% url 'signup' %}">Sign up</a>
+```
+
+The other two are the wizard's own business — it redirects between them as the
+user walks — though being reversible is what makes a run resumable from a link.
+See [URLs and routing](#urls-and-routing) for mount prefixes that capture
+kwargs, namespaces, and the hooks that build these URLs from inside the viewset.
+
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/signup/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L37-L54)
 
 ---
@@ -176,10 +204,11 @@ customer_wizard = base.step(ProfileForm, name="profile")
 
 **Every step is named, and every step gets its own URL.** `name="email"` is
 shorthand for `context={"step_name": "email"}`. From `url_name`, `urls()`
-publishes three patterns — the start URL, the bare run URL
-(`signup/<run_id>/`), and the step URL (`signup/<run_id>/email/`). A step URL is
-a *claim*: it either renders that step or redirects to wherever the run actually
-is, so a stale link can never land an answer on the wrong step.
+publishes three patterns — `signup` (the start URL), `signup-run`
+(`signup/<run_id>/`), and `signup-step` (`signup/<run_id>/email/`); see
+[URLs and routing](#urls-and-routing). A step URL is a *claim*: it either
+renders that step or redirects to wherever the run actually is, so a stale link
+can never land an answer on the wrong step.
 
 **A run re-proves itself on every request.** Gandalf stores raw submissions, not
 "how far you got". On each request it replays the stored answers through their
@@ -564,6 +593,160 @@ above does not guard, because `account` always precedes `billing`.
 
 ---
 
+## URLs and routing
+
+`WizardViewSet.urls()` publishes every URL a wizard needs, all derived from
+`url_name` — which is therefore required, and `urls()` raises
+`ImproperlyConfigured` without it.
+
+| URL name | Pattern | What a request there does |
+| --- | --- | --- |
+| `signup` | `signup/` | starts a fresh run, then redirects to its run URL |
+| `signup-run` | `signup/<run_id>/` | redirects to wherever that run's cursor actually is |
+| `signup-step` | `signup/<run_id>/<step>/` | renders that step, or redirects if the run is elsewhere |
+
+Only the first is a destination you publish. The wizard redirects between the
+other two itself as the user walks, and a step URL is a *claim* rather than an
+instruction — the run's own position always wins.
+
+### Linking in from elsewhere
+
+There is no gandalf-specific helper for this, and none is needed — the names
+above are ordinary Django URL names:
+
+```python
+from django.urls import reverse
+
+reverse("signup")            # from another view, an email, a management command
+```
+
+```django
+<a href="{% url 'signup' %}">Sign up</a>
+```
+
+`get_start_url()` is *not* the tool for this. It is an instance method that
+reads `self.kwargs` off a live request, so it only exists inside a viewset
+handling a request. From anywhere else, reverse the name.
+
+### Mount prefixes that capture kwargs
+
+A wizard mounted under a prefix with captured kwargs — like the
+[dynamic onboarding example](#dynamic-wizards-get_wizard), mounted at
+`onboarding/<slug:plan>/` — needs those kwargs to reverse:
+
+```python
+reverse("onboarding", kwargs={"plan": "team"})     # "/onboarding/team/"
+```
+
+Inside the wizard you never pass them by hand. `get_url_kwargs()` takes whatever
+the request captured, drops the wizard's own `run_id` and `gandalf_step`, and
+forwards the rest into every reverse — so a run started at `/onboarding/team/`
+stays under `/onboarding/team/` for the whole walk. Override it when reversing
+needs context the URL does not capture.
+
+### Reversing from inside the viewset
+
+Three hooks build the wizard's own URLs. Each forwards `get_url_kwargs()`, so an
+override that keeps that call keeps mount-prefix support:
+
+| Hook | Reverses | Called for |
+| --- | --- | --- |
+| `get_start_url()` | `signup` | a run that cannot be continued — unknown, obliterated, or already completed (see `run_unavailable()`) |
+| `get_wizard_url(run_id)` | `signup-run` | the redirect after a fresh run is created, and when a walk has no step left to land on |
+| `get_step_url(run_id, segment)` | `signup-step` | every step-to-step redirect |
+
+### Namespaces
+
+The names `urls()` publishes are global, and the three hooks reverse them
+unprefixed. Mounting under a namespace therefore breaks the wizard's own
+redirects — the first one raises `NoReverseMatch` — unless you override all
+three:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    path(
+        "signup/",
+        include((SignupWizardViewSet.urls(), "signup"), namespace="checkout"),
+    ),
+]
+```
+
+```python
+from django.urls import reverse
+
+from gandalf.viewsets import WizardViewSet
+
+
+class SignupWizardViewSet(WizardViewSet):
+    url_name = "signup"
+    # ...
+
+    def get_start_url(self):
+        return reverse("checkout:signup", kwargs=self.get_url_kwargs())
+
+    def get_wizard_url(self, run_id):
+        return reverse(
+            "checkout:signup-run",
+            kwargs={**self.get_url_kwargs(), "run_id": run_id},
+        )
+
+    def get_step_url(self, run_id, step_segment):
+        return reverse(
+            "checkout:signup-step",
+            kwargs={
+                **self.get_url_kwargs(),
+                "run_id": run_id,
+                "gandalf_step": step_segment,
+            },
+        )
+```
+
+If all you wanted was to avoid a name clash, prefixing `url_name` itself
+(`url_name = "checkout-signup"`) is less work and needs no overrides.
+
+### Custom step segments
+
+The step segment comes from `StepNameRouter`, which reads each step's
+`step_name` context and reverses it back into a slug. Routing is an add-on: it
+activates only because the published pattern captures `<slug:gandalf_step>`.
+Subclass the router to key off different context and pass it as
+`step_router_class`:
+
+```python
+from gandalf.wizard import StepNameRouter, Wizard
+
+
+class StepSlugRouter(StepNameRouter):
+    context_key = "slug"
+
+
+wizard = (
+    Wizard()
+    .step(EmailForm, context={"slug": "email-address"})
+    .configure(
+        template_name="signup/step.html",   # a pre-configured wizard is taken
+        step_router_class=StepSlugRouter,   # as-is, so set this here too
+    )
+)
+```
+
+(`name="email"` is only shorthand for `context={"step_name": "email"}`, so a
+router keyed on `slug` wants the context spelled out.)
+
+Every step must be reversible and every segment unique. Both are checked when
+the wizard is resolved, across the whole declared tree rather than just the
+steps this walk happens to reach — a walk stops at the cursor and so could not
+see a duplicate beyond it. A step with no routable name, or a segment naming two
+steps, raises `ImproperlyConfigured` rather than quietly serving an unreachable
+step.
+
+For a scheme the router cannot express at all, skip `urls()`, write the patterns
+yourself, and override the three hooks above.
+
+---
+
 ## Escaping the wizard
 
 Sometimes an answer means the user should not be in the wizard any more — an
@@ -698,7 +881,9 @@ def reopen_contact(request):
             request, payload, expected_label="contact"
         )
     except (StashNotFound, InvalidStash):
-        return redirect("contact-section")  # nothing stashed — start fresh
+        # Nothing stashed — start fresh at the wizard's start URL, which
+        # `urls()` published under `url_name`.
+        return redirect("contact-section")
     return redirect(url)
 ```
 
@@ -745,8 +930,10 @@ django-gandalf makes the `wizard_driver` fixture available with no conftest
 wiring (it builds on [pytest-django](https://pytest-django.readthedocs.io/)'s
 `client` fixture, so pytest-django must be installed).
 
-`wizard_driver` is a factory: give it your viewset's `url_name` and drive the
-whole wizard in one call. For the quickstart's signup wizard:
+`wizard_driver` is a factory: give it your viewset's `url_name` — the driver
+reverses the same three names `urls()` published (see
+[URLs and routing](#urls-and-routing)), so no test ever hand-builds a path — and
+drive the whole wizard in one call. For the quickstart's signup wizard:
 
 ```python
 def test_signup_collects_both_steps(wizard_driver):
@@ -836,7 +1023,8 @@ The same keyword pattern applies to every touch point on the configured wizard �
 so you only configure what you need. For a custom URL scheme, subclass
 `StepNameRouter` (routing on a different context key) and pass it as
 `step_router_class`, or write the URL patterns yourself and override
-`get_wizard_url()` / `get_step_url()` on the viewset.
+`get_start_url()` / `get_wizard_url()` / `get_step_url()` on the viewset — see
+[URLs and routing](#urls-and-routing).
 
 For a runtime-level view of how the pieces fit together, see
 [ARCHITECTURE.md](ARCHITECTURE.md).
