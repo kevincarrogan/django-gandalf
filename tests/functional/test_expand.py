@@ -8,129 +8,111 @@ steps its own submission implied.
 
 from http import HTTPStatus
 
-import pytest
 from django.core.exceptions import ImproperlyConfigured
-from django.urls import reverse
+import pytest
 
 from tests.testapp.counting import counting_walks
 
 
 @pytest.fixture
-def expand_url():
-    return reverse("expand-wizard")
+def started(wizard_driver):
+    return wizard_driver("expand-wizard").start()
 
 
-@pytest.fixture
-def run_url():
-    def build(run_id):
-        return reverse("expand-wizard-run", kwargs={"run_id": run_id})
-
-    return build
-
-
-def _step(run, seg):
-    return f"{run}{seg}/"
-
-
-@pytest.fixture
-def started(client, expand_url, run_url):
-    client.get(expand_url)
-    run_id = list(client.session["gandalf_runs"])[0]
-    return run_id, run_url(run_id)
-
-
-def _state(client, run_id):
-    return client.session["gandalf_runs"][run_id]["state"]
-
-
-def test_answering_the_count_grows_that_many_steps(client, started):
-    run_id, run = started
-
-    response = client.post(_step(run, "count"), data={"count": "2"})
+def test_answering_the_count_grows_that_many_steps(started):
+    response = started.post_step("count", {"count": "2"})
 
     # The expansion built two item steps in the same walk the count validated
     # in, so the run parks on the first of them rather than completing.
     assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == _step(run, "item-0")
+    assert response["Location"] == started.step_url("item-0")
 
 
-def test_the_count_is_answered_in_a_single_walk(client, started):
-    run_id, run = started
-
+def test_the_count_is_answered_in_a_single_walk(started):
     with counting_walks() as counts:
-        client.post(_step(run, "count"), data={"count": "3"})
+        started.post_step("count", {"count": "3"})
 
     # One walk, not two: the subtree is grown after the count validates,
     # within the same pass, so there is no stale tree to refresh against.
     assert counts.walks == 1
 
 
-def test_items_store_as_a_positional_list(client, started):
-    run_id, run = started
-    client.post(_step(run, "count"), data={"count": "2"}, follow=True)
-    client.post(_step(run, "item-0"), data={"name": "Ada"}, follow=True)
-    client.post(_step(run, "item-1"), data={"name": "Grace"}, follow=True)
+def test_items_store_as_a_positional_list(started):
+    started.post_steps(
+        [
+            ("count", {"count": "2"}),
+            ("item-0", {"name": "Ada"}),
+            ("item-1", {"name": "Grace"}),
+        ]
+    )
 
-    assert _state(client, run_id) == [
+    assert started.state == [
         {"step": {"count": "2"}},
         {"expand": [{"step": {"name": "Ada"}}, {"step": {"name": "Grace"}}]},
     ]
 
 
-def test_completion_reads_every_expanded_answer(client, started):
-    run_id, run = started
-    client.post(_step(run, "count"), data={"count": "2"}, follow=True)
-    client.post(_step(run, "item-0"), data={"name": "Ada"}, follow=True)
-    client.post(_step(run, "item-1"), data={"name": "Grace"}, follow=True)
+def test_completion_reads_every_expanded_answer(started):
+    started.post_steps(
+        [
+            ("count", {"count": "2"}),
+            ("item-0", {"name": "Ada"}),
+            ("item-1", {"name": "Grace"}),
+        ]
+    )
 
-    response = client.post(_step(run, "review"), data={"confirmed": "on"})
+    response = started.post_step("review", {"confirmed": "on"})
 
     assert response.content == b"completed items=Ada,Grace"
 
 
-def test_raising_the_count_keeps_answers_and_appends_a_hole(client, started):
-    run_id, run = started
-    client.post(_step(run, "count"), data={"count": "2"}, follow=True)
-    client.post(_step(run, "item-0"), data={"name": "Ada"}, follow=True)
-    client.post(_step(run, "item-1"), data={"name": "Grace"}, follow=True)
+def test_raising_the_count_keeps_answers_and_appends_a_hole(started):
+    started.post_steps(
+        [
+            ("count", {"count": "2"}),
+            ("item-0", {"name": "Ada"}),
+            ("item-1", {"name": "Grace"}),
+        ]
+    )
 
     # Go back and grow the list. Positional storage keeps the two answers and
     # parks on the newly-created third slot.
-    response = client.post(_step(run, "count"), data={"count": "3"})
+    response = started.post_step("count", {"count": "3"})
 
-    assert response["Location"] == _step(run, "item-2")
-    assert _state(client, run_id)[1] == {
+    assert response["Location"] == started.step_url("item-2")
+    assert started.state[1] == {
         "expand": [{"step": {"name": "Ada"}}, {"step": {"name": "Grace"}}]
     }
 
 
-def test_lowering_the_count_drops_the_trailing_answer(client, started):
-    run_id, run = started
-    client.post(_step(run, "count"), data={"count": "2"}, follow=True)
-    client.post(_step(run, "item-0"), data={"name": "Ada"}, follow=True)
-    client.post(_step(run, "item-1"), data={"name": "Grace"}, follow=True)
+def test_lowering_the_count_drops_the_trailing_answer(started):
+    started.post_steps(
+        [
+            ("count", {"count": "2"}),
+            ("item-0", {"name": "Ada"}),
+            ("item-1", {"name": "Grace"}),
+        ]
+    )
 
     # Shrinking the list drops the tail by position: Ada stays, Grace goes.
-    client.post(_step(run, "count"), data={"count": "1"}, follow=True)
+    started.post_step("count", {"count": "1"}, follow=True)
 
-    assert _state(client, run_id) == [
+    assert started.state == [
         {"step": {"count": "1"}},
         {"expand": [{"step": {"name": "Ada"}}]},
     ]
 
 
-def test_an_empty_expansion_is_skipped(client):
+def test_an_empty_expansion_is_skipped(wizard_driver):
     """A builder that produces no steps leaves nothing behind — the run walks
     straight past the expansion to the step after it."""
-    client.get(reverse("empty-expand-wizard"))
-    run_id = list(client.session["gandalf_runs"])[0]
-    run = reverse("empty-expand-wizard-run", kwargs={"run_id": run_id})
+    run = wizard_driver("empty-expand-wizard").start()
 
-    response = client.post(_step(run, "first"), data={"name": "Ada"})
+    response = run.post_step("first", {"name": "Ada"})
 
-    assert response["Location"] == _step(run, "review")
+    assert response["Location"] == run.step_url("review")
     # The empty expansion serialises to nothing, so state holds only the step.
-    assert _state(client, run_id) == [{"step": {"name": "Ada"}}]
+    assert run.state == [{"step": {"name": "Ada"}}]
 
 
 def test_unroutable_expanded_step_is_rejected_when_built(client, started):
@@ -158,17 +140,13 @@ def test_unroutable_expanded_step_is_rejected_when_built(client, started):
         def done(self, bound_wizard):  # pragma: no cover
             return HttpResponse("done")
 
-    client.get(reverse("expand-wizard"))
-    run_id = list(client.session["gandalf_runs"])[0]
-    session = client.session
-    session["gandalf_runs"][run_id]["state"] = [{"step": {"count": "1"}}]
-    session.save()
+    started.seed_state([{"step": {"count": "1"}}])
 
     with pytest.raises(ImproperlyConfigured, match="routable name"):
-        _drive(_ViewSet, client, run_id)
+        _drive(_ViewSet, client, started.run_id)
 
 
-def test_expansion_cannot_contain_an_expansion(client):
+def test_expansion_cannot_contain_an_expansion(client, started):
     from django.http import HttpResponse
 
     from gandalf.viewsets import WizardViewSet
@@ -189,14 +167,10 @@ def test_expansion_cannot_contain_an_expansion(client):
         def done(self, bound_wizard):  # pragma: no cover
             return HttpResponse("done")
 
-    client.get(reverse("expand-wizard"))
-    run_id = list(client.session["gandalf_runs"])[0]
-    session = client.session
-    session["gandalf_runs"][run_id]["state"] = [{"step": {"count": "1"}}]
-    session.save()
+    started.seed_state([{"step": {"count": "1"}}])
 
     with pytest.raises(ImproperlyConfigured, match="cannot contain another expansion"):
-        _drive(_ViewSet, client, run_id)
+        _drive(_ViewSet, client, started.run_id)
 
 
 def _drive(viewset_class, client, run_id):
@@ -213,27 +187,24 @@ def _drive(viewset_class, client, run_id):
 # inside expansions, mirroring the analogous PreservedBranch scenarios. ---
 
 
-def _sealable_run(client):
-    client.get(reverse("sealable-expand-wizard"))
-    run_id = list(client.session["gandalf_runs"])[0]
-    run = reverse("sealable-expand-wizard-run", kwargs={"run_id": run_id})
-    return run_id, run
+@pytest.fixture
+def sealable_run(wizard_driver):
+    return wizard_driver("sealable-expand-wizard").start()
 
 
-def test_path_read_is_safe_while_an_expansion_is_sealed(client):
+def test_path_read_is_safe_while_an_expansion_is_sealed(sealable_run):
     """The gate is unanswered, so the walk seals before the expansion. A GET
     that renders the gate reads `path`, which must flatten over the sealed
     expansion without rebuilding it."""
-    run_id, run = _sealable_run(client)
-    session = client.session
-    session["gandalf_runs"][run_id]["state"] = [
-        {"step": {"count": "1"}},
-        {"step": None},
-        {"expand": [{"step": {"name": "Ada"}}]},
-    ]
-    session.save()
+    sealable_run.seed_state(
+        [
+            {"step": {"count": "1"}},
+            {"step": None},
+            {"expand": [{"step": {"name": "Ada"}}]},
+        ]
+    )
 
-    response = client.get(_step(run, "gate"))
+    response = sealable_run.get_step("gate")
 
     assert response.status_code == HTTPStatus.OK
     # The count is on the active route; the sealed expansion contributes
@@ -241,45 +212,45 @@ def test_path_read_is_safe_while_an_expansion_is_sealed(client):
     assert response.context["path_names"] == ["count"]
 
 
-def test_an_invalid_answer_before_a_sealed_expansion_persists_it_verbatim(client):
-    run_id, run = _sealable_run(client)
-    session = client.session
-    session["gandalf_runs"][run_id]["state"] = [
-        {"step": {"count": "1"}},
-        {"step": None},
-        {"expand": [{"step": {"name": "Ada"}}]},
-    ]
-    session.save()
+def test_an_invalid_answer_before_a_sealed_expansion_persists_it_verbatim(
+    sealable_run,
+):
+    sealable_run.seed_state(
+        [
+            {"step": {"count": "1"}},
+            {"step": None},
+            {"expand": [{"step": {"name": "Ada"}}]},
+        ]
+    )
 
     # An invalid gate answer parks on the gate and persists — the sealed
     # expansion is serialised back untouched rather than rebuilt.
-    client.post(_step(run, "gate"), data={"name": ""}, follow=True)
+    sealable_run.post_step("gate", {"name": ""}, follow=True)
 
-    assert client.session["gandalf_runs"][run_id]["state"][2] == {
-        "expand": [{"step": {"name": "Ada"}}]
-    }
+    assert sealable_run.state[2] == {"expand": [{"step": {"name": "Ada"}}]}
 
 
-def test_merge_cleaned_data_over_an_expanded_run_at_completion(client):
-    run_id, run = _sealable_run(client)
-    client.post(_step(run, "count"), data={"count": "1"}, follow=True)
-    client.post(_step(run, "gate"), data={"name": "Ada"}, follow=True)
-    client.post(_step(run, "item-0"), data={"name": "Grace"}, follow=True)
+def test_merge_cleaned_data_over_an_expanded_run_at_completion(sealable_run):
+    sealable_run.post_steps(
+        [
+            ("count", {"count": "1"}),
+            ("gate", {"name": "Ada"}),
+            ("item-0", {"name": "Grace"}),
+        ]
+    )
 
-    response = client.post(_step(run, "review"), data={"confirmed": "on"})
+    response = sealable_run.post_step("review", {"confirmed": "on"})
 
     # done() folds cleaned_data across the runtime tree, descending the
     # expansion.
     assert response.content == b"count=1 name=Grace"
 
 
-def test_an_expansion_can_build_a_branch(client):
-    client.get(reverse("branching-expand-wizard"))
-    run_id = list(client.session["gandalf_runs"])[0]
-    run = reverse("branching-expand-wizard-run", kwargs={"run_id": run_id})
+def test_an_expansion_can_build_a_branch(wizard_driver):
+    run = wizard_driver("branching-expand-wizard").start()
 
     # Answering the count builds an expansion whose subtree is a branch; the
     # run parks on the selected arm's first step.
-    response = client.post(_step(run, "count"), data={"count": "1"})
+    response = run.post_step("count", {"count": "1"})
 
-    assert response["Location"] == _step(run, "biz")
+    assert response["Location"] == run.step_url("biz")

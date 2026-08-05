@@ -3,14 +3,14 @@
 Each example in ``README.md`` has a runnable counterpart in
 ``tests/testapp/readme_examples.py`` mounted under ``readme/``. These tests
 exercise those counterparts end to end, so a README snippet that stops working
-(or a "Try it live" link that stops resolving) fails CI.
+(or a "Try it live" link that stops resolving) fails CI. The "Testing your
+wizards" README section is kept honest the same way: its snippets are these
+tests, driven through ``gandalf.testing``.
 """
 
-import tempfile
 from http import HTTPStatus
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.urls import reverse
 import pytest
 from pytest_django.asserts import (
@@ -19,39 +19,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-
-def start_url(name, url_kwargs=None):
-    return reverse(name, kwargs=url_kwargs or None)
-
-
-def run_url(name, run_id, url_kwargs=None):
-    return reverse(f"{name}-run", kwargs={**(url_kwargs or {}), "run_id": run_id})
-
-
-def step_url(name, run_id, step, url_kwargs=None):
-    return f"{run_url(name, run_id, url_kwargs)}{step}/"
-
-
-def start_run(client, name, url_kwargs=None):
-    """GET the start URL and return the freshly created run id."""
-    client.get(start_url(name, url_kwargs))
-    runs = client.session["gandalf_runs"]
-    assert len(runs) == 1
-    return next(iter(runs))
-
-
-def drive(client, name, steps, url_kwargs=None):
-    """Run a wizard to completion, POSTing ``steps`` as ``(step, data)`` pairs.
-
-    Returns the final (followed) response.
-    """
-    run_id = start_run(client, name, url_kwargs)
-    response = None
-    for step, data in steps:
-        response = client.post(
-            step_url(name, run_id, step, url_kwargs), data=data, follow=True
-        )
-    return response, run_id
+from gandalf.testing import stored_stash
 
 
 # --- Every start URL reverses (the "Try it live" links resolve) -------------
@@ -72,8 +40,12 @@ def drive(client, name, steps, url_kwargs=None):
         ("readme-stash", None),
     ],
 )
-def test_readme_example_start_url_is_reachable(client, name, url_kwargs):
-    response = client.get(start_url(name, url_kwargs))
+def test_readme_example_start_url_is_reachable(client, wizard_driver, name, url_kwargs):
+    if url_kwargs is None:
+        url_kwargs = {}
+    driver = wizard_driver(name, **url_kwargs)
+
+    response = client.get(driver.start_url)
 
     # The start URL creates a run and redirects to it, so the link is live.
     assert response.status_code == HTTPStatus.FOUND
@@ -91,47 +63,53 @@ def test_demo_index_page_lists_the_example_wizards(client):
 # --- Quickstart: linear signup ----------------------------------------------
 
 
-def test_signup_wizard_collects_and_merges_both_steps(client):
-    response, _ = drive(
-        client,
-        "readme-signup",
+def test_signup_wizard_collects_and_merges_both_steps(wizard_driver):
+    # README "Testing your wizards" drive() snippet.
+    response, run = wizard_driver("readme-signup").drive(
         [
             ("name", {"name": "Ada"}),
             ("email", {"email": "ada@example.com"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Signed up Ada <ada@example.com>"
+    assert run.is_completed
+
+
+def test_signup_first_answer_advances_and_stores(wizard_driver):
+    # README "Testing your wizards" step-at-a-time snippet.
+    run = wizard_driver("readme-signup").start()
+
+    response = run.post_step("name", {"name": "Ada"})
+
+    assert response["Location"] == run.step_url("email")
+    assert run.state == [{"step": {"name": "Ada"}}]
 
 
 # --- Branching --------------------------------------------------------------
 
 
-def test_branching_wizard_takes_business_arm(client):
-    response, _ = drive(
-        client,
-        "readme-branching",
+def test_branching_wizard_takes_business_arm(wizard_driver):
+    response, _ = wizard_driver("readme-branching").drive(
         [
             ("account_type", {"account_type": "business"}),
             ("business", {"business_name": "Acme"}),
             ("review", {"confirmed": "on"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Onboarded Acme"
 
 
-def test_branching_wizard_takes_personal_arm(client):
-    response, _ = drive(
-        client,
-        "readme-branching",
+def test_branching_wizard_takes_personal_arm(wizard_driver):
+    response, _ = wizard_driver("readme-branching").drive(
         [
             ("account_type", {"account_type": "personal"}),
             ("personal", {"preferred_name": "Ada"}),
             ("review", {"confirmed": "on"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -141,31 +119,25 @@ def test_branching_wizard_takes_personal_arm(client):
 # --- Dynamic wizards: get_wizard() ------------------------------------------
 
 
-def test_onboarding_solo_plan_skips_the_company_step(client):
-    response, _ = drive(
-        client,
-        "readme-onboarding",
+def test_onboarding_solo_plan_skips_the_company_step(wizard_driver):
+    response, _ = wizard_driver("readme-onboarding", plan="solo").drive(
         [
             ("name", {"name": "Ada"}),
             ("email", {"email": "ada@example.com"}),
-        ],
-        url_kwargs={"plan": "solo"},
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Onboarded Ada on the solo plan"
 
 
-def test_onboarding_team_plan_inserts_the_company_step(client):
-    response, _ = drive(
-        client,
-        "readme-onboarding",
+def test_onboarding_team_plan_inserts_the_company_step(wizard_driver):
+    response, _ = wizard_driver("readme-onboarding", plan="team").drive(
         [
             ("name", {"name": "Ada"}),
             ("company", {"business_name": "Acme"}),
             ("email", {"email": "ada@example.com"}),
-        ],
-        url_kwargs={"plan": "team"},
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -175,16 +147,14 @@ def test_onboarding_team_plan_inserts_the_company_step(client):
 # --- .expand() --------------------------------------------------------------
 
 
-def test_expand_wizard_grows_item_steps_mid_walk(client):
-    response, _ = drive(
-        client,
-        "readme-expand",
+def test_expand_wizard_grows_item_steps_mid_walk(wizard_driver):
+    response, _ = wizard_driver("readme-expand").drive(
         [
             ("count", {"count": "2"}),
             ("item-0", {"name": "x"}),
             ("item-1", {"name": "y"}),
             ("review", {"confirmed": "on"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -194,24 +164,24 @@ def test_expand_wizard_grows_item_steps_mid_walk(client):
 # --- File uploads -----------------------------------------------------------
 
 
-def test_file_upload_wizard_stores_and_reports_the_upload(client):
-    with tempfile.TemporaryDirectory() as media_root:
-        with override_settings(MEDIA_ROOT=media_root):
-            run_id = start_run(client, "readme-file-upload")
-            client.post(
-                step_url("readme-file-upload", run_id, "photo"),
-                data={
+def test_file_upload_wizard_stores_and_reports_the_upload(
+    wizard_driver, isolated_media_root
+):
+    run = wizard_driver("readme-file-upload").start()
+
+    response = run.post_steps(
+        [
+            (
+                "photo",
+                {
                     "photo": SimpleUploadedFile(
                         "avatar.png", b"bytes", content_type="image/png"
                     )
                 },
-                follow=True,
-            )
-            response = client.post(
-                step_url("readme-file-upload", run_id, "name"),
-                data={"name": "Ada"},
-                follow=True,
-            )
+            ),
+            ("name", {"name": "Ada"}),
+        ]
+    )
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Uploaded avatar.png"
@@ -220,44 +190,34 @@ def test_file_upload_wizard_stores_and_reports_the_upload(client):
 # --- Step views: bringing your own FormView ---------------------------------
 
 
-def test_form_view_step_uses_its_own_template(client):
-    run_id = start_run(client, "readme-form-view")
+def test_form_view_step_uses_its_own_template(wizard_driver):
+    run = wizard_driver("readme-form-view").start()
 
-    response = client.post(
-        step_url("readme-form-view", run_id, "account"),
-        data={"email": "ada@example.com"},
-        follow=True,
-    )
+    response = run.post_step("account", {"email": "ada@example.com"}, follow=True)
 
     # The step's own template wins over the viewset's.
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/other_linear_wizard.html")
 
 
-def test_form_view_step_prefills_from_a_prior_answer(client):
-    run_id = start_run(client, "readme-form-view")
+def test_form_view_step_prefills_from_a_prior_answer(wizard_driver):
+    run = wizard_driver("readme-form-view").start()
 
-    response = client.post(
-        step_url("readme-form-view", run_id, "account"),
-        data={"email": "ada@example.com"},
-        follow=True,
-    )
+    response = run.post_step("account", {"email": "ada@example.com"}, follow=True)
 
     # get_initial() read the account step's answer off request.wizard.path.
     assert response.context["form"]["company"].value() == "example.com"
 
 
-def test_form_view_step_survives_being_walked_past(client):
+def test_form_view_step_survives_being_walked_past(wizard_driver):
     # The step's get_initial() reads run state, and every later request
     # replays the step — re-entering that read from inside the walk.
-    response, _ = drive(
-        client,
-        "readme-form-view",
+    response, _ = wizard_driver("readme-form-view").drive(
         [
             ("account", {"email": "ada@example.com"}),
             ("billing", {"company": "Acme", "country": "IE"}),
             ("confirm", {"confirmed": "on"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -267,50 +227,39 @@ def test_form_view_step_survives_being_walked_past(client):
 # --- Escaping the wizard ----------------------------------------------------
 
 
-def test_escape_wizard_parks_a_known_email(client):
-    run_id = start_run(client, "readme-escape")
+def test_escape_wizard_parks_a_known_email(wizard_driver):
+    run = wizard_driver("readme-escape").start()
 
-    response = client.post(
-        step_url("readme-escape", run_id, "email"),
-        data={"email": "existing@example.com"},
-    )
+    response = run.post_step("email", {"email": "existing@example.com"})
 
     # Park redirects the user out (to the landing page) and does not store the
     # answer, so the run keeps no stored steps and stays on the email step.
     assertRedirects(response, reverse("escape-landing"), fetch_redirect_response=False)
-    assert client.session["gandalf_runs"][run_id].get("state", []) == []
+    assert run.state == []
 
 
-def test_escape_wizard_continues_for_a_new_email(client):
-    response, run_id = drive(
-        client,
-        "readme-escape",
+def test_escape_wizard_continues_for_a_new_email(wizard_driver):
+    response, run = wizard_driver("readme-escape").drive(
         [
             ("email", {"email": "new@example.com"}),
             ("name", {"name": "Ada"}),
-        ],
+        ]
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == f"Signed up {run_id}".encode()
+    assert response.content == f"Signed up {run.run_id}".encode()
 
 
 # --- Back-navigation / editing ----------------------------------------------
 
 
-def test_editing_wizard_renders_a_completed_step_prefilled(client):
-    run_id = start_run(client, "readme-editing")
-    client.post(
-        step_url("readme-editing", run_id, "account_type"),
-        data={"account_type": "personal"},
-        follow=True,
-    )
+def test_editing_wizard_renders_a_completed_step_prefilled(wizard_driver):
+    run = wizard_driver("readme-editing").start()
+    run.post_step("account_type", {"account_type": "personal"}, follow=True)
 
     # A completed step's own URL renders it again, pre-filled — this is the
     # edit affordance the review template links to.
-    response = client.get(
-        step_url("readme-editing", run_id, "account_type"), follow=True
-    )
+    response = run.get_step("account_type", follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'name="account_type"')
@@ -319,43 +268,28 @@ def test_editing_wizard_renders_a_completed_step_prefilled(client):
 # --- Dormant memory: flipping a branch and back -----------------------------
 
 
-def test_flip_flop_wizard_restores_a_dormant_arm_answer(client):
-    name = "readme-flip-flop"
-    run_id = start_run(client, name)
+def test_flip_flop_wizard_restores_a_dormant_arm_answer(wizard_driver):
+    run = wizard_driver("readme-flip-flop").start()
 
     # Business arm: answer the account type and the company name.
-    client.post(
-        step_url(name, run_id, "account_type"),
-        data={"account_type": "business"},
-        follow=True,
-    )
-    client.post(
-        step_url(name, run_id, "business_name"),
-        data={"business_name": "Acme"},
-        follow=True,
+    run.post_steps(
+        [
+            ("account_type", {"account_type": "business"}),
+            ("business_name", {"business_name": "Acme"}),
+        ]
     )
 
     # Edit the account type to personal — the business arm goes dormant.
-    client.post(
-        step_url(name, run_id, "account_type"),
-        data={"account_type": "personal"},
-        follow=True,
-    )
+    run.post_step("account_type", {"account_type": "personal"}, follow=True)
     # Flip back to business — the dormant "Acme" is restored, not re-asked.
-    client.post(
-        step_url(name, run_id, "account_type"),
-        data={"account_type": "business"},
-        follow=True,
-    )
+    run.post_step("account_type", {"account_type": "business"}, follow=True)
 
     # The company step is satisfied again from dormant memory: GETting it shows
     # Acme pre-filled, and completing the run reports it without re-entry.
-    prefilled = client.get(step_url(name, run_id, "business_name"), follow=True)
+    prefilled = run.get_step("business_name", follow=True)
     assertContains(prefilled, "Acme")
 
-    response = client.post(
-        step_url(name, run_id, "review"), data={"confirmed": "on"}, follow=True
-    )
+    response = run.post_step("review", {"confirmed": "on"}, follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Onboarded Acme"
@@ -364,15 +298,15 @@ def test_flip_flop_wizard_restores_a_dormant_arm_answer(client):
 # --- Stashing and resurrecting runs -----------------------------------------
 
 
-def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(client):
-    name = "readme-stash"
-    response, first_run_id = drive(
-        client,
-        name,
+def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(
+    client, wizard_driver
+):
+    driver = wizard_driver("readme-stash")
+    response, first_run = driver.drive(
         [
             ("name", {"name": "Ada"}),
             ("email", {"email": "ada@example.com"}),
-        ],
+        ]
     )
     assert response.content == b"Contact details saved."
 
@@ -382,24 +316,23 @@ def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(client):
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="Ada"')
-    runs = client.session["gandalf_runs"]
-    new_run_id = next(
-        run_id for run_id, data in runs.items() if not data.get("completed")
-    )
-    assert new_run_id != first_run_id
+    new_run = driver.new_run(first_run)
+    assert new_run.run_id != first_run.run_id
 
     # One successful edit re-completes the wizard: done() fires again and the
     # stash now holds the edited answers.
-    response = client.post(
-        step_url(name, new_run_id, "name"), data={"name": "Grace"}, follow=True
-    )
+    response = new_run.post_step("name", {"name": "Grace"}, follow=True)
 
     assert response.content == b"Contact details saved."
-    payload = client.session["gandalf_stashes"]["contact"]
+    payload = stored_stash(client, "contact")
     assert payload["state"][0] == {"step": {"name": "Grace"}}
 
 
-def test_stash_reopen_without_a_stash_starts_fresh(client):
+def test_stash_reopen_without_a_stash_starts_fresh(client, wizard_driver):
     response = client.get(reverse("readme-stash-reopen"))
 
-    assertRedirects(response, start_url("readme-stash"), fetch_redirect_response=False)
+    assertRedirects(
+        response,
+        wizard_driver("readme-stash").start_url,
+        fetch_redirect_response=False,
+    )

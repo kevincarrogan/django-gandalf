@@ -736,6 +736,86 @@ What resurrection promises:
 
 ---
 
+## Testing your wizards
+
+Driving a multi-step wizard with the raw Django test client means chasing the
+run id through the session and hand-building step URLs. `gandalf.testing` does
+that plumbing for you, and a pytest plugin ships with the package — installing
+django-gandalf makes the `wizard_driver` fixture available with no conftest
+wiring (it builds on [pytest-django](https://pytest-django.readthedocs.io/)'s
+`client` fixture, so pytest-django must be installed).
+
+`wizard_driver` is a factory: give it your viewset's `url_name` and drive the
+whole wizard in one call. For the quickstart's signup wizard:
+
+```python
+def test_signup_collects_both_steps(wizard_driver):
+    response, run = wizard_driver("signup").drive(
+        [
+            ("name", {"name": "Ada"}),
+            ("email", {"email": "ada@example.com"}),
+        ]
+    )
+
+    assert response.status_code == 200
+    assert run.is_completed
+```
+
+`drive()` starts a run (discovering its id from the session), POSTs each
+`(step, data)` pair following redirects, and returns the final response along
+with a `WizardRun` — URLs, requests, and stored state, all keyed by the run id.
+Step by step, the same run object makes redirect and state assertions direct:
+
+```python
+def test_first_answer_advances_and_stores(wizard_driver):
+    run = wizard_driver("signup").start()
+
+    response = run.post_step("name", {"name": "Ada"})
+
+    assert response["Location"] == run.step_url("email")
+    assert run.state == [{"step": {"name": "Ada"}}]
+```
+
+Request helpers default to `follow=False` like the test client — pass
+`follow=True` to land on the rendered next step (`response.context["form"]`
+and friends work as usual). The run also exposes `run.url`, `run.get()`,
+`run.get_step("name")` (the edit render of an answered step), `run.data` (the
+raw session entry — `{"completed": True}` after `done()` fires), and
+`run.seed_state([...])` for arranging stored state a request cycle can't
+produce.
+
+A few notes:
+
+- **Mount-prefix kwargs.** A wizard mounted under
+  `path("onboarding/<slug:plan>/", include(...))` is driven with
+  `wizard_driver("onboarding", plan="team")` — the extra kwargs thread through
+  every URL the driver builds.
+- **Multiple runs.** `driver.start()` works with any number of existing runs;
+  `driver.only_run()` and `driver.new_run(*known)` recover a run you didn't
+  start yourself (a resurrected stash, say), raising `RunDiscoveryError` when
+  the session is ambiguous.
+- **Uploads** ride along as ordinary POST data:
+  `run.post_step("photo", {"photo": SimpleUploadedFile("a.png", b"...")})`
+  (with `from django.core.files.uploadedfile import SimpleUploadedFile`).
+- **Session peeking and seeding.** `stored_runs(client)` /
+  `stored_run(client, run_id)` / `seed_run(client, run_id, data)` read and
+  write raw run entries; `stored_stash(client, key)` / `seed_stash(...)` do
+  the same for stash payloads — no session keys in your tests.
+- **Outside pytest** the helpers work from any test:
+  `WizardDriver(Client(), "signup")` (with
+  `from django.test import Client` and
+  `from gandalf.testing import WizardDriver`).
+- Wizards with a **custom URL scheme** (overriding `get_wizard_url` /
+  `get_step_url`) fall outside the driver's contract — drive those with the
+  plain test client. To keep the plugin out of a run entirely:
+  `pytest -p no:gandalf`.
+
+Gandalf's own functional suite is written with these helpers, and the snippets
+above are the checked-in tests for the signup example — **Source:**
+[`test_readme_examples.py`](tests/functional/test_readme_examples.py).
+
+---
+
 ## Configuration
 
 Declaring steps is usually all you need; `.configure(...)` overrides a runtime

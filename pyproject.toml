@@ -34,6 +34,9 @@ dependencies = [
   "django>=4.2,<6.1",
 ]
 
+[project.entry-points.pytest11]
+gandalf = "gandalf.pytest_plugin"
+
 [project.urls]
 Homepage = "https://github.com/kevincarrogan/django-gandalf"
 Repository = "https://github.com/kevincarrogan/django-gandalf"
@@ -77,6 +80,11 @@ xfail_strict = true
 [tool.coverage.run]
 branch = true
 source = ["gandalf"]
+# The pytest11 plugin is imported at pytest bootstrap, before coverage
+# starts, so its module-level lines can never be measured. It holds no
+# logic — everything it exposes delegates to gandalf.testing, which the
+# functional suite covers in full.
+omit = ["gandalf/pytest_plugin.py"]
 
 [tool.coverage.report]
 fail_under = 100

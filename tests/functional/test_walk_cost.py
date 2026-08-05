@@ -12,42 +12,24 @@ place, and that diff is the review artifact showing what the change bought.
 from http import HTTPStatus
 
 import pytest
-from django.urls import reverse
 
 from tests.testapp.counting import counting_walks
 
 
 @pytest.fixture
-def walk_counting_wizard_url():
-    return reverse("walk-counting-wizard")
-
-
-@pytest.fixture
-def walk_counting_wizard_run_url():
-    def build_url(run_id):
-        return reverse("walk-counting-wizard-run", kwargs={"run_id": run_id})
-
-    return build_url
-
-
-def _step(run_url, step):
-    return f"{run_url}{step}/"
-
-
-@pytest.fixture
-def run_at_third_step(client, walk_counting_wizard_url, walk_counting_wizard_run_url):
+def run_at_third_step(wizard_driver):
     """A run with `first` and `second` answered, parked on `third`."""
-    client.get(walk_counting_wizard_url)
-    run_id = list(client.session["gandalf_runs"])[0]
-    run_url = walk_counting_wizard_run_url(run_id)
-    client.post(_step(run_url, "first"), data={"name": "Ada"}, follow=True)
-    client.post(
-        _step(run_url, "second"), data={"email": "ada@example.com"}, follow=True
+    run = wizard_driver("walk-counting-wizard").start()
+    run.post_steps(
+        [
+            ("first", {"name": "Ada"}),
+            ("second", {"email": "ada@example.com"}),
+        ]
     )
-    return run_url
+    return run
 
 
-def test_post_walks_the_tree_once(client, run_at_third_step):
+def test_post_walks_the_tree_once(run_at_third_step):
     """One walk, because only one question is ever being asked.
 
     The walk replays the two stored answers, arrives at the claimed step —
@@ -57,9 +39,7 @@ def test_post_walks_the_tree_once(client, run_at_third_step):
     the user just made.
     """
     with counting_walks() as counts:
-        response = client.post(
-            _step(run_at_third_step, "third"), data={"preferred_name": "Ada"}
-        )
+        response = run_at_third_step.post_step("third", {"preferred_name": "Ada"})
 
     assert response.status_code == HTTPStatus.FOUND
     assert counts.walks == 1
@@ -67,13 +47,13 @@ def test_post_walks_the_tree_once(client, run_at_third_step):
     assert counts.renders == 0
 
 
-def test_get_walks_the_tree_once(client, run_at_third_step):
+def test_get_walks_the_tree_once(run_at_third_step):
     """The render side was always at the floor: one walk, one validation per
     stored answer, one dispatch to render the step itself."""
-    client.post(_step(run_at_third_step, "third"), data={"preferred_name": "Ada"})
+    run_at_third_step.post_step("third", {"preferred_name": "Ada"})
 
     with counting_walks() as counts:
-        response = client.get(_step(run_at_third_step, "fourth"))
+        response = run_at_third_step.get_step("fourth")
 
     assert response.status_code == HTTPStatus.OK
     assert counts.walks == 1
@@ -81,7 +61,7 @@ def test_get_walks_the_tree_once(client, run_at_third_step):
     assert counts.renders == 1
 
 
-def test_completing_one_step_costs_two_walks(client, run_at_third_step):
+def test_completing_one_step_costs_two_walks(run_at_third_step):
     """The whole POST-redirect-GET cycle a user pays to advance one step.
 
     Two walks because PRG is genuinely two requests, and each validates the
@@ -89,11 +69,7 @@ def test_completing_one_step_costs_two_walks(client, run_at_third_step):
     to: a form's `clean()` runs once per completed step per HTTP request.
     """
     with counting_walks() as counts:
-        client.post(
-            _step(run_at_third_step, "third"),
-            data={"preferred_name": "Ada"},
-            follow=True,
-        )
+        run_at_third_step.post_step("third", {"preferred_name": "Ada"}, follow=True)
 
     assert counts.walks == 2
     assert counts.validations == 3 + 3
