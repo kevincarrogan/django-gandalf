@@ -86,13 +86,6 @@ wrapping.
   mechanism; steps themselves still have no stable identifiers, so
   alignment stays positional.
 
-## Implementation Ownership
-
-- A human will implement the main package code.
-- Agents may suggest production-code changes, outline implementation approaches, and add minimal stubs when needed to make tests importable.
-- Agents should not fill out production behavior in `gandalf/` unless explicitly asked to do so by the human.
-- Agents may write and update test code, test app fixtures, and documentation that captures expected behavior.
-
 ## Dependencies
 
 - New package dependencies should be pinned to the latest appropriate minor release using the compatible-release `~=` specifier.
