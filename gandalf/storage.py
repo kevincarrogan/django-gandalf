@@ -140,3 +140,71 @@ class SessionStashStore:
     def keys(self):
         """The stored stash keys, in insertion order."""
         return list(self._stashes())
+
+
+class SessionSectionStore:
+    """Session-backed home for a hub's bookkeeping: which run each section is
+    currently being answered in, and the stash a finished one left behind.
+
+    Two mappings, because they answer different questions and outlive each
+    other. A run id says where an unfinished section can be picked up, and is
+    forgotten the moment the section finishes. A payload is
+    `BoundWizard.stash()` output and *is* the section's completion — a hub
+    reads it and needs no run at all, which is what lets a completed section
+    survive its run being pruned by `max_completed_runs`.
+
+    The payload half is a plain `SessionStashStore`, so a project already
+    stashing into the session keeps the same key space. Only the run registry
+    is new.
+    """
+
+    RUNS_SESSION_KEY = "gandalf_section_runs"
+    stash_store_class = SessionStashStore
+
+    def __init__(self, request):
+        self.request = request
+        self.stashes = self.stash_store_class(request)
+
+    def _runs(self):
+        return self.request.session.get(self.RUNS_SESSION_KEY, {})
+
+    def get_run(self, key):
+        """The run this section is being answered in, or None when it is not
+        being answered at all."""
+        return self._runs().get(key)
+
+    def set_run(self, key, run_id):
+        """Record `run_id` as where this section is answered, replacing any
+        run already recorded for it."""
+        runs = self.request.session.setdefault(self.RUNS_SESSION_KEY, {})
+        runs[key] = str(run_id)
+        self.request.session.modified = True
+
+    def clear_run(self, key):
+        """Forget where this section was being answered. Idempotent: clearing
+        a section with no run is not an error, so callers need not check
+        first."""
+        self._runs().pop(key, None)
+        self.request.session.modified = True
+
+    def get_stash(self, key):
+        """The finished section's stash, raising `StashNotFound` without
+        one."""
+        return self.stashes.get(key)
+
+    def has_stash(self, key):
+        """Whether this section has finished — what a hub row asks, answered
+        without an exception to catch."""
+        return key in self.keys()
+
+    def put_stash(self, key, payload):
+        """Record this section as finished, replacing any earlier answers."""
+        self.stashes.put(key, payload)
+
+    def delete_stash(self, key):
+        """Forget that this section ever finished. Idempotent."""
+        self.stashes.delete(key)
+
+    def keys(self):
+        """The sections holding a stash, in insertion order."""
+        return self.stashes.keys()

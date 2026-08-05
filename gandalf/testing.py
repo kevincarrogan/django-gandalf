@@ -14,16 +14,19 @@ plain test client.
 
 from django.urls import reverse
 
-from gandalf.storage import SessionStashStore, SessionStorage
+from gandalf.storage import SessionSectionStore, SessionStashStore, SessionStorage
 
 __all__ = [
     "RunDiscoveryError",
     "WizardDriver",
     "WizardRun",
     "seed_run",
+    "seed_section_run",
     "seed_stash",
     "stored_run",
     "stored_runs",
+    "stored_section_run",
+    "stored_section_runs",
     "stored_stash",
     "stored_stashes",
 ]
@@ -84,6 +87,35 @@ def seed_stash(client, key, payload):
     session = client.session
     stashes = session.setdefault(SessionStashStore.SESSION_KEY, {})
     stashes[key] = payload
+    session.save()
+
+
+def stored_section_runs(client):
+    """The hub's section-to-run mapping, or an empty dict before any section
+    has been entered."""
+    return client.session.get(SessionSectionStore.RUNS_SESSION_KEY, {})
+
+
+def stored_section_run(client, key):
+    """The run id recorded for section `key`, or None when the section is not
+    being answered.
+
+    A section's completion lives in the stash store, not here — read it with
+    `stored_stash(client, key)`.
+    """
+    return stored_section_runs(client).get(key)
+
+
+def seed_section_run(client, key, run_id):
+    """Record `run_id` as where section `key` is being answered.
+
+    Creates the mapping when the session has never held one. For arranging
+    the states a hub reaches only after several requests: a section left
+    half-answered, or one pointing at a run the storage no longer holds.
+    """
+    session = client.session
+    runs = session.setdefault(SessionSectionStore.RUNS_SESSION_KEY, {})
+    runs[key] = str(run_id)
     session.save()
 
 

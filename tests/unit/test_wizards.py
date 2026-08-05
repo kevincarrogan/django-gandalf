@@ -1973,6 +1973,28 @@ def test_bound_wizard_back_url_is_none_at_the_first_step(
     assert bound_wizard.run_url == "/wizard/existing-run/"
 
 
+def test_bound_wizard_rendering_names_the_step_being_rendered(
+    request_with_session_factory,
+):
+    """What a step view needs to talk about the run it sits in — a summary
+    page has to know which step *it* is to drop itself from its own rows."""
+    wizard = _branching_review_wizard()
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+    cursor = bound_wizard.cursor()
+
+    assert bound_wizard.rendering is None
+
+    bound_wizard.mark_rendering(cursor, cursor.node)
+    assert bound_wizard.rendering is cursor.node
+
+    bound_wizard.clear_rendering()
+    assert bound_wizard.rendering is None
+
+
 def test_bound_wizard_runtime_tree_reuses_the_render_context_walk(
     request_with_session_factory,
 ):

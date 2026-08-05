@@ -31,6 +31,15 @@ urlpatterns = [
     path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),
     path("readme/summary/", include(readme_examples.SummaryWizardViewSet.urls())),
     path("readme/stash/", include(readme_examples.ContactSectionWizardViewSet.urls())),
+    path("readme/hub/", include(readme_examples.ProfileHubView.urls())),
+    path(
+        "readme/hub-contact/",
+        include(readme_examples.ContactSectionViewSet.urls()),
+    ),
+    path(
+        "readme/hub-address/",
+        include(readme_examples.AddressSectionViewSet.urls()),
+    ),
     path(
         "readme/stash-reopen/",
         readme_examples.reopen_contact,
@@ -239,4 +248,20 @@ urlpatterns = [
         "escape-park-file-wizard/",
         include(views.EscapeParkFileWizardViewSet.urls()),
     ),
+    path("scenario-hub/", include(views.ScenarioHubView.urls())),
+    path("scenario-hub-plain/", include(views.PlainSectionViewSet.urls())),
+    path("scenario-hub-advancing/", include(views.AdvancingSectionViewSet.urls())),
+    path("durable-hub/", include(views.DurableHubView.urls())),
+    path("durable-section/", include(views.DurableSectionViewSet.urls())),
+    path("counting-hub/", include(views.CountingHubView.urls())),
+    path(
+        "counting-hub-section/",
+        include(views.CountingSectionViewSet.urls()),
+    ),
+    path(
+        "other-counting-hub-section/",
+        include(views.OtherCountingSectionViewSet.urls()),
+    ),
+    path("org/<slug:org>/hub/", include(views.OrgHubView.urls())),
+    path("org/<slug:org>/hub-details/", include(views.OrgSectionViewSet.urls())),
 ]

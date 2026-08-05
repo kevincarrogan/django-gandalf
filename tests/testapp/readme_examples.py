@@ -16,6 +16,7 @@ from django import forms
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from gandalf.form_views import StepFormView
+from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, StashNotFound
 from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
@@ -331,3 +332,69 @@ class SummaryWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse("Order placed")
+
+
+# --- Hub and spoke: parallel sections ---------------------------------------
+
+
+class AddressForm(forms.Form):
+    line_one = forms.CharField(label="Address line 1")
+    postcode = forms.CharField()
+
+
+class SectionReviewStepView(SummaryMixin, StepFormView):
+    form_class = ReviewForm
+    template_name = "testapp/summary_wizard.html"
+
+
+class ContactSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Hub and spoke: the contact section of a profile task list."
+    url_name = "readme-hub-contact"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "contact"
+    hub_url_name = "readme-hub"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name", context={"label": "Your name"})
+        .step(EmailForm, name="email", context={"label": "Email"})
+        # A review step is what makes re-opening safe: without it, one
+        # successful edit walks straight through to `done()` again.
+        .step(SectionReviewStepView, name="review")
+    )
+
+
+class AddressSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Hub and spoke: the address section of a profile task list."
+    url_name = "readme-hub-address"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "address"
+    hub_url_name = "readme-hub"
+    wizard = (
+        Wizard()
+        .step(AddressForm, name="address", context={"label": "Address"})
+        .step(SectionReviewStepView, name="review")
+    )
+
+
+class ProfileHubView(HubView):
+    description = "Hub and spoke: a task list over two independent sections."
+    template_name = "testapp/hub.html"
+    url_name = "readme-hub"
+    section_url_name = "readme-hub-section"
+    sections = [
+        # `reopen_step` lands a finished section back on its review page, so
+        # re-entering shows the answers with a change link each rather than
+        # dropping the user at step one.
+        Section(
+            "contact",
+            ContactSectionViewSet,
+            title="Contact details",
+            reopen_step="review",
+        ),
+        Section(
+            "address",
+            AddressSectionViewSet,
+            title="Address",
+            reopen_step="review",
+        ),
+    ]

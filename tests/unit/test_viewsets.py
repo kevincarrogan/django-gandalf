@@ -1179,6 +1179,141 @@ def test_wizard_viewset_resurrect_propagates_an_invalid_stash(rf):
     assert request.session.get("gandalf_runs", {}) == {}
 
 
+# --- Binding a wizard outside its own request cycle -----------------------
+
+
+def test_wizard_viewset_begin_returns_a_fresh_run_rather_than_a_redirect(rf):
+    """What the start URL does, minus the redirect — a caller that has to
+    remember which run a thing is being answered in learns the id at the
+    moment it is created."""
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    bound_wizard = _RoutedViewSet.begin(request)
+
+    assert bound_wizard.run_id == _only_run(request)
+    assert bound_wizard.get_state() == []
+    assert bound_wizard.entry_url() == f"/wizard/{bound_wizard.run_id}/first/"
+
+
+def test_wizard_viewset_inspect_binds_an_existing_run(rf):
+    request = rf.get("/somewhere-else/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+
+    assert bound_wizard.run_id == "existing-run"
+    assert bound_wizard.cursor().node.context["step_name"] == "second"
+    assert bound_wizard.entry_url() == "/wizard/existing-run/second/"
+
+
+def test_wizard_viewset_inspect_raises_for_a_run_this_storage_does_not_hold(rf):
+    from gandalf.storage import RunNotFound
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    with pytest.raises(RunNotFound):
+        _RoutedViewSet.inspect(request, "no-such-run")
+
+
+def test_wizard_viewset_inspect_finds_a_completed_run_rather_than_raising(rf):
+    """A tombstone is *found* — it stays addressable so a revisit can be
+    answered as finished. `is_complete` is what tells the two apart."""
+    request = rf.get("/somewhere-else/")
+    request.session = _Session({"gandalf_runs": {"existing-run": {"completed": True}}})
+
+    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+
+    assert bound_wizard.is_complete
+    assert bound_wizard.get_state() == []
+
+
+def test_wizard_viewset_inspect_resolves_the_wizard_against_the_stored_state(rf):
+    """Retrieve before resolve: a dynamic `get_wizard()` is entitled to read
+    the run's state to decide its shape."""
+    seen = []
+
+    class _DynamicViewSet(_RoutedViewSet):
+        def get_wizard(self, bound_wizard):
+            seen.append(bound_wizard.get_state())
+            return super().get_wizard(bound_wizard)
+
+    request = rf.get("/somewhere-else/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+
+    _DynamicViewSet.inspect(request, "existing-run")
+
+    assert seen == [[{"step": {"name": "Ada"}}]]
+
+
+def test_wizard_viewset_reopen_returns_the_run_behind_a_resurrection(rf):
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+    payload = _resurrect_payload([{"step": {"name": "Ada"}}])
+
+    bound_wizard = _RoutedViewSet.reopen(request, payload)
+
+    assert bound_wizard.run_id == _only_run(request)
+    assert bound_wizard.get_state() == [{"step": {"name": "Ada"}}]
+    assert bound_wizard.entry_url() == f"/wizard/{bound_wizard.run_id}/second/"
+
+
+def test_wizard_viewset_reopen_resolves_the_wizard_against_the_seeded_state(rf):
+    """Seed before resolve, unlike `inspect()`: the state a dynamic
+    `get_wizard()` reads is the state the payload just supplied."""
+    seen = []
+
+    class _DynamicViewSet(_RoutedViewSet):
+        def get_wizard(self, bound_wizard):
+            seen.append(bound_wizard.get_state())
+            return super().get_wizard(bound_wizard)
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    _DynamicViewSet.reopen(request, _resurrect_payload([{"step": {"name": "Ada"}}]))
+
+    assert seen == [[{"step": {"name": "Ada"}}]]
+
+
+def test_wizard_viewset_reopen_refuses_a_label_mismatch_before_creating_a_run(rf):
+    from gandalf.runtime import InvalidStash
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    with pytest.raises(InvalidStash):
+        _RoutedViewSet.reopen(
+            request,
+            _resurrect_payload([{"step": {"name": "Ada"}}]),
+            expected_label="contact",
+        )
+    assert request.session.get("gandalf_runs", {}) == {}
+
+
+@pytest.mark.parametrize("method", ["begin", "inspect", "reopen"])
+def test_binding_a_wizard_forwards_mount_prefix_url_kwargs(rf, method):
+    class _PrefixedViewSet(_RoutedViewSet):
+        def get_step_url(self, run_id, step_segment):
+            org = self.kwargs["org"]
+            return f"/{org}/wizard/{run_id}/{step_segment}/"
+
+    request = rf.get("/somewhere-else/")
+    request.session = _routed_session([{"step": {"name": "Ada"}}])
+    arguments = {
+        "begin": (),
+        "inspect": ("existing-run",),
+        "reopen": (_resurrect_payload([{"step": {"name": "Ada"}}]),),
+    }[method]
+
+    bound_wizard = getattr(_PrefixedViewSet, method)(request, *arguments, org="acme")
+
+    assert bound_wizard.entry_url("second") == (
+        f"/acme/wizard/{bound_wizard.run_id}/second/"
+    )
+
+
 def test_wizard_viewset_rejects_duplicate_step_names(rf):
     """Two steps sharing a name is a declaration error: a URL segment has to
     name exactly one step, and a walk stops at the cursor so it could not see

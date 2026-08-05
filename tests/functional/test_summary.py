@@ -10,7 +10,12 @@ from http import HTTPStatus
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
+from pytest_django.asserts import (
+    assertContains,
+    assertNotContains,
+    assertRedirects,
+    assertTemplateUsed,
+)
 
 from tests.testapp.counting import counting_walks
 
@@ -210,3 +215,27 @@ def test_summary_hooks_are_overridable(wizard_driver):
         "Start date",
     ]
     assert rows[0].fields[-1].value == "12/10/2025"
+
+
+def test_a_revisited_summary_step_does_not_list_itself(client, business_run):
+    """A wizard that only runs forwards never has its summary step in `path`
+    — the step being rendered is the cursor, and the cursor is unanswered by
+    definition. A run revisited after the summary was answered does, so the
+    page has to drop itself or it offers to change its own confirmation.
+    """
+    from gandalf.testing import stored_run, seed_run
+
+    state = stored_run(client, business_run.run_id)["state"]
+    seed_run(
+        client,
+        business_run.run_id,
+        {"state": [*state, {"step": {"confirmed": "on"}}]},
+    )
+
+    response = business_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    labels = [row.label for row in response.context["summary"]]
+    assert labels == ["Account type", "Business name", "Preferences"]
+    assertContains(response, "Change Preferences")
+    assertNotContains(response, "Change Summary")

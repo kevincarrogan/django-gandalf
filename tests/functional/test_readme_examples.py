@@ -15,6 +15,7 @@ from django.urls import reverse
 import pytest
 from pytest_django.asserts import (
     assertContains,
+    assertNotContains,
     assertRedirects,
     assertTemplateUsed,
 )
@@ -364,3 +365,63 @@ def test_stash_reopen_without_a_stash_starts_fresh(client, wizard_driver):
         wizard_driver("readme-stash").start_url,
         fetch_redirect_response=False,
     )
+
+
+# --- Hub and spoke: parallel sections ---------------------------------------
+
+
+def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
+    hub_url = reverse("readme-hub")
+    response = client.get(hub_url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert [(row.title, row.status) for row in response.context["sections"]] == [
+        ("Contact details", "not-started"),
+        ("Address", "not-started"),
+    ]
+
+    # Entering a section from the hub lands on its first step.
+    door = reverse("readme-hub-section", kwargs={"section": "contact"})
+    client.get(door, follow=True)
+    driver = wizard_driver("readme-hub-contact")
+    run = driver.only_run()
+
+    # Half-answered, the section reads as Incomplete on the hub.
+    run.post_step("name", {"name": "Ada"}, follow=True)
+    assertContains(client.get(hub_url), "Incomplete")
+
+    # Finished, it stashes its answers and reads as Complete.
+    response = run.post_steps(
+        [
+            ("email", {"email": "ada@example.com"}),
+            ("review", {"confirmed": "on"}),
+        ]
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, "Complete")
+    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Ada"}}
+
+
+def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_driver):
+    door = reverse("readme-hub-section", kwargs={"section": "address"})
+    client.get(door, follow=True)
+    driver = wizard_driver("readme-hub-address")
+    run = driver.only_run()
+    run.post_steps(
+        [
+            ("address", {"line_one": "1 Main St", "postcode": "SW1A 1AA"}),
+            ("review", {"confirmed": "on"}),
+        ]
+    )
+
+    response = client.get(door, follow=True)
+
+    # `reopen_step="review"` lands the user on their answers, not step one.
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, "1 Main St")
+    assertContains(response, "Check your answers")
+    # A re-opened section arrives with every step answered, the review step
+    # included, so the page has to drop itself from its own rows.
+    assertContains(response, "Change Address")
+    assertNotContains(response, "Change Review")

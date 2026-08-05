@@ -1,0 +1,743 @@
+"""Unit coverage for the hub and spoke layer.
+
+A hub lists parallel wizards the user drops in and out of. The display half
+answers "how far has each got" without walking anything; the dispatch half
+turns one click into a step URL, walking only the section the user chose.
+"""
+
+import pytest
+from django.core.exceptions import ImproperlyConfigured
+
+from gandalf.runtime import STASH_VERSION
+from gandalf.sections import (
+    COMPLETE,
+    INCOMPLETE,
+    NOT_STARTED,
+    HubMixin,
+    Section,
+    SectionMixin,
+    SectionNotFound,
+    SectionRow,
+)
+from gandalf.storage import SessionSectionStore
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import Wizard
+
+from tests.testapp.forms import FirstStepForm, SecondStepForm
+
+
+class _Session(dict):
+    modified = False
+
+
+class _SectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "contact"
+    hub_url_name = "hub"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
+    )
+
+    def get_wizard_url(self, run_id):
+        return f"/contact/{run_id}/"
+
+    def get_step_url(self, run_id, step_segment):
+        return f"/contact/{run_id}/{step_segment}/"
+
+    def get_start_url(self):
+        return "/contact/"
+
+    def section_done(self, bound_wizard):
+        # The default redirects to `hub_url_name`; reversing a real hub URL
+        # is the functional suite's job.
+        from django.http import HttpResponse
+
+        return HttpResponse(b"section done")
+
+
+class _TemplateView:
+    """Stands in for the Django view a hub is mixed into."""
+
+    def get_context_data(self, **kwargs):
+        return dict(kwargs)
+
+
+class _Hub(HubMixin, _TemplateView):
+    sections = [Section("contact", _SectionViewSet, title="Contact details")]
+
+    def __init__(self, request):
+        self.request = request
+        self.kwargs = {}
+
+    def get_section_url(self, section):
+        return f"/hub/{section.key}/"
+
+
+def _hub(session=None, rf=None):
+    request = rf.get("/hub/")
+    request.session = _Session(session or {})
+    return _Hub(request)
+
+
+@pytest.fixture
+def hub(rf):
+    def build(session=None):
+        return _hub(session, rf=rf)
+
+    return build
+
+
+def _stash(state):
+    return {"version": STASH_VERSION, "label": "contact", "state": state}
+
+
+# --- Section ---------------------------------------------------------------
+
+
+def test_a_sections_stash_label_defaults_to_its_key():
+    assert Section("contact", _SectionViewSet).stash_label == "contact"
+    assert Section("contact", _SectionViewSet, label="contact-v2").stash_label == (
+        "contact-v2"
+    )
+
+
+def test_sections_with_the_same_declaration_compare_equal():
+    """`url_kwargs` is excluded from comparison so a section stays hashable
+    with a mutable default."""
+    first = Section("contact", _SectionViewSet, url_kwargs={"org": "acme"})
+    second = Section("contact", _SectionViewSet, url_kwargs={"org": "other"})
+
+    assert first == second
+    assert hash(first) == hash(second)
+
+
+# --- status derivation -----------------------------------------------------
+
+
+def test_a_section_with_no_run_and_no_stash_has_not_started(hub):
+    (row,) = hub().get_section_rows()
+
+    assert row.status == NOT_STARTED
+    assert row.is_not_started
+
+
+def test_a_section_whose_run_holds_an_answer_is_incomplete(hub):
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == INCOMPLETE
+    assert row.is_incomplete
+
+
+def test_a_section_the_user_opened_but_never_answered_has_not_started(hub):
+    """A run exists, but there is nothing in it to pick up."""
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {}},
+        }
+    )
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == NOT_STARTED
+
+
+def test_a_section_whose_run_the_storage_has_forgotten_has_not_started(hub):
+    """An expired session or an obliterated run leaves nothing to resume, so
+    the honest thing to say is that it has not begun."""
+    page = hub({"gandalf_section_runs": {"contact": "gone"}})
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == NOT_STARTED
+
+
+def test_a_section_holding_a_stash_is_complete(hub):
+    page = hub({"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}})
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == COMPLETE
+    assert row.is_complete
+
+
+def test_a_completed_sections_stash_outranks_its_tombstoned_run(hub):
+    """The recorded run may be stale — tombstoned, pruned, or replaced by a
+    resurrection — and status never consults it once a stash exists."""
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"completed": True}},
+            "gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])},
+        }
+    )
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == COMPLETE
+
+
+def test_a_tombstoned_run_without_a_stash_has_not_started(hub):
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"completed": True}},
+        }
+    )
+
+    (row,) = page.get_section_rows()
+
+    assert row.status == NOT_STARTED
+
+
+def test_building_the_rows_never_walks_a_section(hub, monkeypatch):
+    """The claim the whole design rests on: a row costs storage reads, not a
+    form validation per answered step."""
+    from gandalf.runtime import CursorWalker
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("a hub row must not walk a wizard")
+
+    monkeypatch.setattr(CursorWalker, "walk", _forbidden)
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+
+    assert page.get_section_rows()[0].status == INCOMPLETE
+
+
+# --- rows ------------------------------------------------------------------
+
+
+def test_a_row_carries_its_title_status_label_and_url(hub):
+    (row,) = hub().get_section_rows()
+
+    assert isinstance(row, SectionRow)
+    assert row.title == "Contact details"
+    assert row.status_label == "Not started"
+    assert row.url == "/hub/contact/"
+    assert row.key == "contact"
+
+
+def test_a_section_without_a_title_is_named_from_its_key(rf):
+    class _AddressViewSet(_SectionViewSet):
+        section_key = "home_address"
+
+    class _UntitledHub(_Hub):
+        sections = [Section("home_address", _AddressViewSet)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    (row,) = _UntitledHub(request).get_section_rows()
+
+    assert row.title == "Home address"
+
+
+def test_the_rows_land_in_the_template_context(hub):
+    context = hub().get_context_data()
+
+    assert [row.key for row in context["sections"]] == ["contact"]
+
+
+# --- declaration vetting ---------------------------------------------------
+
+
+def test_a_hub_without_sections_is_misconfigured(rf):
+    class _Bare(_Hub):
+        sections = None
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="sections"):
+        _Bare(request).get_section_rows()
+
+
+def test_duplicate_section_keys_are_rejected(rf):
+    class _Duplicated(_Hub):
+        sections = [
+            Section("contact", _SectionViewSet),
+            Section("contact", _SectionViewSet),
+        ]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="unique"):
+        _Duplicated(request).get_section_rows()
+
+
+def test_a_key_that_drifts_from_the_sections_own_section_key_is_rejected(rf):
+    """The hub would read a stash key the section never writes, so the
+    section could complete and still read as not started."""
+
+    class _Drifted(_Hub):
+        sections = [Section("billing", _SectionViewSet)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="section_key"):
+        _Drifted(request).get_section_rows()
+
+
+def test_a_section_viewset_that_does_its_own_bookkeeping_is_not_key_checked(rf):
+    """Only a `SectionMixin` declares a `section_key` to drift from."""
+
+    class _Plain(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/linear_wizard.html"
+
+    class _Mixed(_Hub):
+        sections = [Section("anything", _Plain)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    assert _Mixed(request).get_section_rows()[0].status == NOT_STARTED
+
+
+def test_get_section_finds_a_section_by_key_and_rejects_an_unknown_one(hub):
+    page = hub()
+
+    assert page.get_section("contact").viewset is _SectionViewSet
+    with pytest.raises(SectionNotFound):
+        page.get_section("nope")
+
+
+# --- entering a section ----------------------------------------------------
+
+
+def _entered(page):
+    section = page.get_section("contact")
+    return page.enter(section)
+
+
+def test_entering_a_not_started_section_begins_a_run_and_records_it(hub):
+    page = hub()
+
+    url = _entered(page)
+
+    run_id = SessionSectionStore(page.request).get_run("contact")
+    assert run_id is not None
+    assert url == f"/contact/{run_id}/first/"
+
+
+def test_entering_an_incomplete_section_resumes_its_own_run(hub):
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+
+    url = _entered(page)
+
+    assert url == "/contact/run-1/second/"
+    assert SessionSectionStore(page.request).get_run("contact") == "run-1"
+
+
+def test_entering_a_completed_section_reopens_its_stash_at_the_first_step(hub):
+    """Never the bare run URL: every answer in a resurrected run validates,
+    so a GET there would fire `done()` before the user edited anything."""
+    page = hub(
+        {
+            "gandalf_stashes": {
+                "contact": _stash(
+                    [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ]
+                )
+            }
+        }
+    )
+
+    url = _entered(page)
+
+    run_id = SessionSectionStore(page.request).get_run("contact")
+    assert url == f"/contact/{run_id}/first/"
+    assert page.request.session["gandalf_runs"][run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
+    ]
+
+
+def test_reopening_a_section_leaves_its_stash_in_place(hub):
+    """Read, never popped: re-opening keeps working, and re-completing
+    overwrites the stash with the newer answers."""
+    page = hub({"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}})
+
+    _entered(page)
+
+    assert SessionSectionStore(page.request).has_stash("contact")
+
+
+def test_a_completed_section_already_being_edited_resumes_that_edit(hub):
+    """Resume before reopen, so at most one live run per section exists —
+    otherwise every click would resurrect a run beside the in-flight edit
+    and the user's changes would become unreachable."""
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Grace"}}]}},
+            "gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])},
+        }
+    )
+
+    url = _entered(page)
+
+    assert url == "/contact/run-1/second/"
+
+
+def test_a_section_whose_recorded_run_was_tombstoned_starts_again(hub):
+    """A completed run is *found*, not missing, so resuming has to ask
+    `is_complete` as well — a run every request bounces off is worse than
+    no run at all."""
+    page = hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"completed": True}},
+        }
+    )
+
+    url = _entered(page)
+
+    run_id = SessionSectionStore(page.request).get_run("contact")
+    assert run_id != "run-1"
+    assert url == f"/contact/{run_id}/first/"
+
+
+def test_a_section_whose_recorded_run_is_gone_starts_again(hub):
+    page = hub({"gandalf_section_runs": {"contact": "gone"}})
+
+    url = _entered(page)
+
+    run_id = SessionSectionStore(page.request).get_run("contact")
+    assert run_id != "gone"
+    assert url == f"/contact/{run_id}/first/"
+
+
+def test_a_section_can_name_the_step_a_reopened_stash_lands_on(rf):
+    class _LandingHub(_Hub):
+        sections = [Section("contact", _SectionViewSet, reopen_step="second")]
+
+    request = rf.get("/hub/")
+    request.session = _Session(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+    page = _LandingHub(request)
+
+    url = page.enter(page.get_section("contact"))
+
+    run_id = SessionSectionStore(request).get_run("contact")
+    assert url == f"/contact/{run_id}/second/"
+
+
+def test_a_stash_whose_label_no_longer_matches_is_refused_loudly(rf):
+    """A deploy reshaped the section and bumped its label. Starting over
+    silently would look to the user exactly like their answers vanishing."""
+    from gandalf.runtime import InvalidStash
+
+    class _Reshaped(_Hub):
+        sections = [Section("contact", _SectionViewSet, label="contact-v2")]
+
+    request = rf.get("/hub/")
+    request.session = _Session(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+    page = _Reshaped(request)
+
+    with pytest.raises(InvalidStash):
+        page.enter(page.get_section("contact"))
+
+
+def test_stash_unusable_can_be_overridden_to_start_over(rf):
+    class _Forgiving(_Hub):
+        sections = [Section("contact", _SectionViewSet, label="contact-v2")]
+
+        def stash_unusable(self, section, error):
+            store = self.get_section_store()
+            store.delete_stash(section.key)
+            return self.enter(section)
+
+    request = rf.get("/hub/")
+    request.session = _Session(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+    page = _Forgiving(request)
+
+    url = page.enter(page.get_section("contact"))
+
+    run_id = SessionSectionStore(request).get_run("contact")
+    assert url == f"/contact/{run_id}/first/"
+
+
+# --- SectionMixin ----------------------------------------------------------
+
+
+def test_finishing_a_section_stashes_its_answers_and_clears_its_run(rf):
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+    view = _SectionViewSet()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    view.done(bound_wizard)
+
+    store = SessionSectionStore(request)
+    assert store.get_stash("contact") == {
+        "version": STASH_VERSION,
+        "label": "contact",
+        "state": [{"step": {"name": "Ada"}}],
+    }
+    assert store.get_run("contact") is None
+
+
+def test_a_section_done_that_raises_leaves_the_section_resumable(rf):
+    """Mirrors `_finish`'s own ordering — the run id is cleared only after
+    the application's work has succeeded."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Failing(_SectionViewSet):
+        def section_done(self, bound_wizard):
+            raise RuntimeError("nope")
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+    view = _Failing()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    with pytest.raises(RuntimeError):
+        view.done(bound_wizard)
+
+    assert SessionSectionStore(request).get_run("contact") == "run-1"
+
+
+def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Reshaped(_SectionViewSet):
+        section_label = "contact-v2"
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+    view = _Reshaped()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    view.done(bound_wizard)
+
+    assert SessionSectionStore(request).get_stash("contact")["label"] == "contact-v2"
+
+
+def test_a_section_without_a_key_is_misconfigured(rf):
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Keyless(_SectionViewSet):
+        section_key = None
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session({"gandalf_runs": {"run-1": {"state": []}}})
+    view = _Keyless()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    with pytest.raises(ImproperlyConfigured, match="section_key"):
+        view.done(bound_wizard)
+
+
+def test_a_section_without_a_hub_url_name_is_misconfigured(rf):
+    class _Homeless(_SectionViewSet):
+        hub_url_name = None
+
+    view = _Homeless()
+    view.setup(rf.get("/contact/"))
+
+    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
+        view.get_hub_url()
+
+
+def test_a_finished_section_sends_the_user_back_to_its_hub(rf):
+    """The default `section_done` — a task list expects a finished task to
+    deposit the user back on the list."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Homed(_SectionViewSet):
+        hub_url_name = "readme-hub"
+        section_done = SectionMixin.section_done
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+    view = _Homed()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    response = view.done(bound_wizard)
+
+    assert response.status_code == 302
+    assert response["Location"] == "/readme/hub/"
+
+
+# --- URLs ------------------------------------------------------------------
+
+
+class _ReversingHub(HubMixin):
+    """Reverses this project's real hub patterns rather than faking them."""
+
+    url_name = "readme-hub"
+    section_url_name = "readme-hub-section"
+    sections = [Section("contact", _SectionViewSet)]
+
+    def __init__(self, request, **kwargs):
+        self.request = request
+        self.kwargs = kwargs
+
+
+def test_a_row_links_to_the_hubs_own_door_not_the_wizards_urls(rf):
+    request = rf.get("/readme/hub/")
+    request.session = _Session()
+
+    url = _ReversingHub(request).get_section_url(Section("contact", _SectionViewSet))
+
+    assert url == "/readme/hub/contact/"
+
+
+def test_a_hub_forwards_its_mount_prefix_and_drops_the_section_kwarg(rf):
+    request = rf.get("/org/acme/hub/details/")
+    request.session = _Session()
+
+    page = _ReversingHub(request, org="acme", section="details")
+
+    assert page.get_section_url_kwargs() == {"org": "acme"}
+
+
+def test_the_hub_url_is_reversed_from_its_own_url_name(rf):
+    request = rf.get("/readme/hub/")
+    request.session = _Session()
+
+    assert _ReversingHub(request).get_hub_url() == "/readme/hub/"
+
+
+def test_an_unknown_section_is_sent_back_to_the_hub(rf):
+    request = rf.get("/readme/hub/nope/")
+    request.session = _Session()
+
+    response = _ReversingHub(request).section_unavailable("nope")
+
+    assert response.status_code == 302
+    assert response["Location"] == "/readme/hub/"
+
+
+def test_a_hub_without_a_section_url_name_is_misconfigured(rf):
+    class _Nameless(_ReversingHub):
+        section_url_name = None
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="section_url_name"):
+        _Nameless(request).get_section_url(Section("contact", _SectionViewSet))
+
+
+def test_a_hub_without_a_url_name_is_misconfigured(rf):
+    from gandalf.sections import HubView
+
+    class _Nameless(_ReversingHub):
+        url_name = None
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        _Nameless(request).get_hub_url()
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+
+        class _NamelessView(HubView):
+            pass
+
+        _NamelessView.urls()
+
+
+def _profile_hub(rf, path, **kwargs):
+    """The README's hub, dispatched directly — one view over two routes."""
+    from tests.testapp.readme_examples import ProfileHubView
+
+    request = rf.get(path)
+    request.session = _Session()
+    return ProfileHubView.as_view()(request, **kwargs)
+
+
+def test_the_hub_page_renders_the_section_rows(rf):
+    response = _profile_hub(rf, "/readme/hub/")
+
+    assert response.status_code == 200
+    assert [row.key for row in response.context_data["sections"]] == [
+        "contact",
+        "address",
+    ]
+
+
+def test_the_door_redirects_into_the_section_it_names(rf):
+    response = _profile_hub(rf, "/readme/hub/contact/", section="contact")
+
+    assert response.status_code == 302
+    assert "/readme/hub-contact/" in response["Location"]
+
+
+def test_the_door_sends_an_unknown_section_back_to_the_hub(rf):
+    response = _profile_hub(rf, "/readme/hub/nope/", section="nope")
+
+    assert response.status_code == 302
+    assert response["Location"] == "/readme/hub/"
+
+
+def test_a_hub_publishes_a_page_pattern_and_a_door_pattern():
+    from gandalf.sections import HubView
+
+    class _Published(HubView):
+        url_name = "profile-hub"
+
+    page, door = _Published.urls()
+
+    assert page.name == "profile-hub"
+    assert door.name == "profile-hub-section"
+    assert str(door.pattern) == "<slug:section>/"

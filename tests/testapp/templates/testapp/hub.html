@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<body>
+  <h1>Your profile</h1>
+  <ul class="task-list">
+    {% for row in sections %}
+      <li class="task-list__item">
+        <a href="{{ row.url }}">{{ row.title }}</a>
+        <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+      </li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

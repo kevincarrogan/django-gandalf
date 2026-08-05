@@ -22,10 +22,12 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
+from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
 from gandalf.summary import SummaryMixin
 
 from .counting import CountingCursorWalker, CountingStepDispatcher
+from .durable import ModelSectionStore, ModelStorage
 from .forms import (
     AccountTypeForm,
     BareEscapeForm,
@@ -1026,6 +1028,8 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             detached.run_url is None
             and detached.back_url is None
             and detached.step_url(foreign_declaration) is None
+            and detached.entry_url() is None
+            and detached.rendering is None
             and bound_wizard.back_url is None
             and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
             and bound_wizard.previous_step(cursor, foreign_declaration) is None
@@ -1810,3 +1814,136 @@ class SummaryDisplayWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+# --- Hub and spoke scenarios -------------------------------------------------
+
+
+class AdvancingSectionViewSet(SectionMixin, WizardViewSet):
+    """A section whose only step escapes with `Advance`.
+
+    `Advance` persists the answer and redirects out without reaching
+    `_finish`, so the run stays live and non-tombstoned with every stored
+    answer validating — the exact state in which a bare run URL fires
+    `done()` on a GET. The hub must never hand one out.
+    """
+
+    description = "Hub section escaping with Advance, so its run never completes."
+    url_name = "hub-advancing-section"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "advancing"
+    hub_url_name = "scenario-hub"
+    wizard = Wizard().step(NewsletterForm, name="newsletter")
+
+
+class PlainSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Hub section with no review step."
+    url_name = "hub-plain-section"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "plain"
+    hub_url_name = "scenario-hub"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+
+class ScenarioHubView(HubView):
+    description = "Hub over sections that exercise the awkward run states."
+    template_name = "testapp/hub.html"
+    url_name = "scenario-hub"
+    section_url_name = "scenario-hub-section"
+    sections = [
+        Section("plain", PlainSectionViewSet, title="Plain"),
+        Section("advancing", AdvancingSectionViewSet, title="Advancing"),
+    ]
+
+
+class OrgSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Hub section mounted under an org prefix."
+    url_name = "org-hub-section-wizard"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "details"
+    hub_url_name = "org-hub"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+
+class OrgHubView(HubView):
+    description = "Hub whose sections carry mount-prefix URL kwargs."
+    template_name = "testapp/hub.html"
+    url_name = "org-hub"
+    section_url_name = "org-hub-section"
+
+    def get_sections(self):
+        # The section's wizard is mounted under the same org prefix, so the
+        # slug this request came in through has to reach every URL the hub
+        # builds for it.
+        return [
+            Section(
+                "details",
+                OrgSectionViewSet,
+                title="Details",
+                url_kwargs={"org": self.kwargs["org"]},
+            ),
+        ]
+
+
+class CountingSectionViewSet(SectionMixin, WizardViewSet):
+    """A hub section wired to the counting walker, so tests can assert that
+    a hub row costs no walk at all."""
+
+    description = "Hub section wired to counting walker/dispatcher classes."
+    url_name = "counting-hub-section-wizard"
+    section_key = "counting"
+    hub_url_name = "counting-hub"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+
+class OtherCountingSectionViewSet(CountingSectionViewSet):
+    url_name = "other-counting-hub-section-wizard"
+    section_key = "other"
+
+
+class CountingHubView(HubView):
+    description = "Hub over counting sections, for asserting a row's cost."
+    template_name = "testapp/hub.html"
+    url_name = "counting-hub"
+    section_url_name = "counting-hub-section"
+    sections = [
+        Section("counting", CountingSectionViewSet, title="Counting"),
+        Section("other", OtherCountingSectionViewSet, title="Other"),
+    ]
+
+
+# --- Storage that outlives a session -----------------------------------------
+
+
+class DurableSectionViewSet(SectionMixin, WizardViewSet):
+    """A section on model-backed storage — both stores swapped, which is what
+    a hub spanning days needs."""
+
+    description = "Hub section whose runs and bookkeeping live in the database."
+    url_name = "durable-section"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "durable"
+    hub_url_name = "durable-hub"
+    storage_class = ModelStorage
+    section_store_class = ModelSectionStore
+    wizard = (
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
+    )
+
+
+class DurableHubView(HubView):
+    description = "Hub whose sections and bookkeeping outlive the session."
+    template_name = "testapp/hub.html"
+    url_name = "durable-hub"
+    section_url_name = "durable-hub-section"
+    section_store_class = ModelSectionStore
+    sections = [Section("durable", DurableSectionViewSet, title="Durable")]

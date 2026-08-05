@@ -924,6 +924,44 @@ class SignupWizardViewSet(WizardViewSet):
 Retired runs are pruned to the most recent `SessionStorage.max_completed_runs`
 (25 by default), so completed runs cannot grow a session without bound.
 
+### Storage that outlives a session
+
+A journey the user comes back to over days needs somewhere better than a
+session. Gandalf ships no durable backend — that would mean models, migrations
+and a retention policy, and the only dependency here is Django — so
+`storage_class` is the seam, and it is small enough to swap. `BoundWizard`
+calls exactly these nine things and nothing in the runtime, the walker or the
+viewset reaches past them:
+
+| Method | Contract |
+| --- | --- |
+| `__init__(request)` | The request is passed in, so a backend can scope by `request.user` or a tenant |
+| `initialise_run()` | Create a run, return its id |
+| `retrieve_run(run_id)` | Return the id, or raise `RunNotFound`. **This is the whole authorisation model** — scoping the queryset by owner is what stops one user resuming another's run |
+| `get_run_data(run_id)` | `{"state": [...]}`, or `{"completed": True}` for a finished run |
+| `get_state(run_id)` | The state list; `[]` for a completed run |
+| `set_state(run_id, state)` | Store the list verbatim |
+| `delete_run(run_id)` | Forget it entirely. Idempotent |
+| `complete_run(run_id)` | Discard the state and mark it finished, leaving the run *addressable* so a revisit answers "done" rather than "no such run". Idempotent |
+| `is_run_complete(run_id)` | Whether it has been tombstoned |
+
+A [worked `ModelStorage`](tests/testapp/durable.py) lives in the test app,
+driven end to end by
+[`test_durable_storage.py`](tests/functional/test_durable_storage.py) — a whole
+hub journey over the database, with the session holding nothing but the login.
+
+**A durable hub needs both stores swapped**: `storage_class` on every section
+viewset, *and* `section_store_class` on the hub and on each `SectionMixin`.
+Swapping only one gives you durable answers nobody can find, or a durable index
+into runs that have expired. A durable section store also closes a race the
+session cannot: Django read-modify-writes the whole session, so two tabs
+entering the same section can lose a registration outright, where a unique
+constraint on `(owner, section_key)` settles it.
+
+Note that `gandalf.testing`'s peek-and-seed helpers read the session stores
+directly, so they do not apply to a custom backend — assert against your own
+models instead.
+
 ---
 
 ## Stashing and resurrecting runs
@@ -997,9 +1035,18 @@ What resurrection promises:
   the run on that step with its errors rather than completing silently.
 - **A step URL, never the bare run URL.** A stashed run's answers all validate,
   so `resurrect()` lands the user on a step (pass `step="..."` to choose which;
-  default is the cursor, or the first step when complete). For the same reason,
-  one successful edit walks straight through to completion and fires `done()`
-  again — give the wizard a review step if you want an explicit confirm gate.
+  default is the cursor, or the first step when complete). See
+  [`BoundWizard.entry_url()`](#hub-and-spoke-parallel-sections), which is what
+  `resurrect()` uses and what any other link into a run should use too.
+- **Re-opening is edit-and-re-save.** Every answer already validates, so the
+  *next* successful submission — including an edit to step one — walks straight
+  to the end and fires `done()` again. A review step does **not** gate that; its
+  own answer is stashed too, so it re-validates like any other. What a review
+  step gives you is somewhere to *land*: pass `step="review"` (or, for a hub
+  section, `reopen_step="review"`) and the user arrives at their answers with a
+  change link each, instead of at step one. `SummaryMixin` drops the step doing
+  the summarising from its own rows, so a review page revisited this way does
+  not offer to change itself.
 - **Files are not preserved.** Uploaded bytes are deleted at completion, so
   `stash()` keeps a file step's other answers but drops its uploads. On
   resurrection an *optional* file field sails through; a *required* one parks
@@ -1012,6 +1059,163 @@ What resurrection promises:
   run is created.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/stash/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L276-L302)
+
+---
+
+## Hub and spoke: parallel sections
+
+Some journeys are not one wizard but several, and the user picks the order: a
+profile with contact details, an address and employment history; an application
+with a task list. Each section completes on its own, any of them can be
+re-opened, and a page up front says how far each has got.
+
+`gandalf.sections` is that page. Declare the sections, mix `SectionMixin` into
+each section's viewset, and the hub renders a row per section carrying its
+title, its status — **Not started**, **Incomplete** or **Complete** — and one
+URL that does the right thing whichever state it is in.
+
+```python
+from gandalf.form_views import StepFormView
+from gandalf.sections import HubView, Section, SectionMixin
+from gandalf.summary import SummaryMixin
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import Wizard
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "profile/review.html"
+
+
+class ContactSectionViewSet(SectionMixin, WizardViewSet):
+    url_name = "profile-contact"
+    template_name = "profile/step.html"
+    section_key = "contact"
+    hub_url_name = "profile-hub"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name", context={"label": "Your name"})
+        .step(EmailForm, name="email", context={"label": "Email"})
+        .step(ReviewStepView, name="review")
+    )
+
+    def section_done(self, bound_wizard):
+        save_contact(self.request.user, bound_wizard)
+        return super().section_done(bound_wizard)  # back to the hub
+
+
+class ProfileHubView(HubView):
+    template_name = "profile/hub.html"
+    url_name = "profile-hub"
+    section_url_name = "profile-hub-section"
+    sections = [
+        Section(
+            "contact",
+            ContactSectionViewSet,
+            title="Contact details",
+            reopen_step="review",
+        ),
+        Section("address", AddressSectionViewSet, title="Address"),
+    ]
+```
+
+A hub is mounted exactly like a wizard, and publishes two patterns from
+`url_name` — the page, and the door into one section:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    path("profile/", include(ProfileHubView.urls())),
+    path("profile/contact/", include(ContactSectionViewSet.urls())),
+    path("profile/address/", include(AddressSectionViewSet.urls())),
+]
+```
+
+```django
+{% for row in sections %}
+  <li>
+    <a href="{{ row.url }}">{{ row.title }}</a>
+    <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+  </li>
+{% endfor %}
+```
+
+**Sections override `section_done()`, never `done()`.** `done()` belongs to the
+mixin: it stashes the finished answers under `section_key`, which is the only
+thing that can tell the hub the section is finished. A subclass that replaced
+it would leave the section reading as not started forever.
+
+### What each status means
+
+| Status | Comes from |
+| --- | --- |
+| **Complete** | A stash under the section's key — the section ran to its own end and `done()` fired |
+| **Incomplete** | A recorded run holding at least one submission |
+| **Not started** | Everything else, including a section opened and left unanswered, and one whose run has expired |
+
+A row is deliberately cheap: two storage reads and a `reverse()`, no walk, so
+a hub of six sections costs six dict lookups rather than a form `clean()` per
+answered step per row. Whether the stored answers still *validate* is not
+asked — it would not change the row, since an answer that no longer validates
+leaves the section in progress just as surely as one that does.
+
+### Every link is a step URL, never a bare run URL
+
+This is the one thing worth understanding. A run whose every stored answer
+validates **completes on a GET** — the bare run URL redirects to the cursor,
+and when there is no cursor left that is `done()`. So a hub row can never
+point at `get_wizard_url()`: it would fire the section's side effects on a
+click.
+
+Rows therefore link to the hub's own door, which is the only place that can
+afford to ask what exists. It resumes a live run, re-opens a stash, or starts
+a fresh run, and every arm ends at `BoundWizard.entry_url()` — a step URL by
+construction. Resuming is tried *before* re-opening, so a section already
+being edited continues that edit rather than resurrecting a second run beside
+it.
+
+### Re-opening is edit-and-re-save
+
+A re-opened section arrives with every answer already valid, so **the next
+successful submission walks to the end and fires `done()` again**. That is the
+intended semantics — the user changed something and it saved — and it is why
+the mixin splits idempotent bookkeeping (`done()`) from work that runs once
+per edit (`section_done()`).
+
+A review step does not gate this — its own answer is stashed too, so it
+re-validates like any other. What it gives you is somewhere to *land*: set
+`reopen_step` to it and re-entering shows the answers with a change link each,
+rather than dropping the user back at step one. A re-opened run has every step
+answered, the review step included, and `SummaryMixin` drops the step doing the
+summarising from its own rows so the page does not offer to change itself.
+
+### Reaching a run from outside its own request
+
+The hub is built on three classmethods that bind a wizard outside its own
+dispatch, and they are public API in their own right:
+
+| Method | Returns |
+| --- | --- |
+| `MyViewSet.begin(request, **url_kwargs)` | A fresh run — the start URL minus the redirect, for a caller that must remember the run id |
+| `MyViewSet.inspect(request, run_id, **url_kwargs)` | An existing run, bound and ready to read. Walks nothing; raises `RunNotFound` |
+| `MyViewSet.reopen(request, payload, ...)` | A run seeded from a stash — the run behind `resurrect()` |
+
+Each hands back a `BoundWizard`, so `cursor()`, `path`, `step_url()` and
+`entry_url()` all work as they do inside a dispatch. A tombstoned run is
+*found*, not missing, so check `is_complete` before running one.
+
+### Customising
+
+Every decision is a hook. `get_sections()` chooses the sections per request,
+`get_section_status()` decides how far one has got, `get_section_title()` names
+it, `get_status_label()` reworks the wording, and `resume_section()` /
+`reopen_section()` / `start_section()` each own one way into a run.
+`stash_unusable()` handles a payload whose `label` no longer matches — it
+re-raises by default, because silently starting over looks to the user exactly
+like their answers vanishing.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L337-L410)
 
 ---
 
@@ -1081,7 +1285,9 @@ A few notes:
 - **Session peeking and seeding.** `stored_runs(client)` /
   `stored_run(client, run_id)` / `seed_run(client, run_id, data)` read and
   write raw run entries; `stored_stash(client, key)` / `seed_stash(...)` do
-  the same for stash payloads — no session keys in your tests.
+  the same for stash payloads; and `stored_section_run(client, key)` /
+  `seed_section_run(...)` do it for a hub's section-to-run bookkeeping — no
+  session keys in your tests.
 - **Outside pytest** the helpers work from any test:
   `WizardDriver(Client(), "signup")` (with
   `from django.test import Client` and

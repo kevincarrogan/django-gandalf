@@ -692,6 +692,20 @@ class BoundWizard:
         self._render_context = None
 
     @property
+    def rendering(self):
+        """The declaration of the step this request is rendering, or None
+        outside a step render (programmatic use, or a walk in progress).
+
+        A step view that wants to talk about the run it sits in needs to know
+        which step *it* is — a summary page listing every answered step would
+        otherwise offer to change itself once the run has been round the
+        houses and its own answer is stored too.
+        """
+        if self._render_context is None:
+            return None
+        return self._render_context[1]
+
+    @property
     def run_url(self):
         """The bare run URL — redirects to the current step, so it works as
         a "return to where I was" link. None without a URL reverser (set by
@@ -714,6 +728,35 @@ class BoundWizard:
         declaration = step.declaration if isinstance(step, RuntimeStep) else step
         segment = self.wizard.step_router_class().reverse(declaration)
         return self.urls.get_step_url(self.run_id, segment)
+
+    def entry_url(self, step=None):
+        """A step URL for this run — never the bare run URL.
+
+        The link *into* a run from outside it: a hub row resuming a section,
+        a resurrected stash, a link in an email. The bare run URL redirects
+        to wherever the cursor is, and when every stored answer validates
+        that is completion, so a GET there fires `done()` before the user has
+        touched anything. Naming a step instead makes that impossible.
+
+        `step` is a URL segment, and walks nothing. Without one the run is
+        walked once: the cursor's step, or — for a run whose answers all
+        validate — the first step on the active route, which is where an edit
+        naturally begins. Falls back to the bare run URL only for a wizard
+        with no steps at all, where there is nothing else to name and nothing
+        to fire either. None without a URL reverser (set by the viewset via
+        `bound_wizard.urls`).
+        """
+        if self.urls is None:
+            return None
+        if step is not None:
+            return self.urls.get_step_url(self.run_id, step)
+        cursor = self.cursor()
+        if cursor.node is not None:
+            return self.step_url(cursor.node)
+        first = first_route_step(cursor.state)
+        if first is None:
+            return self.run_url
+        return self.step_url(first.declaration)
 
     @property
     def back_url(self):

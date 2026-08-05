@@ -5,7 +5,7 @@ from django.views import View
 
 from gandalf import tree
 from gandalf.escapes import Advance, Obliterate, Park
-from gandalf.runtime import BoundWizard, first_route_step, submission_from_post
+from gandalf.runtime import BoundWizard, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
@@ -40,6 +40,69 @@ class WizardViewSet(View):
         ]
 
     @classmethod
+    def begin(cls, request, **url_kwargs):
+        """A fresh run of this wizard, returned rather than redirected to.
+
+        What the start URL does, minus the redirect. The start URL mints a
+        run id and hands it straight to a `Location` header; a caller that
+        has to *remember* which run a thing is being answered in — a hub
+        page tracking one run per section — learns the id at the moment it
+        is created instead of having to discover it afterwards.
+        `url_kwargs` are mount-prefix context (e.g. a tenant slug),
+        forwarded into URL reversing via `get_url_kwargs()`.
+        """
+        view = cls()
+        view.setup(request, **url_kwargs)
+        bound_wizard = view._make_bound_wizard(request)
+        bound_wizard.initialise()
+        view._resolve_wizard(bound_wizard)
+        return bound_wizard
+
+    @classmethod
+    def inspect(cls, request, run_id, **url_kwargs):
+        """This wizard bound to `run_id`, outside its own request cycle.
+
+        The dance every cross-wizard reader needs and no caller should have
+        to spell: build the view, hand it the request and any mount-prefix
+        kwargs, make a `BoundWizard` on this viewset's `storage_class`,
+        retrieve the run, then resolve the wizard against it — in that
+        order, because a dynamic `get_wizard()` is entitled to read the
+        run's state to decide its shape. Afterwards `cursor()`, `path`,
+        `step_url()`, `entry_url()` and `run_url` all work exactly as they
+        do inside a dispatch.
+
+        Nothing is walked here, so a caller that only wants `get_state()` or
+        `is_complete` pays a storage read and no form validation at all.
+        Raises `RunNotFound` for a run this storage does not hold. A
+        tombstoned run is *found* — it stays addressable so a revisit can be
+        answered as finished — so check `is_complete` before running it,
+        exactly as a dispatch does.
+        """
+        view = cls()
+        view.setup(request, **url_kwargs)
+        bound_wizard = view._make_bound_wizard(request)
+        bound_wizard.retrieve(run_id)
+        view._resolve_wizard(bound_wizard)
+        return bound_wizard
+
+    @classmethod
+    def reopen(cls, request, payload, expected_label=None, **url_kwargs):
+        """A fresh run seeded from a stash payload, returned rather than
+        redirected to — the run behind `resurrect()`.
+
+        Resolution happens *after* seeding, unlike `inspect()`: the state a
+        dynamic `get_wizard()` would read is the state the payload just
+        supplied. Raises `InvalidStash` — before any run is created — when
+        the payload is malformed or its label does not match.
+        """
+        view = cls()
+        view.setup(request, **url_kwargs)
+        bound_wizard = view._make_bound_wizard(request)
+        bound_wizard.resurrect(payload, expected_label=expected_label)
+        view._resolve_wizard(bound_wizard)
+        return bound_wizard
+
+    @classmethod
     def resurrect(cls, request, payload, step=None, expected_label=None, **url_kwargs):
         """Seed a fresh run from a stash payload and return the URL to send
         the user to.
@@ -53,21 +116,14 @@ class WizardViewSet(View):
         forwarded into URL reversing via `get_url_kwargs()`. Raises
         `InvalidStash` — before any run is created — when the payload is
         malformed or its label does not match `expected_label`.
+
+        Shorthand for `reopen()` plus `entry_url()`; reach for those when
+        the new run itself is wanted and not only the URL.
         """
-        view = cls()
-        view.setup(request, **url_kwargs)
-        bound_wizard = view._make_bound_wizard(request)
-        bound_wizard.resurrect(payload, expected_label=expected_label)
-        view._resolve_wizard(bound_wizard)
-        if step is not None:
-            return view.get_step_url(bound_wizard.run_id, step)
-        cursor = bound_wizard.cursor()
-        if cursor.node is not None:
-            return view._step_url_for(bound_wizard, cursor.node)
-        first = first_route_step(cursor.state)
-        if first is None:
-            return view.get_wizard_url(bound_wizard.run_id)
-        return view._step_url_for(bound_wizard, first.declaration)
+        bound_wizard = cls.reopen(
+            request, payload, expected_label=expected_label, **url_kwargs
+        )
+        return bound_wizard.entry_url(step)
 
     def get_wizard(self, bound_wizard):
         """Per-request hook returning the Wizard to use for this dispatch.
@@ -334,12 +390,8 @@ class WizardViewSet(View):
 
     def _redirect_to_cursor(self, bound_wizard, cursor):
         if cursor.node is not None:
-            return redirect(self._step_url_for(bound_wizard, cursor.node))
+            return redirect(bound_wizard.step_url(cursor.node))
         return redirect(self.get_wizard_url(bound_wizard.run_id))
-
-    def _step_url_for(self, bound_wizard, step_declaration):
-        segment = bound_wizard.wizard.step_router_class().reverse(step_declaration)
-        return self.get_step_url(bound_wizard.run_id, segment)
 
     def get_url_kwargs(self):
         """URL kwargs the mount prefix captured (e.g. a tenant slug),

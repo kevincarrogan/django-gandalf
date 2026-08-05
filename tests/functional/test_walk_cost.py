@@ -73,3 +73,50 @@ def test_completing_one_step_costs_two_walks(run_at_third_step):
 
     assert counts.walks == 2
     assert counts.validations == 3 + 3
+
+
+# --- a hub of sections ------------------------------------------------------
+
+
+@pytest.fixture
+def counting_hub(client):
+    """A hub whose two sections are wired to the counting classes: one left
+    half-answered, one untouched."""
+    client.get("/counting-hub/counting/", follow=True)
+    from gandalf.testing import stored_section_run
+
+    run_id = stored_section_run(client, "counting")
+    client.post(f"/counting-hub-section/{run_id}/first/", {"name": "Ada"}, follow=True)
+    return client
+
+
+def test_rendering_a_hub_walks_nothing(counting_hub):
+    """The claim the hub's design rests on: status comes from the shape of
+    stored state, so a row costs storage reads and no form validation —
+    however many sections the page lists and however far each has got.
+    """
+    with counting_walks() as counts:
+        response = counting_hub.get("/counting-hub/")
+
+    assert response.status_code == HTTPStatus.OK
+    assert counts.walks == 0
+    assert counts.validations == 0
+    assert counts.form_rebuilds == 0
+
+
+def test_entering_a_section_walks_once_in_the_door_and_once_in_the_wizard(
+    counting_hub,
+):
+    """The one walk a hub cannot avoid, paid once for the section clicked.
+
+    The door walks to turn "this run exists" into "this step URL"; the
+    wizard walks again to render it. Two walks for the redirect-and-render,
+    exactly like the POST-redirect-GET cycle above — not one per section.
+    """
+    with counting_walks() as counts:
+        response = counting_hub.get("/counting-hub/counting/", follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert counts.walks == 2
+    assert counts.validations == 1 + 1
+    assert counts.renders == 1

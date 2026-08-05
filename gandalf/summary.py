@@ -148,16 +148,32 @@ class SummaryMixin:
 
     The rows come from `request.wizard.path`, so they are the answers on the
     run's resolved route, in walk order, with the selected branch arm inlined
-    — never the step doing the summarising, and never an answer the run has
-    left behind in a dormant arm.
+    — never an answer the run has left behind in a dormant arm, and never the
+    step doing the summarising, which is dropped explicitly because a run
+    revisited or re-opened arrives with that answer stored too.
     """
 
     summary_context_name = "summary"
     summary_label_context_key = "label"
 
     def get_summary_steps(self):
-        """The steps to summarise: every answered step on the route."""
-        return list(self.request.wizard.path)
+        """The steps to summarise: every answered step on the route, except
+        the one doing the summarising.
+
+        A wizard that only runs forwards never has its own summary step in
+        `path` — the step being rendered is the cursor, and the cursor is by
+        definition unanswered. A run that has been round the houses does: an
+        edit revisited from a change link, or a stashed section re-opened
+        with `reopen_step` pointing here, both arrive with every answer
+        stored, this page's own confirmation included. Dropping it is what
+        stops the page offering to change itself.
+        """
+        rendering = self.request.wizard.rendering
+        return [
+            step
+            for step in self.request.wizard.path
+            if step.declaration is not rendering
+        ]
 
     def get_summary_rows(self):
         return [self.build_summary_row(step) for step in self.get_summary_steps()]
