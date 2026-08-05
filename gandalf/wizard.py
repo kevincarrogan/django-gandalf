@@ -6,6 +6,7 @@ from gandalf.form_views import form_view_factory
 from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
+    InvalidStash,
     MergeCleanedData,
     StateSerializer,
     StepDispatcher,
@@ -15,6 +16,7 @@ from gandalf.runtime import (
 __all__ = [
     "BoundWizard",
     "ConfiguredWizard",
+    "InvalidStash",
     "MergeCleanedData",
     "StepNameRouter",
     "Wizard",

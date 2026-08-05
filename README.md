@@ -649,6 +649,93 @@ Retired runs are pruned to the most recent `SessionStorage.max_completed_runs`
 
 ---
 
+## Stashing and resurrecting runs
+
+Completion is terminal — `done()` fires once and the run's answers are gone.
+Sometimes you want both: the wizard finishes (its side effects run), but the
+answers stay editable — say, a profile built from several wizards where each
+section completes on its own and any of them can be re-opened later.
+
+That is a **stash**: inside `done()`, `bound_wizard.stash()` returns a small
+JSON-safe payload of the run's answers. The payload is yours — put it in a
+model field, the session, wherever your bigger flow keeps its pieces. To
+re-open it, `MyWizardViewSet.resurrect(request, payload)` seeds a brand-new
+run from the payload and returns the URL to send the user to; they land in
+the ordinary wizard UI with every answer pre-filled, edit whatever they need,
+and `done()` fires again for the new run when they finish.
+
+```python
+from django.http import HttpResponse
+from django.shortcuts import redirect
+
+from gandalf.storage import SessionStashStore, StashNotFound
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import InvalidStash, Wizard
+
+
+class ContactSectionWizardViewSet(WizardViewSet):
+    url_name = "contact-section"
+    template_name = "profile/step.html"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name")
+        .step(EmailForm, name="email")
+    )
+
+    def done(self, bound_wizard):
+        # Keep the finished answers so this section can be re-opened later.
+        SessionStashStore(self.request).put(
+            "contact", bound_wizard.stash(label="contact")
+        )
+        return HttpResponse("Contact details saved.")
+
+
+def reopen_contact(request):
+    stashes = SessionStashStore(request)
+    try:
+        payload = stashes.get("contact")
+        url = ContactSectionWizardViewSet.resurrect(
+            request, payload, expected_label="contact"
+        )
+    except (StashNotFound, InvalidStash):
+        return redirect("contact-section")  # nothing stashed — start fresh
+    return redirect(url)
+```
+
+`SessionStashStore` is the helper for the common case — keyed payloads in the
+session (`put` / `get` / `pop` / `delete` / `keys`), server-side so they cannot
+be tampered with in transit. Any other home works just as well; if a payload
+ever travels through the client, sign it (`django.core.signing`).
+
+What resurrection promises:
+
+- **A fresh, ordinary run.** Nothing about it is special — standard URLs,
+  editing, escapes. Resurrecting the same payload twice yields two independent
+  runs. The original run's tombstone is untouched, so the once-per-run `done()`
+  guarantee holds: re-completion fires `done()` for the *new* run.
+- **Every answer is re-proved.** Resurrection replays the walk, so a payload is
+  trusted no further than a live session's own state — a mangled answer parks
+  the run on that step with its errors rather than completing silently.
+- **A step URL, never the bare run URL.** A stashed run's answers all validate,
+  so `resurrect()` lands the user on a step (pass `step="..."` to choose which;
+  default is the cursor, or the first step when complete). For the same reason,
+  one successful edit walks straight through to completion and fires `done()`
+  again — give the wizard a review step if you want an explicit confirm gate.
+- **Files are not preserved.** Uploaded bytes are deleted at completion, so
+  `stash()` keeps a file step's other answers but drops its uploads. On
+  resurrection an *optional* file field sails through; a *required* one parks
+  the run at that step for the user to re-upload.
+- **Same-shaped wizard only.** Stored answers align with the wizard tree
+  positionally, so a payload only resurrects correctly against a tree shaped
+  like the one that stashed it. The `label` is the guard rail: stamp it at
+  stash time, pass `expected_label` at resurrect time, and bump the label when
+  a deploy reshapes the wizard — a mismatch raises `InvalidStash` before any
+  run is created.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/stash/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L276-L302)
+
+---
+
 ## Configuration
 
 Declaring steps is usually all you need; `.configure(...)` overrides a runtime

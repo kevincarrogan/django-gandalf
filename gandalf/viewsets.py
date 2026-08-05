@@ -5,7 +5,7 @@ from django.views import View
 
 from gandalf import tree
 from gandalf.escapes import Advance, Obliterate, Park
-from gandalf.runtime import BoundWizard, submission_from_post
+from gandalf.runtime import BoundWizard, first_route_step, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 
@@ -38,6 +38,36 @@ class WizardViewSet(View):
                 name=f"{cls.url_name}-step",
             ),
         ]
+
+    @classmethod
+    def resurrect(cls, request, payload, step=None, expected_label=None, **url_kwargs):
+        """Seed a fresh run from a stash payload and return the URL to send
+        the user to.
+
+        `step` names the step (URL segment) to land on; without it, the
+        run's cursor step — or, for a fully-valid stash, the first step on
+        the active route. Never the bare run URL: a resurrected run's
+        answers all validate, so a GET there would walk straight to
+        completion and fire `done()` before the user edited anything.
+        `url_kwargs` are mount-prefix context (e.g. a tenant slug),
+        forwarded into URL reversing via `get_url_kwargs()`. Raises
+        `InvalidStash` — before any run is created — when the payload is
+        malformed or its label does not match `expected_label`.
+        """
+        view = cls()
+        view.setup(request, **url_kwargs)
+        bound_wizard = view._make_bound_wizard(request)
+        bound_wizard.resurrect(payload, expected_label=expected_label)
+        view._resolve_wizard(bound_wizard)
+        if step is not None:
+            return view.get_step_url(bound_wizard.run_id, step)
+        cursor = bound_wizard.cursor()
+        if cursor.node is not None:
+            return view._step_url_for(bound_wizard, cursor.node)
+        first = first_route_step(cursor.state)
+        if first is None:
+            return view.get_wizard_url(bound_wizard.run_id)
+        return view._step_url_for(bound_wizard, first.declaration)
 
     def get_wizard(self, bound_wizard):
         """Per-request hook returning the Wizard to use for this dispatch.

@@ -6,6 +6,11 @@ class RunNotFound(LookupError):
     started, already forgotten, or lost with an expired session."""
 
 
+class StashNotFound(LookupError):
+    """Raised when a stash key names no stored payload — never stashed,
+    already popped, or lost with an expired session."""
+
+
 class SessionStorage:
     SESSION_KEY = "gandalf_runs"
     # A completed run leaves a tombstone behind so a revisit can be answered
@@ -85,3 +90,53 @@ class SessionStorage:
         excess = max(0, len(completed) - self.max_completed_runs)
         for run_id in completed[:excess]:
             del gandalf_runs[run_id]
+
+
+class SessionStashStore:
+    """Session-backed home for stash payloads, for the common case where the
+    caller has nowhere better to keep them.
+
+    A stash is caller-owned — `BoundWizard.stash()` hands back a payload and
+    the application decides where it lives. This store covers the simple
+    arrangement: keyed payloads in the Django session, kept server-side so
+    they cannot be tampered with in transit.
+    """
+
+    SESSION_KEY = "gandalf_stashes"
+
+    def __init__(self, request):
+        self.request = request
+
+    def _stashes(self):
+        return self.request.session.get(self.SESSION_KEY, {})
+
+    def put(self, key, payload):
+        """Store `payload` under `key`, replacing any existing stash."""
+        stashes = self.request.session.setdefault(self.SESSION_KEY, {})
+        stashes[key] = payload
+        self.request.session.modified = True
+
+    def get(self, key):
+        """Return the stash under `key`, raising `StashNotFound` without one."""
+        payload = self._stashes().get(key)
+        if payload is None:
+            raise StashNotFound(key)
+        return payload
+
+    def pop(self, key):
+        """Remove and return the stash under `key`, raising `StashNotFound`
+        without one."""
+        payload = self.get(key)
+        del self._stashes()[key]
+        self.request.session.modified = True
+        return payload
+
+    def delete(self, key):
+        """Forget the stash under `key`. Idempotent: deleting an unknown key
+        is not an error, so callers need not check first."""
+        self._stashes().pop(key, None)
+        self.request.session.modified = True
+
+    def keys(self):
+        """The stored stash keys, in insertion order."""
+        return list(self._stashes())

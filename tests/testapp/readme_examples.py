@@ -14,10 +14,12 @@ plain form templates already bundled with the test app.
 
 from django import forms
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.views.generic.edit import FormView
 
+from gandalf.storage import SessionStashStore, StashNotFound
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard, condition
+from gandalf.wizard import InvalidStash, MergeCleanedData, Wizard, condition
 
 from .forms import (
     AccountTypeForm,
@@ -266,3 +268,35 @@ class FlipFlopWizardViewSet(WizardViewSet):
         payload = MergeCleanedData().reduce(bound_wizard.path)
         detail = payload.get("business_name") or payload.get("preferred_name")
         return HttpResponse(f"Onboarded {detail}")
+
+
+# --- Stashing and resurrecting runs -----------------------------------------
+
+
+class ContactSectionWizardViewSet(WizardViewSet):
+    description = (
+        "Stashing: done() keeps the finished answers so the section can be "
+        "re-opened and edited later."
+    )
+    url_name = "readme-stash"
+    template_name = "testapp/linear_wizard.html"
+    wizard = Wizard().step(NameForm, name="name").step(EmailForm, name="email")
+
+    def done(self, bound_wizard):
+        # Keep the finished answers so this section can be re-opened later.
+        SessionStashStore(self.request).put(
+            "contact", bound_wizard.stash(label="contact")
+        )
+        return HttpResponse("Contact details saved.")
+
+
+def reopen_contact(request):
+    stashes = SessionStashStore(request)
+    try:
+        payload = stashes.get("contact")
+        url = ContactSectionWizardViewSet.resurrect(
+            request, payload, expected_label="contact"
+        )
+    except (StashNotFound, InvalidStash):
+        return redirect("readme-stash")  # nothing stashed — start fresh
+    return redirect(url)

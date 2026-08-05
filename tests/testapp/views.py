@@ -13,13 +13,15 @@ from gandalf.viewsets import WizardViewSet
 from http import HTTPStatus
 
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from gandalf.escapes import Obliterate
-from gandalf.storage import SessionStorage
+from gandalf.runtime import STASH_VERSION, InvalidStash
+from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
 
 from .counting import CountingCursorWalker, CountingStepDispatcher
 from .forms import (
@@ -1572,3 +1574,149 @@ class EmptyPathBranchWizardViewSet(WizardViewSet):
 
 def _iter_path(bound_wizard):
     yield from bound_wizard.path
+
+
+class StashingWizardViewSet(WizardViewSet):
+    description = (
+        "Linear wizard whose done() stashes the finished answers in the "
+        "session, so the resurrect view can re-open them in a fresh run "
+        "for editing. Its second step's photo is optional — the stash "
+        "drops uploads, so a resurrected run sails past it."
+    )
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            FirstStepForm,
+            name="first",
+        )
+        .step(
+            OptionalPhotoForm,
+            name="photo",
+        )
+    )
+
+    url_name = "stashing-wizard"
+
+    def done(self, bound_wizard):
+        SessionStashStore(self.request).put(
+            "contact", bound_wizard.stash(label="contact")
+        )
+        first = bound_wizard.path.find_step(name="first")
+        return HttpResponse(f"stashed {first.form.cleaned_data['name']}")
+
+
+class RequiredPhotoStashingWizardViewSet(WizardViewSet):
+    description = (
+        "Stashing wizard whose second step requires a file. The stash drops "
+        "uploads, so resurrecting parks the run on the photo step, where the "
+        "user re-uploads."
+    )
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            FirstStepForm,
+            name="first",
+        )
+        .step(
+            ProfilePhotoForm,
+            name="photo",
+        )
+    )
+
+    url_name = "required-photo-stashing-wizard"
+
+    def done(self, bound_wizard):
+        SessionStashStore(self.request).put(
+            "required-photo", bound_wizard.stash(label="required-photo")
+        )
+        return HttpResponse(b"stashed with photo")
+
+
+def _resurrect_stash(request, viewset_class, key):
+    """Send the user into a fresh run seeded from the stash under `key`.
+
+    The stash is read, not popped: re-opening it for another edit keeps
+    working, and re-completing the wizard overwrites it with the new
+    answers."""
+    stashes = SessionStashStore(request)
+    try:
+        payload = stashes.get(key)
+        url = viewset_class.resurrect(request, payload, expected_label=key)
+    except (StashNotFound, InvalidStash):
+        return HttpResponse(status=HTTPStatus.GONE)
+    return redirect(url)
+
+
+def resurrect_contact_stash(request):
+    return _resurrect_stash(request, StashingWizardViewSet, "contact")
+
+
+def resurrect_required_photo_stash(request):
+    return _resurrect_stash(
+        request, RequiredPhotoStashingWizardViewSet, "required-photo"
+    )
+
+
+class BranchingStashingWizardViewSet(WizardViewSet):
+    description = (
+        "Stashing wizard with a branch and an expansion, so its stash "
+        "payload nests entries at every depth. done() stashes without a "
+        "label under the 'sections' key; the resurrect view consumes the "
+        "stash and reopens the run at the count step."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(
+            AccountTypeForm,
+            name="account_type",
+        )
+        .branch(
+            condition(
+                is_business_account,
+                Wizard().step(BusinessDetailsForm, name="business_name"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
+        )
+        .step(
+            ItemCountForm,
+            name="count",
+        )
+        .expand(build_item_steps)
+    )
+
+    url_name = "branching-stashing-wizard"
+
+    def done(self, bound_wizard):
+        SessionStashStore(self.request).put("sections", bound_wizard.stash())
+        return HttpResponse(b"stashed sections")
+
+
+def resurrect_sections_stash(request):
+    """Consume the sections stash and reopen it at the count step."""
+    stashes = SessionStashStore(request)
+    try:
+        payload = stashes.pop("sections")
+        url = BranchingStashingWizardViewSet.resurrect(request, payload, step="count")
+    except (StashNotFound, InvalidStash):
+        return HttpResponse(status=HTTPStatus.GONE)
+    return redirect(url)
+
+
+def stashed_section_keys(request):
+    """The bigger-collection page's view of which sections are stashed."""
+    return HttpResponse(",".join(SessionStashStore(request).keys()))
+
+
+def discard_sections_stash(request):
+    SessionStashStore(request).delete("sections")
+    return HttpResponse(b"discarded")
+
+
+def resurrect_empty_stash(request):
+    """Resurrect an empty payload into the stepless wizard: with no step to
+    land on, the only URL is the bare run one, which completes on arrival."""
+    url = EmptyWizardViewSet.resurrect(request, {"version": STASH_VERSION, "state": []})
+    return redirect(url)

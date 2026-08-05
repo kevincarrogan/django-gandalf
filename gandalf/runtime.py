@@ -1,6 +1,6 @@
 import logging
 from contextlib import contextmanager
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
 from http import HTTPStatus
 from typing import Any
@@ -49,6 +49,48 @@ def _as_post_data(submission):
 class StepNotFound(LookupError):
     """Raised when a context-based edit targets a step that is not on the
     active runtime path or has no stored submission."""
+
+
+# Version stamp written into every stash envelope, checked on resurrection so
+# a payload from a future incompatible format is refused rather than walked.
+STASH_VERSION = 1
+
+
+class InvalidStash(ValueError):
+    """Raised when a payload cannot seed a run: not a stash envelope, an
+    unsupported version, or a label that does not match the expected one."""
+
+
+def _strip_file_refs(entries):
+    """Return `entries` with every `files` key dropped, at any depth.
+
+    A stash outlives the run, but the uploaded bytes do not — completion
+    deletes them — so a payload must not carry refs to files that no longer
+    exist. The step data itself is kept: on resurrection the walk re-proves
+    it without files, so a required file field parks the cursor at that step
+    (the correct resume point) while its other answers survive. Recurses
+    through branch arms — active and dormant alike, plus the legacy bare-list
+    shape — and expansion sub-lists. Builds new structures; never mutates.
+    """
+    stripped = []
+    for entry in entries:
+        if "branch" in entry:
+            arms = entry["branch"]
+            if isinstance(arms, dict):
+                entry = {
+                    "branch": {
+                        arm_id: _strip_file_refs(arm_entries)
+                        for arm_id, arm_entries in arms.items()
+                    }
+                }
+            else:
+                entry = {"branch": _strip_file_refs(arms)}
+        elif "expand" in entry:
+            entry = {"expand": _strip_file_refs(entry["expand"])}
+        else:
+            entry = {"step": entry.get("step")}
+        stripped.append(entry)
+    return stripped
 
 
 # Sentinel for "no walk is in progress". Distinct from `None`, which is a
@@ -272,6 +314,17 @@ def _iter_route_steps(node):
         node = node.next
 
 
+def first_route_step(state):
+    """The first `RuntimeStep` on the active route of a walked tree, or None.
+
+    On a complete walk this is where an edit naturally begins — the earliest
+    step a URL can render — which is what lets a resurrected run land on a
+    step instead of the bare run URL (where a fully-valid run would finish
+    immediately).
+    """
+    return next(_iter_route_steps(state), None)
+
+
 def _trim_trailing_holes(entries):
     """Drop trailing hole entries so persisted state stays minimal: a
     trailing `{"step": None}` or empty branch slot carries no information
@@ -474,6 +527,52 @@ class BoundWizard:
 
     def get_state(self):
         return self.storage.get_state(self.run_id)
+
+    def stash(self, label=None):
+        """A caller-owned, JSON-safe payload of this run's answers.
+
+        Callable inside `done()` — completion tears the run down only after
+        `done()` returns, so the final state is still readable there. File
+        refs are stripped (the bytes are deleted at completion); everything
+        else rides verbatim, ready to seed a fresh run via `resurrect()`.
+        `label` is an opt-in guard: state aligns with the wizard tree
+        positionally, so resurrection should be refused when the payload was
+        stashed by a differently-shaped wizard.
+        """
+        payload = {
+            "version": STASH_VERSION,
+            "state": _strip_file_refs(self.get_state()),
+        }
+        if label is not None:
+            payload["label"] = label
+        return payload
+
+    def resurrect(self, payload, expected_label=None):
+        """Seed a fresh run from a stash payload; return the new run id.
+
+        Storage-only — the wizard need not be resolved yet, matching how a
+        run always exists before its wizard is bound. The state is deep
+        copied so repeated resurrections of one payload yield fully
+        independent runs, and the payload is vetted first, so a refusal
+        leaves no run behind. Every answer is still re-proved by the walk on
+        every request; resurrecting trusts the payload no further than a
+        live session's own stored state.
+        """
+        if not isinstance(payload, dict) or not isinstance(payload.get("state"), list):
+            raise InvalidStash("A stash payload is a dict with a state list.")
+        if payload.get("version") != STASH_VERSION:
+            raise InvalidStash(
+                f"Unsupported stash version: {payload.get('version')!r} "
+                f"(expected {STASH_VERSION})."
+            )
+        if expected_label is not None and payload.get("label") != expected_label:
+            raise InvalidStash(
+                f"Stash label {payload.get('label')!r} does not match "
+                f"expected label {expected_label!r}."
+            )
+        self.initialise()
+        self.storage.set_state(self.run_id, deepcopy(payload["state"]))
+        return self.run_id
 
     def obliterate(self):
         """Forget this run: its uploaded files and its stored state.

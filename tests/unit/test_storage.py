@@ -2,7 +2,12 @@ import uuid
 
 import pytest
 
-from gandalf.storage import RunNotFound, SessionStorage
+from gandalf.storage import (
+    RunNotFound,
+    SessionStashStore,
+    SessionStorage,
+    StashNotFound,
+)
 
 
 class _Session(dict):
@@ -295,3 +300,80 @@ def test_session_storage_pruning_never_drops_a_run_in_progress():
         "live": {"state": [{"step": {"a": "1"}}]},
         "second": {"completed": True},
     }
+
+
+_PAYLOAD = {"version": 1, "state": [{"step": {"name": "Ada"}}]}
+
+
+def test_session_stash_store_put_and_get_round_trip():
+    request = _Request()
+    store = SessionStashStore(request)
+
+    store.put("contact", _PAYLOAD)
+
+    assert store.get("contact") == _PAYLOAD
+    assert request.session["gandalf_stashes"] == {"contact": _PAYLOAD}
+
+
+def test_session_stash_store_put_overwrites_an_existing_stash():
+    request = _Request({"gandalf_stashes": {"contact": {"version": 1, "state": []}}})
+    store = SessionStashStore(request)
+
+    store.put("contact", _PAYLOAD)
+
+    assert store.get("contact") == _PAYLOAD
+
+
+def test_session_stash_store_put_marks_session_modified():
+    request = _Request()
+
+    SessionStashStore(request).put("contact", _PAYLOAD)
+
+    assert request.session.modified is True
+
+
+def test_session_stash_store_get_raises_for_an_unknown_key():
+    store = SessionStashStore(_Request())
+
+    with pytest.raises(StashNotFound):
+        store.get("missing")
+
+
+def test_session_stash_store_pop_removes_and_returns_the_stash():
+    request = _Request({"gandalf_stashes": {"contact": _PAYLOAD}})
+    store = SessionStashStore(request)
+
+    payload = store.pop("contact")
+
+    assert payload == _PAYLOAD
+    assert request.session["gandalf_stashes"] == {}
+    assert request.session.modified is True
+
+
+def test_session_stash_store_pop_raises_for_an_unknown_key():
+    store = SessionStashStore(_Request())
+
+    with pytest.raises(StashNotFound):
+        store.pop("missing")
+
+
+def test_session_stash_store_delete_is_idempotent():
+    request = _Request({"gandalf_stashes": {"contact": _PAYLOAD}})
+    store = SessionStashStore(request)
+
+    store.delete("contact")
+    store.delete("contact")
+
+    assert request.session["gandalf_stashes"] == {}
+    assert request.session.modified is True
+
+
+def test_session_stash_store_keys_lists_stored_stashes_in_order():
+    request = _Request({"gandalf_stashes": {"contact": _PAYLOAD, "billing": _PAYLOAD}})
+    store = SessionStashStore(request)
+
+    assert store.keys() == ["contact", "billing"]
+
+
+def test_session_stash_store_keys_is_empty_without_stashes():
+    assert SessionStashStore(_Request()).keys() == []

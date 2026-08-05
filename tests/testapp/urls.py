@@ -29,6 +29,12 @@ urlpatterns = [
     path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
     path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
     path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),
+    path("readme/stash/", include(readme_examples.ContactSectionWizardViewSet.urls())),
+    path(
+        "readme/stash-reopen/",
+        readme_examples.reopen_contact,
+        name="readme-stash-reopen",
+    ),
     path(
         "path-aware-walked-past-wizard/",
         include(views.PathAwareWalkedPastWizardViewSet.urls()),
@@ -162,6 +168,45 @@ urlpatterns = [
     path(
         "branching-expand-wizard/",
         include(views.BranchingExpandWizardViewSet.urls()),
+    ),
+    path("stashing-wizard/", include(views.StashingWizardViewSet.urls())),
+    path(
+        "branching-stashing-wizard/",
+        include(views.BranchingStashingWizardViewSet.urls()),
+    ),
+    path(
+        "branching-stashing-wizard-resurrect/",
+        views.resurrect_sections_stash,
+        name="branching-stashing-wizard-resurrect",
+    ),
+    path(
+        "stashed-section-keys/",
+        views.stashed_section_keys,
+        name="stashed-section-keys",
+    ),
+    path(
+        "discard-sections-stash/",
+        views.discard_sections_stash,
+        name="discard-sections-stash",
+    ),
+    path(
+        "resurrect-empty-stash/",
+        views.resurrect_empty_stash,
+        name="resurrect-empty-stash",
+    ),
+    path(
+        "stashing-wizard-resurrect/",
+        views.resurrect_contact_stash,
+        name="stashing-wizard-resurrect",
+    ),
+    path(
+        "required-photo-stashing-wizard/",
+        include(views.RequiredPhotoStashingWizardViewSet.urls()),
+    ),
+    path(
+        "required-photo-stashing-wizard-resurrect/",
+        views.resurrect_required_photo_stash,
+        name="required-photo-stashing-wizard-resurrect",
     ),
     path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
     path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),

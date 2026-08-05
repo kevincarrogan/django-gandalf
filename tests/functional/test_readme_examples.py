@@ -69,6 +69,7 @@ def drive(client, name, steps, url_kwargs=None):
         ("readme-escape", None),
         ("readme-editing", None),
         ("readme-flip-flop", None),
+        ("readme-stash", None),
     ],
 )
 def test_readme_example_start_url_is_reachable(client, name, url_kwargs):
@@ -358,3 +359,47 @@ def test_flip_flop_wizard_restores_a_dormant_arm_answer(client):
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"Onboarded Acme"
+
+
+# --- Stashing and resurrecting runs -----------------------------------------
+
+
+def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(client):
+    name = "readme-stash"
+    response, first_run_id = drive(
+        client,
+        name,
+        [
+            ("name", {"name": "Ada"}),
+            ("email", {"email": "ada@example.com"}),
+        ],
+    )
+    assert response.content == b"Contact details saved."
+
+    # Reopening resurrects the stash into a fresh run, landing on a step
+    # with the saved answer pre-filled.
+    response = client.get(reverse("readme-stash-reopen"), follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'value="Ada"')
+    runs = client.session["gandalf_runs"]
+    new_run_id = next(
+        run_id for run_id, data in runs.items() if not data.get("completed")
+    )
+    assert new_run_id != first_run_id
+
+    # One successful edit re-completes the wizard: done() fires again and the
+    # stash now holds the edited answers.
+    response = client.post(
+        step_url(name, new_run_id, "name"), data={"name": "Grace"}, follow=True
+    )
+
+    assert response.content == b"Contact details saved."
+    payload = client.session["gandalf_stashes"]["contact"]
+    assert payload["state"][0] == {"step": {"name": "Grace"}}
+
+
+def test_stash_reopen_without_a_stash_starts_fresh(client):
+    response = client.get(reverse("readme-stash-reopen"))
+
+    assertRedirects(response, start_url("readme-stash"), fetch_redirect_response=False)

@@ -1074,6 +1074,111 @@ def test_wizard_viewset_placing_an_escaping_answer_on_a_completed_step(rf):
     ]
 
 
+# --- Resurrecting a stash -------------------------------------------------
+
+
+def _resurrect_payload(state):
+    from gandalf.runtime import STASH_VERSION
+
+    return {"version": STASH_VERSION, "state": state}
+
+
+def _only_run(request):
+    (run_id,) = request.session["gandalf_runs"]
+    return run_id
+
+
+def test_wizard_viewset_resurrect_seeds_a_run_and_returns_its_first_step_url(rf):
+    """A fully-valid resurrected run must land on a step URL: the bare run
+    URL would walk straight to completion and fire `done()` before the user
+    edited anything."""
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+    payload = _resurrect_payload(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+            {"step": {"confirmed": "on"}},
+        ]
+    )
+
+    url = _RoutedViewSet.resurrect(request, payload)
+
+    run_id = _only_run(request)
+    assert url == f"/wizard/{run_id}/first/"
+    assert request.session["gandalf_runs"][run_id]["state"] == payload["state"]
+
+
+def test_wizard_viewset_resurrect_step_names_the_landing_step(rf):
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+    payload = _resurrect_payload([{"step": {"name": "Ada"}}])
+
+    url = _RoutedViewSet.resurrect(request, payload, step="second")
+
+    assert url == f"/wizard/{_only_run(request)}/second/"
+
+
+def test_wizard_viewset_resurrect_lands_on_the_cursor_of_a_partial_stash(rf):
+    """A stash need not be complete — a stripped required-file step or a
+    hole leaves the run parked mid-way, and that parking spot is where the
+    user has to resume."""
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+    payload = _resurrect_payload([{"step": {"name": "Ada"}}])
+
+    url = _RoutedViewSet.resurrect(request, payload)
+
+    assert url == f"/wizard/{_only_run(request)}/second/"
+
+
+def test_wizard_viewset_resurrect_forwards_mount_prefix_url_kwargs(rf):
+    class _PrefixedViewSet(_RoutedViewSet):
+        def get_step_url(self, run_id, step_segment):
+            org = self.kwargs["org"]
+            return f"/{org}/wizard/{run_id}/{step_segment}/"
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+    payload = _resurrect_payload([{"step": {"name": "Ada"}}])
+
+    url = _PrefixedViewSet.resurrect(request, payload, org="acme")
+
+    assert url == f"/acme/wizard/{_only_run(request)}/second/"
+
+
+def test_wizard_viewset_resurrect_of_an_empty_wizard_falls_back_to_the_run_url(rf):
+    """A wizard with no steps has no step URL to land on; the bare run URL
+    (which completes immediately) is all there is."""
+
+    class _EmptyViewSet(_RoutedViewSet):
+        wizard = Wizard().configure(template_name="testapp/linear_wizard.html")
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    url = _EmptyViewSet.resurrect(request, _resurrect_payload([]))
+
+    assert url == f"/wizard/{_only_run(request)}/"
+
+
+def test_wizard_viewset_resurrect_propagates_an_invalid_stash(rf):
+    from gandalf.runtime import InvalidStash
+
+    request = rf.get("/somewhere-else/")
+    request.session = _Session()
+
+    with pytest.raises(InvalidStash):
+        _RoutedViewSet.resurrect(request, {"state": "not-a-list"})
+    with pytest.raises(InvalidStash):
+        _RoutedViewSet.resurrect(
+            request,
+            _resurrect_payload([{"step": {"name": "Ada"}}]),
+            expected_label="contact",
+        )
+    assert request.session.get("gandalf_runs", {}) == {}
+
+
 def test_wizard_viewset_rejects_duplicate_step_names(rf):
     """Two steps sharing a name is a declaration error: a URL segment has to
     name exactly one step, and a walk stops at the cursor so it could not see

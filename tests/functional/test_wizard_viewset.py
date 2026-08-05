@@ -3418,3 +3418,391 @@ def test_wizard_configured_storage_class_raises_improperly_configured(client):
 
     with pytest.raises(ImproperlyConfigured, match="WizardViewSet.storage_class"):
         client.get(reverse("wizard-configured-storage"))
+
+
+# --- Stashing and resurrecting runs ----------------------------------------
+
+
+@pytest.fixture
+def stashing_wizard_url():
+    return reverse("stashing-wizard")
+
+
+@pytest.fixture
+def stashing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("stashing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+@pytest.fixture
+def stashing_wizard_resurrect_url():
+    return reverse("stashing-wizard-resurrect")
+
+
+def _complete_stashing_wizard(
+    client, start_url, run_url, name="Ada", label="Holiday", photo=None
+):
+    client.get(start_url)
+    run_id = get_new_run_id_from_session(client.session, set())
+    client.post(_step(run_url(run_id), "first"), data={"name": name}, follow=True)
+    photo_data = {"label": label}
+    if photo is not None:
+        photo_data["photo"] = photo
+    response = client.post(
+        _step(run_url(run_id), "photo"), data=photo_data, follow=True
+    )
+    return run_id, response
+
+
+def test_completing_the_stashing_wizard_stores_a_files_free_payload(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    isolated_media_root,
+):
+    run_id, response = _complete_stashing_wizard(
+        client,
+        stashing_wizard_url,
+        stashing_wizard_run_url,
+        photo=SimpleUploadedFile("holiday.jpg", b"binary"),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"stashed Ada"
+    payload = client.session["gandalf_stashes"]["contact"]
+    assert payload["label"] == "contact"
+    assert payload["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"label": "Holiday"}},
+    ]
+    assert client.session["gandalf_runs"][run_id] == {"completed": True}
+
+
+def test_resurrecting_a_stash_lands_on_a_step_of_a_fresh_prefilled_run(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    old_run_id, _ = _complete_stashing_wizard(
+        client, stashing_wizard_url, stashing_wizard_run_url
+    )
+
+    response = client.get(stashing_wizard_resurrect_url)
+
+    new_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    assertRedirects(
+        response,
+        _step(stashing_wizard_run_url(new_run_id), "first"),
+        fetch_redirect_response=False,
+    )
+    assert client.session["gandalf_runs"][new_run_id]["state"] == [
+        {"step": {"name": "Ada"}},
+        {"step": {"label": "Holiday"}},
+    ]
+
+    landing = client.get(response["Location"])
+    assert landing.status_code == HTTPStatus.OK
+    assertContains(landing, 'value="Ada"')
+
+
+def test_editing_a_resurrected_run_fires_done_again(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    old_run_id, _ = _complete_stashing_wizard(
+        client, stashing_wizard_url, stashing_wizard_run_url
+    )
+
+    client.get(stashing_wizard_resurrect_url)
+    new_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    # Every stored answer in a resurrected run validates, so one successful
+    # edit walks straight through to completion and fires done() again —
+    # wizards wanting an explicit confirm gate keep a review step.
+    response = client.post(
+        _step(stashing_wizard_run_url(new_run_id), "first"),
+        data={"name": "Grace"},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"stashed Grace"
+    # The re-completion overwrote the stash with the edited answers, and the
+    # original run's tombstone is untouched.
+    payload = client.session["gandalf_stashes"]["contact"]
+    assert payload["state"][0] == {"step": {"name": "Grace"}}
+    assert client.session["gandalf_runs"][old_run_id] == {"completed": True}
+
+
+def test_resurrecting_twice_yields_two_independent_runs(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    old_run_id, _ = _complete_stashing_wizard(
+        client, stashing_wizard_url, stashing_wizard_run_url
+    )
+
+    client.get(stashing_wizard_resurrect_url)
+    first_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    client.get(stashing_wizard_resurrect_url)
+    second_run_id = get_new_run_id_from_session(
+        client.session, {old_run_id, first_run_id}
+    )
+
+    assert first_run_id != second_run_id
+    runs = client.session["gandalf_runs"]
+    assert runs[first_run_id]["state"] == runs[second_run_id]["state"]
+
+
+def test_resurrecting_without_a_stash_is_gone(client, stashing_wizard_resurrect_url):
+    response = client.get(stashing_wizard_resurrect_url)
+
+    assert response.status_code == HTTPStatus.GONE
+    assert client.session.get("gandalf_runs", {}) == {}
+
+
+def test_resurrecting_a_tampered_stash_version_is_gone(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    _complete_stashing_wizard(client, stashing_wizard_url, stashing_wizard_run_url)
+    session = client.session
+    session["gandalf_stashes"]["contact"]["version"] = 99
+    session.save()
+
+    response = client.get(stashing_wizard_resurrect_url)
+
+    assert response.status_code == HTTPStatus.GONE
+
+
+def test_a_tampered_stash_answer_is_revalidated_not_trusted(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    """Resurrection replays the walk, so a mangled answer parks the run on
+    the offending step with its errors — it can never complete silently."""
+    old_run_id, _ = _complete_stashing_wizard(
+        client, stashing_wizard_url, stashing_wizard_run_url
+    )
+    session = client.session
+    session["gandalf_stashes"]["contact"]["state"][0]["step"]["name"] = ""
+    session.save()
+
+    response = client.get(stashing_wizard_resurrect_url)
+
+    new_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    assertRedirects(
+        response,
+        _step(stashing_wizard_run_url(new_run_id), "first"),
+        fetch_redirect_response=False,
+    )
+    landing = client.get(response["Location"])
+    assert landing.status_code == HTTPStatus.OK
+    assertContains(landing, "This field is required.")
+
+
+@pytest.fixture
+def required_photo_stashing_wizard_url():
+    return reverse("required-photo-stashing-wizard")
+
+
+@pytest.fixture
+def required_photo_stashing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("required-photo-stashing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def test_resurrecting_a_required_file_stash_resumes_at_the_photo_step(
+    client,
+    required_photo_stashing_wizard_url,
+    required_photo_stashing_wizard_run_url,
+    isolated_media_root,
+):
+    client.get(required_photo_stashing_wizard_url)
+    old_run_id = get_new_run_id_from_session(client.session, set())
+    run_url = required_photo_stashing_wizard_run_url
+    client.post(_step(run_url(old_run_id), "first"), data={"name": "Ada"}, follow=True)
+    response = client.post(
+        _step(run_url(old_run_id), "photo"),
+        data={"photo": SimpleUploadedFile("portrait.jpg", b"binary")},
+        follow=True,
+    )
+    assert response.content == b"stashed with photo"
+
+    response = client.get(reverse("required-photo-stashing-wizard-resurrect"))
+
+    # The stash dropped the upload, so the resurrected run cannot pass the
+    # required photo step — it parks there for the user to re-upload.
+    new_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    assertRedirects(
+        response,
+        _step(run_url(new_run_id), "photo"),
+        fetch_redirect_response=False,
+    )
+    landing = client.get(response["Location"])
+    assert landing.status_code == HTTPStatus.OK
+    assertContains(landing, 'type="file"')
+
+
+@pytest.fixture
+def branching_stashing_wizard_url():
+    return reverse("branching-stashing-wizard")
+
+
+@pytest.fixture
+def branching_stashing_wizard_run_url():
+    def build_url(run_id):
+        return reverse("branching-stashing-wizard-run", kwargs={"run_id": run_id})
+
+    return build_url
+
+
+def _complete_branching_stashing_wizard(client, start_url, run_url):
+    client.get(start_url)
+    run_id = get_new_run_id_from_session(client.session, set())
+    for step, data in [
+        ("account_type", {"account_type": "business"}),
+        ("business_name", {"business_name": "Acme"}),
+        ("count", {"count": "1"}),
+        ("item-0", {"name": "Widget"}),
+    ]:
+        response = client.post(_step(run_url(run_id), step), data=data, follow=True)
+    return run_id, response
+
+
+def test_branching_stashing_wizard_stashes_nested_entries_without_a_label(
+    client,
+    branching_stashing_wizard_url,
+    branching_stashing_wizard_run_url,
+):
+    _, response = _complete_branching_stashing_wizard(
+        client, branching_stashing_wizard_url, branching_stashing_wizard_run_url
+    )
+
+    assert response.content == b"stashed sections"
+    payload = client.session["gandalf_stashes"]["sections"]
+    assert "label" not in payload
+    assert payload["state"] == [
+        {"step": {"account_type": "business"}},
+        {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
+        {"step": {"count": "1"}},
+        {"expand": [{"step": {"name": "Widget"}}]},
+    ]
+
+
+def test_branching_stashing_wizard_strips_a_legacy_branch_entry(
+    client,
+    branching_stashing_wizard_url,
+    branching_stashing_wizard_run_url,
+):
+    """A run whose stored branch entry still uses the legacy bare-list shape
+    stashes cleanly — the payload keeps the shape it found."""
+    client.get(branching_stashing_wizard_url)
+    run_id = get_new_run_id_from_session(client.session, set())
+    session = client.session
+    session["gandalf_runs"][run_id]["state"] = [
+        {"step": {"account_type": "business"}},
+        {"branch": [{"step": {"business_name": "Acme"}}]},
+        {"step": {"count": "1"}},
+        {"expand": [{"step": {"name": "Widget"}}]},
+    ]
+    session.save()
+
+    response = client.get(branching_stashing_wizard_run_url(run_id))
+
+    assert response.content == b"stashed sections"
+    payload = client.session["gandalf_stashes"]["sections"]
+    assert payload["state"][1] == {"branch": [{"step": {"business_name": "Acme"}}]}
+
+
+def test_resurrecting_the_sections_stash_lands_on_the_named_step_and_consumes_it(
+    client,
+    branching_stashing_wizard_url,
+    branching_stashing_wizard_run_url,
+):
+    old_run_id, _ = _complete_branching_stashing_wizard(
+        client, branching_stashing_wizard_url, branching_stashing_wizard_run_url
+    )
+
+    response = client.get(reverse("branching-stashing-wizard-resurrect"))
+
+    new_run_id = get_new_run_id_from_session(client.session, {old_run_id})
+    assertRedirects(
+        response,
+        _step(branching_stashing_wizard_run_url(new_run_id), "count"),
+        fetch_redirect_response=False,
+    )
+    # The resurrect view pops the stash, so a second reopen finds nothing.
+    assert client.get(reverse("branching-stashing-wizard-resurrect")).status_code == (
+        HTTPStatus.GONE
+    )
+
+
+def test_stashed_section_keys_lists_completions_and_discard_removes_them(
+    client,
+    branching_stashing_wizard_url,
+    branching_stashing_wizard_run_url,
+):
+    assert client.get(reverse("stashed-section-keys")).content == b""
+
+    _complete_branching_stashing_wizard(
+        client, branching_stashing_wizard_url, branching_stashing_wizard_run_url
+    )
+    assert client.get(reverse("stashed-section-keys")).content == b"sections"
+
+    client.get(reverse("discard-sections-stash"))
+    assert client.get(reverse("stashed-section-keys")).content == b""
+
+
+def test_resurrecting_an_empty_stash_completes_on_arrival(client):
+    """A stepless wizard has no step URL to land on, so resurrection falls
+    back to the bare run URL — where the walk immediately completes."""
+    response = client.get(reverse("resurrect-empty-stash"), follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    run_id = get_new_run_id_from_session(client.session, set())
+    assert response.content == f"completed {run_id}".encode()
+
+
+def test_resurrecting_a_stash_whose_state_is_not_a_list_is_gone(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    _complete_stashing_wizard(client, stashing_wizard_url, stashing_wizard_run_url)
+    session = client.session
+    session["gandalf_stashes"]["contact"]["state"] = "corrupt"
+    session.save()
+
+    response = client.get(stashing_wizard_resurrect_url)
+
+    assert response.status_code == HTTPStatus.GONE
+
+
+def test_resurrecting_a_stash_with_the_wrong_label_is_gone(
+    client,
+    stashing_wizard_url,
+    stashing_wizard_run_url,
+    stashing_wizard_resurrect_url,
+):
+    _complete_stashing_wizard(client, stashing_wizard_url, stashing_wizard_run_url)
+    session = client.session
+    session["gandalf_stashes"]["contact"]["label"] = "billing"
+    session.save()
+
+    response = client.get(stashing_wizard_resurrect_url)
+
+    assert response.status_code == HTTPStatus.GONE
