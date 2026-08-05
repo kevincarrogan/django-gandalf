@@ -2,7 +2,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
 from gandalf.file_storage import WizardFileStorage
-from gandalf.form_views import form_view_factory
+from gandalf.form_views import StepFormView, form_view_factory
 from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
@@ -18,6 +18,7 @@ __all__ = [
     "ConfiguredWizard",
     "InvalidStash",
     "MergeCleanedData",
+    "StepFormView",
     "StepNameRouter",
     "Wizard",
     "WizardFileStorage",

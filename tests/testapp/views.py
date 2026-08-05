@@ -20,6 +20,7 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from gandalf.escapes import Obliterate
+from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
 from gandalf.summary import SummaryMixin
@@ -1726,15 +1727,12 @@ def resurrect_empty_stash(request):
     return redirect(url)
 
 
-class SummaryStepView(SummaryMixin, FormView):
+class SummaryStepView(SummaryMixin, StepFormView):
     """A check-your-answers step: `SummaryMixin` puts one row per answered
     step in the context, each with its formatted fields and change link."""
 
     form_class = ReviewForm
     template_name = "testapp/summary_wizard.html"
-
-    def get_success_url(self):
-        return self.request.path
 
 
 class SummaryWizardViewSet(WizardViewSet):
@@ -1767,15 +1765,12 @@ class SummaryWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-class CustomSummaryStepView(SummaryMixin, FormView):
+class CustomSummaryStepView(SummaryMixin, StepFormView):
     """Every hook the mixin exposes, overridden: the step label, the value
     formatting, and which fields appear at all."""
 
     form_class = ReviewForm
     template_name = "testapp/summary_wizard.html"
-
-    def get_success_url(self):
-        return self.request.path
 
     def get_summary_label(self, step):
         return super().get_summary_label(step).upper()

@@ -236,13 +236,13 @@ read the answers however it needs:
 - `bound_wizard.get_state()` / `get_run_data()` — the raw stored JSON.
 
 **Plain `Form` or full `FormView`.** Pass a plain `Form` and Gandalf generates
-the step's `FormView` for you, rendered with the viewset's `template_name`. Pass
-your own `FormView` when a step needs `get_initial()`, `get_form_kwargs()`, a
-per-step template, or other view-level behavior — it keeps its own configuration
-and can be reused as a standalone view outside the wizard. Inside the wizard the
-step still sees `self.request.wizard`, so it can inspect run state when useful.
-See [Step views](#step-views-bringing-your-own-formview) for what such a view
-must provide and what it sees when it reads run state.
+the step's view for you, rendered with the viewset's `template_name`. Pass your
+own view — a `StepFormView` subclass — when a step needs `get_initial()`,
+`get_form_kwargs()`, a per-step template, or other view-level behavior; it keeps
+its own configuration and can be reused as a standalone view outside the wizard.
+Inside the wizard the step still sees `self.request.wizard`, so it can inspect
+run state when useful. See [Step views](#step-views-bringing-your-own-formview)
+for what such a view must provide and what it sees when it reads run state.
 
 ---
 
@@ -433,19 +433,15 @@ what is it called, what does it say, and where do I go to change it — so
 template gets a `summary` list, one row per answered step:
 
 ```python
-from django.views.generic.edit import FormView
-
+from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 
-class ReviewStepView(SummaryMixin, FormView):
+class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "checkout/review.html"
-
-    def get_success_url(self):
-        return self.request.path
 
 
 class SummaryWizardViewSet(WizardViewSet):
@@ -504,7 +500,7 @@ the cases you do not special-case:
 | `summary_context_name` | the context variable's name (default `summary`) |
 
 ```python
-class ReviewStepView(SummaryMixin, FormView):
+class ReviewStepView(SummaryMixin, StepFormView):
     def format_value(self, bound_field, value):
         if bound_field.name == "born_on":
             return value.strftime("%d %B %Y")
@@ -606,33 +602,29 @@ default storage; point it elsewhere (S3, a per-tenant location) by subclassing
 
 ## Step views: bringing your own `FormView`
 
-Pass a plain `Form` and Gandalf generates the step's view. Pass your own
-`FormView` when the step needs view-level behavior — a per-step template,
-`get_initial()`, `get_form_kwargs()`, a custom `form_valid()`.
+Pass a plain `Form` and Gandalf generates the step's view. Bring your own when
+the step needs view-level behavior — a per-step template, `get_initial()`,
+`get_form_kwargs()`, a custom `form_valid()`.
 
-A step view is dispatched as an ordinary Django view, so it needs the two things
-any standalone `FormView` needs. Gandalf supplies neither for a view you bring
-yourself:
+Start from **`StepFormView`**. It is a plain Django `FormView` with the one
+piece of wizard boilerplate already written: the success URL. Gandalf reads only
+the *status code* of a step's response — a 3xx means "this answer stands, carry
+on" — and then discards the response, so the URL is never followed, and every
+step view would otherwise redirect to `self.request.path` to say nothing.
+The views Gandalf generates are built on the same class.
 
-- **`template_name`** (or `get_template_names()`). A step with its own view does
-  *not* inherit the viewset's `template_name` — that default only reaches the
-  views Gandalf generates. Without one, rendering raises `ImproperlyConfigured`.
-- **`get_success_url()`** (or `success_url`). Gandalf reads only the *status
-  code* of the step's response — a 3xx means "this answer stands, carry on" —
-  and discards the response, so the URL is never followed. `self.request.path`
-  is the idiomatic no-op, and is what the generated views use. Without one, a
-  valid POST raises `ImproperlyConfigured`.
+You still supply **`template_name`** (or `get_template_names()`): a step with
+its own view does *not* inherit the viewset's `template_name` — that default
+only reaches the views Gandalf generates — and without one, rendering raises
+`ImproperlyConfigured`.
 
 ```python
-from django.views.generic.edit import FormView
+from gandalf.form_views import StepFormView
 
 
-class BillingStepView(FormView):
+class BillingStepView(StepFormView):
     form_class = BillingForm
     template_name = "billing/step.html"
-
-    def get_success_url(self):
-        return self.request.path
 
     def get_initial(self):
         initial = super().get_initial()
@@ -665,7 +657,11 @@ Because the view keeps its own configuration, the same class can also be
 mounted as an ordinary standalone view outside the wizard — one place for the
 form's behavior across "create in wizard" and "edit later" screens. Give the
 standalone subclass a real `get_success_url()`; only the in-wizard one wants the
-`self.request.path` no-op.
+no-op `StepFormView` supplies.
+
+A plain `FormView` still works as a step, and `StepFormView` changes nothing
+about how it is declared — but then the no-op success URL is yours to write,
+and a valid POST raises `ImproperlyConfigured` without one.
 
 ### Reading run state from a step view
 

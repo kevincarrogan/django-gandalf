@@ -138,17 +138,13 @@ class SummaryMixin:
 
     Mix into the `FormView` of a check-your-answers step:
 
-        from django.views.generic.edit import FormView
-
+        from gandalf.form_views import StepFormView
         from gandalf.summary import SummaryMixin
 
 
-        class ReviewStepView(SummaryMixin, FormView):
+        class ReviewStepView(SummaryMixin, StepFormView):
             form_class = ConfirmForm
             template_name = "checkout/review.html"
-
-            def get_success_url(self):
-                return self.request.path
 
     The rows come from `request.wizard.path`, so they are the answers on the
     run's resolved route, in walk order, with the selected branch arm inlined

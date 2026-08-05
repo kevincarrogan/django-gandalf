@@ -15,8 +15,7 @@ plain form templates already bundled with the test app.
 from django import forms
 from django.http import HttpResponse
 from django.shortcuts import redirect
-from django.views.generic.edit import FormView
-
+from gandalf.form_views import StepFormView
 from gandalf.storage import SessionStashStore, StashNotFound
 from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
@@ -163,19 +162,17 @@ class BillingForm(forms.Form):
     country = forms.CharField()
 
 
-class BillingStepView(FormView):
+class BillingStepView(StepFormView):
     """A step that brings its own view instead of a plain `Form`.
 
-    Carries the two things Gandalf does not supply for a user-supplied step
-    view — its own `template_name` and a `get_success_url()` — plus the
-    view-level behavior that is the reason to bring a `FormView` at all.
+    Carries the one thing Gandalf does not supply for a user-supplied step
+    view — its own `template_name` — plus the view-level behavior that is
+    the reason to bring a `FormView` at all. The no-op success URL comes
+    from `StepFormView`.
     """
 
     form_class = BillingForm
     template_name = "testapp/other_linear_wizard.html"
-
-    def get_success_url(self):
-        return self.request.path
 
     def get_initial(self):
         initial = super().get_initial()
@@ -316,12 +313,9 @@ class DeliveryForm(forms.Form):
     )
 
 
-class ReviewStepView(SummaryMixin, FormView):
+class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ReviewForm
     template_name = "testapp/summary_wizard.html"
-
-    def get_success_url(self):
-        return self.request.path
 
 
 class SummaryWizardViewSet(WizardViewSet):
