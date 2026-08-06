@@ -1,15 +1,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeAlias
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf.form_views import form_view_factory
+from gandalf.types import Context, WizardRequest
 
 
-Node = "Step | Branch | Expand"
+if TYPE_CHECKING:
+    from gandalf.form_views import StepDeclaration, StepViewClass
+    from gandalf.wizard import Wizard
+
+
+Node: TypeAlias = "Step | Branch | Expand"
+
+#: A branch arm's guard, called with the request mid-walk. Annotated with
+#: the request the walk actually passes; a predicate of your own is free to
+#: declare a plain `HttpRequest` instead and still fit.
+Predicate: TypeAlias = Callable[["WizardRequest"], bool]
+
+#: An expansion's builder, called with the request mid-walk to produce the
+#: wizard whose steps are spliced in.
+Builder: TypeAlias = Callable[["WizardRequest"], "Wizard"]
+
+# The visitors below are duck-typed rather than tied to a protocol: the same
+# `accept_*` plumbing carries both declaration trees (this module) and
+# runtime trees (`gandalf.runtime`), whose `visit_*` methods take different
+# arguments and return different shapes. `Any` is the honest annotation for
+# a hook whose signature its subclass chooses.
 
 
 class MultipleStepsReturned(ValueError):
@@ -18,49 +39,49 @@ class MultipleStepsReturned(ValueError):
 
 @dataclass(frozen=True)
 class Step:
-    declaration: type
-    form_view: type | None = None
+    declaration: StepDeclaration
+    form_view: StepViewClass | None = None
     next: Node | None = None
-    context: dict | None = None
+    context: dict[str, Any] | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
         return _format_tree(self)
 
-    def matches_context(self, **context) -> bool:
+    def matches_context(self, **context: Any) -> bool:
         own = self.context or {}
         return all(own.get(key) == value for key, value in context.items())
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Node]:
         yield self
         if self.next is not None:
             yield from self.next
 
-    def accept_interpret(self, interpreter):
+    def accept_interpret(self, interpreter: Any) -> Any:
         return interpreter.visit_step(self)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         next_result = transformer.transform(self.next)
         return transformer.visit_step(self, next_result)
 
 
 @dataclass(frozen=True)
 class Branch:
-    arms: tuple[tuple[Callable, Node], ...]
+    arms: tuple[tuple[Predicate, Node | None], ...]
     default: Node | None = None
     next: Node | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
         return _format_tree(self)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Node]:
         yield self
         if self.next is not None:
             yield from self.next
 
-    def accept_interpret(self, interpreter):
+    def accept_interpret(self, interpreter: Any) -> Any:
         return interpreter.visit_branch(self)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         transformed_arms = tuple(
             (predicate, transformer.transform(subtree))
             for predicate, subtree in self.arms
@@ -85,21 +106,21 @@ class Expand:
     expansion's steps are validated when built rather than at resolve time.
     """
 
-    builder: Callable
+    builder: Builder
     next: Node | None = None
 
     def __repr__(self) -> str:  # pragma: no cover
         return _format_tree(self)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Node]:
         yield self
         if self.next is not None:
             yield from self.next
 
-    def accept_interpret(self, interpreter):
+    def accept_interpret(self, interpreter: Any) -> Any:
         return interpreter.visit_expand(self)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         next_result = transformer.transform(self.next)
         return transformer.visit_expand(self, next_result)
 
@@ -111,7 +132,7 @@ def build(declarations: list[Node]) -> Node | None:
     return head
 
 
-def iter_nodes(root):
+def iter_nodes(root: Node | None) -> Iterator[Node]:
     """Yield every node in a declaration tree, descending branch arms and
     the default. An `Expand`'s subtree is built at walk time and so has
     nothing to descend into; the `Expand` node itself is still yielded."""
@@ -137,7 +158,7 @@ class Transformer:
         visit_branch(branch, transformed_arms, transformed_default, next_result)
     """
 
-    def transform(self, root):
+    def transform(self, root: Any) -> Any:
         if root is None:
             return None
         return root.accept_transform(self)
@@ -152,7 +173,7 @@ class Reducer:
     Subclasses must define `visit_step` and `visit_branch`.
     """
 
-    def reduce(self, root):
+    def reduce(self, root: Any) -> Any:
         # `bound_wizard.path` is a `Path` wrapper; reduce over its head chain.
         # Raw runtime nodes and None have no `head`, so they pass through.
         root = getattr(root, "head", root)
@@ -163,10 +184,10 @@ class Reducer:
             node = node.next
         return accumulator
 
-    def initial(self):
+    def initial(self) -> Any:
         return []
 
-    def combine(self, accumulator, value):
+    def combine(self, accumulator: Any, value: Any) -> Any:
         return [*accumulator, value]
 
 
@@ -178,7 +199,7 @@ class Interpreter:
     interest partway (e.g. a sealed cursor walk) track that in their own
     state."""
 
-    def walk(self, root):
+    def walk(self, root: Any) -> None:
         node = root
         while node is not None:
             node.accept_interpret(self)
@@ -190,14 +211,14 @@ class Formatter(Interpreter):  # pragma: no cover
     Each level of branch descent adds four spaces of indentation.
     """
 
-    def __init__(self, indent: str = ""):
+    def __init__(self, indent: str = "") -> None:
         self._indent = indent
         self.lines: list[str] = []
 
-    def visit_step(self, step):
+    def visit_step(self, step: Step) -> None:
         self.lines.append(f"{self._indent}- Step({step.declaration.__name__})")
 
-    def visit_branch(self, branch):
+    def visit_branch(self, branch: Branch) -> None:
         self.lines.append(f"{self._indent}- Branch")
         for predicate, arm in branch.arms:
             self.lines.append(f"{self._indent}  if {predicate.__name__}:")
@@ -210,11 +231,11 @@ class Formatter(Interpreter):  # pragma: no cover
             sub.walk(branch.default)
             self.lines.extend(sub.lines)
 
-    def visit_expand(self, expand):
+    def visit_expand(self, expand: Expand) -> None:
         self.lines.append(f"{self._indent}- Expand({expand.builder.__name__})")
 
 
-def _format_tree(root) -> str:  # pragma: no cover
+def _format_tree(root: Node | None) -> str:  # pragma: no cover
     formatter = Formatter()
     formatter.walk(root)
     return "\n".join(formatter.lines)
@@ -233,12 +254,12 @@ class Configurer(Transformer):
         self,
         *,
         template_name: str | None,
-        form_view_factory=form_view_factory,
-    ):
+        form_view_factory: Callable[..., StepViewClass] = form_view_factory,
+    ) -> None:
         self.template_name = template_name
         self.form_view_factory = form_view_factory
 
-    def visit_step(self, step, next_result):
+    def visit_step(self, step: Step, next_result: Node | None) -> Step:
         if issubclass(step.declaration, forms.Form):
             if self.template_name is None:
                 raise ImproperlyConfigured(
@@ -253,7 +274,13 @@ class Configurer(Transformer):
             form_view = step.declaration
         return replace(step, form_view=form_view, next=next_result)
 
-    def visit_branch(self, branch, transformed_arms, transformed_default, next_result):
+    def visit_branch(
+        self,
+        branch: Branch,
+        transformed_arms: tuple[tuple[Predicate, Node | None], ...],
+        transformed_default: Node | None,
+        next_result: Node | None,
+    ) -> Branch:
         return replace(
             branch,
             arms=transformed_arms,
@@ -261,7 +288,7 @@ class Configurer(Transformer):
             next=next_result,
         )
 
-    def visit_expand(self, expand, next_result):
+    def visit_expand(self, expand: Expand, next_result: Node | None) -> Expand:
         # The builder's subtree does not exist yet; it is configured when the
         # walk builds it. Only the node's position in the chain is set here.
         return replace(expand, next=next_result)
@@ -276,14 +303,14 @@ class ContextFinder:
     path of indices to each, which is what makes nested matches addressable.
     """
 
-    def __init__(self, context: dict):
+    def __init__(self, context: Context) -> None:
         self._context = context
-        self.matches: list[tuple[tuple[int, ...], object]] = []
+        self.matches: list[tuple[tuple[int, ...], Any]] = []
 
-    def visit(self, root) -> None:
+    def visit(self, root: Any) -> None:
         self._walk(root, ())
 
-    def _walk(self, node, prefix: tuple[int, ...]) -> None:
+    def _walk(self, node: Any, prefix: tuple[int, ...]) -> None:
         index = 0
         while node is not None:
             path = prefix + (index,)
@@ -305,11 +332,11 @@ class ContextFinder:
             index += 1
             node = node.next
 
-    def one(self):
+    def one(self) -> Any:
         path_and_node = self.one_with_path()
         return None if path_and_node is None else path_and_node[1]
 
-    def one_with_path(self):
+    def one_with_path(self) -> tuple[tuple[int, ...], Any] | None:
         if len(self.matches) > 1:
             raise MultipleStepsReturned(
                 f"Expected one matching step, found {len(self.matches)}."
@@ -318,5 +345,5 @@ class ContextFinder:
             return None
         return self.matches[0]
 
-    def all(self) -> list:
+    def all(self) -> list[Any]:
         return [match[1] for match in self.matches]

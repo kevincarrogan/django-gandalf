@@ -67,9 +67,32 @@ dev = [
     "pytest-sugar~=1.1.1",
 ]
 lint = [
+    # django-stubs tracks Django's own version line: 6.0.x carries the stubs
+    # for Django 6.0, the newest release in the supported range.
+    "django-stubs~=6.0.7",
+    "mypy~=2.3.0",
     "pre-commit~=4.1.0",
     "ruff~=0.9.10",
 ]
+
+[tool.mypy]
+files = ["gandalf"]
+python_version = "3.10"
+plugins = ["mypy_django_plugin.main"]
+strict = true
+warn_unreachable = true
+
+# `runtime.py` is the walk: a lockstep traversal over two structures whose
+# shapes are only known positionally, plus the JSON state those produce.
+# Its signatures are annotated, but the internals stay lenient rather than
+# pay for the casts full strictness would need.
+[[tool.mypy.overrides]]
+module = "gandalf.runtime"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+[tool.django-stubs]
+django_settings_module = "tests.settings"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"

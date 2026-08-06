@@ -63,6 +63,19 @@ just test-django 3.12 6.0
 The `test-django` recipe runs the suite with uv using the requested Python version
 and a compatible-release Django constraint.
 
+Check types with:
+
+```bash
+just typecheck
+```
+
+The `typecheck` recipe runs mypy over `gandalf` with the django-stubs plugin.
+The package is strictly typed and ships `py.typed`, so annotations are part of
+what a release publishes: new code needs them, and CI fails without them.
+`gandalf/runtime.py` is the one lenient module — its signatures are annotated
+like everywhere else, but its internals are exempt from `disallow_untyped_defs`
+rather than paying for the casts the walk would otherwise need.
+
 Run linting and formatting with:
 
 ```bash

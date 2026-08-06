@@ -1,24 +1,32 @@
+from __future__ import annotations
+
+from typing import Any, cast
+
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.uploadedfile import UploadedFile
+from django.http import HttpRequest, HttpResponseBase
 from django.shortcuts import redirect
-from django.urls import path, reverse
+from django.urls import URLPattern, path, reverse
+from django.utils.datastructures import MultiValueDict
 from django.views import View
 
 from gandalf import tree
-from gandalf.escapes import Advance, Obliterate, Park
-from gandalf.runtime import BoundWizard, submission_from_post
+from gandalf.escapes import Advance, Escape, Obliterate, Park
+from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, Walk, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
+from gandalf.types import Context, FileRefs, Stash, StorageClass, Submission
 from gandalf.wizard import ConfiguredWizard, Wizard
 
 
 class WizardViewSet(View):
-    storage_class = SessionStorage
-    url_name = None
+    storage_class: StorageClass = SessionStorage
+    url_name: str | None = None
     # URL kwargs owned by the patterns `urls()` publishes; anything else the
     # request captures is mount-prefix context (e.g. a tenant slug).
     reserved_url_kwargs = frozenset({"run_id", "gandalf_step"})
 
     @classmethod
-    def urls(cls):
+    def urls(cls) -> list[URLPattern]:
         """URL patterns for this wizard, derived from `url_name`:
         `<url_name>` (start), `<url_name>-run` (bare run URL), and
         `<url_name>-step` (routed step URL). Mount with
@@ -40,7 +48,7 @@ class WizardViewSet(View):
         ]
 
     @classmethod
-    def begin(cls, request, **url_kwargs):
+    def begin(cls, request: HttpRequest, **url_kwargs: Any) -> BoundWizard:
         """A fresh run of this wizard, returned rather than redirected to.
 
         What the start URL does, minus the redirect. The start URL mints a
@@ -59,7 +67,9 @@ class WizardViewSet(View):
         return bound_wizard
 
     @classmethod
-    def inspect(cls, request, run_id, **url_kwargs):
+    def inspect(
+        cls, request: HttpRequest, run_id: str, **url_kwargs: Any
+    ) -> BoundWizard:
         """This wizard bound to `run_id`, outside its own request cycle.
 
         The dance every cross-wizard reader needs and no caller should have
@@ -86,7 +96,13 @@ class WizardViewSet(View):
         return bound_wizard
 
     @classmethod
-    def reopen(cls, request, payload, expected_label=None, **url_kwargs):
+    def reopen(
+        cls,
+        request: HttpRequest,
+        payload: Stash,
+        expected_label: str | None = None,
+        **url_kwargs: Any,
+    ) -> BoundWizard:
         """A fresh run seeded from a stash payload, returned rather than
         redirected to — the run behind `resurrect()`.
 
@@ -103,7 +119,14 @@ class WizardViewSet(View):
         return bound_wizard
 
     @classmethod
-    def resurrect(cls, request, payload, step=None, expected_label=None, **url_kwargs):
+    def resurrect(
+        cls,
+        request: HttpRequest,
+        payload: Stash,
+        step: str | None = None,
+        expected_label: str | None = None,
+        **url_kwargs: Any,
+    ) -> str | None:
         """Seed a fresh run from a stash payload and return the URL to send
         the user to.
 
@@ -125,7 +148,7 @@ class WizardViewSet(View):
         )
         return bound_wizard.entry_url(step)
 
-    def get_wizard(self, bound_wizard):
+    def get_wizard(self, bound_wizard: BoundWizard) -> Wizard | ConfiguredWizard:
         """Per-request hook returning the Wizard to use for this dispatch.
 
         Default implementation returns the class-attribute `wizard` — the
@@ -134,7 +157,7 @@ class WizardViewSet(View):
         `retrieve()`) the run's stored state via `get_run_data()` /
         `get_state()`.
         """
-        wizard = getattr(self, "wizard", None)
+        wizard: Wizard | ConfiguredWizard | None = getattr(self, "wizard", None)
         if wizard is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -144,8 +167,8 @@ class WizardViewSet(View):
             )
         return wizard
 
-    def configure_wizard(self, wizard):
-        configuration = {}
+    def configure_wizard(self, wizard: Wizard | ConfiguredWizard) -> ConfiguredWizard:
+        configuration: dict[str, Any] = {}
         if hasattr(self, "template_name"):
             configuration["template_name"] = self.template_name
 
@@ -157,11 +180,11 @@ class WizardViewSet(View):
 
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
-    def _make_bound_wizard(self, request):
+    def _make_bound_wizard(self, request: HttpRequest) -> BoundWizard:
         storage = self.storage_class(request)
         return BoundWizard(request, storage)
 
-    def _resolve_wizard(self, bound_wizard):
+    def _resolve_wizard(self, bound_wizard: BoundWizard) -> BoundWizard:
         wizard = self._configured_wizard(self.get_wizard(bound_wizard))
         # Re-resolving a static wizard hands back the same object, so the
         # routability walk is skipped rather than repeated.
@@ -171,7 +194,9 @@ class WizardViewSet(View):
         bound_wizard.urls = self
         return bound_wizard
 
-    def _configured_wizard(self, declared):
+    def _configured_wizard(
+        self, declared: Wizard | ConfiguredWizard
+    ) -> ConfiguredWizard:
         """Configure `declared` at most once per request.
 
         `configure_wizard()` builds a new `ConfiguredWizard` every time it is
@@ -187,14 +212,18 @@ class WizardViewSet(View):
         A dynamic `get_wizard()` returns a new declaration each call and
         correctly gets no reuse — its tree really can have changed.
         """
-        cached = getattr(self, "_configured", None)
+        cached: tuple[Wizard | ConfiguredWizard, ConfiguredWizard] | None = getattr(
+            self, "_configured", None
+        )
         if cached is not None and cached[0] is declared:
             return cached[1]
         configured = self.configure_wizard(declared)
         self._configured = (declared, configured)
         return configured
 
-    def _refreshed_cursor(self, bound_wizard, walk, *args, **kwargs):
+    def _refreshed_cursor(
+        self, bound_wizard: BoundWizard, walk: Walk, *args: Any, **kwargs: Any
+    ) -> Cursor:
         """Re-derive the wizard from the state this request just wrote, then
         walk it again if the tree it describes has changed.
 
@@ -216,7 +245,7 @@ class WizardViewSet(View):
             return walk.cursor
         return bound_wizard.cursor(*args, **kwargs)
 
-    def _validate_routable(self, wizard):
+    def _validate_routable(self, wizard: ConfiguredWizard) -> None:
         """Every step must be routable: steps are addressed by URL, so each
         one needs a segment the configured router can derive. Raises for
         any step the router cannot reverse."""
@@ -235,7 +264,8 @@ class WizardViewSet(View):
         # than per request because it is a property of the declaration, and
         # because a walk stops at the cursor and so cannot see a duplicate
         # that lies beyond it.
-        segments = [router.reverse(step) for step in steps]
+        # Every step reverses by now; the unroutable ones raised above.
+        segments = [cast(str, router.reverse(step)) for step in steps]
         duplicates = sorted({name for name in segments if segments.count(name) > 1})
         if duplicates:
             raise ImproperlyConfigured(
@@ -243,7 +273,13 @@ class WizardViewSet(View):
                 f"exactly one step. Duplicated: {', '.join(duplicates)}."
             )
 
-    def get(self, request, *args, run_id=None, **kwargs):
+    def get(
+        self,
+        request: HttpRequest,
+        *args: Any,
+        run_id: str | None = None,
+        **kwargs: Any,
+    ) -> HttpResponseBase:
         bound_wizard = self._make_bound_wizard(request)
         if run_id is None:
             bound_wizard.initialise()
@@ -266,7 +302,9 @@ class WizardViewSet(View):
             return self._finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, cursor)
 
-    def post(self, request, *args, run_id, **kwargs):
+    def post(
+        self, request: HttpRequest, *args: Any, run_id: str, **kwargs: Any
+    ) -> HttpResponseBase:
         bound_wizard = self._make_bound_wizard(request)
         unavailable = self._retrieve_run(bound_wizard, run_id)
         if unavailable is not None:
@@ -285,7 +323,9 @@ class WizardViewSet(View):
             bound_wizard, route_context, submission, *args, **kwargs
         )
 
-    def _retrieve_run(self, bound_wizard, run_id):
+    def _retrieve_run(
+        self, bound_wizard: BoundWizard, run_id: str
+    ) -> HttpResponseBase | None:
         """Load the run, or return the response for one that cannot be run.
 
         The availability guard runs before the wizard is resolved: a
@@ -301,7 +341,9 @@ class WizardViewSet(View):
             return self.run_unavailable(bound_wizard, reason="completed")
         return None
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(
+        self, bound_wizard: BoundWizard, reason: str
+    ) -> HttpResponseBase:
         """Response for a run this request cannot continue.
 
         `reason` is `"completed"` — the run finished and `done()` has already
@@ -314,7 +356,13 @@ class WizardViewSet(View):
         """
         return redirect(self.get_start_url())
 
-    def _routed_get(self, bound_wizard, route_context, *args, **kwargs):
+    def _routed_get(
+        self,
+        bound_wizard: BoundWizard,
+        route_context: Context,
+        *args: Any,
+        **kwargs: Any,
+    ) -> HttpResponseBase:
         """Render the step a routed URL addresses.
 
         The URL is a claim, never an instruction: the cursor's step and
@@ -325,14 +373,21 @@ class WizardViewSet(View):
         walk = bound_wizard.walk(*args, claim=route_context, **kwargs)
         if not walk.reached:
             return self._redirect_to_cursor(bound_wizard, walk.cursor)
-        bound_wizard.mark_rendering(walk.cursor, walk.target.declaration)
-        if walk.target.declaration is walk.cursor.node:
+        # A reached walk always carries the step it arrived at.
+        target = cast(RuntimeStep, walk.target)
+        bound_wizard.mark_rendering(walk.cursor, target.declaration)
+        if target.declaration is walk.cursor.node:
             return bound_wizard.dispatcher.render_cursor(walk.cursor, *args, **kwargs)
-        return bound_wizard.render_step(
-            *args, target=walk.target, url_kwargs=kwargs or None
-        )
+        return bound_wizard.render_step(*args, target=target, url_kwargs=kwargs or None)
 
-    def _routed_post(self, bound_wizard, route_context, submission, *args, **kwargs):
+    def _routed_post(
+        self,
+        bound_wizard: BoundWizard,
+        route_context: Context,
+        submission: Submission,
+        *args: Any,
+        **kwargs: Any,
+    ) -> HttpResponseBase:
         """Put the submission at the step the URL claims.
 
         One walk decides everything: it replays the stored answers, puts the
@@ -349,7 +404,7 @@ class WizardViewSet(View):
         if not walk.reached:
             bound_wizard.delete_file_refs(files)
             return self._redirect_to_cursor(bound_wizard, walk.cursor)
-        escape = walk.cursor.escape_for(walk.target.declaration)
+        escape = walk.cursor.escape_for(cast(RuntimeStep, walk.target).declaration)
         if escape is not None:
             return self._escaped(bound_wizard, escape, walk, files)
         bound_wizard.persist(walk)
@@ -357,12 +412,20 @@ class WizardViewSet(View):
             bound_wizard, self._refreshed_cursor(bound_wizard, walk, *args, **kwargs)
         )
 
-    def _continue(self, bound_wizard, next_cursor):
+    def _continue(
+        self, bound_wizard: BoundWizard, next_cursor: Cursor
+    ) -> HttpResponseBase:
         if next_cursor.node is None:
             return self._finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, next_cursor)
 
-    def _escaped(self, bound_wizard, escape, walk, files):
+    def _escaped(
+        self,
+        bound_wizard: BoundWizard,
+        escape: Escape,
+        walk: Walk,
+        files: FileRefs | None,
+    ) -> HttpResponseBase:
         """Settle what the escape leaves behind, then send the user off.
 
         Nothing has been persisted yet, so `Park` simply declines to write
@@ -388,12 +451,15 @@ class WizardViewSet(View):
             **escape.redirect_kwargs,
         )
 
-    def _redirect_to_cursor(self, bound_wizard, cursor):
+    def _redirect_to_cursor(
+        self, bound_wizard: BoundWizard, cursor: Cursor
+    ) -> HttpResponseBase:
         if cursor.node is not None:
-            return redirect(bound_wizard.step_url(cursor.node))
+            # The viewset is the reverser, so a step always has a URL here.
+            return redirect(cast(str, bound_wizard.step_url(cursor.node)))
         return redirect(self.get_wizard_url(bound_wizard.run_id))
 
-    def get_url_kwargs(self):
+    def get_url_kwargs(self) -> dict[str, Any]:
         """URL kwargs the mount prefix captured (e.g. a tenant slug),
         forwarded into every reverse of this wizard's own URLs.
 
@@ -411,7 +477,7 @@ class WizardViewSet(View):
             if key not in self.reserved_url_kwargs
         }
 
-    def get_start_url(self):
+    def get_start_url(self) -> str:
         """Reverse the start URL — the one that begins a fresh run. The
         default uses the `<url_name>` pattern published by `urls()`,
         forwarding any mount-prefix kwargs via `get_url_kwargs()`; override
@@ -423,7 +489,7 @@ class WizardViewSet(View):
             )
         return reverse(self.url_name, kwargs=self.get_url_kwargs())
 
-    def get_wizard_url(self, run_id):
+    def get_wizard_url(self, run_id: str) -> str:
         """Reverse the bare run URL. The default uses the `<url_name>-run`
         pattern published by `urls()`, forwarding any mount-prefix kwargs
         via `get_url_kwargs()`; override for a custom URL scheme.
@@ -437,7 +503,7 @@ class WizardViewSet(View):
             kwargs={**self.get_url_kwargs(), "run_id": run_id},
         )
 
-    def get_step_url(self, run_id, step_segment):
+    def get_step_url(self, run_id: str, step_segment: str | None) -> str:
         """Reverse a routed step URL, mirroring `get_wizard_url`. The
         default uses the `<url_name>-step` pattern published by `urls()`,
         forwarding any mount-prefix kwargs via `get_url_kwargs()`;
@@ -456,7 +522,7 @@ class WizardViewSet(View):
             },
         )
 
-    def _finish(self, bound_wizard):
+    def _finish(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """Complete the run: `done()` fires once, then the run is tombstoned
         so nothing can fire it again.
 
@@ -468,13 +534,17 @@ class WizardViewSet(View):
         bound_wizard.complete()
         return response
 
-    def _store_uploads(self, bound_wizard, uploaded_files):
+    def _store_uploads(
+        self, bound_wizard: BoundWizard, uploaded_files: MultiValueDict[str, Any]
+    ) -> FileRefs | None:
         if not uploaded_files:
             return None
         return {
-            field: bound_wizard.file_storage.save(bound_wizard.run_id, uploaded_file)
+            field: bound_wizard.file_storage.save(
+                bound_wizard.run_id, cast(UploadedFile, uploaded_file)
+            )
             for field, uploaded_file in uploaded_files.items()
         }
 
-    def done(self, bound_wizard):
+    def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         raise NotImplementedError("WizardViewSet subclasses must define done().")

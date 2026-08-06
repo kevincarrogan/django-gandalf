@@ -16,6 +16,9 @@ coverage-unit:
 coverage-functional:
     uv run pytest tests/functional --cov=gandalf --cov-report=term-missing --cov-report=xml:coverage-functional.xml
 
+typecheck:
+    uv run --group lint mypy
+
 bench:
     uv run python -m benchmarks
 

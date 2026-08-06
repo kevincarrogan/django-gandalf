@@ -19,17 +19,35 @@ it, `get_section_url()` says where its link goes, and `resume_section()` /
 defaults suit a plain task list; override what your domain needs.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field as dataclass_field
+from typing import TYPE_CHECKING, Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
-from django.urls import path, reverse
+from django.urls import URLPattern, path, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext
 from django.views.generic import TemplateView
 
-from gandalf.runtime import InvalidStash
+from gandalf.runtime import BoundWizard, InvalidStash
 from gandalf.storage import RunNotFound, SessionSectionStore, StashNotFound
+from gandalf.types import State, StrOrPromise
+from gandalf.viewsets import WizardViewSet
+
+
+if TYPE_CHECKING:
+    # Mixins with no bases of their own: at type-check time each is given the
+    # class it documents itself as mixing into, so `self.request`,
+    # `get_context_data()` and the rest resolve. At runtime both stay plain
+    # mixins.
+    _SectionMixinBase = WizardViewSet
+    _HubMixinBase = TemplateView
+else:
+    _SectionMixinBase = object
+    _HubMixinBase = object
 
 
 __all__ = [
@@ -83,16 +101,16 @@ class Section:
     """
 
     key: str
-    viewset: type
-    title: str | None = None
+    viewset: type[WizardViewSet]
+    title: StrOrPromise | None = None
     label: str | None = None
     reopen_step: str | None = None
     # Excluded from comparison so a mutable default cannot make a frozen
     # section unhashable — the same escape `SummaryField.bound_field` takes.
-    url_kwargs: dict = dataclass_field(default_factory=dict, compare=False)
+    url_kwargs: dict[str, Any] = dataclass_field(default_factory=dict, compare=False)
 
     @property
-    def stash_label(self):
+    def stash_label(self) -> str:
         """The label stamped into this section's stash — `label` if declared,
         otherwise the key."""
         return self.key if self.label is None else self.label
@@ -104,31 +122,31 @@ class SectionRow:
     its link goes. `section` is the underlying `Section`, so a template that
     needs the viewset or the section's own key can still reach them."""
 
-    section: object
+    section: Section
     status: str
-    title: str
-    status_label: str
+    title: StrOrPromise
+    status_label: StrOrPromise
     url: str
 
     @property
-    def key(self):
+    def key(self) -> str:
         """The section's key."""
         return self.section.key
 
     @property
-    def is_not_started(self):
+    def is_not_started(self) -> bool:
         return self.status == NOT_STARTED
 
     @property
-    def is_incomplete(self):
+    def is_incomplete(self) -> bool:
         return self.status == INCOMPLETE
 
     @property
-    def is_complete(self):
+    def is_complete(self) -> bool:
         return self.status == COMPLETE
 
 
-class SectionMixin:
+class SectionMixin(_SectionMixinBase):
     """Mix into a section's `WizardViewSet` so finishing it registers with the
     hub.
 
@@ -154,12 +172,12 @@ class SectionMixin:
     if the user should get an explicit confirm gate first.
     """
 
-    section_key = None
-    section_label = None
+    section_key: str | None = None
+    section_label: str | None = None
     section_store_class = SessionSectionStore
-    hub_url_name = None
+    hub_url_name: str | None = None
 
-    def get_section_key(self):
+    def get_section_key(self) -> str:
         if self.section_key is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -168,7 +186,7 @@ class SectionMixin:
             )
         return self.section_key
 
-    def get_section_label(self):
+    def get_section_label(self) -> str:
         """The label stamped into this section's stash — `section_label` if
         declared, otherwise the key. Bump it when a deploy reshapes this
         wizard, so a payload from the old shape is refused rather than walked
@@ -177,10 +195,10 @@ class SectionMixin:
             return self.get_section_key()
         return self.section_label
 
-    def get_section_store(self):
+    def get_section_store(self) -> SessionSectionStore:
         return self.section_store_class(self.request)
 
-    def get_hub_url(self):
+    def get_hub_url(self) -> str:
         """Where a finished section sends the user back to. Forwards this
         wizard's own mount-prefix kwargs, which is right when hub and section
         share a mount; override when they do not."""
@@ -191,7 +209,7 @@ class SectionMixin:
             )
         return reverse(self.hub_url_name, kwargs=self.get_url_kwargs())
 
-    def done(self, bound_wizard):
+    def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """Record the section as finished, then hand off to `section_done()`.
 
         The stash is taken first because it can only be taken at all while the
@@ -209,7 +227,7 @@ class SectionMixin:
         store.clear_run(key)
         return response
 
-    def section_done(self, bound_wizard):
+    def section_done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """What this section does when it finishes, beyond being recorded.
         Returns the response the user sees; the default sends them back to the
         hub, which is where a task list expects a finished task to deposit
@@ -217,7 +235,7 @@ class SectionMixin:
         return redirect(self.get_hub_url())
 
 
-class HubMixin:
+class HubMixin(_HubMixinBase):
     """Adds `sections` — one `SectionRow` per declared section — to a view's
     template context, and owns the door each row links to.
 
@@ -225,16 +243,16 @@ class HubMixin:
     over a `TemplateView` with the two URL patterns already published.
     """
 
-    sections = None
+    sections: list[Section] | None = None
     sections_context_name = "sections"
     section_store_class = SessionSectionStore
-    section_url_name = None
+    section_url_name: str | None = None
     section_url_kwarg = "section"
-    url_name = None
+    url_name: str | None = None
 
     # --- the sections this hub lists ---------------------------------------
 
-    def get_sections(self):
+    def get_sections(self) -> list[Section]:
         """The sections this hub lists, in the order they are shown. Override
         to choose them per request — by user, by plan, by feature flag."""
         if self.sections is None:
@@ -246,7 +264,7 @@ class HubMixin:
             )
         return list(self.sections)
 
-    def _vetted_sections(self):
+    def _vetted_sections(self) -> list[Section]:
         """`get_sections()`, checked once per request.
 
         Both halves of the hub ask for the sections — the rows and the door —
@@ -257,7 +275,7 @@ class HubMixin:
             self._sections_cache = self._validate_sections(self.get_sections())
         return self._sections_cache
 
-    def _validate_sections(self, sections):
+    def _validate_sections(self, sections: list[Section]) -> list[Section]:
         """A key has to name exactly one section, and has to be the key that
         section's own wizard stashes under.
 
@@ -280,7 +298,7 @@ class HubMixin:
         if drifted:
             names = ", ".join(
                 f"{section.key} (its viewset stashes under "
-                f"{section.viewset.section_key!r})"
+                f"{getattr(section.viewset, 'section_key')!r})"
                 for section in drifted
             )
             raise ImproperlyConfigured(
@@ -290,7 +308,7 @@ class HubMixin:
             )
         return list(sections)
 
-    def get_section(self, key):
+    def get_section(self, key: str) -> Section:
         """The declared section `key` names, raising `SectionNotFound`
         otherwise."""
         for section in self._vetted_sections():
@@ -298,19 +316,21 @@ class HubMixin:
                 return section
         raise SectionNotFound(key)
 
-    def get_section_store(self):
+    def get_section_store(self) -> SessionSectionStore:
         return self.section_store_class(self.request)
 
     # --- the page ----------------------------------------------------------
 
-    def get_section_rows(self):
+    def get_section_rows(self) -> list[SectionRow]:
         store = self.get_section_store()
         return [
             self.build_section_row(section, store)
             for section in self._vetted_sections()
         ]
 
-    def build_section_row(self, section, store):
+    def build_section_row(
+        self, section: Section, store: SessionSectionStore
+    ) -> SectionRow:
         status = self.get_section_status(section, store)
         return SectionRow(
             section=section,
@@ -320,7 +340,7 @@ class HubMixin:
             url=self.get_section_url(section),
         )
 
-    def get_section_status(self, section, store):
+    def get_section_status(self, section: Section, store: SessionSectionStore) -> str:
         """How far a section has got: `COMPLETE`, `INCOMPLETE`, or
         `NOT_STARTED`.
 
@@ -346,7 +366,7 @@ class HubMixin:
             return INCOMPLETE
         return NOT_STARTED
 
-    def get_section_state(self, section, store):
+    def get_section_state(self, section: Section, store: SessionSectionStore) -> State:
         """The stored state of the section's recorded run — an empty list when
         it has none, or one the storage no longer holds.
 
@@ -367,14 +387,14 @@ class HubMixin:
         except RunNotFound:
             return []
 
-    def get_section_title(self, section):
+    def get_section_title(self, section: Section) -> StrOrPromise:
         """The heading for a section's row: its declared `title`, otherwise
         its key made readable."""
         if section.title is not None:
             return section.title
         return capfirst(section.key.replace("_", " ").replace("-", " "))
 
-    def get_status_label(self, status):
+    def get_status_label(self, status: str) -> StrOrPromise:
         """The status as display text. Override for your own wording."""
         return {
             NOT_STARTED: gettext("Not started"),
@@ -382,7 +402,7 @@ class HubMixin:
             COMPLETE: gettext("Complete"),
         }[status]
 
-    def get_section_url(self, section):
+    def get_section_url(self, section: Section) -> str:
         """Where a row's link goes: this hub's own entry URL for the section.
 
         Never the wizard's. A row cannot know which run to resume without
@@ -405,7 +425,7 @@ class HubMixin:
             },
         )
 
-    def get_section_url_kwargs(self):
+    def get_section_url_kwargs(self) -> dict[str, Any]:
         """URL kwargs the hub's mount prefix captured (e.g. a tenant slug),
         forwarded into every reverse of the hub's own URLs — the same
         arrangement `WizardViewSet.get_url_kwargs()` makes. Everything the
@@ -417,7 +437,7 @@ class HubMixin:
             if key != self.section_url_kwarg
         }
 
-    def get_hub_url(self):
+    def get_hub_url(self) -> str:
         if self.url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -425,14 +445,14 @@ class HubMixin:
             )
         return reverse(self.url_name, kwargs=self.get_section_url_kwargs())
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context[self.sections_context_name] = self.get_section_rows()
         return context
 
     # --- the door ----------------------------------------------------------
 
-    def enter(self, section):
+    def enter(self, section: Section) -> str | None:
         """The URL that puts the user inside this section, wherever it left
         off.
 
@@ -458,7 +478,9 @@ class HubMixin:
         store.set_run(section.key, started.run_id)
         return started.entry_url()
 
-    def resume_section(self, section, store):
+    def resume_section(
+        self, section: Section, store: SessionSectionStore
+    ) -> BoundWizard | None:
         """The section's live run, or None when it has none.
 
         A recorded run is resumable only while storage still holds it and it
@@ -482,7 +504,9 @@ class HubMixin:
             return None
         return bound_wizard
 
-    def reopen_section(self, section, store):
+    def reopen_section(
+        self, section: Section, store: SessionSectionStore
+    ) -> BoundWizard | None:
         """A fresh run seeded from the section's stash, or None with nothing
         stashed. The stash is read, never popped: re-opening keeps working,
         and re-completing overwrites it with the newer answers."""
@@ -497,11 +521,11 @@ class HubMixin:
             **section.url_kwargs,
         )
 
-    def start_section(self, section):
+    def start_section(self, section: Section) -> BoundWizard:
         """A brand-new run for a section with nothing behind it."""
         return section.viewset.begin(self.request, **section.url_kwargs)
 
-    def stash_unusable(self, section, error):
+    def stash_unusable(self, section: Section, error: InvalidStash) -> str | None:
         """What to do with a stash that cannot seed a run — a payload whose
         label no longer matches, which almost always means a deploy reshaped
         this section and bumped it.
@@ -512,7 +536,7 @@ class HubMixin:
         """
         raise error
 
-    def section_unavailable(self, key):
+    def section_unavailable(self, key: str) -> HttpResponse:
         """Response for a key this hub declares no section for — a stale
         link, a renamed section. The default sends the user back to the hub
         itself; override to raise `Http404`."""
@@ -543,7 +567,7 @@ class HubView(HubMixin, TemplateView):
     """
 
     @classmethod
-    def urls(cls):
+    def urls(cls) -> list[URLPattern]:
         """URL patterns for this hub, derived from `url_name`: `<url_name>`
         (the page) and `<url_name>-section` (the door into one section)."""
         if cls.url_name is None:
@@ -558,7 +582,7 @@ class HubView(HubMixin, TemplateView):
             ),
         ]
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         key = kwargs.get(self.section_url_kwarg)
         if key is None:
             return super().get(request, *args, **kwargs)
@@ -566,4 +590,5 @@ class HubView(HubMixin, TemplateView):
             section = self.get_section(key)
         except SectionNotFound:
             return self.section_unavailable(key)
-        return redirect(self.enter(section))
+        # The section's own viewset is the reverser, so entering yields a URL.
+        return redirect(cast(str, self.enter(section)))

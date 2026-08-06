@@ -1,4 +1,11 @@
+from __future__ import annotations
+
 import uuid
+from typing import cast
+
+from django.http import HttpRequest
+
+from gandalf.types import RunData, Stash, State
 
 
 class RunNotFound(LookupError):
@@ -19,49 +26,51 @@ class SessionStorage:
     # 4KB), so only the most recently completed are kept.
     max_completed_runs = 25
 
-    def __init__(self, request):
+    def __init__(self, request: HttpRequest) -> None:
         self.request = request
 
-    def _runs(self):
-        return self.request.session.get(self.SESSION_KEY, {})
+    def _runs(self) -> dict[str, RunData]:
+        # The session is an untyped JSON store; what Gandalf keeps under its
+        # own key is this shape by construction.
+        return cast(dict[str, RunData], self.request.session.get(self.SESSION_KEY, {}))
 
-    def initialise_run(self):
+    def initialise_run(self) -> str:
         run_id = str(uuid.uuid4())
         gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
         gandalf_runs[run_id] = {}
         self.request.session.modified = True
         return run_id
 
-    def retrieve_run(self, run_id):
+    def retrieve_run(self, run_id: str) -> str:
         """Return the run id as given, raising `RunNotFound` when this
         session holds no such run."""
         self.get_run_data(run_id)
         self.request.session.modified = True
         return run_id
 
-    def get_run_data(self, run_id):
+    def get_run_data(self, run_id: str) -> RunData:
         run_data = self._runs().get(str(run_id))
         if run_data is None:
             raise RunNotFound(str(run_id))
         return run_data
 
-    def get_state(self, run_id):
+    def get_state(self, run_id: str) -> State:
         run_data = self.get_run_data(run_id)
-        return run_data.get("state", [])
+        return cast(State, run_data.get("state", []))
 
-    def set_state(self, run_id, state):
+    def set_state(self, run_id: str, state: State) -> None:
         run_data = self.get_run_data(run_id)
         run_data["state"] = state
         self.request.session.modified = True
 
-    def delete_run(self, run_id):
+    def delete_run(self, run_id: str) -> None:
         """Forget the run entirely. Idempotent: deleting an unknown run is
         not an error, so callers need not check first."""
         gandalf_runs = self._runs()
         gandalf_runs.pop(str(run_id), None)
         self.request.session.modified = True
 
-    def complete_run(self, run_id):
+    def complete_run(self, run_id: str) -> None:
         """Replace the run's answers with a completion tombstone.
 
         The run stays addressable so a revisit is answerable — "this one is
@@ -77,11 +86,11 @@ class SessionStorage:
         self._prune_completed(gandalf_runs)
         self.request.session.modified = True
 
-    def is_run_complete(self, run_id):
+    def is_run_complete(self, run_id: str) -> bool:
         run_data = self._runs().get(str(run_id))
         return bool(run_data and run_data.get("completed"))
 
-    def _prune_completed(self, gandalf_runs):
+    def _prune_completed(self, gandalf_runs: dict[str, RunData]) -> None:
         """Drop all but the `max_completed_runs` most recently completed
         tombstones. Runs still in progress are never pruned."""
         completed = [
@@ -104,26 +113,26 @@ class SessionStashStore:
 
     SESSION_KEY = "gandalf_stashes"
 
-    def __init__(self, request):
+    def __init__(self, request: HttpRequest) -> None:
         self.request = request
 
-    def _stashes(self):
-        return self.request.session.get(self.SESSION_KEY, {})
+    def _stashes(self) -> dict[str, Stash]:
+        return cast(dict[str, Stash], self.request.session.get(self.SESSION_KEY, {}))
 
-    def put(self, key, payload):
+    def put(self, key: str, payload: Stash) -> None:
         """Store `payload` under `key`, replacing any existing stash."""
         stashes = self.request.session.setdefault(self.SESSION_KEY, {})
         stashes[key] = payload
         self.request.session.modified = True
 
-    def get(self, key):
+    def get(self, key: str) -> Stash:
         """Return the stash under `key`, raising `StashNotFound` without one."""
         payload = self._stashes().get(key)
         if payload is None:
             raise StashNotFound(key)
         return payload
 
-    def pop(self, key):
+    def pop(self, key: str) -> Stash:
         """Remove and return the stash under `key`, raising `StashNotFound`
         without one."""
         payload = self.get(key)
@@ -131,13 +140,13 @@ class SessionStashStore:
         self.request.session.modified = True
         return payload
 
-    def delete(self, key):
+    def delete(self, key: str) -> None:
         """Forget the stash under `key`. Idempotent: deleting an unknown key
         is not an error, so callers need not check first."""
         self._stashes().pop(key, None)
         self.request.session.modified = True
 
-    def keys(self):
+    def keys(self) -> list[str]:
         """The stored stash keys, in insertion order."""
         return list(self._stashes())
 
@@ -161,50 +170,50 @@ class SessionSectionStore:
     RUNS_SESSION_KEY = "gandalf_section_runs"
     stash_store_class = SessionStashStore
 
-    def __init__(self, request):
+    def __init__(self, request: HttpRequest) -> None:
         self.request = request
         self.stashes = self.stash_store_class(request)
 
-    def _runs(self):
-        return self.request.session.get(self.RUNS_SESSION_KEY, {})
+    def _runs(self) -> dict[str, str]:
+        return cast(dict[str, str], self.request.session.get(self.RUNS_SESSION_KEY, {}))
 
-    def get_run(self, key):
+    def get_run(self, key: str) -> str | None:
         """The run this section is being answered in, or None when it is not
         being answered at all."""
         return self._runs().get(key)
 
-    def set_run(self, key, run_id):
+    def set_run(self, key: str, run_id: str) -> None:
         """Record `run_id` as where this section is answered, replacing any
         run already recorded for it."""
         runs = self.request.session.setdefault(self.RUNS_SESSION_KEY, {})
         runs[key] = str(run_id)
         self.request.session.modified = True
 
-    def clear_run(self, key):
+    def clear_run(self, key: str) -> None:
         """Forget where this section was being answered. Idempotent: clearing
         a section with no run is not an error, so callers need not check
         first."""
         self._runs().pop(key, None)
         self.request.session.modified = True
 
-    def get_stash(self, key):
+    def get_stash(self, key: str) -> Stash:
         """The finished section's stash, raising `StashNotFound` without
         one."""
         return self.stashes.get(key)
 
-    def has_stash(self, key):
+    def has_stash(self, key: str) -> bool:
         """Whether this section has finished — what a hub row asks, answered
         without an exception to catch."""
         return key in self.keys()
 
-    def put_stash(self, key, payload):
+    def put_stash(self, key: str, payload: Stash) -> None:
         """Record this section as finished, replacing any earlier answers."""
         self.stashes.put(key, payload)
 
-    def delete_stash(self, key):
+    def delete_stash(self, key: str) -> None:
         """Forget that this section ever finished. Idempotent."""
         self.stashes.delete(key)
 
-    def keys(self):
+    def keys(self) -> list[str]:
         """The sections holding a stash, in insertion order."""
         return self.stashes.keys()

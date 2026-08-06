@@ -683,6 +683,27 @@ cheap for the same reason you keep `clean()` cheap (see
 when the step you want is not unconditionally upstream of this one. The example
 above does not guard, because `account` always precedes `billing`.
 
+Gandalf ships type annotations (`py.typed`), and `StepFormView` declares its
+`request` as a `WizardRequest` — an `HttpRequest` carrying `wizard` — so
+`self.request.wizard` type-checks with no cast, and a type checker makes that
+guard concrete by typing `find_step()` as returning an optional step:
+
+```python
+from typing import Any
+
+
+    def get_initial(self) -> dict[str, Any]:
+        initial: dict[str, Any] = super().get_initial()
+        account = self.request.wizard.path.find_step(name="account")
+        if account is not None:
+            initial["company"] = account.form.cleaned_data["email"].partition("@")[2]
+        return initial
+```
+
+Branch predicates and `.expand()` builders are handed the same request, so
+annotate those with `WizardRequest` (importable from `gandalf.types`) to reach
+`request.wizard` inside them; one declaring a plain `HttpRequest` still fits.
+
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/form-view/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L158-L197)
 
 ---

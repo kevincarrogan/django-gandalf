@@ -86,6 +86,23 @@ wrapping.
   mechanism; steps themselves still have no stable identifiers, so
   alignment stays positional.
 
+## Type Annotations
+
+- The package is strictly typed and ships `py.typed`, so annotations are part
+  of the published API. Annotate new code as you write it and run
+  `just typecheck` alongside the tests.
+- `gandalf/runtime.py` is the single lenient module: annotate its signatures
+  like everywhere else, but its internals are exempt from
+  `disallow_untyped_defs` rather than paying for casts through the walk.
+- Shapes that cross module boundaries — state, submissions, stashes, the
+  storage contract, `WizardRequest` — live in `gandalf/types.py`. Reach for an
+  existing alias before inventing a local one.
+- Types describe what the code does. When an annotation and the runtime
+  behavior disagree, fix the annotation and raise the behavior separately —
+  do not widen a runtime check to match a type you would prefer.
+- Prefer a narrow `cast()` with a one-line comment naming the invariant over a
+  defensive branch that no test can reach, which would cost coverage.
+
 ## Dependencies
 
 - New package dependencies should be pinned to the latest appropriate minor release using the compatible-release `~=` specifier.

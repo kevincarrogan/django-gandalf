@@ -18,13 +18,32 @@ Every decision is a hook: `get_summary_steps()` chooses the steps,
 what your domain needs.
 """
 
+from __future__ import annotations
+
 import datetime
+from collections.abc import Iterator
 from dataclasses import dataclass, field as dataclass_field
+from typing import TYPE_CHECKING, Any
 
 from django.core.files import File
+from django.forms import BaseForm
+from django.forms.boundfield import BoundField
 from django.utils import formats
 from django.utils.text import capfirst
 from django.utils.translation import gettext
+
+from gandalf.form_views import StepFormView
+from gandalf.runtime import RuntimeStep
+from gandalf.types import StrOrPromise
+
+
+if TYPE_CHECKING:
+    # A mixin has no bases of its own, but it is only ever mixed into a step
+    # view — so at type-check time it is given the class it documents itself
+    # as extending. At runtime it stays a plain mixin.
+    _SummaryMixinBase = StepFormView
+else:
+    _SummaryMixinBase = object
 
 
 __all__ = [
@@ -45,9 +64,11 @@ class SummaryField:
     """
 
     name: str
-    label: str
+    label: StrOrPromise
     value: str
-    bound_field: object = dataclass_field(default=None, repr=False, compare=False)
+    bound_field: BoundField | None = dataclass_field(
+        default=None, repr=False, compare=False
+    )
 
 
 @dataclass(frozen=True)
@@ -57,27 +78,27 @@ class SummaryRow:
     needs the raw submission (`row.step.data`) or the step's context can
     still reach them."""
 
-    step: object
-    label: str
-    fields: tuple = ()
+    step: RuntimeStep
+    label: StrOrPromise
+    fields: tuple[SummaryField, ...] = ()
 
     @property
-    def name(self):
+    def name(self) -> str | None:
         """The step's routable name."""
         return self.step.name
 
     @property
-    def url(self):
+    def url(self) -> str | None:
         """The step's own URL — the change link for this answer."""
         return self.step.url
 
     @property
-    def form(self):
+    def form(self) -> BaseForm:
         """The bound, validated form behind this row."""
         return self.step.form
 
 
-def _flatten_choices(choices):
+def _flatten_choices(choices: Any) -> Iterator[tuple[Any, Any]]:
     for value, label in choices:
         if isinstance(label, (list, tuple)):
             # An optgroup: the label is the group's own choices.
@@ -86,7 +107,7 @@ def _flatten_choices(choices):
             yield value, label
 
 
-def _choice_label(bound_field, value):
+def _choice_label(bound_field: BoundField, value: Any) -> str | None:
     """The display label a field's choices give `value`, or None.
 
     Only consulted for the scalar kinds a choice value takes, so a field
@@ -104,7 +125,7 @@ def _choice_label(bound_field, value):
     return labels.get(str(value))
 
 
-def format_value(bound_field, value):
+def format_value(bound_field: BoundField, value: Any) -> str:
     """Render one cleaned answer as display text.
 
     Choice values become their labels, booleans become Yes/No, dates and
@@ -128,11 +149,11 @@ def format_value(bound_field, value):
     if isinstance(value, datetime.time):
         return formats.time_format(value, "TIME_FORMAT")
     if isinstance(value, File):
-        return value.name
+        return value.name or ""
     return str(value)
 
 
-class SummaryMixin:
+class SummaryMixin(_SummaryMixinBase):
     """Adds `summary` — one `SummaryRow` per answered step — to a step
     view's template context.
 
@@ -156,7 +177,7 @@ class SummaryMixin:
     summary_context_name = "summary"
     summary_label_context_key = "label"
 
-    def get_summary_steps(self):
+    def get_summary_steps(self) -> list[RuntimeStep]:
         """The steps to summarise: every answered step on the route, except
         the one doing the summarising.
 
@@ -175,10 +196,10 @@ class SummaryMixin:
             if step.declaration is not rendering
         ]
 
-    def get_summary_rows(self):
+    def get_summary_rows(self) -> list[SummaryRow]:
         return [self.build_summary_row(step) for step in self.get_summary_steps()]
 
-    def build_summary_row(self, step):
+    def build_summary_row(self, step: RuntimeStep) -> SummaryRow:
         form = step.form
         return SummaryRow(
             step=step,
@@ -186,7 +207,9 @@ class SummaryMixin:
             fields=tuple(self.get_summary_fields(step, form)),
         )
 
-    def get_summary_fields(self, step, form):
+    def get_summary_fields(
+        self, step: RuntimeStep, form: BaseForm
+    ) -> Iterator[SummaryField]:
         cleaned_data = form.cleaned_data
         for bound_field in form:
             if not self.include_summary_field(step, bound_field):
@@ -200,28 +223,28 @@ class SummaryMixin:
                 bound_field=bound_field,
             )
 
-    def include_summary_field(self, step, bound_field):
+    def include_summary_field(self, step: RuntimeStep, bound_field: BoundField) -> bool:
         """Whether `bound_field` earns a line on the summary. Override to
         hide fields the user should not be shown their own answer to."""
         return True
 
-    def get_summary_label(self, step):
+    def get_summary_label(self, step: RuntimeStep) -> StrOrPromise:
         """The heading for a step's row: its `label` context if it declares
         one (`.step(Form, name="billing", context={"label": "Billing"})`),
         otherwise its name made readable."""
         context = step.declaration.context or {}
-        label = context.get(self.summary_label_context_key)
+        label: StrOrPromise | None = context.get(self.summary_label_context_key)
         if label is not None:
             return label
         name = step.name or ""
         return capfirst(name.replace("_", " ").replace("-", " "))
 
-    def format_value(self, bound_field, value):
+    def format_value(self, bound_field: BoundField, value: Any) -> str:
         """Render one answer as display text. Override for domain formatting,
         deferring to `super()` for the fields you do not special-case."""
         return format_value(bound_field, value)
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context[self.summary_context_name] = self.get_summary_rows()
         return context

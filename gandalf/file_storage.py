@@ -1,7 +1,24 @@
-from io import BytesIO
+from __future__ import annotations
 
-from django.core.files.storage import default_storage
-from django.core.files.uploadedfile import InMemoryUploadedFile
+from io import BytesIO
+from typing import TypedDict
+
+from django.core.files.storage import Storage, default_storage
+from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+
+
+class FileRef(TypedDict):
+    """The JSON-safe record of one stored upload, embedded in wizard state.
+
+    `tmp_name` is the storage key; the rest is the metadata needed to hand
+    a replayed form the same shape of file it validated the first time.
+    """
+
+    tmp_name: str
+    name: str | None
+    content_type: str | None
+    size: int | None
+    charset: str | None
 
 
 class WizardFileStorage:
@@ -21,10 +38,10 @@ class WizardFileStorage:
 
     prefix = "gandalf"
 
-    def __init__(self, backend=None):
+    def __init__(self, backend: Storage | None = None) -> None:
         self.backend = backend or default_storage
 
-    def save(self, run_id, uploaded_file):
+    def save(self, run_id: str, uploaded_file: UploadedFile) -> FileRef:
         target = f"{self.prefix}/{run_id}/{uploaded_file.name}"
         tmp_name = self.backend.save(target, uploaded_file)
         return {
@@ -35,7 +52,7 @@ class WizardFileStorage:
             "charset": uploaded_file.charset,
         }
 
-    def open(self, ref):
+    def open(self, ref: FileRef) -> InMemoryUploadedFile:
         with self.backend.open(ref["tmp_name"], "rb") as stored:
             content = stored.read()
         buffer = BytesIO(content)
@@ -48,10 +65,10 @@ class WizardFileStorage:
             charset=ref["charset"],
         )
 
-    def delete(self, ref):
+    def delete(self, ref: FileRef) -> None:
         self.backend.delete(ref["tmp_name"])
 
-    def delete_run(self, run_id):
+    def delete_run(self, run_id: str) -> None:
         run_prefix = f"{self.prefix}/{run_id}"
         try:
             _, files = self.backend.listdir(run_prefix)

@@ -12,6 +12,10 @@ Answers already stored replay on every later walk of the run, and a replayed
 escape merely marks its step satisfied.
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 
 class Escape(Exception):
     """Base class for wizard escapes — catch this to catch any of them.
@@ -25,7 +29,9 @@ class Escape(Exception):
     model with `get_absolute_url()` all work.
     """
 
-    def __init__(self, to, *args, permanent=False, **kwargs):
+    def __init__(
+        self, to: Any, *args: Any, permanent: bool = False, **kwargs: Any
+    ) -> None:
         self.to = to
         self.redirect_args = args
         self.permanent = permanent

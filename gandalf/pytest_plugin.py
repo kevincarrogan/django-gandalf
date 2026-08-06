@@ -7,17 +7,27 @@ only pytest at module level and defers `gandalf.testing` (and with it
 Django) into the fixture body. Disable with `-p no:gandalf`.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Callable
+
 import pytest
 
 
+if TYPE_CHECKING:
+    from django.test import Client
+
+    from gandalf.testing import WizardDriver
+
+
 @pytest.fixture
-def wizard_driver(client):
+def wizard_driver(client: Client) -> Callable[..., WizardDriver]:
     """Factory for `WizardDriver` bound to pytest-django's `client`:
     `wizard_driver("signup")` or `wizard_driver("onboarding", org="acme")`.
     """
     from gandalf.testing import WizardDriver
 
-    def factory(url_name, **url_kwargs):
+    def factory(url_name: str, **url_kwargs: Any) -> WizardDriver:
         return WizardDriver(client, url_name, **url_kwargs)
 
     return factory

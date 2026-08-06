@@ -1,22 +1,55 @@
+from __future__ import annotations
+
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
 from functools import cached_property
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
-from django.http import QueryDict
+from django.forms import BaseForm
+from django.http import HttpRequest, HttpResponseBase, QueryDict
 from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
 from gandalf.escapes import Escape
+from gandalf.file_storage import FileRef, WizardFileStorage
+from gandalf.types import (
+    Context,
+    FileRefs,
+    RunData,
+    Stash,
+    State,
+    StateEntry,
+    Submission,
+    WizardRequest,
+    WizardStorage,
+)
+
+
+if TYPE_CHECKING:
+    from gandalf.form_views import StepViewClass
+    from gandalf.viewsets import WizardViewSet
+    from gandalf.wizard import ConfiguredWizard
+
+
+#: A node in a walked runtime tree. Preserved nodes are the sealed region
+#: past the cursor, carried verbatim rather than interpreted.
+RuntimeNode: TypeAlias = (
+    "RuntimeStep | RuntimeBranch | RuntimeExpand | PreservedBranch | PreservedExpand"
+)
+
+#: What a walk can be told to place a submission at: the context a URL
+#: resolved to, or a step declaration a caller already holds.
+Claim: TypeAlias = "Context | tree.Step"
 
 
 logger = logging.getLogger(__name__)
 
 
-def submission_from_post(post):
+def submission_from_post(post: QueryDict) -> Submission:
     """Flatten a POST `QueryDict` into the stored submission shape.
 
     A key the browser sent more than once — one input per selected value,
@@ -117,28 +150,31 @@ class RuntimeStep:
     """Runtime mirror of a declared `tree.Step`, carrying per-request state."""
 
     declaration: tree.Step
-    data: dict | None = None
-    files: dict | None = None
-    next: "RuntimeStep | RuntimeBranch | None" = None
-    bound_wizard: "BoundWizard | None" = dataclass_field(
+    data: Submission | None = None
+    files: FileRefs | None = None
+    next: RuntimeNode | None = None
+    bound_wizard: BoundWizard | None = dataclass_field(
         default=None, repr=False, compare=False
     )
 
     @property
-    def name(self):
+    def name(self) -> str | None:
         """The step's routable name — its `name` context, the `name=`
         `.step()` was declared with. None for a step declared without one."""
         return (self.declaration.context or {}).get("name")
 
     @property
-    def url(self):
+    def url(self) -> str | None:
         """This step's own URL: a GET renders its answer for editing, so it
         is the "change this" link for a summary page. None without a URL
         reverser (programmatic use — see `BoundWizard.step_url`)."""
-        return self.bound_wizard.step_url(self.declaration)
+        # Every node the walk builds carries its wizard; the default is for
+        # nodes built by hand in a test.
+        bound_wizard = cast("BoundWizard", self.bound_wizard)
+        return bound_wizard.step_url(self.declaration)
 
     @cached_property
-    def form(self):
+    def form(self) -> BaseForm:
         """Reconstruct a bound, validated form for this step.
 
         Built once per node: a request that reads a step's answer several
@@ -168,28 +204,29 @@ class RuntimeStep:
         Raise from `form_valid()` instead when the answer must stay wholly
         readable afterwards.
         """
-        form_view_class = self.declaration.form_view
-        request = self.bound_wizard.dispatcher.build_request(
+        form_view_class = cast("StepViewClass", self.declaration.form_view)
+        bound_wizard = cast("BoundWizard", self.bound_wizard)
+        request = bound_wizard.dispatcher.build_request(
             "POST",
             submission=self.data or {},
-            files=_open_file_refs(self.bound_wizard, self.files),
+            files=_open_file_refs(bound_wizard, self.files),
         )
         view = form_view_class()
         view.setup(request)
-        form = view.get_form()
+        form: BaseForm = view.get_form()
         try:
             form.is_valid()
         except Escape:
             pass
         return form
 
-    def matches_context(self, **context):
+    def matches_context(self, **context: Any) -> bool:
         return self.declaration.matches_context(**context)
 
-    def accept_reduce(self, reducer):
+    def accept_reduce(self, reducer: Any) -> Any:
         return reducer.visit_step(self)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         next_result = transformer.transform(self.next)
         return transformer.visit_step(self, next_result)
 
@@ -205,16 +242,16 @@ class RuntimeBranch:
     """
 
     declaration: tree.Branch
-    selected_arm: "RuntimeStep | RuntimeBranch | None" = None
+    selected_arm: RuntimeNode | None = None
     selected_arm_id: str | None = None
-    dormant_arms: dict = dataclass_field(default_factory=dict)
-    next: "RuntimeStep | RuntimeBranch | None" = None
+    dormant_arms: dict[str, State] = dataclass_field(default_factory=dict)
+    next: RuntimeNode | None = None
 
-    def accept_reduce(self, reducer):
+    def accept_reduce(self, reducer: Any) -> Any:
         sub_result = reducer.reduce(self.selected_arm)
         return reducer.visit_branch(self, sub_result)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         transformed_arm = transformer.transform(self.selected_arm)
         next_result = transformer.transform(self.next)
         return transformer.visit_branch(self, transformed_arm, next_result)
@@ -232,18 +269,18 @@ class PreservedBranch:
     so custom `state_serializer_class` hooks do not see sealed regions.
     """
 
-    entry: dict
-    next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
+    entry: StateEntry
+    next: RuntimeNode | None = None
 
     # ContextFinder treats nodes carrying a `selected_arm` attribute as
     # runtime branches and skips them when it is None — preserved regions
     # are opaque to context lookups.
-    selected_arm = None
+    selected_arm: RuntimeNode | None = None
 
-    def accept_reduce(self, reducer):
+    def accept_reduce(self, reducer: Any) -> StateEntry:
         return self.entry
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         next_result = transformer.transform(self.next)
         return transformer.visit_preserved_branch(self, next_result)
 
@@ -257,14 +294,14 @@ class RuntimeExpand:
     """
 
     declaration: tree.Expand
-    selected_arm: "RuntimeStep | RuntimeBranch | None" = None
-    next: "RuntimeStep | RuntimeBranch | None" = None
+    selected_arm: RuntimeNode | None = None
+    next: RuntimeNode | None = None
 
-    def accept_reduce(self, reducer):
+    def accept_reduce(self, reducer: Any) -> Any:
         sub_result = reducer.reduce(self.selected_arm)
         return reducer.visit_expand(self, sub_result)
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         transformed_arm = transformer.transform(self.selected_arm)
         next_result = transformer.transform(self.next)
         return transformer.visit_expand(self, transformed_arm, next_result)
@@ -277,17 +314,17 @@ class PreservedExpand:
     (it may depend on answers not yet re-supplied), so the raw entry rides
     through serialization untouched and is re-interpreted on a later walk."""
 
-    entry: dict
-    next: "RuntimeStep | RuntimeBranch | PreservedBranch | None" = None
+    entry: StateEntry
+    next: RuntimeNode | None = None
 
     # Opaque to context lookups and route iteration, exactly like a
     # preserved branch region.
-    selected_arm = None
+    selected_arm: RuntimeNode | None = None
 
-    def accept_reduce(self, reducer):
+    def accept_reduce(self, reducer: Any) -> StateEntry:
         return self.entry
 
-    def accept_transform(self, transformer):
+    def accept_transform(self, transformer: Any) -> Any:
         next_result = transformer.transform(self.next)
         return transformer.visit_preserved_expand(self, next_result)
 
@@ -322,7 +359,7 @@ def _overlay_file_refs(old_refs, new_refs):
     return merged, replaced
 
 
-def _iter_route_steps(node):
+def _iter_route_steps(node: RuntimeNode | None) -> Iterator[RuntimeStep]:
     """Yield RuntimeStep nodes in active-route order, descending selected
     branch arms inline. Preserved (opaque) branch regions are yielded as
     their PreservedBranch node — the steps inside them are unknowable."""
@@ -334,7 +371,7 @@ def _iter_route_steps(node):
         node = node.next
 
 
-def first_route_step(state):
+def first_route_step(state: RuntimeNode | None) -> RuntimeStep | None:
     """The first `RuntimeStep` on the active route of a walked tree, or None.
 
     On a complete walk this is where an edit naturally begins — the earliest
@@ -345,7 +382,7 @@ def first_route_step(state):
     return next(_iter_route_steps(state), None)
 
 
-def _trim_trailing_holes(entries):
+def _trim_trailing_holes(entries: State) -> State:
     """Drop trailing hole entries so persisted state stays minimal: a
     trailing `{"step": None}` or empty branch slot carries no information
     (walkers treat a missing entry the same way). Interior holes are kept —
@@ -357,7 +394,7 @@ def _trim_trailing_holes(entries):
     return trimmed
 
 
-def _is_empty_entry(entry):
+def _is_empty_entry(entry: StateEntry) -> bool:
     if "branch" in entry:
         return not entry["branch"]
     if "expand" in entry:
@@ -385,11 +422,11 @@ class Cursor:
     """
 
     node: tree.Step | None
-    state: RuntimeStep | RuntimeBranch | None
-    response: Any = None
-    escapes: tuple = ()
+    state: RuntimeNode | None
+    response: HttpResponseBase | None = None
+    escapes: tuple[tuple[tree.Step, Escape], ...] = ()
 
-    def escape_for(self, declaration):
+    def escape_for(self, declaration: tree.Step) -> Escape | None:
         """The escape raised by `declaration` on this walk, or None."""
         for step_declaration, escape in self.escapes:
             if step_declaration is declaration:
@@ -410,10 +447,10 @@ class Walk:
     persisted.
     """
 
-    cursor: "Cursor"
+    cursor: Cursor
     reached: bool = False
     target: RuntimeStep | None = None
-    replaced_refs: tuple = ()
+    replaced_refs: tuple[FileRef, ...] = ()
 
 
 class Path:
@@ -427,32 +464,33 @@ class Path:
     the run has completed no steps yet.
     """
 
-    def __init__(self, head):
+    def __init__(self, head: RuntimeStep | None) -> None:
         self.head = head
 
-    def __iter__(self):
-        node = self.head
+    def __iter__(self) -> Iterator[RuntimeStep]:
+        node: RuntimeStep | None = self.head
         while node is not None:
             yield node
-            node = node.next
+            # `PathFlattener` produces a chain of RuntimeStep only.
+            node = cast("RuntimeStep | None", node.next)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self.head is not None
 
-    def find_step(self, **context):
+    def find_step(self, **context: Any) -> RuntimeStep | None:
         """Return the single answered step matching `context`, or None —
         `name=` matches the name `.step(..., name=...)` declared. Raises
         `MultipleStepsReturned` on ambiguity."""
         finder = tree.ContextFinder(context)
         finder.visit(self.head)
-        return finder.one()
+        return cast("RuntimeStep | None", finder.one())
 
-    def filter_steps(self, **context):
+    def filter_steps(self, **context: Any) -> list[RuntimeStep]:
         """Return every answered step matching `context` in walk order. Takes
         the same lookups as `find_step`."""
         finder = tree.ContextFinder(context)
         finder.visit(self.head)
-        return finder.all()
+        return cast("list[RuntimeStep]", finder.all())
 
 
 class StepDispatcher:
@@ -461,34 +499,52 @@ class StepDispatcher:
     renders a cursor as an HTTP response.
     """
 
-    def __init__(self, bound_wizard):
+    def __init__(self, bound_wizard: BoundWizard) -> None:
         self._bound_wizard = bound_wizard
 
-    def dispatch(self, step, request, *args, initial=None, **kwargs):
+    def dispatch(
+        self,
+        step: tree.Step,
+        request: HttpRequest,
+        *args: Any,
+        initial: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> HttpResponseBase:
         view_kwargs = {} if initial is None else {"initial": initial}
-        step_view = step.form_view.as_view(**view_kwargs)
+        form_view_class = cast("StepViewClass", step.form_view)
+        step_view = form_view_class.as_view(**view_kwargs)
         return step_view(request, *args, **kwargs)
 
-    def build_request(self, method, submission=None, files=None):
-        request = copy(self._bound_wizard.request)
+    def build_request(
+        self,
+        method: str,
+        submission: Submission | None = None,
+        files: MultiValueDict[str, Any] | None = None,
+    ) -> WizardRequest:
+        request = cast(WizardRequest, copy(self._bound_wizard.request))
         request.method = method
         request.wizard = self._bound_wizard
         if method == "POST":
             request.POST = _as_post_data(submission)
             if files is not None:
-                request._files = files
+                # Where Django's own parsing puts uploads: a synthetic replay
+                # request carries its stored files the same way.
+                request._files = files  # type: ignore[attr-defined]
         return request
 
-    def response_satisfies_step(self, response):
+    def response_satisfies_step(self, response: HttpResponseBase) -> bool:
         return (
             HTTPStatus.MULTIPLE_CHOICES <= response.status_code < HTTPStatus.BAD_REQUEST
         )
 
-    def render_cursor(self, cursor, *args, **kwargs):
+    def render_cursor(
+        self, cursor: Cursor, *args: Any, **kwargs: Any
+    ) -> HttpResponseBase:
         if cursor.response is not None:
             return cursor.response
         return self.dispatch(
-            cursor.node,
+            # A cursor with no rendered response sits at a step.
+            cast(tree.Step, cursor.node),
             self.build_request("GET"),
             *args,
             **kwargs,
@@ -496,47 +552,56 @@ class StepDispatcher:
 
 
 class BoundWizard:
-    def __init__(self, request, storage, wizard=None):
-        self.wizard = wizard
+    def __init__(
+        self,
+        request: HttpRequest,
+        storage: WizardStorage,
+        wizard: ConfiguredWizard | None = None,
+    ) -> None:
+        # `wizard` and `run_id` are both filled in immediately after
+        # construction — `bind()` and `initialise()`/`retrieve()` — and every
+        # reader runs after that, so they are typed as though always present.
+        # Reaching either during the gap in between is a programming error.
+        self.wizard: ConfiguredWizard = wizard  # type: ignore[assignment]
         self.request = request
         self.storage = storage
-        self.run_id = None
-        self.urls = None
-        self._partial_runtime_head = _NO_WALK
-        self._render_context = None
-        self._dispatcher = None
-        self._file_storage = None
+        self.run_id: str = None  # type: ignore[assignment]
+        self.urls: WizardViewSet | None = None
+        self._partial_runtime_head: Any = _NO_WALK
+        self._render_context: tuple[Cursor, tree.Step] | None = None
+        self._dispatcher: StepDispatcher | None = None
+        self._file_storage: WizardFileStorage | None = None
 
     @property
-    def dispatcher(self):
+    def dispatcher(self) -> StepDispatcher:
         if self._dispatcher is None:
             self._dispatcher = self.wizard.step_dispatcher_class(self)
         return self._dispatcher
 
     @property
-    def file_storage(self):
+    def file_storage(self) -> WizardFileStorage:
         if self._file_storage is None:
             self._file_storage = self.wizard.file_storage_class()
         return self._file_storage
 
-    def bind(self, wizard):
+    def bind(self, wizard: ConfiguredWizard) -> None:
         self.wizard = wizard
 
-    def initialise(self):
+    def initialise(self) -> None:
         self.run_id = self.storage.initialise_run()
         logger.debug("Initialise BoundWizard: %s", self.run_id)
 
-    def retrieve(self, run_id):
+    def retrieve(self, run_id: str) -> None:
         self.run_id = self.storage.retrieve_run(run_id)
         logger.debug("Retrieving BoundWizard: %s", self.run_id)
 
-    def get_run_data(self):
+    def get_run_data(self) -> RunData:
         return self.storage.get_run_data(self.run_id)
 
-    def get_state(self):
+    def get_state(self) -> State:
         return self.storage.get_state(self.run_id)
 
-    def stash(self, label=None):
+    def stash(self, label: str | None = None) -> Stash:
         """A caller-owned, JSON-safe payload of this run's answers.
 
         Callable inside `done()` — completion tears the run down only after
@@ -555,7 +620,7 @@ class BoundWizard:
             payload["label"] = label
         return payload
 
-    def resurrect(self, payload, expected_label=None):
+    def resurrect(self, payload: Stash, expected_label: str | None = None) -> str:
         """Seed a fresh run from a stash payload; return the new run id.
 
         Storage-only — the wizard need not be resolved yet, matching how a
@@ -582,7 +647,7 @@ class BoundWizard:
         self.storage.set_state(self.run_id, deepcopy(payload["state"]))
         return self.run_id
 
-    def obliterate(self):
+    def obliterate(self) -> None:
         """Forget this run: its uploaded files and its stored state.
 
         Completion discards state too (see `WizardViewSet._finish`) but
@@ -593,18 +658,18 @@ class BoundWizard:
         self.cleanup_files()
         self.storage.delete_run(self.run_id)
 
-    def complete(self):
+    def complete(self) -> None:
         """Tombstone this run: its answers are discarded and it is marked
         finished, so `done()` can never fire for it again."""
         self.storage.complete_run(self.run_id)
 
     @property
-    def is_complete(self):
+    def is_complete(self) -> bool:
         """True once this run has finished and been tombstoned."""
         return self.storage.is_run_complete(self.run_id)
 
     @property
-    def runtime_tree(self):
+    def runtime_tree(self) -> RuntimeNode | None:
         """The runtime tree behind the sealed cursor walk: validated up to
         the cursor, carried verbatim past it, with unreached branch regions
         opaque. On a complete run this is the full tree. Reuses the render
@@ -616,13 +681,13 @@ class BoundWizard:
         read the run without starting a nested walk.
         """
         if self._partial_runtime_head is not _NO_WALK:
-            return self._partial_runtime_head
+            return cast("RuntimeNode | None", self._partial_runtime_head)
         if self._render_context is not None:
             return self._render_context[0].state
         return self.cursor().state
 
     @property
-    def path(self):
+    def path(self) -> Path:
         """The resolved route as a `Path` — the answered steps in walk order.
         Built from the runtime tree, so anything running inside a walk sees
         the validated prefix so far and `path.find_step(...)` reads prior
@@ -630,7 +695,7 @@ class BoundWizard:
         return Path(PathFlattener().transform(self.runtime_tree))
 
     @contextmanager
-    def walking(self, partial_runtime_head):
+    def walking(self, partial_runtime_head: RuntimeNode | None) -> Iterator[None]:
         """Expose `partial_runtime_head` as the runtime tree for the duration
         of the block.
 
@@ -652,7 +717,9 @@ class BoundWizard:
         finally:
             self._partial_runtime_head = previous
 
-    def previous_step(self, cursor, target_declaration):
+    def previous_step(
+        self, cursor: Cursor, target_declaration: tree.Step
+    ) -> RuntimeStep | None:
         """The step immediately before `target_declaration` in active-route
         order on the walked tree behind `cursor`, or None when the target is
         the first step.
@@ -667,20 +734,20 @@ class BoundWizard:
             previous = node
         return None
 
-    def mark_rendering(self, cursor, target_declaration):
+    def mark_rendering(self, cursor: Cursor, target_declaration: tree.Step) -> None:
         """Record which step this request is rendering, so the navigation
         properties can derive URLs lazily. Called by the viewset before
         dispatching a step render; reuses the cursor it already computed."""
         self._render_context = (cursor, target_declaration)
 
-    def clear_rendering(self):
+    def clear_rendering(self) -> None:
         """Forget the recorded render context, so `runtime_tree` and the
         navigation properties stop reusing a walk that a later write has
         invalidated."""
         self._render_context = None
 
     @property
-    def rendering(self):
+    def rendering(self) -> tree.Step | None:
         """The declaration of the step this request is rendering, or None
         outside a step render (programmatic use, or a walk in progress).
 
@@ -694,7 +761,7 @@ class BoundWizard:
         return self._render_context[1]
 
     @property
-    def run_url(self):
+    def run_url(self) -> str | None:
         """The bare run URL — redirects to the current step, so it works as
         a "return to where I was" link. None without a URL reverser (set by
         the viewset via `bound_wizard.urls`)."""
@@ -702,7 +769,7 @@ class BoundWizard:
             return None
         return self.urls.get_wizard_url(self.run_id)
 
-    def step_url(self, step):
+    def step_url(self, step: RuntimeStep | tree.Step) -> str | None:
         """The URL of `step` — a `RuntimeStep` or the declaration behind one.
 
         A step URL renders that step pre-filled, so this is the "change this
@@ -717,7 +784,7 @@ class BoundWizard:
         segment = self.wizard.step_router_class().reverse(declaration)
         return self.urls.get_step_url(self.run_id, segment)
 
-    def entry_url(self, step=None):
+    def entry_url(self, step: str | None = None) -> str | None:
         """A step URL for this run — never the bare run URL.
 
         The link *into* a run from outside it: a hub row resuming a section,
@@ -747,7 +814,7 @@ class BoundWizard:
         return self.step_url(first.declaration)
 
     @property
-    def back_url(self):
+    def back_url(self) -> str | None:
         """The previous active-route step's URL for the step this request
         is rendering. None without a URL reverser or render context
         (programmatic use), at the first step, or when the predecessor is
@@ -761,7 +828,14 @@ class BoundWizard:
         segment = self.wizard.step_router_class().reverse(previous.declaration)
         return self.urls.get_step_url(self.run_id, segment)
 
-    def walk(self, *args, claim=None, submission=None, files=None, **kwargs):
+    def walk(
+        self,
+        *args: Any,
+        claim: Claim | None = None,
+        submission: Submission | None = None,
+        files: FileRefs | None = None,
+        **kwargs: Any,
+    ) -> Walk:
         """Replay the stored answers in order; where `claim` names a step,
         put `submission` there instead of what is stored; stop at the first
         step that does not hold.
@@ -789,7 +863,7 @@ class BoundWizard:
             replaced_refs=tuple(walker.replaced_refs),
         )
 
-    def persist(self, walk):
+    def persist(self, walk: Walk) -> None:
         """Store the state this walk produced, then drop the file refs it
         superseded — in that order, so nothing deletes a live file."""
         serializer = self.wizard.state_serializer_class()
@@ -797,11 +871,17 @@ class BoundWizard:
         for ref in walk.replaced_refs:
             self.file_storage.delete(ref)
 
-    def cursor(self, *args, **kwargs):
+    def cursor(self, *args: Any, **kwargs: Any) -> Cursor:
         """Walk stored state and return the run's current Cursor."""
         return self.walk(*args, **kwargs).cursor
 
-    def render_step(self, *args, target=None, url_kwargs=None, **context):
+    def render_step(
+        self,
+        *args: Any,
+        target: RuntimeStep | None = None,
+        url_kwargs: dict[str, Any] | None = None,
+        **context: Any,
+    ) -> HttpResponseBase:
         """Render a step pre-filled with its stored submission.
 
         `target` accepts an already-walked runtime step; without one the run
@@ -812,9 +892,11 @@ class BoundWizard:
             url_kwargs = {}
         if target is None:
             walk = self.walk(*args, claim=context, **url_kwargs)
-            if not walk.reached or walk.target.data is None:
+            # A reached walk always carries the step it arrived at.
+            reached_target = cast(RuntimeStep, walk.target)
+            if not walk.reached or reached_target.data is None:
                 raise StepNotFound(context)
-            target = walk.target
+            target = reached_target
         initial = dict(target.data or {})
         for field, ref in (target.files or {}).items():
             initial[field] = self.file_storage.open(ref)
@@ -826,11 +908,11 @@ class BoundWizard:
             **url_kwargs,
         )
 
-    def delete_file_refs(self, refs):
+    def delete_file_refs(self, refs: FileRefs | None) -> None:
         for ref in (refs or {}).values():
             self.file_storage.delete(ref)
 
-    def cleanup_files(self):
+    def cleanup_files(self) -> None:
         """Remove all files persisted under this run's prefix.
 
         Intended to be called from `WizardViewSet.done()` overrides after the
@@ -838,7 +920,9 @@ class BoundWizard:
         """
         self.file_storage.delete_run(self.run_id)
 
-    def _build_expansion(self, expand_node, partial_runtime_head=None):
+    def _build_expansion(
+        self, expand_node: tree.Expand, partial_runtime_head: RuntimeNode | None = None
+    ) -> tree.Node | None:
         """Run an expansion's builder and return its configured subtree.
 
         The builder sees the prefix validated so far through the same
@@ -851,7 +935,9 @@ class BoundWizard:
             built = expand_node.builder(request)
         return self.wizard.configure_expansion(built)
 
-    def _select_branch_arm(self, branch_node, partial_runtime_head=None):
+    def _select_branch_arm(
+        self, branch_node: tree.Branch, partial_runtime_head: RuntimeNode | None = None
+    ) -> tuple[str, tree.Node | None]:
         """Derive the active arm for a branch, returning `(arm_id, subtree)`.
 
         `arm_id` is the arm's declaration-order index as a string, or
@@ -881,15 +967,15 @@ class CursorWalker(tree.Interpreter):
 
     def __init__(
         self,
-        dispatcher,
-        entries,
-        args,
-        kwargs,
-        bound_wizard,
-        claim=None,
-        submission=None,
-        files=None,
-    ):
+        dispatcher: StepDispatcher,
+        entries: State,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        bound_wizard: BoundWizard,
+        claim: Claim | None = None,
+        submission: Submission | None = None,
+        files: FileRefs | None = None,
+    ) -> None:
         self._dispatcher = dispatcher
         self._bound_wizard = bound_wizard
         self._entries_iter = iter(entries)
@@ -898,13 +984,13 @@ class CursorWalker(tree.Interpreter):
         self._files = files
         self._args = args
         self._kwargs = kwargs
-        self._head: RuntimeStep | RuntimeBranch | None = None
-        self._tail: RuntimeStep | RuntimeBranch | None = None
-        self._cursor = None
-        self._escapes = []
+        self._head: RuntimeNode | None = None
+        self._tail: RuntimeNode | None = None
+        self._cursor: Cursor | None = None
+        self._escapes: list[tuple[tree.Step, Escape]] = []
         self.reached = False
-        self.target = None
-        self.replaced_refs = []
+        self.target: RuntimeStep | None = None
+        self.replaced_refs: list[FileRef] = []
 
     @property
     def _sealed(self):
@@ -957,7 +1043,7 @@ class CursorWalker(tree.Interpreter):
             return True, None
         return False, response
 
-    def visit_step(self, step):
+    def visit_step(self, step: tree.Step) -> None:
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         stored_files = entry.get("files") if entry is not None else None
@@ -1008,7 +1094,7 @@ class CursorWalker(tree.Interpreter):
             return step is self._claim
         return step.matches_context(**self._claim)
 
-    def visit_branch(self, branch):
+    def visit_branch(self, branch: tree.Branch) -> None:
         entry = next(self._entries_iter, None)
         if self._sealed:
             self._append(
@@ -1050,7 +1136,7 @@ class CursorWalker(tree.Interpreter):
                 response=sub._cursor.response,
             )
 
-    def visit_expand(self, expand):
+    def visit_expand(self, expand: tree.Expand) -> None:
         entry = next(self._entries_iter, None)
         if self._sealed:
             self._append(
@@ -1086,7 +1172,7 @@ class CursorWalker(tree.Interpreter):
                 response=sub._cursor.response,
             )
 
-    def cursor(self):
+    def cursor(self) -> Cursor:
         escapes = tuple(self._escapes)
         if self._cursor is not None:
             return replace(self._cursor, escapes=escapes)
@@ -1099,7 +1185,8 @@ class CursorWalker(tree.Interpreter):
         if self._head is None:
             self._head = node
         else:
-            self._tail.next = node
+            # A non-empty chain always has a tail.
+            cast("RuntimeNode", self._tail).next = node
         self._tail = node
 
 
@@ -1111,22 +1198,27 @@ class StateSerializer(tree.Reducer):
     dormant arms are carried back untouched. Trailing holes are trimmed
     at every level."""
 
-    def reduce(self, root):
+    def reduce(self, root: Any) -> State:
         return _trim_trailing_holes(super().reduce(root))
 
-    def visit_step(self, runtime_step):
-        entry = {"step": runtime_step.data}
+    def visit_step(self, runtime_step: RuntimeStep) -> StateEntry:
+        entry: StateEntry = {"step": runtime_step.data}
         if runtime_step.files:
             entry["files"] = runtime_step.files
         return entry
 
-    def visit_branch(self, runtime_branch, sub_result):
+    def visit_branch(
+        self, runtime_branch: RuntimeBranch, sub_result: State
+    ) -> StateEntry:
         arms = dict(runtime_branch.dormant_arms)
         if sub_result:
-            arms[runtime_branch.selected_arm_id] = sub_result
+            # Entries only exist for an arm the walk selected.
+            arms[cast(str, runtime_branch.selected_arm_id)] = sub_result
         return {"branch": arms}
 
-    def visit_expand(self, runtime_expand, sub_result):
+    def visit_expand(
+        self, runtime_expand: RuntimeExpand, sub_result: State
+    ) -> StateEntry:
         return {"expand": sub_result}
 
 
@@ -1136,30 +1228,51 @@ class PathFlattener(tree.Transformer):
     is None are dropped; branches are spliced by inlining the
     transformed selected arm before the branch's next."""
 
-    def visit_step(self, runtime_step, next_result):
+    def visit_step(
+        self, runtime_step: RuntimeStep, next_result: RuntimeStep | None
+    ) -> RuntimeStep | None:
         if runtime_step.data is None:
             return next_result
         return replace(runtime_step, next=next_result)
 
-    def visit_preserved_branch(self, preserved_branch, next_result):
+    def visit_preserved_branch(
+        self, preserved_branch: PreservedBranch, next_result: RuntimeStep | None
+    ) -> RuntimeStep | None:
         return next_result
 
-    def visit_preserved_expand(self, preserved_expand, next_result):
+    def visit_preserved_expand(
+        self, preserved_expand: PreservedExpand, next_result: RuntimeStep | None
+    ) -> RuntimeStep | None:
         return next_result
 
-    def _splice(self, transformed_selected_arm, next_result):
+    def _splice(
+        self,
+        transformed_selected_arm: RuntimeStep | None,
+        next_result: RuntimeStep | None,
+    ) -> RuntimeStep | None:
         if transformed_selected_arm is None:
             return next_result
         tail = transformed_selected_arm
         while tail.next is not None:
-            tail = tail.next
+            # A flattened arm is a chain of RuntimeStep.
+            tail = cast(RuntimeStep, tail.next)
         tail.next = next_result
         return transformed_selected_arm
 
-    def visit_branch(self, runtime_branch, transformed_selected_arm, next_result):
+    def visit_branch(
+        self,
+        runtime_branch: RuntimeBranch,
+        transformed_selected_arm: RuntimeStep | None,
+        next_result: RuntimeStep | None,
+    ) -> RuntimeStep | None:
         return self._splice(transformed_selected_arm, next_result)
 
-    def visit_expand(self, runtime_expand, transformed_selected_arm, next_result):
+    def visit_expand(
+        self,
+        runtime_expand: RuntimeExpand,
+        transformed_selected_arm: RuntimeStep | None,
+        next_result: RuntimeStep | None,
+    ) -> RuntimeStep | None:
         return self._splice(transformed_selected_arm, next_result)
 
 
@@ -1174,17 +1287,23 @@ class MergeCleanedData(tree.Reducer):
     `visit_branch` for a different merge policy.
     """
 
-    def initial(self):
+    def initial(self) -> dict[str, Any]:
         return {}
 
-    def combine(self, accumulator, value):
+    def combine(
+        self, accumulator: dict[str, Any], value: dict[str, Any]
+    ) -> dict[str, Any]:
         return {**accumulator, **value}
 
-    def visit_step(self, runtime_step):
+    def visit_step(self, runtime_step: RuntimeStep) -> dict[str, Any]:
         return runtime_step.form.cleaned_data
 
-    def visit_branch(self, runtime_branch, sub_result):
+    def visit_branch(
+        self, runtime_branch: RuntimeBranch, sub_result: dict[str, Any]
+    ) -> dict[str, Any]:
         return sub_result
 
-    def visit_expand(self, runtime_expand, sub_result):
+    def visit_expand(
+        self, runtime_expand: RuntimeExpand, sub_result: dict[str, Any]
+    ) -> dict[str, Any]:
         return sub_result
