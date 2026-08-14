@@ -837,6 +837,54 @@ def test_wizard_viewset_post_to_a_retired_run_stores_nothing(rf):
     assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
 
 
+def test_wizard_viewset_finish_fires_done_and_retires_the_run(rf):
+    """`finish()` is the programmatic completion: `done()` fires once, the
+    run's files are cleaned up, and the run is tombstoned — exactly what a
+    completing GET or POST does, without a request cycle."""
+    request = rf.get("/wizard/existing-run/")
+    request.session = _routed_session(
+        [
+            {"step": {"name": "Ada"}},
+            {"step": {"email": "ada@example.com"}},
+            {"step": {"confirmed": "on"}},
+        ]
+    )
+    view = _RoutedViewSet()
+    view.setup(request)
+    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+
+    response = view.finish(bound_wizard)
+
+    assert response.content == b"done"
+    assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
+
+
+def test_wizard_viewset_finish_with_a_raising_done_leaves_the_run_resumable(rf):
+    """The tombstone is written after `done()` returns, so a `done()` that
+    raises leaves the run's answers stored and the run still runnable."""
+
+    class ExplodingViewSet(_RoutedViewSet):
+        def done(self, bound_wizard):
+            raise RuntimeError("side effect failed")
+
+    state = [
+        {"step": {"name": "Ada"}},
+        {"step": {"email": "ada@example.com"}},
+        {"step": {"confirmed": "on"}},
+    ]
+    request = rf.get("/wizard/existing-run/")
+    request.session = _routed_session(state)
+    view = ExplodingViewSet()
+    view.setup(request)
+    bound_wizard = ExplodingViewSet.inspect(request, "existing-run")
+
+    with pytest.raises(RuntimeError):
+        view.finish(bound_wizard)
+
+    assert not bound_wizard.is_complete
+    assert request.session["gandalf_runs"]["existing-run"]["state"] == state
+
+
 def test_wizard_viewset_get_on_an_unknown_run_is_unavailable(rf):
     request = rf.get("/wizard/missing-run/")
     request.session = _routed_session([])
