@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from io import BytesIO
 from typing import TypedDict
 
@@ -41,8 +42,25 @@ class WizardFileStorage:
     def __init__(self, backend: Storage | None = None) -> None:
         self.backend = backend or default_storage
 
+    def token(self) -> str:
+        """The unguessable part of an upload's storage key.
+
+        A run id is a *routing* identifier — it sits in every wizard URL, so
+        it reaches browser history, referrer headers and access logs. Keying
+        uploads on it alone would make a leaked run URL enough to fetch the
+        bytes straight from a public media domain, with no session at all.
+        The token breaks that chain: the path cannot be derived from anything
+        the user's browser hands out.
+
+        It prefixes the filename rather than nesting a directory, because
+        `delete_run` sweeps a run with a non-recursive `listdir`. Hex keeps
+        the `-` separator unambiguous: a urlsafe token may contain one
+        itself, which would leave the original filename unrecoverable.
+        """
+        return secrets.token_hex(16)
+
     def save(self, run_id: str, uploaded_file: UploadedFile) -> FileRef:
-        target = f"{self.prefix}/{run_id}/{uploaded_file.name}"
+        target = f"{self.prefix}/{run_id}/{self.token()}-{uploaded_file.name}"
         tmp_name = self.backend.save(target, uploaded_file)
         return {
             "tmp_name": tmp_name,

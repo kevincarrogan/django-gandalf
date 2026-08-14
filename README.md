@@ -592,9 +592,36 @@ On replay, Gandalf reopens each stored file and re-injects it into
 upload see the same value they saw originally. Editing respects keep-vs-replace
 per field. After `done()` returns, the run's files are cleaned up automatically.
 
-The default storage writes under a `gandalf/<run_id>/` prefix of Django's
-default storage; point it elsewhere (S3, a per-tenant location) by subclassing
-`WizardFileStorage` and passing it to `.configure(file_storage_class=...)`.
+### Where the bytes land
+
+By default uploads are written to Django's default storage, under
+`gandalf/<run_id>/<token>-<filename>`. The token matters: a run id is a
+*routing* identifier — it is in every wizard URL, so it reaches browser
+history, referrer headers and access logs — and without the token, anyone who
+picked one up could turn it into a media URL and fetch the file with no
+session at all.
+
+Point uploads at a different backend with `file_storage_backend`:
+
+```python
+from django.core.files.storage import FileSystemStorage
+
+wizard = (
+    Wizard()
+    .step(ProfilePhotoForm, name="photo")
+    .configure(file_storage_backend=FileSystemStorage(location="/srv/wizard-uploads"))
+)
+```
+
+Worth doing deliberately: the default storage is often the same bucket a
+project serves publicly at `MEDIA_URL`, and these are unreviewed bytes from a
+run the user has not finished — a different risk class from the media an app
+has decided to keep. A private location is the safer home for anything
+sensitive.
+
+For a different *layout* — a per-tenant prefix, say — subclass
+`WizardFileStorage` and pass it as `.configure(file_storage_class=...)`. The
+two compose: configure both to put a custom layout on a custom backend.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/file-upload/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L143-L152)
 
@@ -1339,8 +1366,8 @@ signup_wizard = (
 ```
 
 The same keyword pattern applies to every touch point on the configured wizard —
-`form_view_factory`, `cursor_walker_class`, `step_dispatcher_class`,
-`state_serializer_class`, and `step_router_class`. Each has a sensible default,
+`form_view_factory`, `file_storage_backend`, `cursor_walker_class`,
+`step_dispatcher_class`, `state_serializer_class`, and `step_router_class`. Each has a sensible default,
 so you only configure what you need. For a custom URL scheme, subclass
 `StepNameRouter` (routing on a different context key) and pass it as
 `step_router_class`, or write the URL patterns yourself and override

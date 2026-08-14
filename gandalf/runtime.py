@@ -9,6 +9,7 @@ from functools import cached_property
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
+from django.core.files.storage import Storage
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase, QueryDict
 from django.utils.datastructures import MultiValueDict
@@ -581,7 +582,15 @@ class BoundWizard:
     @property
     def file_storage(self) -> WizardFileStorage:
         if self._file_storage is None:
-            self._file_storage = self.wizard.file_storage_class()
+            # Passed only when configured, so a storage class that takes no
+            # arguments — the shape every custom class had before there was a
+            # backend to configure — is still constructible.
+            backend = self.wizard.file_storage_backend
+            if backend is None:
+                backend_kwargs: dict[str, Storage] = {}
+            else:
+                backend_kwargs = {"backend": backend}
+            self._file_storage = self.wizard.file_storage_class(**backend_kwargs)
         return self._file_storage
 
     def bind(self, wizard: ConfiguredWizard) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.storage import Storage
 
 from gandalf import tree
 from gandalf.file_storage import WizardFileStorage
@@ -163,6 +164,10 @@ class Wizard:
 
 class ConfiguredWizard:
     file_storage_class = WizardFileStorage
+    # None means "let `file_storage_class` pick its own backend", which is
+    # what keeps a zero-argument custom storage class working. Configuring
+    # one opts into passing it as `backend=`.
+    file_storage_backend: Storage | None = None
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
@@ -185,6 +190,9 @@ class ConfiguredWizard:
         self.tree = self._configure_tree(tree)
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
+        )
+        self.file_storage_backend = configuration.get(
+            "file_storage_backend", self.file_storage_backend
         )
         self.cursor_walker_class = configuration.get(
             "cursor_walker_class", self.cursor_walker_class

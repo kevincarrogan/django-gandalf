@@ -1171,6 +1171,21 @@ def test_section_editing_wizard_uses_custom_step_router_for_post(wizard_driver):
     assert run.state[0]["step"] == {"account_type": "business"}
 
 
+def stored_uploads(isolated_media_root, run_id):
+    """The uploads under a run's prefix, named as they were uploaded.
+
+    Storage keys carry an unguessable token so a leaked run id cannot be
+    turned into a media URL, which makes the key itself unpredictable —
+    tests match on the filename it ends with instead.
+    """
+    import os
+
+    run_dir = os.path.join(isolated_media_root, "gandalf", run_id)
+    if not os.path.exists(run_dir):
+        return []
+    return sorted(name.partition("-")[2] for name in os.listdir(run_dir))
+
+
 def test_file_uploading_wizard_persists_upload_and_advances(
     wizard_driver, isolated_media_root
 ):
@@ -1187,18 +1202,14 @@ def test_file_uploading_wizard_persists_upload_and_advances(
     assert response.status_code == HTTPStatus.OK
     assertContains(response, '<input type="text" name="name"')
     [photo_entry] = run.state
-    assert photo_entry["files"]["photo"]["tmp_name"] == (
-        f"gandalf/{run.run_id}/avatar.jpg"
-    )
+    tmp_name = photo_entry["files"]["photo"]["tmp_name"]
+    assert tmp_name.startswith(f"gandalf/{run.run_id}/")
+    assert tmp_name.endswith("-avatar.jpg")
     assert photo_entry["files"]["photo"]["name"] == "avatar.jpg"
-    assert os.path.exists(
-        os.path.join(isolated_media_root, "gandalf", run.run_id, "avatar.jpg")
-    )
+    assert os.path.exists(os.path.join(isolated_media_root, tmp_name))
 
 
 def test_file_uploading_wizard_done_cleans_up_files(wizard_driver, isolated_media_root):
-    import os
-
     run = wizard_driver("file-uploading-wizard").start()
     run.post_step(
         "photo",
@@ -1210,8 +1221,7 @@ def test_file_uploading_wizard_done_cleans_up_files(wizard_driver, isolated_medi
 
     assert response.status_code == HTTPStatus.OK
     assert response.content == b"completed avatar.jpg"
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert not os.path.exists(run_dir) or os.listdir(run_dir) == []
+    assert stored_uploads(isolated_media_root, run.run_id) == []
 
 
 def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
@@ -1247,8 +1257,6 @@ def test_named_helper_wizard_completes_with_context_lookups(wizard_driver):
 def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1269,16 +1277,12 @@ def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     )
 
     assert response.status_code == HTTPStatus.OK
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    files = sorted(os.listdir(run_dir))
-    assert files == ["second.jpg"]
+    assert stored_uploads(isolated_media_root, run.run_id) == ["second.jpg"]
 
 
 def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step("photo", {"label": "No photo yet"}, follow=True)
 
@@ -1292,15 +1296,12 @@ def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     )
 
     assert response.status_code == HTTPStatus.OK
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["later.jpg"]
+    assert stored_uploads(isolated_media_root, run.run_id) == ["later.jpg"]
 
 
 def test_file_editing_wizard_edit_changing_label_keeps_photo(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1316,8 +1317,7 @@ def test_file_editing_wizard_edit_changing_label_keeps_photo(
     assert response.status_code == HTTPStatus.OK
     state = run.state
     assert state[0]["step"]["label"] == "Renamed"
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["first.jpg"]
+    assert stored_uploads(isolated_media_root, run.run_id) == ["first.jpg"]
 
 
 def test_file_editing_wizard_edit_get_renders_existing_photo(
@@ -1343,8 +1343,6 @@ def test_file_editing_wizard_edit_get_renders_existing_photo(
 def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1371,8 +1369,7 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     assert response.context["form"].errors == {"label": ["This field is required."]}
     # The rejected submission is what is stored now, so its upload is the live
     # one and the superseded file is collected rather than left orphaned.
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["rejected.jpg"]
+    assert stored_uploads(isolated_media_root, run.run_id) == ["rejected.jpg"]
 
 
 def test_file_editing_wizard_rejected_upload_survives_the_correction(
@@ -1383,7 +1380,6 @@ def test_file_editing_wizard_rejected_upload_survives_the_correction(
     silently kept the *old* photo while the user believed the new one had been
     saved. A rejected submission is now kept whole, upload included, so the
     correction keeps the photo that came with it."""
-    import os
 
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
@@ -1410,15 +1406,12 @@ def test_file_editing_wizard_rejected_upload_survives_the_correction(
     state = run.state
     assert state[0]["step"]["label"] == "Fixed"
     assert state[0]["files"]["photo"]["name"] == "second.jpg"
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["second.jpg"]
+    assert stored_uploads(isolated_media_root, run.run_id) == ["second.jpg"]
 
 
 def test_file_editing_wizard_unknown_step_url_redirects(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step("photo", {"label": "Only label"}, follow=True)
     state_before = run.state
@@ -1434,8 +1427,7 @@ def test_file_editing_wizard_unknown_step_url_redirects(
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == run.step_url("review")
     assert run.state == state_before
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert not os.path.exists(run_dir) or os.listdir(run_dir) == []
+    assert stored_uploads(isolated_media_root, run.run_id) == []
 
 
 def test_empty_branch_arm_context_finder_walks_both_trees(wizard_driver):
@@ -1687,8 +1679,6 @@ def test_parked_run_returns_to_the_escaping_step_with_earlier_answers_intact(
 def test_parking_escape_discards_the_upload_it_escaped_with(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("escape-park-file-wizard").start()
 
     response = run.post_step(
@@ -1703,9 +1693,7 @@ def test_parking_escape_discards_the_upload_it_escaped_with(
     # Nothing was ever written: the walk validates before it persists, so a
     # parking escape simply declines to store rather than storing and undoing.
     assert run.state == []
-    assert not os.path.exists(
-        os.path.join(isolated_media_root, "gandalf", run.run_id, "avatar.jpg")
-    )
+    assert stored_uploads(isolated_media_root, run.run_id) == []
 
 
 # --- Completion lifecycle -------------------------------------------------

@@ -69,15 +69,18 @@ def _edit(bound_wizard, submission, *, files=None, url_kwargs=None, **context):
 
 
 @pytest.fixture
-def temp_file_storage_class():
+def temp_file_backend():
     with tempfile.TemporaryDirectory() as tmpdir:
-        backend = FileSystemStorage(location=tmpdir)
+        yield FileSystemStorage(location=tmpdir)
 
-        class TempFileStorage(WizardFileStorage):
-            def __init__(self):
-                super().__init__(backend=backend)
 
-        yield TempFileStorage
+@pytest.fixture
+def temp_file_storage_class(temp_file_backend):
+    class TempFileStorage(WizardFileStorage):
+        def __init__(self):
+            super().__init__(backend=temp_file_backend)
+
+    return TempFileStorage
 
 
 class _Session(dict):
@@ -3577,3 +3580,53 @@ def test_configured_wizard_uses_configured_file_storage_class(
     assert isinstance(bound_wizard.file_storage, FakeFileStorage)
     bound_wizard.cleanup_files()
     assert ("delete_run", "existing-run") in calls
+
+
+def test_configured_wizard_uses_configured_file_storage_backend(
+    request_with_session_factory,
+    temp_file_backend,
+):
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_backend=temp_file_backend,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    assert bound_wizard.file_storage.backend is temp_file_backend
+
+
+def test_configured_wizard_combines_file_storage_class_and_backend(
+    request_with_session_factory,
+    temp_file_backend,
+):
+    class TenantFileStorage(WizardFileStorage):
+        prefix = "tenant"
+
+    request = request_with_session_factory(
+        session={"gandalf_runs": {"existing-run": {}}},
+    )
+    wizard = (
+        Wizard()
+        .step(ProfilePhotoForm)
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            file_storage_class=TenantFileStorage,
+            file_storage_backend=temp_file_backend,
+        )
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.retrieve("existing-run")
+
+    file_storage = bound_wizard.file_storage
+    assert isinstance(file_storage, TenantFileStorage)
+    assert file_storage.backend is temp_file_backend
+    ref = file_storage.save("existing-run", SimpleUploadedFile("logo.png", b"bytes"))
+    assert ref["tmp_name"].startswith("tenant/existing-run/")
