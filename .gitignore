@@ -23,3 +23,9 @@ htmlcov/
 
 # Claude Code
 .claude/
+
+# Local credentials
+.env
+
+# Local node for examples (nodeenv --prebuilt)
+.nodeenv/

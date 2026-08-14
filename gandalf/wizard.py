@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
@@ -35,7 +36,9 @@ __all__ = [
     "condition",
     "form_view_factory",
     "named",
+    "on_field",
     "step",
+    "switch",
 ]
 
 
@@ -107,6 +110,48 @@ def branch(
     return Wizard().branch(*conditions, default=default)
 
 
+def switch(
+    selector: tree.Selector,
+    cases: dict[str, Wizard],
+    default: Wizard | None = None,
+) -> Wizard:
+    """Module-level entry point: returns a Wizard starting with one switch."""
+    return Wizard().switch(selector, cases, default=default)
+
+
+@dataclass(frozen=True)
+class on_field:
+    """A selector that reads a value straight out of an earlier answer.
+
+    The common case, said declaratively: `on_field("account", "kind")`
+    routes on the `kind` field of the step named `account`. Because it
+    *is* the answer rather than a computation over it, the dependency is
+    data — `AgentDriver.outline()` reports which step and field decide the
+    route, so a caller planning ahead can work out where an answer leads
+    instead of inferring it. Reach for a plain function whenever the
+    decision is anything more than "what did they say".
+
+    Scalar answers only: a multi-valued field has no single value to
+    switch on, so route those with a selector of your own.
+    """
+
+    step: str
+    field: str
+
+    @property
+    def __name__(self) -> str:
+        return f"{self.step}.{self.field}"
+
+    def __call__(self, request: Any) -> str:
+        found = request.wizard.path.find_step(name=self.step)
+        if found is None:
+            raise ImproperlyConfigured(
+                f"on_field({self.step!r}, {self.field!r}) found no answered "
+                f"step named {self.step!r} before this switch."
+            )
+        return str(found.form.cleaned_data.get(self.field, ""))
+
+
 class Wizard:
     def __init__(self, *, tree: tree.Node | None = None) -> None:
         self.tree = tree
@@ -141,6 +186,43 @@ class Wizard:
         )
         default_tree = default.tree if default is not None else None
         declarations.append(tree.Branch(arms=arms, default=default_tree))
+        return self.__class__(tree=tree.build(declarations))
+
+    def switch(
+        self,
+        selector: tree.Selector,
+        cases: dict[str, Wizard],
+        default: Wizard | None = None,
+    ) -> Wizard:
+        """Route on what `selector(request)` returns, one case per outcome.
+
+        The same arbitrary code a predicate may run, asked a different
+        question: *which* rather than *whether*. The selector is called
+        once per walk however many cases there are, exactly one case can
+        apply, and each case's answers are stored under its own name — so
+        reordering the cases cannot strand them. A value no case names
+        falls to `default`, or past the switch entirely when there is
+        none.
+        """
+        if "default" in cases:
+            raise ImproperlyConfigured(
+                'A switch case cannot be called "default" — that name is '
+                "where the fallback arm's answers are stored. Pass it as "
+                "default=... instead."
+            )
+        declarations = list(self.tree) if self.tree is not None else []
+        arms = tuple(
+            (tree.CaseGuard(selector=selector, case=case), sub_wizard.tree)
+            for case, sub_wizard in cases.items()
+        )
+        declarations.append(
+            tree.Switch(
+                arms=arms,
+                default=default.tree if default is not None else None,
+                selector=selector,
+                cases=tuple(cases),
+            )
+        )
         return self.__class__(tree=tree.build(declarations))
 
     def expand(self, builder: tree.Builder) -> Wizard:

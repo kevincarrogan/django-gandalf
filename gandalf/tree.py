@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeAlias
 
 from django import forms
@@ -25,6 +26,11 @@ Predicate: TypeAlias = Callable[["WizardRequest"], bool]
 #: An expansion's builder, called with the request mid-walk to produce the
 #: wizard whose steps are spliced in.
 Builder: TypeAlias = Callable[["WizardRequest"], "Wizard"]
+
+#: A switch's selector, called with the request mid-walk to name which case
+#: applies. Arbitrary code, exactly like a predicate — what changes is that
+#: it returns *which* rather than *whether*.
+Selector: TypeAlias = Callable[["WizardRequest"], str]
 
 # The visitors below are duck-typed rather than tied to a protocol: the same
 # `accept_*` plumbing carries both declaration trees (this module) and
@@ -91,6 +97,57 @@ class Branch:
         return transformer.visit_branch(
             self, transformed_arms, transformed_default, next_result
         )
+
+    def arm_id(self, index: int) -> str:
+        """The storage key for the arm at `index` — its declaration-order
+        position, since a predicate arm has no other name."""
+        return str(index)
+
+
+@dataclass(frozen=True)
+class CaseGuard:
+    """One switch case, wearing a branch predicate's clothes.
+
+    A `Switch` is a `Branch`, so its arms have to be guards — and this is
+    the honest one: "did the selector name me?". The walk never actually
+    calls it (it asks the selector once and matches the answer), but
+    anything else that evaluates a declaration tree keeps working, and the
+    equivalence is not a fiction.
+    """
+
+    selector: Selector
+    case: str
+
+    @property
+    def __name__(self) -> str:  # pragma: no cover - debug formatting only
+        name = getattr(self.selector, "__name__", type(self.selector).__name__)
+        return f"{name} == {self.case!r}"
+
+    def __call__(self, request: WizardRequest) -> bool:
+        # Asked through the run rather than directly, so the selector is
+        # called once for the switch however many cases ask.
+        return request.wizard.switch_value(self.selector, request) == self.case
+
+
+@dataclass(frozen=True)
+class Switch(Branch):
+    """A branch whose arms are named by the value that selects them.
+
+    The difference from `Branch` is not expressiveness — a selector is the
+    same arbitrary code a predicate is — but that the *outcomes* are
+    declared. One call decides the route however many cases there are,
+    exactly one case can apply, and each arm has a name instead of a
+    position: `cases[i]` names `arms[i]`, and that name is what the arm's
+    answers are stored under, so reordering the cases cannot strand them.
+    """
+
+    selector: Selector = dataclass_field(kw_only=True)
+    cases: tuple[str, ...] = dataclass_field(kw_only=True)
+
+    def arm_id(self, index: int) -> str:
+        """The storage key for the arm at `index` — the case that selects
+        it, so reordering the cases cannot strand their answers."""
+        return self.cases[index]
 
 
 @dataclass(frozen=True)

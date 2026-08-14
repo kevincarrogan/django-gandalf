@@ -3,6 +3,7 @@ from gandalf import wizard
 from gandalf.form_views import form_view_factory
 from gandalf.wizard import (
     MergeCleanedData,
+    on_field,
     StepNameRouter,
     Wizard,
     condition,
@@ -30,6 +31,7 @@ from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
 from .durable import ModelSectionStore, ModelStorage
 from .forms import (
+    AccountKindForm,
     AccountTypeForm,
     BareEscapeForm,
     BusinessDetailsForm,
@@ -391,6 +393,78 @@ class DoneBranchingWizardViewSet(WizardViewSet):
 
 def _always_false(request):
     return False
+
+
+def _always_the_second_case(request):
+    """Names a case without reading any answer, so it can decide the very
+    first node."""
+    return "second"
+
+
+class MisdeclaredSwitchWizardViewSet(WizardViewSet):
+    description = (
+        "A switch whose on_field() names a step that is not on its route, "
+        "which is a declaration mistake: the selector says which step it "
+        "wanted rather than failing as an attribute error."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountKindForm, name="account_kind")
+        .switch(
+            on_field("nowhere", "kind"),
+            {"business": Wizard().step(BusinessDetailsForm, name="business_name")},
+        )
+    )
+
+    url_name = "misdeclared-switch-wizard"
+
+
+class SwitchEntryWizardViewSet(WizardViewSet):
+    description = (
+        "Wizard whose very first node is a switch (no preceding step): the "
+        "selector names a case rather than each arm answering yes or no."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = wizard.switch(
+        _always_the_second_case,
+        {
+            "first": wizard.step(FirstStepForm, name="first"),
+            "second": wizard.step(SecondStepForm, name="second"),
+        },
+        default=wizard.step(ReviewForm, name="neither"),
+    )
+
+    url_name = "switch-entry-wizard"
+
+
+class SwitchWizardViewSet(WizardViewSet):
+    description = (
+        "Routes on the account type as a value rather than through a series "
+        "of predicates: one case per outcome, each case's answers stored "
+        "under its own name, and on_field() declaring which answer decides."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(AccountKindForm, name="account_kind")
+        .switch(
+            on_field("account_kind", "kind"),
+            {
+                "business": Wizard().step(BusinessDetailsForm, name="business_name"),
+                "personal": Wizard().step(PersonalDetailsForm, name="preferred_name"),
+            },
+            default=Wizard().step(ReviewForm, name="anything_else"),
+        )
+        .step(ReviewForm, name="review")
+    )
+
+    url_name = "switch-wizard"
+
+    def done(self, bound_wizard):
+        payload = MergeCleanedData().reduce(bound_wizard.path)
+        name = payload.get("business_name") or payload.get("preferred_name")
+        return HttpResponse(f"Switched to {name}")
 
 
 class BranchEntryWizardViewSet(WizardViewSet):

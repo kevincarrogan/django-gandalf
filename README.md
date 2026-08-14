@@ -294,6 +294,48 @@ into several branches. And a de-selected arm's answers are not thrown away — s
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L60-L85)
 
+### `.switch()`: one case per outcome
+
+When a fork is "which of these", not "is this true", `.switch()` says so
+directly. The selector returns the name of the case that applies:
+
+```python
+from gandalf.wizard import Wizard, on_field
+
+
+wizard = (
+    Wizard()
+    .step(CompanyForm, name="company")
+    .switch(
+        on_field("company", "company_type"),
+        {
+            "limited": Wizard().step(RegistrationForm, name="registration"),
+            "partnership": Wizard().step(PartnersForm, name="partners"),
+        },
+        default=Wizard().step(OwnerForm, name="owner"),
+    )
+)
+```
+
+A selector is the same arbitrary code a predicate is — read several answers,
+call out to a service, compute whatever you like — but asking *which* rather
+than *whether* buys three things. Exactly one case can apply, so overlapping
+conditions cannot resolve by declaration order. The selector runs **once per
+switch** however many cases there are, so it is free to be expensive. And each
+case's answers are stored under its own name rather than its position, so
+reordering the cases cannot strand them.
+
+`on_field(step, field)` is the common case said declaratively — route on the
+value of an earlier answer. Prefer a plain function whenever the decision is
+anything more than "what did they say"; a multi-valued field has no single
+value to switch on, so route those with a predicate `.branch()` or a selector
+of your own.
+
+A value no case names falls to `default`, or past the switch entirely when
+there is none.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/switch-wizard/
+
 ---
 
 ## Dynamic wizards: `get_wizard()`

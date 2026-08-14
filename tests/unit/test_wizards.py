@@ -3577,3 +3577,230 @@ def test_configured_wizard_uses_configured_file_storage_class(
     assert isinstance(bound_wizard.file_storage, FakeFileStorage)
     bound_wizard.cleanup_files()
     assert ("delete_run", "existing-run") in calls
+
+
+# --- Switch: branching on a value rather than on N predicates ---------------
+
+
+def _account_type(request):
+    """The account type the customer chose."""
+    return request.wizard.path.find_step(name="account_type").form.cleaned_data[
+        "account_type"
+    ]
+
+
+def _switch_wizard(selector=_account_type, **kwargs):
+    return (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .switch(
+            selector,
+            {
+                "business": Wizard().step(BusinessDetailsForm, name="business"),
+                "personal": Wizard().step(PersonalDetailsForm, name="personal"),
+            },
+            **kwargs,
+        )
+        .step(ReviewForm, name="review")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+
+def test_switch_declares_one_arm_per_case():
+    wizard = Wizard().switch(
+        _account_type,
+        {"business": Wizard().step(BusinessDetailsForm, name="business")},
+    )
+
+    node = wizard.tree
+    assert isinstance(node, tree.Switch)
+    assert isinstance(node, tree.Branch)
+    assert node.cases == ("business",)
+    assert node.selector is _account_type
+
+
+def test_switch_arms_are_guards_naming_their_case():
+    """A Switch is a Branch whose arms are real guards — each asking "did
+    the selector say me?" — so anything that walks a declaration tree
+    keeps working, and the equivalence is not a fiction."""
+    wizard = Wizard().switch(
+        _account_type,
+        {
+            "business": Wizard().step(BusinessDetailsForm, name="business"),
+            "personal": Wizard().step(PersonalDetailsForm, name="personal"),
+        },
+    )
+
+    guards = [predicate for predicate, _ in wizard.tree.arms]
+
+    assert [guard.case for guard in guards] == ["business", "personal"]
+    assert all(guard.selector is _account_type for guard in guards)
+    assert wizard.tree.arm_id(1) == "personal"
+
+
+def test_switch_takes_the_arm_its_selector_names(request_with_session_factory):
+    request = request_with_session_factory()
+    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
+    bound_wizard.initialise()
+
+    _submit(bound_wizard, {"account_type": "business"})
+
+    assert bound_wizard.cursor().node.context == {"name": "business"}
+
+
+def test_switch_falls_back_to_default_for_a_value_no_case_names(
+    request_with_session_factory,
+):
+    request = request_with_session_factory()
+    wizard = _switch_wizard(
+        selector=lambda request: "sole-trader",
+        default=Wizard().step(ReviewForm, name="fallback"),
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.initialise()
+
+    _submit(bound_wizard, {"account_type": "business"})
+
+    assert bound_wizard.cursor().node.context == {"name": "fallback"}
+
+
+def test_switch_without_a_default_skips_to_what_follows(
+    request_with_session_factory,
+):
+    request = request_with_session_factory()
+    wizard = _switch_wizard(selector=lambda request: "neither")
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.initialise()
+
+    _submit(bound_wizard, {"account_type": "business"})
+
+    assert bound_wizard.cursor().node.context == {"name": "review"}
+
+
+def test_switch_asks_its_selector_once_per_walk(request_with_session_factory):
+    """The point of a case statement over N predicates: the decision is
+    computed once, however many cases there are, so a selector may do real
+    work (a lookup, a call) without paying for it per arm."""
+    calls = []
+
+    def counting_selector(request):
+        calls.append(1)
+        return "personal"
+
+    request = request_with_session_factory()
+    bound_wizard = _make_bound_wizard(_switch_wizard(counting_selector), request)
+    bound_wizard.initialise()
+    _submit(bound_wizard, {"account_type": "business"})
+
+    calls.clear()
+    bound_wizard.cursor()
+
+    assert len(calls) == 1
+
+
+def test_switch_stores_its_answers_under_the_case_name(
+    request_with_session_factory,
+):
+    """Storage keyed by the case, not by declaration order, so reordering
+    the cases cannot strand the answers behind them."""
+    request = request_with_session_factory()
+    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
+    bound_wizard.initialise()
+
+    _submit(bound_wizard, {"account_type": "business"})
+    _submit(bound_wizard, {"business_name": "Ada Ltd"})
+
+    state = bound_wizard.get_state()
+    assert state[1] == {
+        "branch": {"business": [{"step": {"business_name": "Ada Ltd"}}]}
+    }
+
+
+def test_switch_keeps_a_de_selected_cases_answers(request_with_session_factory):
+    """Dormant memory works per case name exactly as it does per arm index."""
+    request = request_with_session_factory()
+    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
+    bound_wizard.initialise()
+    _submit(bound_wizard, {"account_type": "business"})
+    _submit(bound_wizard, {"business_name": "Ada Ltd"})
+
+    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+
+    stored = bound_wizard.get_state()[1]["branch"]
+    assert stored["business"] == [{"step": {"business_name": "Ada Ltd"}}]
+    assert bound_wizard.cursor().node.context == {"name": "personal"}
+
+
+def test_switch_refuses_a_case_called_default():
+    """ "default" is the key the fallback arm's answers are stored under."""
+    with pytest.raises(ImproperlyConfigured):
+        Wizard().switch(
+            _account_type,
+            {"default": Wizard().step(BusinessDetailsForm, name="business")},
+        )
+
+
+def test_module_level_switch_entry_point():
+    wizard = gandalf.wizard.switch(
+        _account_type,
+        {"business": Wizard().step(BusinessDetailsForm, name="business")},
+    )
+
+    assert isinstance(wizard, Wizard)
+    assert isinstance(wizard.tree, tree.Switch)
+
+
+# --- on_field: the common case, declared rather than computed ---------------
+
+
+def _on_field_wizard():
+    return (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .switch(
+            gandalf.wizard.on_field("account_type", "account_type"),
+            {
+                "business": Wizard().step(BusinessDetailsForm, name="business"),
+                "personal": Wizard().step(PersonalDetailsForm, name="personal"),
+            },
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+
+def test_on_field_routes_on_a_previous_answer(request_with_session_factory):
+    request = request_with_session_factory()
+    bound_wizard = _make_bound_wizard(_on_field_wizard(), request)
+    bound_wizard.initialise()
+
+    _submit(bound_wizard, {"account_type": "personal"})
+
+    assert bound_wizard.cursor().node.context == {"name": "personal"}
+
+
+def test_on_field_names_the_answer_it_reads():
+    selector = gandalf.wizard.on_field("account_type", "account_type")
+
+    assert selector.step == "account_type"
+    assert selector.field == "account_type"
+    assert "account_type" in selector.__name__
+
+
+def test_on_field_says_which_step_it_could_not_find(request_with_session_factory):
+    """A selector naming a step the run has not answered is a declaration
+    mistake, and says so rather than failing as an attribute error."""
+    request = request_with_session_factory()
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .switch(
+            gandalf.wizard.on_field("nonexistent", "account_type"),
+            {"business": Wizard().step(BusinessDetailsForm, name="business")},
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    bound_wizard = _make_bound_wizard(wizard, request)
+    bound_wizard.initialise()
+
+    with pytest.raises(ImproperlyConfigured, match="nonexistent"):
+        _submit(bound_wizard, {"account_type": "business"})

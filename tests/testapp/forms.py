@@ -21,6 +21,19 @@ class AccountTypeForm(forms.Form):
     )
 
 
+class AccountKindForm(forms.Form):
+    """Three kinds, so a switch can name two cases and let the third fall
+    through to the default arm."""
+
+    kind = forms.ChoiceField(
+        choices=[
+            ("business", "Business"),
+            ("personal", "Personal"),
+            ("charity", "Charity"),
+        ],
+    )
+
+
 class BusinessDetailsForm(forms.Form):
     business_name = forms.CharField()
 
