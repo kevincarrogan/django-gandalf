@@ -214,9 +214,9 @@ class SectionMixin(_SectionMixinBase):
 
         The stash is taken first because it can only be taken at all while the
         run's state is readable — completion tears that down after `done()`
-        returns (see `WizardViewSet._finish`), but a `section_done()` that
+        returns (see `WizardViewSet.finish`), but a `section_done()` that
         obliterates or escapes would get there first. The run id is cleared
-        after `section_done()` returns, mirroring `_finish`'s own ordering: a
+        after `section_done()` returns, mirroring `finish`'s own ordering: a
         `section_done()` that raises leaves the section resumable rather than
         stranded with a stash and no way back to the run that made it.
         """

@@ -650,7 +650,7 @@ class BoundWizard:
     def obliterate(self) -> None:
         """Forget this run: its uploaded files and its stored state.
 
-        Completion discards state too (see `WizardViewSet._finish`) but
+        Completion discards state too (see `WizardViewSet.finish`) but
         leaves a tombstone behind, so a revisit can still be answered as
         finished. This removes the run outright, leaving nothing to tell it
         apart from a run that never existed.

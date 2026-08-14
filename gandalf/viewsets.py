@@ -299,7 +299,7 @@ class WizardViewSet(View):
 
         cursor = bound_wizard.cursor(*args, **kwargs)
         if cursor.node is None:
-            return self._finish(bound_wizard)
+            return self.finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, cursor)
 
     def post(
@@ -416,7 +416,7 @@ class WizardViewSet(View):
         self, bound_wizard: BoundWizard, next_cursor: Cursor
     ) -> HttpResponseBase:
         if next_cursor.node is None:
-            return self._finish(bound_wizard)
+            return self.finish(bound_wizard)
         return self._redirect_to_cursor(bound_wizard, next_cursor)
 
     def _escaped(
@@ -522,12 +522,16 @@ class WizardViewSet(View):
             },
         )
 
-    def _finish(self, bound_wizard: BoundWizard) -> HttpResponseBase:
+    def finish(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """Complete the run: `done()` fires once, then the run is tombstoned
         so nothing can fire it again.
 
         The mark is written after `done()` returns, so a `done()` that raises
         leaves the run resumable rather than stranded half-finished.
+
+        This is also the programmatic completion for a caller driving the
+        run outside a dispatch — reach a cursor whose `node` is None, then
+        call this rather than re-spelling the done/cleanup/complete order.
         """
         response = self.done(bound_wizard)
         bound_wizard.cleanup_files()
