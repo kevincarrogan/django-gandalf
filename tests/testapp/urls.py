@@ -79,6 +79,12 @@ urlpatterns = [
         "recreated-linear-wizard/", include(views.RecreatedLinearWizardViewSet.urls())
     ),
     path("branching-wizard/", include(views.BranchingWizardViewSet.urls())),
+    path("switch-wizard/", include(views.SwitchWizardViewSet.urls())),
+    path("switch-entry-wizard/", include(views.SwitchEntryWizardViewSet.urls())),
+    path(
+        "misdeclared-switch-wizard/",
+        include(views.MisdeclaredSwitchWizardViewSet.urls()),
+    ),
     path(
         "editing-branching-wizard/", include(views.EditingBranchingWizardViewSet.urls())
     ),

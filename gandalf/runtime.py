@@ -571,6 +571,8 @@ class BoundWizard:
         self._render_context: tuple[Cursor, tree.Step] | None = None
         self._dispatcher: StepDispatcher | None = None
         self._file_storage: WizardFileStorage | None = None
+        # Memo for one switch's selector while its arm is being chosen.
+        self._selector_values: dict[Any, str] = {}
 
     @property
     def dispatcher(self) -> StepDispatcher:
@@ -940,16 +942,35 @@ class BoundWizard:
     ) -> tuple[str, tree.Node | None]:
         """Derive the active arm for a branch, returning `(arm_id, subtree)`.
 
-        `arm_id` is the arm's declaration-order index as a string, or
-        `"default"` — the key its sub-entries are stored under. The decision
+        `arm_id` is the arm's declaration-order index as a string — or, for
+        a `Switch`, the name of the case that applies — or `"default"`. It
+        is the key the arm's sub-entries are stored under. The decision
         itself is never persisted; only per-arm memory is keyed by it.
+
+        A switch's cases are guards like any other, so the arms are asked
+        in order here too; what keeps its selector from running once per
+        case is `switch_value`, memoised for this one selection.
         """
         request = self.dispatcher.build_request("GET")
         with self.walking(partial_runtime_head):
+            self._selector_values = {}
             for index, (predicate, subtree) in enumerate(branch_node.arms):
                 if predicate(request):
-                    return str(index), subtree
+                    return branch_node.arm_id(index), subtree
             return "default", branch_node.default
+
+    def switch_value(self, selector: tree.Selector, request: WizardRequest) -> str:
+        """What the selector deciding the current switch returned.
+
+        Every case of a switch asks the same question, and the answer
+        cannot change midway through choosing an arm — so it is computed
+        for the first case that asks and remembered for the rest. A
+        selector is free to be expensive; how many cases a switch declares
+        should not decide how often it runs.
+        """
+        if selector not in self._selector_values:
+            self._selector_values[selector] = selector(request)
+        return self._selector_values[selector]
 
 
 class CursorWalker(tree.Interpreter):

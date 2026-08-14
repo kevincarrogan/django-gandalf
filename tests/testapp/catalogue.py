@@ -152,6 +152,14 @@ GROUPS = (
             Example("done-branching-wizard"),
             Example("editing-branching-wizard"),
             Example("branch-entry-wizard", note="The branch is the very first node."),
+            Example(
+                "switch-wizard",
+                note="A switch: one case per outcome, named rather than numbered.",
+            ),
+            Example(
+                "switch-entry-wizard",
+                note="The switch is the very first node.",
+            ),
             Example("branching-merged-payload-wizard"),
             Example("runtime-tree-branching-merge-wizard"),
             Example("empty-branch-arm-merged-payload-wizard"),
@@ -362,6 +370,11 @@ GROUPS = (
             Example(
                 "unroutable-wizard",
                 note="ImproperlyConfigured: a step with no routable name.",
+            ),
+            Example(
+                "misdeclared-switch-wizard",
+                note="ImproperlyConfigured: a switch reading a step that is "
+                "not on its route.",
             ),
             Example(
                 "duplicate-context-wizard",
