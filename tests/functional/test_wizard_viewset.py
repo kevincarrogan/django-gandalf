@@ -2186,3 +2186,16 @@ def test_a_mounted_wizard_can_be_asked_what_it_is_without_starting_it(rf):
         "step",
     ]
     assert request.session == {}
+
+
+def test_declaring_a_step_the_old_way_says_so_rather_than_routing_nowhere():
+    """The upgrade trap: `context={...}` was how a step's context was
+    passed up to 0.9, and under keywords it silently becomes a context key
+    called "context"."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    from gandalf.wizard import Wizard
+    from tests.testapp.forms import FirstStepForm
+
+    with pytest.raises(ImproperlyConfigured, match="name='email'"):
+        Wizard().step(FirstStepForm, context={"name": "first"})
