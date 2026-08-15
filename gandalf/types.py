@@ -40,6 +40,12 @@ Submission: TypeAlias = dict[str, Any]
 #: The uploads stored against one step, keyed by form field name.
 FileRefs: TypeAlias = dict[str, FileRef]
 
+#: What a placement recorded about itself: who made it and how, parked
+#: beside the answer rather than inside it. A step's `context` is the
+#: declaration and is the same for every run; this belongs to one answer in
+#: one run. JSON-safe values only — it is stored with the state.
+Metadata: TypeAlias = dict[str, Any]
+
 #: One positional slot in a state list: `{"step": <submission or None>}`,
 #: `{"branch": {<arm id>: [<entries>]}}`, or `{"expand": [<entries>]}`.
 StateEntry: TypeAlias = dict[str, Any]

@@ -76,6 +76,28 @@ def test_stash_strips_file_refs_but_keeps_the_step_data(request_factory):
     assert payload["state"] == [{"step": {"caption": "Me"}}]
 
 
+def test_stash_keeps_what_was_recorded_about_a_placement(request_factory):
+    """File refs go because the bytes do not outlive the run. Metadata is
+    not a pointer to anything — it describes the answer beside it, and the
+    answer survives."""
+    bound = _bound(
+        request_factory(),
+        [
+            {
+                "step": {"caption": "Me"},
+                "files": {"photo": {"tmp_name": "gandalf/run/photo.png"}},
+                "meta": {"placed_by": "person"},
+            }
+        ],
+    )
+
+    payload = bound.stash()
+
+    assert payload["state"] == [
+        {"step": {"caption": "Me"}, "meta": {"placed_by": "person"}}
+    ]
+
+
 def test_stash_strips_file_refs_inside_active_and_dormant_branch_arms(
     request_factory,
 ):

@@ -23,6 +23,7 @@ from gandalf.types import (
     RunData,
     Stash,
     State,
+    Metadata,
     StateEntry,
     Submission,
     WizardRequest,
@@ -123,7 +124,10 @@ def _strip_file_refs(entries):
         elif "expand" in entry:
             entry = {"expand": _strip_file_refs(entry["expand"])}
         else:
+            metadata = entry.get("meta")
             entry = {"step": entry.get("step")}
+            if metadata:
+                entry["meta"] = metadata
         stripped.append(entry)
     return stripped
 
@@ -153,6 +157,7 @@ class RuntimeStep:
     declaration: tree.Step
     data: Submission | None = None
     files: FileRefs | None = None
+    metadata: Metadata | None = None
     next: RuntimeNode | None = None
     bound_wizard: BoundWizard | None = dataclass_field(
         default=None, repr=False, compare=False
@@ -848,6 +853,7 @@ class BoundWizard:
         claim: Claim | None = None,
         submission: Submission | None = None,
         files: FileRefs | None = None,
+        metadata: Metadata | None = None,
         **kwargs: Any,
     ) -> Walk:
         """Replay the stored answers in order; where `claim` names a step,
@@ -868,6 +874,7 @@ class BoundWizard:
             claim=claim,
             submission=submission,
             files=files,
+            metadata=metadata,
         )
         walker.walk(self.wizard.tree)
         return Walk(
@@ -1008,6 +1015,7 @@ class CursorWalker(tree.Interpreter):
         claim: Claim | None = None,
         submission: Submission | None = None,
         files: FileRefs | None = None,
+        metadata: Metadata | None = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._bound_wizard = bound_wizard
@@ -1015,6 +1023,7 @@ class CursorWalker(tree.Interpreter):
         self._claim = claim
         self._submission = submission
         self._files = files
+        self._metadata = metadata
         self._args = args
         self._kwargs = kwargs
         self._head: RuntimeNode | None = None
@@ -1080,12 +1089,14 @@ class CursorWalker(tree.Interpreter):
         entry = next(self._entries_iter, None)
         stored = entry["step"] if entry is not None else None
         stored_files = entry.get("files") if entry is not None else None
+        stored_metadata = entry.get("meta") if entry is not None else None
         if self._sealed:
             self._append(
                 RuntimeStep(
                     declaration=step,
                     data=stored,
                     files=stored_files,
+                    metadata=stored_metadata,
                     bound_wizard=self._bound_wizard,
                 )
             )
@@ -1110,6 +1121,9 @@ class CursorWalker(tree.Interpreter):
             declaration=step,
             data=data,
             files=files,
+            # A placement replaces what was recorded about the last one:
+            # metadata describes the answer that is there now.
+            metadata=self._metadata if claimed else stored_metadata,
             bound_wizard=self._bound_wizard,
         )
         self._append(node)
@@ -1243,6 +1257,8 @@ class StateSerializer(tree.Reducer):
         entry: StateEntry = {"step": runtime_step.data}
         if runtime_step.files:
             entry["files"] = runtime_step.files
+        if runtime_step.metadata:
+            entry["meta"] = runtime_step.metadata
         return entry
 
     def visit_branch(

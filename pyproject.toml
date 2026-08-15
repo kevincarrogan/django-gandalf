@@ -107,7 +107,11 @@ source = ["gandalf"]
 # starts, so its module-level lines can never be measured. It holds no
 # logic — everything it exposes delegates to gandalf.testing, which the
 # functional suite covers in full.
-omit = ["gandalf/pytest_plugin.py"]
+# gandalf/driver.py is the mirror of gandalf/testing.py's arrangement:
+# the programmatic-driver API is measured (to 100%) by `just coverage-unit`
+# instead, and the functional suite proves it end-to-end over the README
+# wizards without re-proving every branch.
+omit = ["gandalf/pytest_plugin.py", "gandalf/driver.py"]
 
 [tool.coverage.report]
 fail_under = 100

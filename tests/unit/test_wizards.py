@@ -626,6 +626,7 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
             claim=None,
             submission=None,
             files=None,
+            **extra,
         ):
             calls.append(("init", submission))
             self.reached = False
