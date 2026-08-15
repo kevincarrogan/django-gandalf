@@ -54,14 +54,15 @@ class BenchmarkForm(forms.Form):
 
 
 def _naming(segment):
-    """Name a step the long way round.
+    """Name a step.
 
-    `.step(..., name=...)` is the preferred spelling today, but it only
-    arrived in 85346b7. Spelling it as explicit context instead costs
-    nothing and lets the harness be checked out against older commits to
-    bisect a cost change — which is most of the value of counting at all.
+    Keyword arguments *are* the step's context, so this is a plain
+    `name=`. It was spelled `context={"name": ...}` while that was the way
+    to say it; under keywords that spelling quietly makes a context key
+    called "context" and leaves the step unroutable, which is how it was
+    found.
     """
-    return {"context": {"name": segment}}
+    return {"name": segment}
 
 
 def _class_name(segment, suffix="Form"):
