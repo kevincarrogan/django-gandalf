@@ -476,6 +476,10 @@ first step) and `request.wizard.run_url` (a "return to where I was" link):
 
 ## Summary pages: check your answers
 
+> **Optional module.** `gandalf.summary` reads a run's answers back for
+> display; nothing in the core depends on it. Skip this unless a step of
+> yours shows people what they have entered.
+
 A "check your answers" step asks the same three questions of every answer —
 what is it called, what does it say, and where do I go to change it — so
 `SummaryMixin` answers them once. Mix it into the step's `FormView` and the
@@ -1150,6 +1154,11 @@ What resurrection promises:
 
 ## Hub and spoke: parallel sections
 
+> **Optional module.** `gandalf.sections` is a pattern built on everything
+> above, with its own vocabulary and a second storage seam. Nothing in the
+> core depends on it, and it costs nothing if you never import it. Skip
+> this unless one journey is really several.
+
 Some journeys are not one wizard but several, and the user picks the order: a
 profile with contact details, an address and employment history; an application
 with a task list. Each section completes on its own, any of them can be
@@ -1505,6 +1514,104 @@ saved, and `collection_done()` is what happens when the user says that is all.
 `min_items` makes "at least one" declarative.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/guests/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L399-L456)
+
+---
+
+## Asking what a wizard is
+
+> **Optional to know about.** `wizard.outline()` is a read of the declaration.
+> Skip this unless something needs to know a journey's shape.
+
+A configured wizard can describe itself, as data:
+
+```python
+wizard = Wizard().step(CompanyForm, name="company").switch(...).configure(...)
+
+wizard.outline()
+# [{"kind": "step", "name": "company", "context": {...}, "declaration": ...},
+#  {"kind": "switch", "decided_by": "company.company_type",
+#   "source": {"step": "company", "field": "company_type"},
+#   "cases": [{"case": "limited", "steps": [...]}, ...], "default": [...]}]
+```
+
+It is the data counterpart of the tree `repr()` you get while debugging: every
+step in order, every fork with **all** of its possible routes, and a marker
+wherever `.expand()` grows the tree from an answer. Since it describes the
+declaration, it needs no run, no request and no storage — the same answer
+before anybody starts and after they finish. A dynamic `get_wizard()` is
+described as it currently resolves, which is the honest answer when the shape
+is a function of the run.
+
+`WizardViewSet.resolve(request)` is the third door alongside `begin()` and
+`inspect()`: it binds the wizard without creating a run, for when the question
+is *what is this wizard* rather than *run it* or *reach that run*.
+
+Useful for a progress indicator that has to cope with branches, for generating
+documentation or a diagram of a journey, for a test that pins a wizard's shape
+— and for anything else that needs to know a journey's shape without
+walking it.
+
+---
+
+## Watching a run
+
+> **Optional module.** `gandalf.observers` is a hook and a no-op base class.
+> Skip this unless you want to know how your wizards are actually going.
+
+Which step do people get wrong most often? How many abandon at the address?
+Does the branch that asks for company details lose people? None of that is
+visible from outside a run, and all of it is one line from inside. Declare an
+observer and it is told what happens, for every run of that wizard — over
+HTTP, from a script, or from a test:
+
+```python
+from gandalf.observers import WizardObserver
+from gandalf.wizard import Wizard
+
+
+class CountRejections(WizardObserver):
+    def submission(self, step, accepted):
+        if not accepted:
+            statsd.increment(
+                "wizard.rejected",
+                tags=[f"step:{step.context['name']}", f"run:{self.run_id}"],
+            )
+
+
+wizard = (
+    Wizard()
+    .step(EmailForm, name="email")
+    .configure(template_name="signup/step.html", observer_class=CountRejections)
+)
+```
+
+Two things about it are deliberate.
+
+**One event per placement, not per validation.** A run re-proves every stored
+answer on every request — see [What replaying costs](#what-replaying-costs) —
+so an observer told about validations would count one mistyped email again on
+every page that followed it. `submission()` fires only when an answer is
+actually placed, so counting `accepted=False` counts mistakes people made.
+
+**Observers see what happened, never what was said.** A step's answers are
+somebody's name, date of birth and address, so an observer is handed the step
+*declaration* and the outcome — enough to count, group and compare, and not
+enough to leak personal data into a metrics backend. When you do want the
+answers, take them where you already have them and where the decision is
+visible in your own code: `done()`, or whatever is driving the run.
+
+An observer is built once per run and knows which run it is watching, so no
+event repeats it. What it is *not* told is **who** is on the other end. The
+library cannot know: a submission arrives through a request, and whether that
+is a person in a browser, a script, or a management command is your
+application's knowledge. In a journey people and
+agents share, that distinction usually matters — record it where you already
+know it.
+
+There is no "run started" event, because a run exists before its wizard is
+resolved — that ordering is what lets a dynamic `get_wizard()` read stored
+state to decide its own shape. Count first submissions, or record creation
+where you mint it.
 
 ---
 

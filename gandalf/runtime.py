@@ -16,6 +16,7 @@ from django.utils.datastructures import MultiValueDict
 from gandalf import tree
 from gandalf.escapes import Escape
 from gandalf.file_storage import FileRef, WizardFileStorage
+from gandalf.observers import WizardObserver
 from gandalf.types import (
     Context,
     FileRefs,
@@ -571,6 +572,7 @@ class BoundWizard:
         self._render_context: tuple[Cursor, tree.Step] | None = None
         self._dispatcher: StepDispatcher | None = None
         self._file_storage: WizardFileStorage | None = None
+        self._observer: WizardObserver | None = None
         # Memo for one switch's selector while its arm is being chosen.
         self._selector_values: dict[Any, str] = {}
 
@@ -585,6 +587,15 @@ class BoundWizard:
         if self._file_storage is None:
             self._file_storage = self.wizard.file_storage_class()
         return self._file_storage
+
+    @property
+    def observer(self) -> WizardObserver:
+        """This run's observer — the no-op base unless the wizard was
+        configured with one. Built once, on first use, and told which run
+        it is watching."""
+        if self._observer is None:
+            self._observer = self.wizard.observer_class(self.run_id)
+        return self._observer
 
     def bind(self, wizard: ConfiguredWizard) -> None:
         self.wizard = wizard
@@ -664,6 +675,7 @@ class BoundWizard:
         """Tombstone this run: its answers are discarded and it is marked
         finished, so `done()` can never fire for it again."""
         self.storage.complete_run(self.run_id)
+        self.observer.run_completed()
 
     @property
     def is_complete(self) -> bool:
@@ -1088,6 +1100,11 @@ class CursorWalker(tree.Interpreter):
             data, files = self._placement(stored_files)
 
         satisfied, response = self._satisfies(step, data, files)
+        if claimed and self._submission is not None:
+            # Only a placement is a submission. The walk re-proves stored
+            # answers on every request, and counting those would count one
+            # mistake once per page that follows it.
+            self._bound_wizard.observer.submission(step, satisfied)
 
         node = RuntimeStep(
             declaration=step,

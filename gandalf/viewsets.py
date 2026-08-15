@@ -148,6 +148,27 @@ class WizardViewSet(View):
         )
         return bound_wizard.entry_url(step)
 
+    @classmethod
+    def resolve(cls, request: HttpRequest, **url_kwargs: Any) -> BoundWizard:
+        """This wizard, bound but not started — no run is created.
+
+        The third thing a caller can want, alongside `begin()` and
+        `inspect()`: not to run a wizard, nor to reach a run that exists,
+        but to ask what the wizard *is*. `bound_wizard.wizard.outline()`
+        reads its declared shape from here, and asking leaves nothing
+        behind.
+
+        A dynamic `get_wizard()` resolves with no stored state to read,
+        because there is no run — so it describes itself as it would
+        begin, the only honest answer before one exists. `run_id` is
+        unset: this is for describing a wizard, not running one.
+        """
+        view = cls()
+        view.setup(request, **url_kwargs)
+        bound_wizard = view._make_bound_wizard(request)
+        view._resolve_wizard(bound_wizard)
+        return bound_wizard
+
     def get_wizard(self, bound_wizard: BoundWizard) -> Wizard | ConfiguredWizard:
         """Per-request hook returning the Wizard to use for this dispatch.
 

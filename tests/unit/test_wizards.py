@@ -3776,3 +3776,107 @@ def test_on_field_says_which_step_it_could_not_find(request_with_session_factory
 
     with pytest.raises(ImproperlyConfigured, match="nonexistent"):
         _submit(bound_wizard, {"account_type": "business"})
+
+
+# --- A wizard describing itself ---------------------------------------------
+
+
+def test_a_wizard_describes_its_declared_shape():
+    """No run, no request, no storage: a description of the declaration."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    outline = wizard.outline()
+
+    assert [entry["kind"] for entry in outline] == ["step", "step"]
+    assert [entry["name"] for entry in outline] == ["first", "second"]
+    assert outline[0]["declaration"].declaration is FirstStepForm
+
+
+def test_a_wizard_describes_every_route_a_fork_could_take():
+    wizard = _switch_wizard()
+
+    [_, switch, _] = wizard.outline()
+
+    assert switch["kind"] == "switch"
+    assert [case["case"] for case in switch["cases"]] == ["business", "personal"]
+    assert [step["name"] for step in switch["cases"][0]["steps"]] == ["business"]
+
+
+def test_a_wizard_carries_the_context_its_steps_were_declared_with():
+    """Not just the routable name: whatever the declaration said, so a
+    caller can group or label steps however it declared them."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first", label="Your name")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    [step] = wizard.outline()
+
+    assert step["context"] == {"name": "first", "label": "Your name"}
+
+
+def test_a_wizard_describes_a_predicate_fork_in_its_own_words():
+    """A branch cannot say what decides it — that is arbitrary code — but
+    the predicate names and documents itself, and that is the author's
+    description of the choice."""
+
+    def is_a_business(request):
+        """The customer asked for a business account."""
+        return True
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            gandalf.wizard.condition(
+                is_a_business,
+                Wizard().step(BusinessDetailsForm, name="business"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    [_, branch] = wizard.outline()
+
+    [arm] = branch["arms"]
+    assert arm["when"] == "is_a_business"
+    assert arm["description"] == "The customer asked for a business account."
+    assert [step["name"] for step in arm["steps"]] == ["business"]
+    assert [step["name"] for step in branch["default"]] == ["personal"]
+
+
+def test_a_wizard_says_which_answer_decides_a_declared_switch():
+    """The declarative case: the dependency is data, not prose, so a caller
+    can work the route out rather than guessing it."""
+    wizard = _on_field_wizard()
+
+    [_, switch] = wizard.outline()
+
+    assert switch["source"] == {"step": "account_type", "field": "account_type"}
+    assert switch["decided_by"] == "account_type.account_type"
+    assert switch["description"] is None
+
+
+def test_a_wizard_marks_where_it_grows_from_an_answer():
+    """An expansion's steps do not exist until the answer that shapes them
+    does, so the shape can only say that something grows here."""
+
+    def build_items(request):  # pragma: no cover - never walked here
+        return Wizard()
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="count")
+        .expand(build_items)
+        .step(SecondStepForm, name="after")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert [entry["kind"] for entry in wizard.outline()] == ["step", "expand", "step"]

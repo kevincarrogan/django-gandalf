@@ -1381,3 +1381,19 @@ def test_wizard_viewset_rejects_duplicate_step_names(rf):
         _DuplicateViewSet.as_view()(
             request, run_id="existing-run", gandalf_step="duplicate"
         )
+
+
+def test_wizard_viewset_resolve_binds_the_wizard_without_starting_a_run(rf):
+    """The third door: not running a wizard, nor reaching a run, but asking
+    what the wizard is. Nothing is left behind by asking."""
+    request = rf.get("/wizard/")
+    request.session = _Session()
+
+    bound_wizard = _RoutedViewSet.resolve(request)
+
+    assert [entry["name"] for entry in bound_wizard.wizard.outline()] == [
+        "first",
+        "second",
+        "review",
+    ]
+    assert request.session.get("gandalf_runs", {}) == {}
