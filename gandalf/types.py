@@ -58,6 +58,14 @@ Stash: TypeAlias = dict[str, Any]
 #: A step lookup: context keys matched against a step's declared context.
 Context: TypeAlias = dict[str, Any]
 
+#: One item of a collection: its opaque id, and the title its own section
+#: cached the last time it finished (`None` until it has).
+CollectionItem: TypeAlias = dict[str, Any]
+
+#: Everything a store keeps about one collection — its items in the order the
+#: user added them, and whether the user has said there are no more to add.
+CollectionData: TypeAlias = dict[str, Any]
+
 
 class WizardRequest(HttpRequest):
     """An `HttpRequest` inside a wizard dispatch.

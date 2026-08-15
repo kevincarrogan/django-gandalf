@@ -415,6 +415,12 @@ an upstream step can break it; grown answers store positionally, so raising a
 count keeps the answers already given and lowering it drops the trailing ones;
 and every grown step must be routable (carry a `name`).
 
+That positional storage is exactly why `.expand()` is the wrong tool for a list
+the user grows and prunes over time — deleting from the middle would shift every
+answer after it. For that, see
+[Add another: a collection of items](#add-another-a-collection-of-items), where
+each item is its own run and identity is opaque.
+
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L112-L137)
 
 ---
@@ -513,10 +519,15 @@ class SummaryWizardViewSet(WizardViewSet):
 </dl>
 <form method="post">
   {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Confirm</button>
+  <button type="submit">Confirm and continue</button>
 </form>
 ```
+
+`ConfirmForm` has no fields at all — the button *is* the confirmation, and a
+required checkbox beside it asks the same question twice while giving the user
+a way to get it wrong. Gandalf reads a submission, not a field: an empty
+submission is still a submission, and only a missing entry (`{"step": null}`)
+is a hole.
 
 The rows come from `request.wizard.path`, so they are the answers on the run's
 resolved route, in walk order, with the selected branch arm inlined — never the
@@ -1017,10 +1028,19 @@ hub journey over the database, with the session holding nothing but the login.
 **A durable hub needs both stores swapped**: `storage_class` on every section
 viewset, *and* `section_store_class` on the hub and on each `SectionMixin`.
 Swapping only one gives you durable answers nobody can find, or a durable index
-into runs that have expired. A durable section store also closes a race the
-session cannot: Django read-modify-writes the whole session, so two tabs
-entering the same section can lose a registration outright, where a unique
-constraint on `(owner, section_key)` settles it.
+into runs that have expired. A durable *collection* needs the same two, with a
+`SessionCollectionStore` replacement in place of the section store — it is the
+section store plus an ordered registry, so one swap covers both halves.
+
+A durable store also closes a race the session cannot: Django read-modify-writes
+the whole session, so two tabs entering the same section can lose a registration
+outright, where a unique constraint on `(owner, section_key)` settles it. For a
+collection the race is strictly worse — `add_item` appends to a *list*, so two
+tabs adding at once both read the old list, both append one, and an item is lost
+outright rather than overwritten with an equivalent value. A table with
+`UniqueConstraint(owner, collection_key, item_id)` and an explicit `position`
+settles that too; `ModelCollectionStore` in
+[`durable.py`](tests/testapp/durable.py) is the worked example.
 
 Note that `gandalf.testing`'s peek-and-seed helpers read the session stores
 directly, so they do not apply to a custom backend — assert against your own
@@ -1120,7 +1140,9 @@ What resurrection promises:
   like the one that stashed it. The `label` is the guard rail: stamp it at
   stash time, pass `expected_label` at resurrect time, and bump the label when
   a deploy reshapes the wizard — a mismatch raises `InvalidStash` before any
-  run is created.
+  run is created. A collection's items all share one label, per collection
+  rather than per item: they are one shape wearing many ids, and a per-item
+  label would match nothing.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/stash/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L276-L302)
 
@@ -1280,6 +1302,209 @@ re-raises by default, because silently starting over looks to the user exactly
 like their answers vanishing.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L337-L410)
+
+---
+
+## Add another: a collection of items
+
+Some things a journey collects are not one answer but a list of them, and the
+user decides how long the list is: guests, dependants, previous addresses,
+employments. `gandalf.collections` is the "add another" pattern — a page
+listing what has been added so far, with **Change** and **Remove** on each row,
+an **Add another** question, and one item wizard behind all of them.
+
+A collection is a hub whose sections are *built* rather than declared: one per
+id in an ordered registry the user grows. Everything the hub does — the status
+derivation, the resume-before-reopen door, the no-bare-run-URL guarantee —
+applies unchanged.
+
+```python
+from django.urls import include, path
+from gandalf.collections import CollectionView, ItemSectionMixin
+from gandalf.sections import HubView, Section, SectionMixin
+from gandalf.viewsets import WizardViewSet
+from gandalf.wizard import Wizard
+
+
+class GuestItemViewSet(ItemSectionMixin, WizardViewSet):
+    url_name = "party-guest"
+    template_name = "party/step.html"
+    collection_key = "guests"
+    collection_url_name = "party-guests"
+    # The answer that names a row, cached when the item finishes.
+    item_title_step = "guest"
+    item_title_field = "name"
+    wizard = (
+        Wizard()
+        .step(GuestForm, name="guest", label="Guest")
+        .step(ReviewStepView, name="review")
+    )
+
+    def section_done(self, bound_wizard):
+        save_guest(self.request.user, self.get_item_id(), bound_wizard)
+        return super().section_done(bound_wizard)  # back to the collection
+
+
+class GuestCollectionView(CollectionView):
+    template_name = "party/guests.html"
+    remove_template_name = "party/remove_guest.html"
+    url_name = "party-guests"
+    collection_key = "guests"
+    item_viewset = GuestItemViewSet
+    item_name = "Guest"
+    item_reopen_step = "review"
+    continue_url_name = "party-hub"
+
+
+class PartyHubView(HubView):
+    template_name = "party/hub.html"
+    url_name = "party-hub"
+    section_url_name = "party-hub-section"
+    sections = [
+        Section("venue", VenueSectionViewSet, title="Venue"),
+        GuestCollectionView.as_section("guests", title="Guests"),
+    ]
+```
+
+### Mount the three as siblings, never nested
+
+This is the one thing that will bite you, and it fails silently:
+
+```python
+urlpatterns = [
+    path("party/", include(PartyHubView.urls())),
+    path("party-venue/", include(VenueSectionViewSet.urls())),
+    path("party-guests/", include(GuestCollectionView.urls())),
+    path("party-guest/<uuid:item>/", include(GuestItemViewSet.urls())),
+]
+```
+
+`HubView` publishes `<slug:section>/`, which matches **any** single segment —
+so a collection mounted at `party/guests/` is swallowed by the hub's own door
+for a section named `guests`. And `WizardViewSet` publishes `""` as its start
+URL — so an item wizard mounted at `party-guests/<uuid:item>/` occupies the
+exact path of the collection's door for that item. Either way, whichever
+`include()` is listed first wins, and the symptom is "Change stopped working"
+rather than anything that looks like a URL conflict.
+
+The collection publishes three patterns from `url_name`: the page (GET lists,
+POST answers *add another*), `<url_name>-item` (the door into one item) and
+`<url_name>-remove` (confirm on GET, remove on POST). The item kwarg is a
+`uuid` rather than a slug, which is what lets `remove/` be a safe sibling.
+
+```django
+{% if collection.is_empty %}
+  <h1>You have not added any guests</h1>
+{% else %}
+  <h1>You have added {{ collection.count }} guest{{ collection.count|pluralize }}</h1>
+  <ul>
+    {% for row in collection.rows %}
+      <li>
+        {{ row.title }}
+        <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+        <a href="{{ row.url }}">Change</a>
+        <a href="{{ row.remove_url }}">Remove</a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.errors.add_another }}
+  <button type="submit" name="add_another" value="yes">Add another guest</button>
+  {% if not collection.is_empty %}
+    <button type="submit" name="add_another" value="no">Continue</button>
+  {% endif %}
+</form>
+```
+
+The view reads one POST field, so two submit buttons carry the answer and the
+question needs no widget of its own. `AddAnotherForm` still validates it —
+render it as a radio instead if your service asks the question that way, and
+`form_class` swaps it for something else entirely.
+
+### Identity is opaque, so removing renumbers nothing
+
+An item is a uuid, never a position. Delete from the middle and the survivors
+keep their ids, their URLs and their answers — a link the user already has
+still names the item they meant. This is the single biggest reason a collection
+is not `.expand()`.
+
+### The item id travels in the item wizard's own URL
+
+`ItemSectionMixin` takes its section key from `self.kwargs["item"]`, which is
+how `done()` knows which item it is recording. It is *this wizard's* mount
+prefix, forwarded into every URL the wizard builds for itself by
+`get_url_kwargs()` — and dropped from the collection's own URLs, which is why
+a finished item lands back on the page rather than on a URL with its own id in
+it.
+
+### A row costs no walk
+
+An item is titled by the answer named in `item_title_step` / `item_title_field`,
+worked out **once, when the item finishes**, and cached. The page reads a
+string. That is one walk per completion — on a request that already walked
+twice — in exchange for none on every later render of the page and of the task
+list above it. An item that has never finished falls back to a positional name
+(`Guest 2`), which is honest: nothing it has answered is known to name it.
+Override `get_item_title(bound_wizard)` when the name is not one field.
+
+### Completeness is declared, not derived
+
+| Status | Comes from |
+| --- | --- |
+| **Not started** | No items |
+| **Incomplete** | Items, but the user has not said there are no more — or has, while one is unfinished or `min_items` is unmet |
+| **Complete** | The user answered *no more to add*, every item has finished, and there are at least `min_items` |
+
+No reading of storage can say whether the user has more guests to add. Only the
+user can, so the page asks and the answer is stored. Answering *yes* again
+withdraws it — pressing **Add another** *is* the user changing their mind, so
+they are put past the question once more. Removing an item does not re-ask it:
+three guests minus one is still "and no more".
+
+### Full CRUD, and the order each action takes
+
+| Action | What happens |
+| --- | --- |
+| **Add** | The item is registered *first*, then its wizard starts — which is what lets a half-finished item have a row, and leaves a listed, removable row rather than an orphan run if entering fails |
+| **Read** | One `Section` per registered id; the hub's own status derivation and row building, unchanged |
+| **Change** | The door resumes a live run or re-opens a stash. A re-opened item has every answer valid, so the next submission walks to the end and re-saves — and re-caches the title, so a rename shows on the page |
+| **Remove** | Run obliterated → run cleared → stash deleted → title cleared → `item_removed()` → registry entry last, so a hook that raises leaves the item still listed and still removable |
+
+Every link the page hands out is a step URL by construction, exactly as a hub's
+is, and for the same reason: a run whose every stored answer validates
+completes on a GET.
+
+### Why not `.expand()`?
+
+[`.expand()`](#expand-grow-the-wizard-from-a-prior-answer) grows *steps inside one run* from a
+count the user has just given. It is the right tool for "how many children? now
+tell me about each", and the wrong one here:
+
+* Its answers are one positional list under a single `{"expand": [...]}` entry,
+  so deleting from the middle shifts every answer after it down a slot and
+  item 3's answers become item 2's.
+* Identity is positional (`name=f"item-{index}"`), so a live URL repoints when
+  something slides into its slot.
+* Every item lives in **one run**, so there is no such thing as a half-finished
+  *item*, and nothing can be saved per item.
+
+Use a collection when the items are separately resumable, separately
+completable and separately destroyable — which is what "add as many as you
+like, and change your mind later" means.
+
+### Customising
+
+`get_item_ids()` chooses the items — override it to build the list from your
+own records instead of the registry, and the page's routes follow it.
+`new_item_id()` mints identity, `get_item_title()` names a row,
+`get_collection_status()` decides how far the whole thing has got,
+`item_removed()` is where the application deletes whatever `section_done()`
+saved, and `collection_done()` is what happens when the user says that is all.
+`min_items` makes "at least one" declarative.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/guests/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L399-L456)
 
 ---
 

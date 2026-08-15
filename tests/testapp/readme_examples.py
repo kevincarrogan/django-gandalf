@@ -15,6 +15,7 @@ plain form templates already bundled with the test app.
 from django import forms
 from django.http import HttpResponse
 from django.shortcuts import redirect
+from gandalf.collections import CollectionView, ItemSectionMixin
 from gandalf.form_views import StepFormView
 from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, StashNotFound
@@ -23,6 +24,7 @@ from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import InvalidStash, MergeCleanedData, Wizard, condition
 
 from .forms import (
+    ConfirmForm,
     AccountTypeForm,
     BusinessDetailsForm,
     EmailLookupForm,
@@ -307,7 +309,7 @@ class DeliveryForm(forms.Form):
 
 
 class ReviewStepView(SummaryMixin, StepFormView):
-    form_class = ReviewForm
+    form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
 
 
@@ -335,7 +337,7 @@ class AddressForm(forms.Form):
 
 
 class SectionReviewStepView(SummaryMixin, StepFormView):
-    form_class = ReviewForm
+    form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
 
 
@@ -389,4 +391,67 @@ class ProfileHubView(HubView):
             title="Address",
             reopen_step="review",
         ),
+    ]
+
+
+# --- Add another: a collection of items --------------------------------------
+
+
+class GuestForm(forms.Form):
+    name = forms.CharField(label="Guest name")
+    dietary_requirements = forms.CharField(required=False)
+
+
+class GuestItemViewSet(ItemSectionMixin, WizardViewSet):
+    description = "Add another: one guest of a collection the user grows."
+    url_name = "readme-guest"
+    template_name = "testapp/linear_wizard.html"
+    collection_key = "guests"
+    collection_url_name = "readme-guests"
+    # The answer that names a row. Cached when the item finishes, so the
+    # page reads a string and a row still costs no walk.
+    item_title_step = "guest"
+    item_title_field = "name"
+    wizard = (
+        Wizard()
+        .step(GuestForm, name="guest", label="Guest")
+        .step(SectionReviewStepView, name="review")
+    )
+
+
+class GuestCollectionView(CollectionView):
+    description = "Add another: a collection of guests with full CRUD."
+    template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
+    url_name = "readme-guests"
+    collection_key = "guests"
+    item_viewset = GuestItemViewSet
+    item_name = "Guest"
+    item_reopen_step = "review"
+    continue_url_name = "readme-party-hub"
+
+
+class VenueSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Add another: a plain section beside a collection."
+    url_name = "readme-party-venue"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "venue"
+    hub_url_name = "readme-party-hub"
+    wizard = (
+        Wizard()
+        .step(AddressForm, name="venue", label="Venue")
+        .step(SectionReviewStepView, name="review")
+    )
+
+
+class PartyHubView(HubView):
+    description = "Add another: a task list whose second row is a collection."
+    template_name = "testapp/hub.html"
+    url_name = "readme-party-hub"
+    section_url_name = "readme-party-hub-section"
+    sections = [
+        Section("venue", VenueSectionViewSet, title="Venue", reopen_step="review"),
+        # A collection page is not a wizard, so the row links straight at it
+        # and answers for its own status.
+        GuestCollectionView.as_section("guests", title="Guests"),
     ]

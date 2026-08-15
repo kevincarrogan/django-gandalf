@@ -5,7 +5,7 @@ from typing import cast
 
 from django.http import HttpRequest
 
-from gandalf.types import RunData, Stash, State
+from gandalf.types import CollectionData, CollectionItem, RunData, Stash, State
 
 
 class RunNotFound(LookupError):
@@ -215,5 +215,114 @@ class SessionSectionStore:
         self.stashes.delete(key)
 
     def keys(self) -> list[str]:
-        """The sections holding a stash, in insertion order."""
+        """The sections holding a stash, in insertion order.
+
+        Note that a collection's items stash under composed keys of their own
+        (`"guests:<id>"`), so a hub sharing its store with one will see them
+        here alongside the sections it declared.
+        """
         return self.stashes.keys()
+
+
+class SessionCollectionStore(SessionSectionStore):
+    """A collection's registry, on top of a hub's bookkeeping.
+
+    A hub's sections are declared, so the store never has to enumerate them. A
+    collection's items are not: the user grows them, and there is no reading of
+    runs or stashes that can hand back the list — `keys()` is the stash key
+    space, which holds only the items that have *finished*, in the order they
+    finished rather than the order the user made them. So the registry is
+    explicit, ordered, and separate: an item exists from the moment it is
+    added, which is what lets a half-finished one still have a row.
+
+    Three facts per collection, in one mapping under its own session key: the
+    item ids in order, the title each cached when it last finished, and whether
+    the user has said there is nothing more to add. Titles ride inside the item
+    entry rather than a parallel mapping, so removing an item cannot orphan
+    one.
+
+    Nothing here touches the nine methods above it. An item's run and stash
+    live under an ordinary section key the *view* composes — the store never
+    learns the scheme — so a hub store and a collection store share one key
+    space and one contract.
+    """
+
+    COLLECTIONS_SESSION_KEY = "gandalf_collections"
+
+    def _collections(self) -> dict[str, CollectionData]:
+        return cast(
+            dict[str, CollectionData],
+            self.request.session.get(self.COLLECTIONS_SESSION_KEY, {}),
+        )
+
+    def _collection(self, key: str) -> CollectionData:
+        """The collection's record, created on first write. Read-only callers
+        go through `_collections()` so a render cannot dirty the session."""
+        collections = self.request.session.setdefault(self.COLLECTIONS_SESSION_KEY, {})
+        record = collections.setdefault(key, {})
+        record.setdefault("items", [])
+        return cast(CollectionData, record)
+
+    def _items(self, key: str) -> list[CollectionItem]:
+        record = self._collections().get(key)
+        if record is None:
+            return []
+        return cast("list[CollectionItem]", record.get("items", []))
+
+    def item_ids(self, key: str) -> list[str]:
+        """The collection's items in the order the user added them; empty for
+        a collection never started."""
+        return [item["id"] for item in self._items(key)]
+
+    def has_item(self, key: str, item_id: str) -> bool:
+        """Whether the registry lists this item — what a door asks, answered
+        without an exception to catch."""
+        return item_id in self.item_ids(key)
+
+    def add_item(self, key: str, item_id: str) -> None:
+        """Append an item to the collection. Adding an id already listed is a
+        no-op rather than a duplicate, so a hub's uniqueness rule holds by
+        construction."""
+        if self.has_item(key, item_id):
+            return
+        self._collection(key)["items"].append({"id": item_id, "title": None})
+        self.request.session.modified = True
+
+    def remove_item(self, key: str, item_id: str) -> None:
+        """Forget an item and the title cached for it, keeping the order of
+        the rest. Idempotent: removing an unlisted item is not an error, so
+        callers need not check first."""
+        record = self._collection(key)
+        record["items"] = [item for item in record["items"] if item["id"] != item_id]
+        self.request.session.modified = True
+
+    def get_item_title(self, key: str, item_id: str) -> str | None:
+        """The title cached at this item's last completion, or None for one
+        that has not finished."""
+        for item in self._items(key):
+            if item["id"] == item_id:
+                return cast("str | None", item["title"])
+        return None
+
+    def set_item_title(self, key: str, item_id: str, title: str | None) -> None:
+        """Replace an item's cached title. `None` clears it, for an item whose
+        stash was discarded and whose name would otherwise outlive its
+        answers. Titling an item the registry does not list does nothing."""
+        for item in self._collection(key)["items"]:
+            if item["id"] == item_id:
+                item["title"] = title
+                self.request.session.modified = True
+                return
+
+    def is_declared_done(self, key: str) -> bool:
+        """Whether the user answered "no" to *add another*. Not "are all the
+        items finished" — a different question, with a different answer."""
+        record = self._collections().get(key)
+        if record is None:
+            return False
+        return bool(record.get("declared_done"))
+
+    def set_declared_done(self, key: str, declared_done: bool) -> None:
+        """Record or withdraw the user's answer to *add another*."""
+        self._collection(key)["declared_done"] = declared_done
+        self.request.session.modified = True

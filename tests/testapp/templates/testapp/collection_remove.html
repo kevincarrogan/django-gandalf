@@ -1,0 +1,19 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/collection_remove.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h1>Are you sure you want to remove {{ row.title }}?</h1>
+        <p class="lede">
+            Removing takes the item's live run, its uploaded files, its stash
+            and its cached title before its place in the registry, so a
+            failure part-way leaves it still listed and still removable.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit">Remove {{ row.title }}</button>
+        </form>
+        <p><a href="{{ collection.url }}">Cancel</a></p>
+    </div>
+{% endblock %}

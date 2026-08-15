@@ -16,10 +16,10 @@
                 </dd>
             {% endfor %}
         </dl>
+        {# Nothing to tick: the button is the confirmation. #}
         <form method="post">
             {% csrf_token %}
-            {{ form.as_p }}
-            <button type="submit">Confirm</button>
+            <button type="submit">Confirm and continue</button>
         </form>
     </div>
 {% endblock %}

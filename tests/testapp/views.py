@@ -22,15 +22,18 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
+from gandalf.collections import CollectionView, ItemSectionMixin
 from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
 from gandalf.summary import SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
-from .durable import ModelSectionStore, ModelStorage
+from .durable import ModelCollectionStore, ModelSectionStore, ModelStorage
 from .forms import (
     AccountKindForm,
+    ConfirmForm,
+    GuestForm,
     AccountTypeForm,
     BareEscapeForm,
     BusinessDetailsForm,
@@ -1744,7 +1747,7 @@ class SummaryStepView(SummaryMixin, StepFormView):
     """A check-your-answers step: `SummaryMixin` puts one row per answered
     step in the context, each with its formatted fields and change link."""
 
-    form_class = ReviewForm
+    form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
 
 
@@ -1782,7 +1785,7 @@ class CustomSummaryStepView(SummaryMixin, StepFormView):
     """Every hook the mixin exposes, overridden: the step label, the value
     formatting, and which fields appear at all."""
 
-    form_class = ReviewForm
+    form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
 
     def get_summary_label(self, step):
@@ -1956,3 +1959,200 @@ class DurableHubView(HubView):
     section_url_name = "durable-hub-section"
     section_store_class = ModelSectionStore
     sections = [Section("durable", DurableSectionViewSet, title="Durable")]
+
+
+# --- Collections: the add-another pattern ------------------------------------
+
+
+class GuestItemViewSet(ItemSectionMixin, WizardViewSet):
+    """One guest, collected by its own run.
+
+    Mounted under an item segment beside the collection page, never under it —
+    `WizardViewSet.urls()` publishes `""`, which would collide with the
+    collection's own door for that item.
+    """
+
+    description = "One item of an add-another collection."
+    url_name = "party-guest"
+    template_name = "testapp/linear_wizard.html"
+    collection_key = "guests"
+    collection_url_name = "party-guests"
+    item_title_step = "guest"
+    item_title_field = "name"
+    wizard = Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review")
+
+
+class GuestCollectionView(CollectionView):
+    description = "Add another: a collection of items with full CRUD."
+    template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
+    url_name = "party-guests"
+    collection_key = "guests"
+    item_viewset = GuestItemViewSet
+    item_name = "Guest"
+    continue_url_name = "party-hub"
+
+
+class PartyVenueSectionViewSet(SectionMixin, WizardViewSet):
+    description = "A plain section beside a collection on the same task list."
+    url_name = "party-venue"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "venue"
+    hub_url_name = "party-hub"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+
+class PartyHubView(HubView):
+    """A task list whose second row is a collection rather than a wizard."""
+
+    description = "Task list with a collection row beside a plain section."
+    template_name = "testapp/hub.html"
+    url_name = "party-hub"
+    section_url_name = "party-hub-section"
+    sections = [
+        Section("venue", PartyVenueSectionViewSet, title="Venue"),
+        GuestCollectionView.as_section("guests", title="Guests"),
+    ]
+
+
+class MinimumGuestItemViewSet(GuestItemViewSet):
+    url_name = "minimum-guest"
+    collection_key = "minimum-guests"
+    collection_url_name = "minimum-guests"
+
+
+class MinimumGuestCollectionView(GuestCollectionView):
+    """Declaring "no more" is not enough when the list may not be empty."""
+
+    description = "A collection that needs at least one item to be complete."
+    url_name = "minimum-guests"
+    collection_key = "minimum-guests"
+    item_viewset = MinimumGuestItemViewSet
+    min_items = 1
+
+
+class DriftedGuestItemViewSet(GuestItemViewSet):
+    """An item whose stash label disagrees with its collection's, so a
+    completed item is refused on the way back in."""
+
+    url_name = "drifted-guest"
+    collection_key = "drifted-guests"
+    collection_url_name = "drifted-guests"
+    section_label = "guests-v2"
+
+
+class DriftedGuestCollectionView(GuestCollectionView):
+    description = "A collection whose item label drifts from its own."
+    url_name = "drifted-guests"
+    collection_key = "drifted-guests"
+    item_viewset = DriftedGuestItemViewSet
+
+
+class AdvancingGuestItemViewSet(GuestItemViewSet):
+    """An item whose only step escapes with `Advance`, leaving a live run
+    whose every answer validates — the state in which a bare run URL fires
+    `done()` on a GET. No collection link may ever hand one out.
+    """
+
+    description = "Collection item escaping with Advance, so its run never completes."
+    url_name = "advancing-guest"
+    collection_key = "advancing-guests"
+    collection_url_name = "advancing-guests"
+    item_title_step = "newsletter"
+    item_title_field = "email"
+    wizard = Wizard().step(NewsletterForm, name="newsletter")
+
+
+class AdvancingGuestCollectionView(GuestCollectionView):
+    description = "A collection over items that park rather than complete."
+    url_name = "advancing-guests"
+    collection_key = "advancing-guests"
+    item_viewset = AdvancingGuestItemViewSet
+
+
+class OrgGuestItemViewSet(GuestItemViewSet):
+    url_name = "org-guest"
+    collection_key = "org-guests"
+    collection_url_name = "org-guests"
+
+
+class OrgGuestCollectionView(GuestCollectionView):
+    description = "A collection mounted under an org prefix."
+    url_name = "org-guests"
+    collection_key = "org-guests"
+    item_viewset = OrgGuestItemViewSet
+    continue_url_name = "org-hub"
+
+
+class AnonymousGuestItemViewSet(GuestItemViewSet):
+    """An item wizard that cannot name what it collects."""
+
+    description = "ImproperlyConfigured: an item wizard that cannot name its items."
+    url_name = "anonymous-guest"
+    collection_key = "anonymous-guests"
+    collection_url_name = "anonymous-guests"
+    item_title_step = None
+
+
+class AnonymousGuestCollectionView(GuestCollectionView):
+    description = "A collection whose items cannot name themselves."
+    url_name = "anonymous-guests"
+    collection_key = "anonymous-guests"
+    item_viewset = AnonymousGuestItemViewSet
+
+
+class OffRouteGuestItemViewSet(GuestItemViewSet):
+    """An item named by a step that is not on the route the user took, so the
+    row falls back to a positional name rather than inventing one."""
+
+    description = "A collection item whose naming step is off its own route."
+    url_name = "off-route-guest"
+    collection_key = "off-route-guests"
+    collection_url_name = "off-route-guests"
+    item_title_step = "not-on-this-route"
+
+
+class OffRouteGuestCollectionView(GuestCollectionView):
+    description = "A collection whose items answer nothing that names them."
+    url_name = "off-route-guests"
+    collection_key = "off-route-guests"
+    item_viewset = OffRouteGuestItemViewSet
+
+
+class ReshapedGuestItemViewSet(GuestItemViewSet):
+    """A deploy reshaped this item, so both halves of the label moved."""
+
+    url_name = "reshaped-guest"
+    collection_key = "reshaped-guests"
+    collection_url_name = "reshaped-guests"
+    section_label = "guests-v2"
+
+
+class ReshapedGuestCollectionView(GuestCollectionView):
+    description = "A collection whose item shape was reshaped and re-labelled."
+    url_name = "reshaped-guests"
+    collection_key = "reshaped-guests"
+    item_viewset = ReshapedGuestItemViewSet
+    item_label = "guests-v2"
+    item_name = None
+
+
+class DurableGuestItemViewSet(GuestItemViewSet):
+    """A collection item on model-backed storage — both stores swapped, which
+    is what a list the user grows over days needs."""
+
+    description = "A collection item whose runs and registry live in the database."
+    url_name = "durable-guest"
+    collection_key = "durable-guests"
+    collection_url_name = "durable-guests"
+    storage_class = ModelStorage
+    section_store_class = ModelCollectionStore
+
+
+class DurableGuestCollectionView(GuestCollectionView):
+    description = "A collection whose items and registry outlive the session."
+    url_name = "durable-guests"
+    collection_key = "durable-guests"
+    item_viewset = DurableGuestItemViewSet
+    section_store_class = ModelCollectionStore
+    continue_url_name = "durable-hub"

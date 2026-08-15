@@ -229,7 +229,7 @@ def test_a_revisited_summary_step_does_not_list_itself(client, business_run):
     seed_run(
         client,
         business_run.run_id,
-        {"state": [*state, {"step": {"confirmed": "on"}}]},
+        {"state": [*state, {"step": {}}]},
     )
 
     response = business_run.get_step("summary")

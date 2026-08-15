@@ -394,7 +394,7 @@ def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
     response = run.post_steps(
         [
             ("email", {"email": "ada@example.com"}),
-            ("review", {"confirmed": "on"}),
+            ("review", {}),
         ]
     )
 
@@ -411,7 +411,7 @@ def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_drive
     run.post_steps(
         [
             ("address", {"line_one": "1 Main St", "postcode": "SW1A 1AA"}),
-            ("review", {"confirmed": "on"}),
+            ("review", {}),
         ]
     )
 
@@ -425,3 +425,50 @@ def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_drive
     # included, so the page has to drop itself from its own rows.
     assertContains(response, "Change Address")
     assertNotContains(response, "Change Review")
+
+
+def test_a_collection_adds_changes_and_removes_items(client):
+    """The README's add-another example, driven the way the page drives it:
+    every action is a POST to the collection, and every link it hands out is
+    one of its own routes."""
+    page = reverse("readme-guests")
+
+    # Empty, the page offers only the first item.
+    assertContains(client.get(page), "You have not added any guests")
+
+    # Adding registers the item, then lands on its first step.
+    step_url = client.post(page, {"add_another": "yes"})["Location"]
+    client.post(step_url, {"name": "Ada", "dietary_requirements": ""})
+    assertContains(client.get(page), "Incomplete")
+
+    # Finishing caches the name the row goes by.
+    review_url = client.get(page).context["collection"].rows[0].url
+    client.post(client.get(review_url)["Location"], {})
+    listing = client.get(page)
+    assert [
+        (str(row.title), row.status) for row in listing.context["collection"].rows
+    ] == [("Ada", "complete")]
+
+    # A second item, removed again, leaves the first untouched and un-renumbered.
+    first = listing.context["collection"].rows[0].item_id
+    client.post(
+        client.post(page, {"add_another": "yes"})["Location"],
+        {"name": "Grace", "dietary_requirements": ""},
+    )
+    second = client.get(page).context["collection"].rows[1].item_id
+    client.post(reverse("readme-guests-remove", kwargs={"item": second}))
+    assert [row.item_id for row in client.get(page).context["collection"].rows] == [
+        first
+    ]
+
+    # Saying there are no more completes the collection, and the task list
+    # above it reads that status without walking anything.
+    assertRedirects(
+        client.post(page, {"add_another": "no"}), reverse("readme-party-hub")
+    )
+    hub = client.get(reverse("readme-party-hub"))
+    assert [(row.title, row.status) for row in hub.context["sections"]] == [
+        ("Venue", "not-started"),
+        ("Guests", "complete"),
+    ]
+    assert hub.context["sections"][1].url == page

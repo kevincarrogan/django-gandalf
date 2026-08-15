@@ -46,6 +46,18 @@ class ReviewForm(forms.Form):
     confirmed = forms.BooleanField()
 
 
+class ConfirmForm(forms.Form):
+    """A check-your-answers step's form: no fields at all.
+
+    The button *is* the confirmation. A required checkbox beside a Confirm
+    button asks the same question twice and gives the user a way to get it
+    wrong, so the idiomatic page has nothing to tick — it submits, the form
+    validates, and the step is satisfied. Gandalf reads a submission, not a
+    field: an empty one is still a submission, and only a missing entry
+    (`{"step": null}`) is a hole.
+    """
+
+
 class ToppingsForm(forms.Form):
     """A field whose widget posts one HTML input per selected value, so the
     submission is multi-valued rather than a single string per name."""
@@ -174,3 +186,10 @@ class BareEscapeForm(forms.Form):
     def clean(self):
         super().clean()
         raise Escape(reverse("escape-landing"))
+
+
+class GuestForm(forms.Form):
+    """One item of a collection: the answer that names it, and one more."""
+
+    name = forms.CharField()
+    dietary_requirements = forms.CharField(required=False)

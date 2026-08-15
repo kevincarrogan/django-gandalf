@@ -20,8 +20,13 @@ from pytest_django.asserts import assertContains, assertRedirects
 
 from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
-from tests.testapp.durable import ModelStorage
-from tests.testapp.models import SectionRecord, WizardRun
+from tests.testapp.durable import ModelCollectionStore, ModelStorage
+from tests.testapp.models import (
+    CollectionItemRecord,
+    CollectionRecord,
+    SectionRecord,
+    WizardRun,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -205,3 +210,111 @@ def test_model_storage_forgets_a_deleted_run_entirely(rf, user):
 
     with pytest.raises(RunNotFound):
         storage.retrieve_run(run_id)
+
+
+# --- a collection that outlives a session ------------------------------------
+
+
+COLLECTION_URL = "/durable-guests/"
+
+
+def _add_durable(client):
+    return client.post(COLLECTION_URL, {"add_another": "yes"})["Location"]
+
+
+def _complete_durable(client, name):
+    response = client.post(
+        _add_durable(client), {"name": name, "dietary_requirements": ""}
+    )
+    return client.post(response["Location"], {})
+
+
+def test_a_collections_registry_lives_in_the_database_not_the_session(logged_in):
+    _add_durable(logged_in)
+
+    (record,) = CollectionItemRecord.objects.all()
+    assert record.collection_key == "durable-guests"
+    assert record.position == 0
+    assert "gandalf_collections" not in logged_in.session
+
+
+def test_an_items_title_is_cached_in_the_database_when_it_finishes(logged_in):
+    _complete_durable(logged_in, "Ada")
+
+    assert CollectionItemRecord.objects.get().title == "Ada"
+    assert SectionRecord.objects.get().stash["label"] == "durable-guests"
+
+
+def test_the_users_answer_to_add_another_lives_in_the_database(logged_in):
+    _complete_durable(logged_in, "Ada")
+
+    logged_in.post(COLLECTION_URL, {"add_another": "no"})
+
+    assert CollectionRecord.objects.get().declared_done is True
+    assert logged_in.get(COLLECTION_URL).context["collection"].status == COMPLETE
+
+
+def test_a_half_finished_item_survives_the_session_being_lost(logged_in, user):
+    logged_in.post(_add_durable(logged_in), {"name": "Ada", "dietary_requirements": ""})
+
+    logged_in.logout()
+    logged_in.force_login(user)
+
+    response = logged_in.get(COLLECTION_URL)
+    assert [row.status for row in response.context["collection"].rows] == [INCOMPLETE]
+    assert [str(row.title) for row in response.context["collection"].rows] == [
+        "Guest 1"
+    ]
+
+
+def test_a_finished_item_reopens_from_the_database_after_a_new_session(logged_in, user):
+    _complete_durable(logged_in, "Ada")
+    item_id = CollectionItemRecord.objects.get().item_id
+    logged_in.logout()
+    logged_in.force_login(user)
+
+    response = logged_in.get(
+        reverse("durable-guests-item", kwargs={"item": item_id}), follow=True
+    )
+
+    assertContains(response, 'value="Ada"')
+
+
+def test_removing_an_item_takes_its_row_and_its_run_out_of_the_database(logged_in):
+    _complete_durable(logged_in, "Ada")
+    _complete_durable(logged_in, "Grace")
+    first, second = list(CollectionItemRecord.objects.values_list("item_id", flat=True))
+
+    logged_in.post(reverse("durable-guests-remove", kwargs={"item": first}))
+
+    assert list(CollectionItemRecord.objects.values_list("item_id", flat=True)) == [
+        second
+    ]
+    assert (
+        SectionRecord.objects.filter(
+            key=f"durable-guests:{first}", stash__isnull=False
+        ).count()
+        == 0
+    )
+
+
+def test_a_unique_constraint_settles_the_race_the_session_store_loses(logged_in):
+    """Two tabs adding at once both read the same list and both append one,
+    so a session-backed registry loses an item outright. A table cannot."""
+    store = ModelCollectionStore(type("_R", (), {"user": User.objects.get()})())
+
+    store.add_item("durable-guests", "same-id")
+    store.add_item("durable-guests", "same-id")
+
+    assert store.item_ids("durable-guests") == ["same-id"]
+    assert CollectionItemRecord.objects.count() == 1
+
+
+def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
+    _complete_durable(logged_in, "Ada")
+    intruder = User.objects.create_user("grace", password="secret")
+    logged_in.force_login(intruder)
+
+    response = logged_in.get(COLLECTION_URL)
+
+    assert response.context["collection"].is_empty

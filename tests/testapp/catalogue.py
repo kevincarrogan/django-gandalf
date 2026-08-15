@@ -22,13 +22,14 @@ from functools import lru_cache
 
 from django.urls import NoReverseMatch, get_resolver, reverse
 
+from gandalf.collections import CollectionView
 from gandalf.sections import HubView
 from gandalf.viewsets import WizardViewSet
 
 
 # URL kwargs the wizard's own patterns own. Anything else a pattern captures
 # is mount-prefix context that only the catalogue can supply.
-RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "section"})
+RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "section", "item"})
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,15 @@ GROUPS = (
             Example("readme-hub", note="The task list. Enter the sections from here."),
             Example("readme-hub-contact", note="A hub section, reached from the hub."),
             Example("readme-hub-address", note="A hub section, reached from the hub."),
+            Example(
+                "readme-party-hub",
+                note="A task list whose second row is a collection.",
+            ),
+            Example("readme-party-venue", note="A plain section beside it."),
+            Example(
+                "readme-guests",
+                note="Add another: add a few guests, then change and remove them.",
+            ),
         ),
     ),
     Group(
@@ -330,6 +340,47 @@ GROUPS = (
         ),
     ),
     Group(
+        "Add another — collections of items",
+        "A list the user grows: each item is its own run, separately "
+        "resumable, changeable and removable. The page asks whether there is "
+        "another to add, because nothing in storage can answer that. Reach an "
+        "item from its collection page — the item wizard's own URL needs an "
+        "item id, and the collection is what mints them.",
+        (
+            Example("party-hub", note="Start here — a task list with a collection."),
+            Example("party-venue", note="A plain section beside the collection."),
+            Example(
+                "party-guests",
+                note="The collection page. Add a few, then change and remove them.",
+            ),
+            Example(
+                "minimum-guests",
+                note='Needs at least one item, so answering "no" while empty '
+                "still reads as Incomplete.",
+            ),
+            Example(
+                "advancing-guests",
+                note="Items that park with every answer valid — the state a "
+                "bare run URL would complete on a GET.",
+            ),
+            Example(
+                "org-guests",
+                url_kwargs={"org": "acme"},
+                note="A collection whose items carry the tenant slug.",
+            ),
+            Example(
+                "off-route-guests",
+                note="Items named by a step that is not on their route, so "
+                "every row falls back to a number.",
+            ),
+            Example(
+                "reshaped-guests",
+                note="A reshaped item shape: both halves of the label moved, "
+                "so a finished item can still be re-opened.",
+            ),
+        ),
+    ),
+    Group(
         "Storage and the life of a run",
         "Where a run lives and how it ends. The durable pair swaps session "
         "storage for the database, so its runs outlive the session; the rest "
@@ -338,6 +389,11 @@ GROUPS = (
         (
             Example("durable-hub", note="Start here; its runs survive a restart."),
             Example("durable-section"),
+            Example(
+                "durable-guests",
+                note="A collection whose registry is a table, so two tabs "
+                "adding at once cannot lose an item.",
+            ),
             Example(
                 "pruned-completion-wizard",
                 note="Keeps two tombstones, so complete it three times to "
@@ -380,6 +436,16 @@ GROUPS = (
                 note="ImproperlyConfigured: two steps claim one URL segment.",
             ),
             Example(
+                "drifted-guests",
+                note="ImproperlyConfigured: a collection's item label drifts "
+                "from its own, so a finished item could never be re-opened.",
+            ),
+            Example(
+                "anonymous-guests",
+                note="ImproperlyConfigured at completion: an item wizard with "
+                "no answer named as the one that titles its rows.",
+            ),
+            Example(
                 "misconfigured-wizard",
                 note="ImproperlyConfigured: hand-written URLs with no url_name "
                 "to reverse.",
@@ -405,13 +471,20 @@ def groups():
     return GROUPS
 
 
-def _iter_leaf_patterns(patterns):
-    """Yield every leaf URLPattern, descending into include()d resolvers."""
+def _iter_leaf_patterns(patterns, prefix_converters=frozenset()):
+    """Yield every leaf URLPattern with the converters it inherits.
+
+    A converter can sit on the mount prefix rather than the leaf — an item
+    wizard mounted at `path("guest/<uuid:item>/", include(...))` publishes a
+    leaf of `""`, and the `item` it cannot begin without is the prefix's. So
+    the converters are accumulated on the way down and yielded alongside.
+    """
     for pattern in patterns:
+        converters = prefix_converters | set(pattern.pattern.converters)
         if hasattr(pattern, "url_patterns"):
-            yield from _iter_leaf_patterns(pattern.url_patterns)
+            yield from _iter_leaf_patterns(pattern.url_patterns, converters)
         elif hasattr(pattern, "callback"):
-            yield pattern
+            yield pattern, converters
 
 
 def published_url_names():
@@ -419,19 +492,21 @@ def published_url_names():
 
     Derived from the URLconf rather than declared, so a wizard added to
     `urls.py` and forgotten here shows up as a test failure. The per-run,
-    per-step and per-section patterns are skipped: they are ways back into a
-    run that already exists, not places to begin.
+    per-step, per-section and per-item patterns are skipped: they are ways
+    back into something that already exists, not places to begin. A
+    collection's items are per-item wherever the segment sits, so the whole
+    item wizard is reached from its collection page rather than the index.
     """
     names = set()
-    for pattern in _iter_leaf_patterns(get_resolver(None).url_patterns):
+    for pattern, converters in _iter_leaf_patterns(get_resolver(None).url_patterns):
         if pattern.name is None:
             continue
-        if RUN_URL_KWARGS & set(pattern.pattern.converters):
+        if RUN_URL_KWARGS & converters:
             continue
         view_class = getattr(pattern.callback, "view_class", None)
         if view_class is None:
             continue
-        if not issubclass(view_class, (WizardViewSet, HubView)):
+        if not issubclass(view_class, (WizardViewSet, HubView, CollectionView)):
             continue
         names.add(pattern.name)
     return names

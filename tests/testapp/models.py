@@ -56,3 +56,58 @@ class SectionRecord(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["owner", "key"], name="unique_section"),
         ]
+
+
+class CollectionRecord(models.Model):
+    """One collection of one user's journey: whether they have said there is
+    nothing more to add.
+
+    Its own row rather than a flag denormalised onto every item, because it is
+    a fact about the collection and survives having no items at all — which is
+    exactly the state "any other income? no" leaves behind.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wizard_collections",
+    )
+    key = models.CharField(max_length=100)
+    declared_done = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "key"], name="unique_collection"),
+        ]
+
+
+class CollectionItemRecord(models.Model):
+    """One item of one collection, and the title it cached when it last
+    finished.
+
+    `position` is what the session store gets for free from list order and a
+    table does not. The unique constraint is what the session store cannot
+    offer at all: two tabs adding at once both read the same list, both append
+    one, and the session loses an item outright — not overwritten with an
+    equivalent value, gone. Here the database settles it.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wizard_collection_items",
+    )
+    collection_key = models.CharField(max_length=100)
+    item_id = models.CharField(max_length=64)
+    # Worked out once, when the item finished; None until then.
+    title = models.CharField(max_length=255, null=True, blank=True)
+    position = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "collection_key", "item_id"],
+                name="unique_collection_item",
+            ),
+        ]

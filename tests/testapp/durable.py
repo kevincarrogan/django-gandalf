@@ -17,9 +17,11 @@ Three contracts are easy to miss and matter more than the rest:
 * `get_state` returns `[]` for a completed run.
 
 A durable hub needs **both** stores swapped: `storage_class` on every section
-viewset, and `section_store_class` on the hub and on each `SectionMixin`.
-Swapping only one gives you durable answers nobody can find, or a durable
-index into runs that have expired.
+viewset, and `section_store_class` on the hub and on each `SectionMixin`. A
+durable *collection* needs the same two, with `ModelCollectionStore` in place
+of `ModelSectionStore` — it is the section store plus an ordered registry, so
+one swap covers both halves. Swapping only one gives you durable answers
+nobody can find, or a durable index into runs that have expired.
 """
 
 import uuid
@@ -28,7 +30,12 @@ from django.core.exceptions import ValidationError
 
 from gandalf.storage import RunNotFound, StashNotFound
 
-from .models import SectionRecord, WizardRun
+from .models import (
+    CollectionItemRecord,
+    CollectionRecord,
+    SectionRecord,
+    WizardRun,
+)
 
 
 class ModelStorage:
@@ -132,4 +139,58 @@ class ModelSectionStore:
     def keys(self):
         return list(
             self._records().filter(stash__isnull=False).values_list("key", flat=True)
+        )
+
+
+class ModelCollectionStore(ModelSectionStore):
+    """`SessionCollectionStore`'s protocol, against tables scoped to the user.
+
+    Everything `ModelSectionStore` does — an item's run and stash live under
+    the composite key the view builds — plus the registry the session store
+    keeps as a list. Two things the list could not give you: `position` makes
+    the order explicit rather than incidental, and the unique constraint
+    settles the race where two tabs adding at once would lose an item outright.
+    """
+
+    def _items(self, key):
+        return CollectionItemRecord.objects.filter(
+            owner=self.request.user, collection_key=key
+        )
+
+    def item_ids(self, key):
+        return list(self._items(key).values_list("item_id", flat=True))
+
+    def has_item(self, key, item_id):
+        return self._items(key).filter(item_id=item_id).exists()
+
+    def add_item(self, key, item_id):
+        # `position` is the count rather than max+1: removal renumbers
+        # nothing, so a gap is possible and the order is what matters, not
+        # the values. `get_or_create` makes adding an id already listed a
+        # no-op, as the session store's early return does.
+        CollectionItemRecord.objects.get_or_create(
+            owner=self.request.user,
+            collection_key=key,
+            item_id=item_id,
+            defaults={"position": self._items(key).count()},
+        )
+
+    def remove_item(self, key, item_id):
+        self._items(key).filter(item_id=item_id).delete()
+
+    def get_item_title(self, key, item_id):
+        record = self._items(key).filter(item_id=item_id).first()
+        return None if record is None else record.title
+
+    def set_item_title(self, key, item_id, title):
+        self._items(key).filter(item_id=item_id).update(title=title)
+
+    def is_declared_done(self, key):
+        return CollectionRecord.objects.filter(
+            owner=self.request.user, key=key, declared_done=True
+        ).exists()
+
+    def set_declared_done(self, key, declared_done):
+        CollectionRecord.objects.update_or_create(
+            owner=self.request.user, key=key, defaults={"declared_done": declared_done}
         )

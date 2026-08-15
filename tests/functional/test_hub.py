@@ -46,7 +46,7 @@ def _complete_contact(client):
     for step, data in [
         ("name", {"name": "Ada"}),
         ("email", {"email": "ada@example.com"}),
-        ("review", {"confirmed": "on"}),
+        ("review", {}),
     ]:
         client.post(
             reverse(
@@ -132,14 +132,14 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "review"},
         ),
-        {"confirmed": "on"},
+        {},
     )
 
     assertRedirects(response, HUB_URL)
     assert stored_stash(client, "contact")["state"] == [
         {"step": {"name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
-        {"step": {"confirmed": "on"}},
+        {"step": {}},
     ]
     # The run is finished, so nothing points at it any more.
     assert stored_section_run(client, "contact") is None
@@ -267,7 +267,7 @@ def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client)
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "review"},
         ),
-        {"confirmed": "on"},
+        {},
     )
 
     assertRedirects(response, HUB_URL)

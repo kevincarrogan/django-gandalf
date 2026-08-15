@@ -20,7 +20,12 @@ from django.http import HttpResponse
 from django.test import Client
 from django.urls import reverse
 
-from gandalf.storage import SessionSectionStore, SessionStashStore, SessionStorage
+from gandalf.storage import (
+    SessionCollectionStore,
+    SessionSectionStore,
+    SessionStashStore,
+    SessionStorage,
+)
 from gandalf.types import RunData, Stash, State
 
 
@@ -36,9 +41,11 @@ __all__ = [
     "RunDiscoveryError",
     "WizardDriver",
     "WizardRun",
+    "seed_collection_item",
     "seed_run",
     "seed_section_run",
     "seed_stash",
+    "stored_collection_items",
     "stored_run",
     "stored_runs",
     "stored_section_run",
@@ -135,6 +142,33 @@ def seed_section_run(client: Client, key: str, run_id: str) -> None:
     session = client.session
     runs = session.setdefault(SessionSectionStore.RUNS_SESSION_KEY, {})
     runs[key] = str(run_id)
+    session.save()
+
+
+def stored_collection_items(client: Client, key: str) -> list[str]:
+    """The item ids a collection lists, in the order the user added them.
+
+    Empty for a collection nobody has added to. A row exists from the moment
+    an item is registered, so this includes items with no answers yet — which
+    is what makes them distinguishable from items that were never added.
+    """
+    collections = client.session.get(SessionCollectionStore.COLLECTIONS_SESSION_KEY, {})
+    record = collections.get(key)
+    if record is None:
+        return []
+    return [item["id"] for item in record.get("items", [])]
+
+
+def seed_collection_item(
+    client: Client, key: str, item_id: str, title: str | None = None
+) -> None:
+    """Register an item, optionally with the title a finished one would have
+    cached. For arranging the states a collection reaches only after several
+    requests."""
+    session = client.session
+    collections = session.setdefault(SessionCollectionStore.COLLECTIONS_SESSION_KEY, {})
+    record = collections.setdefault(key, {"items": [], "declared_done": False})
+    record["items"].append({"id": str(item_id), "title": title})
     session.save()
 
 

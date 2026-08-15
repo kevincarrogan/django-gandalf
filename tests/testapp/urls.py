@@ -40,6 +40,17 @@ urlpatterns = [
         "readme/hub-address/",
         include(readme_examples.AddressSectionViewSet.urls()),
     ),
+    # A hub, a collection page and an item wizard, all siblings: the hub's
+    # "<slug:section>/" door would swallow a collection mounted beneath it,
+    # and the item wizard's own "" start URL would collide with the
+    # collection's door for that item.
+    path("readme/party/", include(readme_examples.PartyHubView.urls())),
+    path("readme/party-venue/", include(readme_examples.VenueSectionViewSet.urls())),
+    path("readme/guests/", include(readme_examples.GuestCollectionView.urls())),
+    path(
+        "readme/guest/<uuid:item>/",
+        include(readme_examples.GuestItemViewSet.urls()),
+    ),
     path(
         "readme/stash-reopen/",
         readme_examples.reopen_contact,
@@ -269,4 +280,53 @@ urlpatterns = [
     ),
     path("org/<slug:org>/hub/", include(views.OrgHubView.urls())),
     path("org/<slug:org>/hub-details/", include(views.OrgSectionViewSet.urls())),
+    # A hub, a collection page and an item wizard are all mounted as
+    # *siblings*, never nested, and for two distinct reasons.
+    #
+    # `HubView.urls()` publishes "<slug:section>/", which matches any single
+    # segment — so a collection page mounted at "party/guests/" would be
+    # swallowed by the hub's own door for a section named "guests".
+    #
+    # `WizardViewSet.urls()` publishes "" as its start URL — so an item wizard
+    # mounted at "party-guests/<uuid:item>/" would occupy the exact path of
+    # the collection's own door for that item. Either way, whichever
+    # `include()` comes first silently wins.
+    path("party/", include(views.PartyHubView.urls())),
+    path("party-venue/", include(views.PartyVenueSectionViewSet.urls())),
+    path("party-guests/", include(views.GuestCollectionView.urls())),
+    path("party-guest/<uuid:item>/", include(views.GuestItemViewSet.urls())),
+    path("minimum-guests/", include(views.MinimumGuestCollectionView.urls())),
+    path("minimum-guest/<uuid:item>/", include(views.MinimumGuestItemViewSet.urls())),
+    path("drifted-guests/", include(views.DriftedGuestCollectionView.urls())),
+    path("drifted-guest/<uuid:item>/", include(views.DriftedGuestItemViewSet.urls())),
+    path("advancing-guests/", include(views.AdvancingGuestCollectionView.urls())),
+    path(
+        "advancing-guest/<uuid:item>/",
+        include(views.AdvancingGuestItemViewSet.urls()),
+    ),
+    path("org/<slug:org>/guests/", include(views.OrgGuestCollectionView.urls())),
+    path(
+        "org/<slug:org>/guest/<uuid:item>/",
+        include(views.OrgGuestItemViewSet.urls()),
+    ),
+    path("anonymous-guests/", include(views.AnonymousGuestCollectionView.urls())),
+    path(
+        "anonymous-guest/<uuid:item>/",
+        include(views.AnonymousGuestItemViewSet.urls()),
+    ),
+    path("off-route-guests/", include(views.OffRouteGuestCollectionView.urls())),
+    path(
+        "off-route-guest/<uuid:item>/",
+        include(views.OffRouteGuestItemViewSet.urls()),
+    ),
+    path("durable-guests/", include(views.DurableGuestCollectionView.urls())),
+    path(
+        "durable-guest/<uuid:item>/",
+        include(views.DurableGuestItemViewSet.urls()),
+    ),
+    path("reshaped-guests/", include(views.ReshapedGuestCollectionView.urls())),
+    path(
+        "reshaped-guest/<uuid:item>/",
+        include(views.ReshapedGuestItemViewSet.urls()),
+    ),
 ]
