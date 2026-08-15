@@ -40,8 +40,9 @@ This project follows a test-driven development approach for filling out the requ
      through the FormView's composition API, so any of those overrides are
      honored automatically.
 - Every step served over HTTP must carry a routable name — the canonical
-  spelling is `.step(SomeForm, name="some-step")` (shorthand for
-  `context={"name": ...}`). Steps are addressed by URL; there is no
+  spelling is `.step(SomeForm, name="some-step")`. Keyword arguments to
+  `.step()` become the step's context, so `name=` is simply the context
+  key the default router reads. Steps are addressed by URL; there is no
   unrouted mode, and the viewset raises `ImproperlyConfigured` for wizards
   with unnamed steps. Viewsets declare `url_name` and are mounted with
   `path("prefix/", include(MyViewSet.urls()))` unless a custom URL scheme
@@ -81,7 +82,7 @@ wrapping.
   answer), then seals and carries the remaining entries verbatim. Branch
   decisions are never persisted; the active arm is always recomputed from
   the preceding step submissions, and the arm id only keys which per-arm
-  memory is live. Step context (e.g. `context={"name": "account"}`)
+  memory is live. Step context (e.g. `.step(AccountForm, name="account")`)
   is user-space metadata for lookup and introspection, not a storage key
   mechanism; steps themselves still have no stable identifiers, so
   alignment stays positional.

@@ -230,7 +230,7 @@ class SummaryMixin(_SummaryMixinBase):
 
     def get_summary_label(self, step: RuntimeStep) -> StrOrPromise:
         """The heading for a step's row: its `label` context if it declares
-        one (`.step(Form, name="billing", context={"label": "Billing"})`),
+        one (`.step(Form, name="billing", label="Billing")`),
         otherwise its name made readable."""
         context = step.declaration.context or {}
         label: StrOrPromise | None = context.get(self.summary_label_context_key)

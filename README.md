@@ -202,8 +202,9 @@ customer_wizard = base.step(ProfileForm, name="profile")
 # `base` still contains only AccountForm.
 ```
 
-**Every step is named, and every step gets its own URL.** `name="email"` is
-shorthand for `context={"name": "email"}`. From `url_name`, `urls()`
+**Every step is named, and every step gets its own URL.** Keyword arguments to
+`.step()` become the step's context, so `name="email"` is an ordinary context
+entry — the one the default router reads. From `url_name`, `urls()`
 publishes three patterns — `signup` (the start URL), `signup-run`
 (`signup/<run_id>/`), and `signup-step` (`signup/<run_id>/email/`); see
 [URLs and routing](#urls-and-routing). A step URL is a *claim*: it either
@@ -491,8 +492,8 @@ class SummaryWizardViewSet(WizardViewSet):
     template_name = "checkout/step.html"
     wizard = (
         Wizard()
-        .step(NameForm, name="name", context={"label": "Your name"})
-        .step(DeliveryForm, name="delivery", context={"label": "Delivery"})
+        .step(NameForm, name="name", label="Your name")
+        .step(DeliveryForm, name="delivery", label="Delivery")
         .step(ReviewStepView, name="review")
     )
 ```
@@ -881,7 +882,7 @@ class StepSlugRouter(StepNameRouter):
 
 wizard = (
     Wizard()
-    .step(EmailForm, context={"slug": "email-address"})
+    .step(EmailForm, slug="email-address")
     .configure(
         template_name="signup/step.html",   # a pre-configured wizard is taken
         step_router_class=StepSlugRouter,   # as-is, so set this here too
@@ -889,8 +890,8 @@ wizard = (
 )
 ```
 
-(`name="email"` is only shorthand for `context={"name": "email"}`, so a
-router keyed on `slug` wants the context spelled out.)
+(`name=` carries no special weight at declaration time — it is just the key the
+default router reads, so a router keyed on `slug` reads `slug=` instead.)
 
 Every step must be reversible and every segment unique. Both are checked when
 the wizard is resolved, across the whole declared tree rather than just the
@@ -1157,8 +1158,8 @@ class ContactSectionViewSet(SectionMixin, WizardViewSet):
     hub_url_name = "profile-hub"
     wizard = (
         Wizard()
-        .step(NameForm, name="name", context={"label": "Your name"})
-        .step(EmailForm, name="email", context={"label": "Email"})
+        .step(NameForm, name="name", label="Your name")
+        .step(EmailForm, name="email", label="Email")
         .step(ReviewStepView, name="review")
     )
 

@@ -7,7 +7,6 @@ from gandalf.wizard import (
     StepNameRouter,
     Wizard,
     condition,
-    named,
 )
 from gandalf.viewsets import WizardViewSet
 
@@ -276,7 +275,7 @@ class BranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
@@ -305,9 +304,9 @@ class SectionEditingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"section": "account"})
-        .step(PersonalDetailsForm, context={"section": "details"})
-        .step(ReviewForm, context={"section": "review"})
+        .step(AccountTypeForm, section="account")
+        .step(PersonalDetailsForm, section="details")
+        .step(ReviewForm, section="review")
         .configure(
             template_name="testapp/editing_wizard.html",
             step_router_class=SectionRouter,
@@ -328,17 +327,15 @@ class EditingBranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(
-                PersonalDetailsForm, context={"name": "preferred_name"}
-            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
     )
 
     url_name = "editing-branching-wizard"
@@ -355,18 +352,18 @@ class DoneBranchingWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business"}),
+                Wizard().step(BusinessDetailsForm, name="business"),
             ),
             default=Wizard().step(
                 PersonalDetailsForm,
-                context={"name": "personal"},
+                name="personal",
             ),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .step(SecondStepForm, name="second")
     )
 
@@ -487,8 +484,8 @@ class DuplicateContextWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "duplicate"})
-        .step(SecondStepForm, context={"name": "duplicate"})
+        .step(FirstStepForm, name="duplicate")
+        .step(SecondStepForm, name="duplicate")
     )
 
     url_name = "duplicate-context-wizard"
@@ -653,7 +650,7 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
-        wizard.step(AccountTypeForm, context={"name": "account_type"})
+        wizard.step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
@@ -697,7 +694,7 @@ class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
         .branch(
             condition(_never_matches, wizard.step(SecondStepForm, name="second")),
         )
-        .step(AccountTypeForm, context={"name": "skip_branch_account"})
+        .step(AccountTypeForm, name="skip_branch_account")
     )
 
     url_name = "empty-branch-arm-merged-payload-wizard"
@@ -716,7 +713,7 @@ class RuntimeTreeBranchingMergeViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
-        wizard.step(AccountTypeForm, context={"name": "account_type"})
+        wizard.step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
@@ -785,13 +782,11 @@ class DynamicWizardViewSet(WizardViewSet):
 
     def get_wizard(self, bound_wizard):
         state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, context={"name": "count"})
+        wizard = Wizard().step(ItemCountForm, name="count")
         if state:
             count = int(state[0]["step"]["count"])
             for index in range(count):
-                wizard = wizard.step(
-                    ItemForm, context={"index": index}, name=f"item-{index}"
-                )
+                wizard = wizard.step(ItemForm, index=index, name=f"item-{index}")
         return wizard
 
     url_name = "dynamic-wizard"
@@ -808,7 +803,7 @@ class DynamicWizardViewSet(WizardViewSet):
 class MergeWithLists(MergeCleanedData):
     """MergeCleanedData variant that respects a `list_key` context entry.
 
-    Steps with `context={"list_key": "items"}` contribute their cleaned
+    Steps declared with `list_key="items"` contribute their cleaned
     data as `{"items": [cleaned]}`; combine concatenates lists under the
     same key instead of overwriting. Steps without `list_key` behave like
     the base reducer (last-write-wins merge).
@@ -839,9 +834,7 @@ class FileUploadingWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/file_upload_wizard.html"
     wizard = (
-        Wizard()
-        .step(ProfilePhotoForm, context={"name": "photo"})
-        .step(FirstStepForm, name="first")
+        Wizard().step(ProfilePhotoForm, name="photo").step(FirstStepForm, name="first")
     )
 
     url_name = "file-uploading-wizard"
@@ -861,13 +854,14 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
 
     def get_wizard(self, bound_wizard):
         state = bound_wizard.get_state()
-        wizard = Wizard().step(ItemCountForm, context={"name": "count"})
+        wizard = Wizard().step(ItemCountForm, name="count")
         if state:
             count = int(state[0]["step"]["count"])
             for index in range(count):
                 wizard = wizard.step(
                     ItemForm,
-                    context={"list_key": "items", "index": index},
+                    list_key="items",
+                    index=index,
                     name=f"item-{index}",
                 )
         return wizard
@@ -881,26 +875,6 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
         return HttpResponse(json.dumps(payload, sort_keys=True))
 
 
-class NamedHelperWizardViewSet(WizardViewSet):
-    description = "Wizard whose steps are declared via the `named()` helper."
-    template_name = "testapp/linear_wizard.html"
-    wizard = (
-        Wizard()
-        .step(named("first", FirstStepForm))
-        .step(named("second", SecondStepForm))
-    )
-
-    url_name = "named-helper-wizard"
-
-    def done(self, bound_wizard):
-        first = bound_wizard.path.find_step(name="first")
-        second = bound_wizard.path.find_step(name="second")
-        return HttpResponse(
-            f"completed first={first.form.cleaned_data['name']} "
-            f"second={second.form.cleaned_data['email']}"
-        )
-
-
 class FileEditingWizardViewSet(WizardViewSet):
     description = (
         "Wizard whose first step is an optional-photo upload, supporting an "
@@ -908,9 +882,7 @@ class FileEditingWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, context={"name": "photo"})
-        .step(ReviewForm, context={"name": "review"})
+        Wizard().step(OptionalPhotoForm, name="photo").step(ReviewForm, name="review")
     )
 
     url_name = "file-editing-wizard"
@@ -932,14 +904,14 @@ class EmptyBranchArmContextFinderViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(named("first", FirstStepForm))
+        .step(FirstStepForm, name="first")
         .branch(
-            condition(_always_matches, Wizard().step(named("matched", SecondStepForm))),
+            condition(_always_matches, Wizard().step(SecondStepForm, name="matched")),
         )
         .branch(
-            condition(_never_matches, Wizard().step(named("skipped", ReviewForm))),
+            condition(_never_matches, Wizard().step(ReviewForm, name="skipped")),
         )
-        .step(named("review", ReviewForm))
+        .step(ReviewForm, name="review")
     )
 
     url_name = "empty-branch-arm-context-finder-wizard"
@@ -964,15 +936,15 @@ class RoutedWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(named("account_type", AccountTypeForm))
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(named("business_name", BusinessDetailsForm)),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(named("preferred_name", PersonalDetailsForm)),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(named("review", ReviewForm))
+        .step(ReviewForm, name="review")
     )
 
     url_name = "routed-wizard"
@@ -1162,7 +1134,7 @@ class UnroutableWizardViewSet(WizardViewSet):
         "name."
     )
     template_name = "testapp/editing_wizard.html"
-    wizard = Wizard().step(FirstStepForm).step(named("second", SecondStepForm))
+    wizard = Wizard().step(FirstStepForm).step(SecondStepForm, name="second")
 
     url_name = "unroutable-wizard"
 
@@ -1192,9 +1164,7 @@ class OrgScopedEditingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     url_name = "org-scoped-wizard"
     wizard = (
-        Wizard()
-        .step(OrgScopedStepView, context={"name": "first"})
-        .step(ReviewForm, context={"name": "review"})
+        Wizard().step(OrgScopedStepView, name="first").step(ReviewForm, name="review")
     )
 
     def done(self, bound_wizard):
@@ -1216,15 +1186,15 @@ class BranchEditRejectionWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
+        .step(FirstStepForm, name="first")
         .branch(
             condition(
                 _always_true,
-                Wizard().step(SecondStepForm, context={"name": "second"}),
+                Wizard().step(SecondStepForm, name="second"),
             ),
         )
-        .step(ReviewForm, context={"name": "review"})
-        .step(AccountTypeForm, context={"name": "tail"})
+        .step(ReviewForm, name="review")
+        .step(AccountTypeForm, name="tail")
     )
 
     url_name = "branch-edit-rejection-wizard"
@@ -1787,7 +1757,7 @@ class SummaryWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, name="account_type", context={"label": "Account type"})
+        .step(AccountTypeForm, name="account_type", label="Account type")
         .branch(
             condition(
                 is_business_account,
@@ -1795,7 +1765,7 @@ class SummaryWizardViewSet(WizardViewSet):
             ),
             default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(SummaryFieldsForm, name="preferences", context={"label": "Preferences"})
+        .step(SummaryFieldsForm, name="preferences", label="Preferences")
         .step(SummaryStepView, name="summary")
         .configure(
             template_name="testapp/linear_wizard.html",

@@ -35,21 +35,10 @@ __all__ = [
     "branch",
     "condition",
     "form_view_factory",
-    "named",
     "on_field",
     "step",
     "switch",
 ]
-
-
-def named(
-    name: str, form_class_or_form_view_class: StepDeclaration
-) -> tuple[StepDeclaration, Context]:
-    """Shorthand for declaring a step with `context={"name": name}`.
-    Pass the result to `Wizard().step(...)`. Equivalent to the `name=`
-    keyword on `.step()`, which is the preferred spelling.
-    """
-    return form_class_or_form_view_class, {"name": name}
 
 
 class StepNameRouter:
@@ -94,13 +83,9 @@ def condition(
     return predicate, target
 
 
-def step(
-    form_class_or_form_view_class: StepDeclaration | tuple[StepDeclaration, Context],
-    context: Context | None = None,
-    name: str | None = None,
-) -> Wizard:
+def step(form_class_or_form_view_class: StepDeclaration, /, **context: Any) -> Wizard:
     """Module-level entry point: returns a Wizard starting with one step."""
-    return Wizard().step(form_class_or_form_view_class, context=context, name=name)
+    return Wizard().step(form_class_or_form_view_class, **context)
 
 
 def branch(
@@ -157,22 +142,18 @@ class Wizard:
         self.tree = tree
 
     def step(
-        self,
-        form_class_or_form_view_class: StepDeclaration
-        | tuple[StepDeclaration, Context],
-        context: Context | None = None,
-        name: str | None = None,
+        self, form_class_or_form_view_class: StepDeclaration, /, **context: Any
     ) -> Wizard:
-        if isinstance(form_class_or_form_view_class, tuple):
-            form_class_or_form_view_class, base_context = form_class_or_form_view_class
-            context = {**base_context, **(context or {})}
-        if name is not None:
-            context = {**(context or {}), "name": name}
+        """Declare a step. Keyword arguments become the step's context, so
+        `name=` is an ordinary context key — the one the default
+        `StepNameRouter` reads — and any other key is matched the same way by
+        `find_step()` / `filter_steps()`.
+        """
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(
                 declaration=form_class_or_form_view_class,
-                context=context,
+                context=context or None,
             )
         )
         return self.__class__(tree=tree.build(declarations))

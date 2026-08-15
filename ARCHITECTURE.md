@@ -307,7 +307,7 @@ def is_business(request):
 
 wizard = (
     Wizard()
-    .step(AccountTypeForm, context={"name": "account"})
+    .step(AccountTypeForm, name="account")
     .branch(
         condition(is_business, Wizard().step(BusinessDetailsForm)),
         default=Wizard().step(PersonalDetailsForm),

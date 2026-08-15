@@ -157,7 +157,7 @@ def summary_view(rf):
     """A summary view over a two-step run with both answers stored."""
     wizard = (
         Wizard()
-        .step(FirstStepForm, name="who", context={"label": "Who you are"})
+        .step(FirstStepForm, name="who", label="Who you are")
         .step(SummaryFieldsForm, name="preferences")
         .configure(template_name="testapp/linear_wizard.html")
     )

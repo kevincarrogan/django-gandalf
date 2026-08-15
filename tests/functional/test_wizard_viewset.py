@@ -1230,20 +1230,6 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
     assertContains(response, '<input type="text" name="name"')
 
 
-def test_named_helper_wizard_completes_with_context_lookups(wizard_driver):
-    run = wizard_driver("named-helper-wizard").start()
-
-    response = run.post_steps(
-        [
-            ("first", {"name": "Ada"}),
-            ("second", {"email": "ada@example.com"}),
-        ]
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"completed first=Ada second=ada@example.com"
-
-
 def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     wizard_driver, isolated_media_root
 ):

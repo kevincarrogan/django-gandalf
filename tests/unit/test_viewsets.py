@@ -303,9 +303,7 @@ def test_wizard_viewset_get_wizard_can_build_tree_from_run_state(rf):
             if state:
                 count = int(state[0]["step"]["count"])
                 for index in range(count):
-                    wizard = wizard.step(
-                        ItemForm, context={"index": index}, name=f"item-{index}"
-                    )
+                    wizard = wizard.step(ItemForm, index=index, name=f"item-{index}")
             return wizard
 
         def get_wizard_url(self, run_id):
@@ -373,9 +371,9 @@ def test_wizard_viewset_dynamic_wizard_walks_again_before_judging_completion(rf)
 class _RoutedViewSet(WizardViewSet):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
-        .step(ReviewForm, context={"name": "review"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .step(ReviewForm, name="review")
     )
     template_name = "testapp/linear_wizard.html"
 
@@ -947,8 +945,8 @@ def test_wizard_viewset_reuses_an_already_configured_wizard_on_refresh(rf):
     class PreConfiguredViewSet(_RoutedViewSet):
         wizard = (
             Wizard()
-            .step(FirstStepForm, context={"name": "first"})
-            .step(SecondStepForm, context={"name": "second"})
+            .step(FirstStepForm, name="first")
+            .step(SecondStepForm, name="second")
             .configure(template_name="testapp/linear_wizard.html")
         )
 
@@ -976,7 +974,7 @@ def _escaping_viewset(*steps, done_body=None):
 
     wizard = Wizard()
     for form, name in steps:
-        wizard = wizard.step(form, context={"name": name})
+        wizard = wizard.step(form, name=name)
 
     class _EscapingViewSet(_RoutedViewSet):
         pass

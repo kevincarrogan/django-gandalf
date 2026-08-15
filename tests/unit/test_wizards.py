@@ -122,7 +122,7 @@ def test_declared_form_step_stores_form_class():
 
 
 def test_module_step_entry_point_returns_wizard_with_first_step():
-    returned = gandalf.wizard.step(FirstStepForm, context={"name": "first"})
+    returned = gandalf.wizard.step(FirstStepForm, name="first")
 
     assert isinstance(returned, Wizard)
     assert returned.tree == tree.Step(
@@ -131,40 +131,16 @@ def test_module_step_entry_point_returns_wizard_with_first_step():
     )
 
 
-def test_named_sets_name_context():
-    wizard = Wizard().step(gandalf.wizard.named("first", FirstStepForm))
-
-    assert wizard.tree == tree.Step(
-        declaration=FirstStepForm,
-        context={"name": "first"},
-    )
-
-
-def test_named_merges_with_explicit_context():
-    wizard = Wizard().step(
-        gandalf.wizard.named("first", FirstStepForm),
-        context={"analytics_key": "x"},
-    )
+def test_every_keyword_becomes_step_context():
+    wizard = Wizard().step(FirstStepForm, name="first", analytics_key="x")
 
     assert wizard.tree.context == {"name": "first", "analytics_key": "x"}
 
 
-def test_named_explicit_context_name_overrides_named():
-    wizard = Wizard().step(
-        gandalf.wizard.named("first", FirstStepForm),
-        context={"name": "override"},
-    )
+def test_step_without_keywords_carries_no_context():
+    wizard = Wizard().step(FirstStepForm)
 
-    assert wizard.tree.context == {"name": "override"}
-
-
-def test_module_step_entry_point_accepts_named():
-    wizard = gandalf.wizard.step(gandalf.wizard.named("first", FirstStepForm))
-
-    assert wizard.tree == tree.Step(
-        declaration=FirstStepForm,
-        context={"name": "first"},
-    )
+    assert wizard.tree.context is None
 
 
 def test_module_branch_entry_point_returns_wizard_with_first_branch():
@@ -181,7 +157,7 @@ def test_module_branch_entry_point_returns_wizard_with_first_branch():
 def test_declared_form_step_stores_context():
     wizard = Wizard()
 
-    returned_wizard = wizard.step(FirstStepForm, context={"name": "first"})
+    returned_wizard = wizard.step(FirstStepForm, name="first")
 
     assert returned_wizard.tree == tree.Step(
         declaration=FirstStepForm,
@@ -197,8 +173,8 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
 
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -291,15 +267,15 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account"})
+        .step(AccountTypeForm, name="account")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business"}),
+                Wizard().step(BusinessDetailsForm, name="business"),
             ),
-            default=Wizard().step(PersonalDetailsForm, context={"name": "personal"}),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -331,15 +307,15 @@ def test_bound_wizard_find_step_returns_none_inside_unreached_branch(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account"})
+        .step(AccountTypeForm, name="account")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business"}),
+                Wizard().step(BusinessDetailsForm, name="business"),
             ),
-            default=Wizard().step(PersonalDetailsForm, context={"name": "personal"}),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -362,15 +338,15 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account"})
+        .step(AccountTypeForm, name="account")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business"}),
+                Wizard().step(BusinessDetailsForm, name="business"),
             ),
-            default=Wizard().step(PersonalDetailsForm, context={"name": "personal"}),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -387,7 +363,7 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
+        .step(FirstStepForm, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -451,8 +427,8 @@ def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"kind": "data"})
-        .step(SecondStepForm, context={"kind": "data"})
+        .step(FirstStepForm, kind="data")
+        .step(SecondStepForm, kind="data")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -593,7 +569,7 @@ def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -601,7 +577,7 @@ def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -958,7 +934,7 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -995,7 +971,7 @@ def test_bound_wizard_renders_first_step_in_default_branch(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -1032,7 +1008,7 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -1074,7 +1050,7 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -1303,8 +1279,8 @@ def test_bound_wizard_render_step_returns_form_with_initial_from_stored_data(
     )
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     bound_wizard = _make_bound_wizard(wizard, request)
@@ -1330,17 +1306,15 @@ def test_bound_wizard_render_step_finds_step_inside_branch(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(
-                PersonalDetailsForm, context={"name": "personal_name"}
-            ),
+            default=Wizard().step(PersonalDetailsForm, name="personal_name"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -1382,7 +1356,7 @@ def test_bound_wizard_render_step_raises_step_not_found_for_unknown_context(
     )
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
+        .step(FirstStepForm, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     bound_wizard = _make_bound_wizard(wizard, request)
@@ -1397,8 +1371,8 @@ def test_bound_wizard_edit_replaces_step_data_and_preserves_downstream(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -1429,8 +1403,8 @@ def test_bound_wizard_placing_an_invalid_submission_parks_on_it(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -1467,8 +1441,8 @@ def test_bound_wizard_placing_a_valid_submission_keeps_walking(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -1506,7 +1480,7 @@ def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -1551,7 +1525,7 @@ def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
@@ -1598,11 +1572,11 @@ def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
@@ -1641,17 +1615,15 @@ def _branching_review_wizard():
 
     return (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(
-                PersonalDetailsForm, context={"name": "preferred_name"}
-            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
         .configure(template_name="testapp/linear_wizard.html")
     )
 
@@ -1661,8 +1633,8 @@ def test_bound_wizard_cursor_returns_first_unanswered_step(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -1687,7 +1659,7 @@ def test_bound_wizard_cursor_node_is_none_when_run_is_complete(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
+        .step(FirstStepForm, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -2202,8 +2174,8 @@ def test_bound_wizard_edit_keeps_invalid_downstream_answer_for_correction(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
-        .step(SecondStepForm, context={"name": "second"})
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -2241,7 +2213,7 @@ def test_bound_wizard_edit_raises_step_not_found_for_unknown_context(
 
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "first"})
+        .step(FirstStepForm, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -2271,11 +2243,11 @@ def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
@@ -2313,8 +2285,8 @@ def test_bound_wizard_find_step_raises_when_context_matches_multiple_steps(
 ):
     wizard = (
         Wizard()
-        .step(FirstStepForm, context={"name": "duplicate"})
-        .step(SecondStepForm, context={"name": "duplicate"})
+        .step(FirstStepForm, name="duplicate")
+        .step(SecondStepForm, name="duplicate")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -2349,11 +2321,11 @@ def test_bound_wizard_edit_does_not_mutate_original_stored_state(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
@@ -2572,7 +2544,7 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business,
@@ -2807,7 +2779,7 @@ def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
         .branch(
             gandalf.wizard.condition(never, Wizard().step(SecondStepForm)),
         )
-        .step(AccountTypeForm, context={"name": "after_branch"})
+        .step(AccountTypeForm, name="after_branch")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -2846,7 +2818,7 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business,
@@ -2926,7 +2898,7 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business,
@@ -3082,7 +3054,7 @@ def test_bound_wizard_render_step_passes_stored_file_as_initial(
     )
     wizard = (
         Wizard()
-        .step(CapturingProfileView, context={"name": "photo"})
+        .step(CapturingProfileView, name="photo")
         .step(FirstStepForm)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3109,7 +3081,7 @@ def test_bound_wizard_edit_without_new_file_preserves_stored_ref(
     )
     wizard = (
         Wizard()
-        .step(ProfilePhotoForm, context={"name": "photo"})
+        .step(ProfilePhotoForm, name="photo")
         .step(FirstStepForm)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3138,7 +3110,7 @@ def test_bound_wizard_edit_adds_file_to_step_that_had_no_files(
     )
     wizard = (
         Wizard()
-        .step(OptionalPhotoForm, context={"name": "photo"})
+        .step(OptionalPhotoForm, name="photo")
         .step(FirstStepForm)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3171,7 +3143,7 @@ def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
     )
     wizard = (
         Wizard()
-        .step(ProfilePhotoForm, context={"name": "photo"})
+        .step(ProfilePhotoForm, name="photo")
         .step(FirstStepForm)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3208,7 +3180,7 @@ def test_bound_wizard_rejected_submission_keeps_its_own_upload(
     )
     wizard = (
         Wizard()
-        .step(OptionalPhotoForm, context={"name": "photo"})
+        .step(OptionalPhotoForm, name="photo")
         .step(FirstStepForm)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3264,7 +3236,7 @@ def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
 
     wizard = (
         Wizard()
-        .step(ProfilePhotoForm, context={"name": "photo"})
+        .step(ProfilePhotoForm, name="photo")
         .step(ExplodingStepView)
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -3311,7 +3283,7 @@ def test_bound_wizard_edit_step_not_found_deletes_new_files(
 
     wizard = (
         Wizard()
-        .step(OptionalPhotoForm, context={"name": "photo"})
+        .step(OptionalPhotoForm, name="photo")
         .configure(
             template_name="testapp/linear_wizard.html",
             file_storage_class=temp_file_storage_class,
@@ -3342,7 +3314,7 @@ def test_bound_wizard_submit_correction_keeps_stored_file_refs(
 ):
     wizard = (
         Wizard()
-        .step(OptionalPhotoForm, context={"name": "photo"})
+        .step(OptionalPhotoForm, name="photo")
         .configure(
             template_name="testapp/linear_wizard.html",
             file_storage_class=temp_file_storage_class,
@@ -3388,7 +3360,7 @@ def test_bound_wizard_edit_error_render_receives_url_kwargs(
 
     wizard = (
         Wizard()
-        .step(KwargAwareStepView, context={"name": "first"})
+        .step(KwargAwareStepView, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -3435,7 +3407,7 @@ def test_bound_wizard_render_step_receives_url_kwargs(
 
     wizard = (
         Wizard()
-        .step(KwargAwareStepView, context={"name": "first"})
+        .step(KwargAwareStepView, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
     request = request_with_session_factory(
@@ -3471,11 +3443,11 @@ def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
 
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             gandalf.wizard.condition(
                 is_business_account,
-                Wizard().step(ProfilePhotoForm, context={"name": "photo"}),
+                Wizard().step(ProfilePhotoForm, name="photo"),
             ),
             default=Wizard().step(PersonalDetailsForm),
         )

@@ -220,17 +220,15 @@ class EditingWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(
-                PersonalDetailsForm, context={"name": "preferred_name"}
-            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
     )
 
     def done(self, bound_wizard):
@@ -246,17 +244,15 @@ class FlipFlopWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, context={"name": "account_type"})
+        .step(AccountTypeForm, name="account_type")
         .branch(
             condition(
                 is_business_account,
-                Wizard().step(BusinessDetailsForm, context={"name": "business_name"}),
+                Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
-            default=Wizard().step(
-                PersonalDetailsForm, context={"name": "preferred_name"}
-            ),
+            default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm, context={"name": "review"})
+        .step(ReviewForm, name="review")
     )
 
     def done(self, bound_wizard):
@@ -321,8 +317,8 @@ class SummaryWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(NameForm, name="name", context={"label": "Your name"})
-        .step(DeliveryForm, name="delivery", context={"label": "Delivery"})
+        .step(NameForm, name="name", label="Your name")
+        .step(DeliveryForm, name="delivery", label="Delivery")
         .step(ReviewStepView, name="review")
     )
 
@@ -351,8 +347,8 @@ class ContactSectionViewSet(SectionMixin, WizardViewSet):
     hub_url_name = "readme-hub"
     wizard = (
         Wizard()
-        .step(NameForm, name="name", context={"label": "Your name"})
-        .step(EmailForm, name="email", context={"label": "Email"})
+        .step(NameForm, name="name", label="Your name")
+        .step(EmailForm, name="email", label="Email")
         # A review step is what makes re-opening safe: without it, one
         # successful edit walks straight through to `done()` again.
         .step(SectionReviewStepView, name="review")
@@ -367,7 +363,7 @@ class AddressSectionViewSet(SectionMixin, WizardViewSet):
     hub_url_name = "readme-hub"
     wizard = (
         Wizard()
-        .step(AddressForm, name="address", context={"label": "Address"})
+        .step(AddressForm, name="address", label="Address")
         .step(SectionReviewStepView, name="review")
     )
 

@@ -123,7 +123,6 @@ GROUPS = (
             Example("done-linear-wizard"),
             Example("merged-payload-wizard"),
             Example("multi-value-wizard"),
-            Example("named-helper-wizard"),
             Example(
                 "empty-wizard", note="No steps at all, so it completes on arrival."
             ),
