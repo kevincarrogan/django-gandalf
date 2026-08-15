@@ -2168,3 +2168,21 @@ def test_resurrecting_a_stash_with_the_wrong_label_is_gone(client, wizard_driver
     response = client.get(reverse("stashing-wizard-resurrect"))
 
     assert response.status_code == HTTPStatus.GONE
+
+
+def test_a_mounted_wizard_can_be_asked_what_it_is_without_starting_it(rf):
+    """`resolve()` is the door for a caller holding a viewset rather than a
+    wizard: bind it, read its shape, leave no run behind."""
+    from tests.testapp import views
+
+    request = rf.get("/")
+    request.session = {}
+
+    bound_wizard = views.BranchingWizardViewSet.resolve(request)
+
+    assert [entry["kind"] for entry in bound_wizard.wizard.outline()] == [
+        "step",
+        "branch",
+        "step",
+    ]
+    assert request.session == {}

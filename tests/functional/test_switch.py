@@ -7,6 +7,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 
 from gandalf.wizard import Wizard, on_field, switch
+from tests.testapp import views
 from tests.testapp.forms import BusinessDetailsForm
 
 
@@ -90,3 +91,51 @@ def test_on_field_names_the_step_it_could_not_find(wizard_driver):
 
     with pytest.raises(ImproperlyConfigured, match="nowhere"):
         run.post_step("account_kind", {"kind": "business"})
+
+
+def _outline_of(viewset_class):
+    return viewset_class.wizard.configure(
+        template_name="testapp/linear_wizard.html"
+    ).outline()
+
+
+def test_a_wizard_describes_every_route_it_declares():
+    """A description of the declaration, so it needs no run: every step,
+    every fork with all of its possible routes, and a marker where the
+    tree grows from an answer."""
+    from tests.testapp import readme_examples
+
+    branching = _outline_of(views.BranchingWizardViewSet)
+    [_, branch, _] = branching
+    assert branch["kind"] == "branch"
+    assert [step["name"] for step in branch["arms"][0]["steps"]] == ["business_name"]
+    assert [step["name"] for step in branch["default"]] == ["preferred_name"]
+
+    growing = _outline_of(readme_examples.ExpandWizardViewSet)
+    assert [entry["kind"] for entry in growing] == ["step", "expand", "step"]
+
+
+def test_a_switch_on_an_answer_says_which_answer_decides_it():
+    switch = next(
+        entry
+        for entry in _outline_of(views.SwitchWizardViewSet)
+        if entry["kind"] == "switch"
+    )
+
+    assert switch["source"] == {"step": "account_kind", "field": "kind"}
+    assert [case["case"] for case in switch["cases"]] == ["business", "personal"]
+
+
+def test_a_switch_decided_by_computation_still_names_its_outcomes():
+    """An `on_field` switch says which answer decides it. One decided by
+    arbitrary code cannot, but the outcomes are declared either way — so a
+    caller still knows what the answers could be."""
+    switch = next(
+        entry
+        for entry in _outline_of(views.SwitchEntryWizardViewSet)
+        if entry["kind"] == "switch"
+    )
+
+    assert switch["decided_by"] == "_always_the_second_case"
+    assert [case["case"] for case in switch["cases"]] == ["first", "second"]
+    assert "source" not in switch

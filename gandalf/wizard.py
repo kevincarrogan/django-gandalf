@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -8,6 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from gandalf import tree
 from gandalf.file_storage import WizardFileStorage
 from gandalf.form_views import StepFormView, form_view_factory
+from gandalf.observers import WizardObserver
 from gandalf.runtime import (
     BoundWizard,
     CursorWalker,
@@ -32,6 +34,7 @@ __all__ = [
     "StepNameRouter",
     "Wizard",
     "WizardFileStorage",
+    "WizardObserver",
     "branch",
     "condition",
     "form_view_factory",
@@ -111,9 +114,9 @@ class on_field:
     The common case, said declaratively: `on_field("account", "kind")`
     routes on the `kind` field of the step named `account`. Because it
     *is* the answer rather than a computation over it, the dependency is
-    data — `AgentDriver.outline()` reports which step and field decide the
-    route, so a caller planning ahead can work out where an answer leads
-    instead of inferring it. Reach for a plain function whenever the
+    data — an outline reports which step and field decide the route, so a
+    caller planning ahead can work out where an answer leads instead of
+    inferring it. Reach for a plain function whenever the
     decision is anything more than "what did they say".
 
     Scalar answers only: a multi-valued field has no single value to
@@ -135,6 +138,77 @@ class on_field:
                 f"step named {self.step!r} before this switch."
             )
         return str(found.form.cleaned_data.get(self.field, ""))
+
+
+def _outline(node: tree.Node | None) -> list[dict[str, Any]]:
+    """Walk a declared tree into the description `ConfiguredWizard.outline()`
+    returns. A sibling of `tree.Formatter`, which walks the same shape into
+    indented text."""
+    entries: list[dict[str, Any]] = []
+    while node is not None:
+        if isinstance(node, tree.Step):
+            context = node.context or {}
+            entries.append(
+                {
+                    "kind": "step",
+                    "name": context.get("name"),
+                    "context": dict(context),
+                    "declaration": node,
+                }
+            )
+        elif isinstance(node, tree.Switch):
+            entries.append(_outline_switch(node))
+        elif isinstance(node, tree.Branch):
+            entries.append(
+                {
+                    "kind": "branch",
+                    "arms": [
+                        {
+                            "when": _callable_name(predicate),
+                            "description": inspect.getdoc(predicate),
+                            "steps": _outline(arm),
+                        }
+                        for predicate, arm in node.arms
+                    ],
+                    "default": _outline(node.default),
+                }
+            )
+        else:
+            entries.append({"kind": "expand"})
+        node = node.next
+    return entries
+
+
+def _outline_switch(node: tree.Switch) -> dict[str, Any]:
+    """A switch, with its outcomes named.
+
+    More use to a caller planning ahead than a branch is: the set of
+    possible results is declared, so even a selector whose workings are
+    opaque says what the answers could be. When the selector is an
+    `on_field` the dependency itself is data — which step, which field —
+    and the route stops being a guess.
+    """
+    selector = node.selector
+    entry: dict[str, Any] = {
+        "kind": "switch",
+        "decided_by": _callable_name(selector),
+        "description": inspect.getdoc(selector),
+        "cases": [
+            {"case": case, "steps": _outline(arm)}
+            for case, (_, arm) in zip(node.cases, node.arms)
+        ],
+        "default": _outline(node.default),
+    }
+    if isinstance(selector, on_field):
+        entry["source"] = {"step": selector.step, "field": selector.field}
+        # A dataclass carries its class docstring, which describes
+        # `on_field` rather than this particular route.
+        entry["description"] = None
+    return entry
+
+
+def _callable_name(target: Any) -> str | None:
+    return cast("str | None", getattr(target, "__name__", None))
 
 
 class Wizard:
@@ -226,6 +300,7 @@ class Wizard:
 
 class ConfiguredWizard:
     file_storage_class = WizardFileStorage
+    observer_class = WizardObserver
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
@@ -249,6 +324,7 @@ class ConfiguredWizard:
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
         )
+        self.observer_class = configuration.get("observer_class", self.observer_class)
         self.cursor_walker_class = configuration.get(
             "cursor_walker_class", self.cursor_walker_class
         )
@@ -264,6 +340,37 @@ class ConfiguredWizard:
 
     def configure(self, **configuration: Any) -> ConfiguredWizard:
         raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
+
+    def outline(self) -> list[dict[str, Any]]:
+        """This wizard's declared shape, as data.
+
+        What `tree.Formatter` prints for a human, in a form something else
+        can read: every step in order, every fork with *all* of its
+        possible routes, and a marker wherever the tree grows from an
+        answer. A description of the declaration, so it needs no run, no
+        request and no storage — the same answer before anybody starts and
+        after they finish.
+
+        Entries are dicts with a `kind`:
+
+        * `step` — its `name`, its `context`, and the `declaration` itself
+          (the one entry that is not JSON; everything else is, and callers
+          that want plain data drop it, or replace it with something
+          derived from it — a JSON Schema of the step's form, say).
+        * `branch` — `arms`, each carrying the `when` and `description` its
+          predicate names itself with, and the `steps` it selects; plus the
+          `default`. Which arm runs depends on answers, so all are shown.
+        * `switch` — `decided_by` and `description` from the selector,
+          `cases` named by the value that selects them, `default`, and a
+          `source` naming the step and field when the selector is an
+          `on_field` and the dependency is therefore knowable.
+        * `expand` — a marker and nothing more: an expansion's steps do not
+          exist until the answer that shapes them does.
+
+        A dynamic `get_wizard()` is described as it currently resolves,
+        which is the honest answer — its shape is a function of the run.
+        """
+        return _outline(self.tree)
 
     def _configure_tree(self, root: tree.Node | None) -> tree.Node | None:
         template_name = self.configuration.get("template_name")
