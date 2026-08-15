@@ -17,6 +17,7 @@ def _setup():
 
 _setup()
 
+from benchmarks.driven import driven_totals, run_driven  # noqa: E402
 from benchmarks.journey import (  # noqa: E402
     journey_totals,
     run_journey,
@@ -112,6 +113,32 @@ def print_shapes(benchmarks):
         print(f"{benchmark.label:<50}  {spread:>10}  {totals.validation_cost:>11}")
 
 
+def print_driven_comparison(sizes):
+    """The same wizards, answered through a browser and filled from Python.
+
+    A person answers one step per request and pays the replay on each; a
+    caller holding every answer places them in one pass. The interesting
+    part is not which number is smaller but that neither escapes the walk —
+    filling in one go pays for the replay once rather than once per page.
+    """
+    print("\nA person answering, and a caller filling it in one go\n")
+    header = (
+        f"{'wizard':<30}  {'requests':>8}  {'browser':>8}  "
+        f"{'operations':>10}  {'driven':>7}"
+    )
+    print(header)
+    print("-" * len(header))
+    for steps in sizes:
+        benchmark = linear_wizard(steps=steps)
+        browsed = run_journey(benchmark)
+        driven = run_driven(benchmark)
+        print(
+            f"{benchmark.label:<30}  {len(browsed):>8}  "
+            f"{journey_totals(browsed).validation_cost:>8}  "
+            f"{len(driven):>10}  {driven_totals(driven).validation_cost:>7}"
+        )
+
+
 def main():
     small = linear_wizard(steps=5)
     records = print_requests(small)
@@ -164,6 +191,8 @@ def main():
             f"(dispatched={totals.validations}, "
             f"predicate rebuilds={totals.form_rebuilds})"
         )
+
+    print_driven_comparison([5, 10, 20])
 
 
 if __name__ == "__main__":

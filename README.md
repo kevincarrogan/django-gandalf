@@ -1615,6 +1615,95 @@ where you mint it.
 
 ---
 
+## Driving a wizard from Python
+
+> **Optional module.** `gandalf.driver` needs nothing but Django and is
+> never imported unless you ask for it. Skip this unless something other
+> than a browser needs to answer your steps.
+
+Everything so far assumes a person and a browser. `gandalf.driver` is the
+same wizard without either: `RunDriver` walks a run by calling the runtime
+directly, so a data import, a management command, an admin action — or an
+AI agent holding somebody's details — can answer steps as data.
+
+```python
+from gandalf.driver import RunDriver
+
+driver = RunDriver.begin(SignupWizardViewSet)
+
+driver.describe().schema        # JSON Schema for the current step's form
+driver.submit({"name": "Ada"})
+result = driver.submit({"email": "ada@example.com"})
+if result.status == "complete":
+    driver.finish()             # fires done() exactly once
+```
+
+`submit()` reports `"advanced"`, `"invalid"` (with `errors` in
+`form.errors.get_json_data()` shape), `"complete"`, or `"escaped"`;
+`submit(data, step="account_type")` edits an earlier answer and lets the walk
+re-route from it. Three more methods exist for callers filling a run from
+data they already hold:
+
+| | |
+|---|---|
+| `outline()` | the declared journey before any answers exist — every step with its schema, every fork with all of its possible routes |
+| `check(answers)` | what a bag of answers *would* do, without placing any of it: what is invalid, what is still missing, what could not be judged |
+| `prefill(answers)` | place as many as the tree will take, following branches and expansions, and report the residue |
+
+Nothing here is a second implementation. Every operation is the one a request
+performs, so a run filled programmatically is an ordinary run: same `run_id`,
+same stored state, same re-validation. With a durable
+[storage backend](#completion-and-storage) you can fill a run from a script
+and hand somebody `bound_wizard.entry_url("review")` to check and confirm in
+the browser — and the two can take turns on the same run.
+
+### Answering for somebody else
+
+A caller that is not a person gets two guard rails, because being able to
+fill a run is not the same as being allowed to conclude one.
+
+`finish()` refuses by default. A person clicking Confirm reaches `done()`
+through the viewset's own dispatch, so this restricts nothing a human does —
+it only asks a wizard to say, in as many words, that something unattended may
+conclude a run on somebody's behalf:
+
+```python
+class SignupWizardViewSet(WizardViewSet):
+    def may_finish_unattended(self, bound_wizard):
+        return True
+```
+
+Without it, `finish()` raises `ConfirmationRequired`.
+
+Every placement also carries a mapping recorded beside the answer — who
+answered this, and how. `RunDriver` marks its own placements
+`{"unattended": True}`, since the answers alone cannot say so; pass
+`metadata=` to describe a placement made on somebody else's behalf, and read
+it back with `driver.metadata()`. A wizard can then refuse to have an answer
+replaced:
+
+```python
+class QuoteViewSet(WizardViewSet):
+    def may_edit_step(self, bound_wizard, step, submission):
+        """Whatever a person answered is theirs; the driver may still
+        correct its own earlier answers."""
+        current = bound_wizard.path.find_step(name=step.context["name"])
+        return bool((current.metadata or {}).get("unattended"))
+```
+
+`submit(..., step=...)` then raises `EditRefused` rather than overwriting.
+The hook is only consulted for a step that already holds an answer — filling
+a blank one is not an edit — and it is given the submission that would
+replace it, so a policy can compare the two.
+
+Files are the one gap: a `FileField` is described as a string in the schema
+and cannot be answered programmatically yet.
+
+> **Source:** the snippets above are driven against the README's own wizards in
+> [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).
+
+---
+
 ## Testing your wizards
 
 Driving a multi-step wizard with the raw Django test client means chasing the
