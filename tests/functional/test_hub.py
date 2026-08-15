@@ -534,6 +534,85 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
         view.done(bound_wizard)
 
 
+def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf, client):
+    """`SectionMixin`'s usual advice — set the class attribute — is wrong for
+    a section that deliberately has none, so it is told something else."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Undecided(ContactSectionViewSet):
+        section_key = None
+        dynamic_section_key = True
+
+    request = rf.get("/readme/hub-contact/")
+    request.session = client.session
+    view = _Undecided()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.initialise()
+
+    with pytest.raises(ImproperlyConfigured, match="get_section_key"):
+        view.done(bound_wizard)
+
+
+def test_a_row_that_is_not_a_wizard_must_say_where_and_how_far(rf, client):
+    """A section with no viewset answers for itself. Without a `url_name` the
+    hub builds a door it cannot open; without a `status` it derives one from a
+    stash key nothing writes."""
+    view = _hub_view(
+        url_name="readme-hub",
+        section_url_name="readme-hub-section",
+        sections=[Section("elsewhere", url_name="readme-hub")],
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="url_name and status"):
+        _dispatch(rf, client, view)
+
+
+def test_a_row_that_is_not_a_wizard_links_past_the_door_and_answers_for_itself(
+    rf, client
+):
+    """A collection page, a payment redirect, a page in another app: there is
+    no run for the door to walk, so the row addresses it directly."""
+    view = _hub_view(
+        url_name="readme-hub",
+        section_url_name="readme-hub-section",
+        sections=[
+            Section(
+                "elsewhere",
+                title="Elsewhere",
+                url_name="readme-hub",
+                status=lambda request: COMPLETE,
+            )
+        ],
+    )
+
+    response = _dispatch(rf, client, view)
+
+    (row,) = response.context_data["sections"]
+    assert (row.title, row.status, row.url) == ("Elsewhere", COMPLETE, HUB_URL)
+
+
+def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
+    """Rows never point there, so arriving is a hand-typed or stale URL."""
+    view = _hub_view(
+        url_name="readme-hub",
+        section_url_name="readme-hub-section",
+        sections=[
+            Section("elsewhere", url_name="readme-hub", status=lambda r: COMPLETE)
+        ],
+    )
+
+    response = _dispatch(
+        rf, client, view, path="/readme/hub/elsewhere/", section="elsewhere"
+    )
+
+    # `assertRedirects` needs a client-fetched response; this one is built
+    # from a `RequestFactory`, so the redirect is checked directly.
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == HUB_URL
+
+
 def test_a_section_without_a_hub_url_name_cannot_send_the_user_back(rf):
     class _Homeless(ContactSectionViewSet):
         hub_url_name = None

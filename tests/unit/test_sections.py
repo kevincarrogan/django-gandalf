@@ -308,6 +308,54 @@ def test_a_section_viewset_that_does_its_own_bookkeeping_is_not_key_checked(rf):
     assert _Mixed(request).get_section_rows()[0].status == NOT_STARTED
 
 
+def test_a_section_that_keys_itself_per_request_stashes_under_that_key(rf):
+    """A dynamic section's key is only knowable once a request has named the
+    item it belongs to, so it comes from the URL rather than the class."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _PerItem(_SectionViewSet):
+        section_key = None
+        dynamic_section_key = True
+
+        def get_section_key(self):
+            return f"guests:{self.kwargs['item']}"
+
+    request = rf.get("/guest/7/run-1/")
+    request.session = _Session(
+        {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+    view = _PerItem()
+    view.setup(request, item="7")
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    view.done(bound_wizard)
+
+    assert SessionSectionStore(request).keys() == ["guests:7"]
+
+
+def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf):
+    """The inherited message tells you to set a class attribute; a section
+    that deliberately has none needs to be told something else."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    class _Undecided(_SectionViewSet):
+        section_key = None
+        dynamic_section_key = True
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session({"gandalf_runs": {"run-1": {"state": []}}})
+    view = _Undecided()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    with pytest.raises(ImproperlyConfigured, match="get_section_key"):
+        view.done(bound_wizard)
+
+
 def test_get_section_finds_a_section_by_key_and_rejects_an_unknown_one(hub):
     page = hub()
 
@@ -542,6 +590,71 @@ def test_a_section_done_that_raises_leaves_the_section_resumable(rf):
     assert SessionSectionStore(request).get_run("contact") == "run-1"
 
 
+def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_section_done(
+    rf,
+):
+    """`section_recorded()` sits above `section_done()` and below the stash, so
+    it can read what was just recorded and cannot be pre-empted by an
+    application hook that obliterates, escapes or raises."""
+    from gandalf.runtime import BoundWizard
+    from gandalf.storage import SessionStorage
+
+    events = []
+
+    class _Recording(_SectionViewSet):
+        def section_recorded(self, bound_wizard, store, key):
+            events.append(("recorded", key, store.get_stash(key)["state"]))
+
+        def section_done(self, bound_wizard):
+            events.append(("done", self.get_section_key(), None))
+            return super().section_done(bound_wizard)
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+    view = _Recording()
+    view.setup(request)
+    bound_wizard = BoundWizard(request, SessionStorage(request))
+    bound_wizard.retrieve("run-1")
+
+    view.done(bound_wizard)
+
+    assert events == [
+        ("recorded", "contact", [{"step": {"name": "Ada"}}]),
+        ("done", "contact", None),
+    ]
+
+
+def test_bookkeeping_recorded_at_completion_can_still_read_the_runs_answers(rf):
+    """The window closes when `finish()` tombstones the run, which is why
+    anything that has to read the finished answers belongs here."""
+    from gandalf.storage import SessionStorage
+
+    seen = []
+
+    class _Recording(_SectionViewSet):
+        def section_recorded(self, bound_wizard, store, key):
+            seen.append(bound_wizard.get_state())
+
+    request = rf.get("/contact/run-1/")
+    request.session = _Session(
+        {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+    view = _Recording()
+    view.setup(request)
+    bound_wizard = _Recording.inspect(request, "run-1")
+
+    view.finish(bound_wizard)
+
+    assert seen == [[{"step": {"name": "Ada"}}]]
+    assert bound_wizard.is_complete
+    assert SessionStorage(request).get_state("run-1") == []
+
+
 def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
@@ -667,6 +780,69 @@ def test_an_unknown_section_is_sent_back_to_the_hub(rf):
     assert response["Location"] == "/readme/hub/"
 
 
+def test_a_row_can_point_at_something_that_is_not_a_wizard(rf):
+    """A collection page, a payment redirect, a page in another app. The door
+    exists to walk a run and pick a step; something with no run to walk has
+    nothing for it to do, so the row addresses it directly."""
+    request = rf.get("/readme/hub/")
+    request.session = _Session()
+    section = Section(
+        "guests",
+        url_name="readme-hub",
+        status=lambda request: COMPLETE,
+    )
+
+    assert _ReversingHub(request).get_section_url(section) == "/readme/hub/"
+
+
+def test_a_row_that_decides_its_own_status_is_not_derived_from_storage(rf):
+    """A collection is Complete when the *user* said there was nothing more
+    to add — no reading of storage under one key can tell a hub that."""
+
+    class _Linked(_ReversingHub):
+        sections = [
+            Section("guests", url_name="readme-hub", status=lambda request: COMPLETE)
+        ]
+
+    request = rf.get("/readme/hub/")
+    request.session = _Session()
+
+    (row,) = _Linked(request).get_section_rows()
+
+    assert row.status == COMPLETE
+    assert row.status_label == "Complete"
+    assert row.url == "/readme/hub/"
+
+
+def test_a_row_pointing_at_a_non_wizard_must_say_where_and_how_far(rf):
+    """Without the first the hub builds a door it cannot open; without the
+    second it derives a status from a stash key nothing writes."""
+
+    class _Underspecified(_ReversingHub):
+        sections = [Section("guests", url_name="readme-hub")]
+
+    request = rf.get("/readme/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="url_name and status"):
+        _Underspecified(request).get_section_rows()
+
+
+def test_the_door_refuses_a_section_it_cannot_walk(rf):
+    """Rows never point there, so arriving is a hand-typed or stale URL."""
+
+    class _Linked(_ReversingHub):
+        sections = [
+            Section("guests", url_name="readme-hub", status=lambda request: COMPLETE)
+        ]
+
+    request = rf.get("/readme/hub/guests/")
+    request.session = _Session()
+    page = _Linked(request)
+
+    assert page.enter(page.get_section("guests")) is None
+
+
 def test_a_hub_without_a_section_url_name_is_misconfigured(rf):
     class _Nameless(_ReversingHub):
         section_url_name = None
@@ -721,6 +897,28 @@ def test_the_door_redirects_into_the_section_it_names(rf):
 
     assert response.status_code == 302
     assert "/readme/hub-contact/" in response["Location"]
+
+
+def test_the_door_sends_a_section_it_cannot_walk_back_to_the_hub(rf):
+    """A row that is not a wizard links past the door anyway — so arriving
+    here is a hand-typed or stale URL."""
+    from gandalf.sections import HubView
+
+    class _Linked(HubView):
+        template_name = "testapp/hub.html"
+        url_name = "readme-hub"
+        section_url_name = "readme-hub-section"
+        sections = [
+            Section("elsewhere", url_name="readme-hub", status=lambda r: COMPLETE)
+        ]
+
+    request = rf.get("/readme/hub/elsewhere/")
+    request.session = _Session()
+
+    response = _Linked.as_view()(request, section="elsewhere")
+
+    assert response.status_code == 302
+    assert response["Location"] == "/readme/hub/"
 
 
 def test_the_door_sends_an_unknown_section_back_to_the_hub(rf):

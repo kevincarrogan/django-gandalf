@@ -21,6 +21,7 @@ defaults suit a plain task list; override what your domain needs.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -98,16 +99,32 @@ class Section:
     this section's wizard is mounted under (a tenant slug, a plan), forwarded
     into every URL the hub builds for it — the section's own, not the hub's,
     since the two can be mounted separately.
+
+    A section need not be a wizard at all. Leave `viewset` out and supply
+    `url_name` and `status` instead, and the row becomes a link to somewhere
+    the hub does not run: a collection page, a payment redirect, a page in
+    another app. Both are required together — without the first the hub builds
+    a door it cannot open, and without the second it derives a status from a
+    stash key nothing writes.
     """
 
     key: str
-    viewset: type[WizardViewSet]
+    viewset: type[WizardViewSet] | None = None
     title: StrOrPromise | None = None
     label: str | None = None
     reopen_step: str | None = None
     # Excluded from comparison so a mutable default cannot make a frozen
     # section unhashable — the same escape `SummaryField.bound_field` takes.
     url_kwargs: dict[str, Any] = dataclass_field(default_factory=dict, compare=False)
+    #: Where this row links, instead of the hub's own door. The door exists to
+    #: walk a run and pick a step; something with no run to walk has nothing
+    #: for it to do, so the row addresses it directly.
+    url_name: str | None = None
+    #: What decides this section's status when the hub cannot. Called with the
+    #: request. Excluded from comparison for the same reason as `url_kwargs`.
+    status: Callable[[HttpRequest], str] | None = dataclass_field(
+        default=None, compare=False
+    )
 
     @property
     def stash_label(self) -> str:
@@ -176,10 +193,21 @@ class SectionMixin(_SectionMixinBase):
     section_label: str | None = None
     section_store_class = SessionSectionStore
     hub_url_name: str | None = None
+    #: Whether this section's key is only knowable per request — one wizard
+    #: mounted per item of a collection, keyed off a URL kwarg. Such a section
+    #: overrides `get_section_key()` and declares no `section_key`, so the
+    #: usual "set the class attribute" advice would be wrong for it.
+    dynamic_section_key: bool = False
 
     def get_section_key(self) -> str:
         if self.section_key is None:
             name = self.__class__.__name__
+            if self.dynamic_section_key:
+                raise ImproperlyConfigured(
+                    f"{name} declares dynamic_section_key but derives no key. "
+                    f"Override {name}.get_section_key() to build one from the "
+                    f"request — a URL kwarg, the user, the tenant."
+                )
             raise ImproperlyConfigured(
                 f"{name} has no section to register as finished. Set "
                 f"{name}.section_key to the key its hub declares it under."
@@ -215,17 +243,39 @@ class SectionMixin(_SectionMixinBase):
         The stash is taken first because it can only be taken at all while the
         run's state is readable — completion tears that down after `done()`
         returns (see `WizardViewSet.finish`), but a `section_done()` that
-        obliterates or escapes would get there first. The run id is cleared
-        after `section_done()` returns, mirroring `finish`'s own ordering: a
+        obliterates or escapes would get there first. `section_recorded()`
+        shares that window, for the same reason. The run id is cleared after
+        `section_done()` returns, mirroring `finish`'s own ordering: a
         `section_done()` that raises leaves the section resumable rather than
         stranded with a stash and no way back to the run that made it.
         """
         key = self.get_section_key()
         store = self.get_section_store()
         store.put_stash(key, bound_wizard.stash(label=self.get_section_label()))
+        self.section_recorded(bound_wizard, store, key)
         response = self.section_done(bound_wizard)
         store.clear_run(key)
         return response
+
+    def section_recorded(
+        self, bound_wizard: BoundWizard, store: SessionSectionStore, key: str
+    ) -> None:
+        """Bookkeeping to record alongside the stash, inside the window where
+        the run's answers are still readable.
+
+        Sits where it does for the same reason the stash does: completion
+        tears the run's state down after `done()` returns, and a
+        `section_done()` that obliterates or escapes gets there first — so
+        anything that has to *read* the finished run belongs above it. A plain
+        section records nothing here; a collection's item caches its title,
+        because working one out means reading `bound_wizard.path` and there is
+        no later moment at which that is possible.
+
+        Not for application work. That is `section_done()`, which runs once
+        per edit and is allowed to fail; this is the library's own half of the
+        same ordering, and a hub whose bookkeeping raised here would leave a
+        stash it could not describe.
+        """
 
     def section_done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """What this section does when it finishes, beyond being recorded.
@@ -290,6 +340,20 @@ class HubMixin(_HubMixinBase):
                 "Hub section keys must be unique; a key has to name exactly "
                 f"one section. Duplicated: {', '.join(duplicates)}."
             )
+        unreachable = [
+            section.key
+            for section in sections
+            if section.viewset is None
+            and (section.url_name is None or section.status is None)
+        ]
+        if unreachable:
+            raise ImproperlyConfigured(
+                "A hub section that is not a wizard must declare both "
+                "url_name and status: without the first the hub builds a door "
+                "it cannot open, and without the second it derives a status "
+                f"from a stash key nothing writes. Underspecified: "
+                f"{', '.join(sorted(unreachable))}."
+            )
         drifted = [
             section
             for section in sections
@@ -318,6 +382,15 @@ class HubMixin(_HubMixinBase):
 
     def get_section_store(self) -> SessionSectionStore:
         return self.section_store_class(self.request)
+
+    def section_viewset(self, section: Section) -> type[WizardViewSet]:
+        """The wizard behind a section, for the four places that run one.
+
+        A section with no viewset supplies its own status and is turned away
+        at the door, so none of those four can be reached with one — see
+        `_validate_sections()` and `enter()`.
+        """
+        return cast("type[WizardViewSet]", section.viewset)
 
     # --- the page ----------------------------------------------------------
 
@@ -359,7 +432,13 @@ class HubMixin(_HubMixinBase):
         per answered step per row, and the answer would not change the row —
         an answer that no longer validates leaves the section in progress just
         as surely as one that does.
+
+        A section carrying its own `status` answers for itself and none of
+        this runs, which is the only way a row can report something no stash
+        key can express.
         """
+        if section.status is not None:
+            return section.status(self.request)
         if store.has_stash(section.key):
             return COMPLETE
         if self.get_section_state(section, store):
@@ -381,7 +460,7 @@ class HubMixin(_HubMixinBase):
         run_id = store.get_run(section.key)
         if run_id is None:
             return []
-        storage = section.viewset.storage_class(self.request)
+        storage = self.section_viewset(section).storage_class(self.request)
         try:
             return storage.get_state(run_id)
         except RunNotFound:
@@ -411,7 +490,16 @@ class HubMixin(_HubMixinBase):
         halfway through — or the bare run URL, which fires `done()` on a GET
         the moment every stored answer validates. The door is the one place
         that can afford to ask.
+
+        The one exception is a section that is not a wizard. It declares its
+        own `url_name`, and the row goes straight there: there is no run to
+        walk, so the door would have nothing to decide.
         """
+        if section.url_name is not None:
+            return reverse(
+                section.url_name,
+                kwargs={**self.get_section_url_kwargs(), **section.url_kwargs},
+            )
         if self.section_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -459,7 +547,13 @@ class HubMixin(_HubMixinBase):
         Entering is dispatch, not display: it asks what exists rather than
         what the row rendered. Every arm ends at `entry_url()`, so no path
         here can emit a bare run URL.
+
+        A section that is not a wizard has no run to enter, and its row links
+        past the door anyway — so arriving here at all is a hand-typed or
+        stale URL, and it is refused rather than guessed at.
         """
+        if section.viewset is None:
+            return None
         store = self.get_section_store()
         # Resume before reopen. Reversed, a completed section under edit
         # would resurrect a second run on every click and the user's
@@ -495,7 +589,7 @@ class HubMixin(_HubMixinBase):
         if run_id is None:
             return None
         try:
-            bound_wizard = section.viewset.inspect(
+            bound_wizard = self.section_viewset(section).inspect(
                 self.request, run_id, **section.url_kwargs
             )
         except RunNotFound:
@@ -514,7 +608,7 @@ class HubMixin(_HubMixinBase):
             payload = store.get_stash(section.key)
         except StashNotFound:
             return None
-        return section.viewset.reopen(
+        return self.section_viewset(section).reopen(
             self.request,
             payload,
             expected_label=section.stash_label,
@@ -523,7 +617,7 @@ class HubMixin(_HubMixinBase):
 
     def start_section(self, section: Section) -> BoundWizard:
         """A brand-new run for a section with nothing behind it."""
-        return section.viewset.begin(self.request, **section.url_kwargs)
+        return self.section_viewset(section).begin(self.request, **section.url_kwargs)
 
     def stash_unusable(self, section: Section, error: InvalidStash) -> str | None:
         """What to do with a stash that cannot seed a run — a payload whose
@@ -590,5 +684,9 @@ class HubView(HubMixin, TemplateView):
             section = self.get_section(key)
         except SectionNotFound:
             return self.section_unavailable(key)
-        # The section's own viewset is the reverser, so entering yields a URL.
-        return redirect(cast(str, self.enter(section)))
+        url = self.enter(section)
+        if url is None:
+            # Nothing to walk — a section that is not a wizard, or a
+            # `stash_unusable()` that declined to name a destination.
+            return self.section_unavailable(key)
+        return redirect(url)
