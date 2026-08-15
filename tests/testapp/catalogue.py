@@ -89,7 +89,8 @@ GROUPS = (
             Example("readme-file-upload"),
             Example("readme-form-view"),
             Example(
-                "readme-escape", note="Answer ada@example.com to trigger the escape."
+                "readme-escape",
+                note="Answer existing@example.com to trigger the escape.",
             ),
             Example("readme-editing"),
             Example(
@@ -244,7 +245,7 @@ GROUPS = (
         (
             Example(
                 "escape-park-wizard",
-                note="Answer ada@example.com — a known address parks the run.",
+                note="Answer existing@example.com — a known address parks the run.",
             ),
             Example("mid-flow-escape-park-wizard", note="Parks from the second step."),
             Example("escape-park-file-wizard", note="Parks after an upload."),
