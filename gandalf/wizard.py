@@ -223,6 +223,21 @@ class Wizard:
         `StepNameRouter` reads — and any other key is matched the same way by
         `find_step()` / `filter_steps()`.
         """
+        if "context" in context:
+            # Up to 0.9 the context was passed as `context={...}`. Under
+            # keywords that spelling is not an error — it declares a step
+            # whose context has one key, called "context" — so the answers
+            # are still stored, the labels quietly vanish, and the step is
+            # unroutable. It cost this project two silent breakages before
+            # it was worth refusing outright.
+            raise ImproperlyConfigured(
+                "Keyword arguments are the step's context, so context= is "
+                "no longer how to pass one: .step(Form, context={'name': "
+                "'email'}) declares a step whose context is {'context': "
+                "{'name': 'email'}}, which routes nowhere and labels "
+                "nothing. Spell the keys out instead — "
+                ".step(Form, name='email')."
+            )
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(

@@ -3880,3 +3880,19 @@ def test_a_wizard_marks_where_it_grows_from_an_answer():
     )
 
     assert [entry["kind"] for entry in wizard.outline()] == ["step", "expand", "step"]
+
+
+def test_the_old_context_keyword_is_refused_rather_than_misread():
+    """Up to 0.9 a step's context was passed as `context={...}`. Under
+    keywords that spelling is not an error but a step whose context has one
+    key called "context": the answers still store, the labels vanish and
+    the step routes nowhere. Refusing it is the only way an upgrade can
+    tell you."""
+    with pytest.raises(ImproperlyConfigured, match="context="):
+        Wizard().step(FirstStepForm, context={"name": "first"})
+
+
+def test_a_step_can_still_be_given_any_other_context_key():
+    wizard = Wizard().step(FirstStepForm, name="first", label="Your name")
+
+    assert wizard.tree.context == {"name": "first", "label": "Your name"}
