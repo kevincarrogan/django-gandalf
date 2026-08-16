@@ -922,6 +922,17 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
         return _string_schema(field, format="email"), None
     if isinstance(field, forms.CharField):
         return _string_schema(field), None
+    # `ImageField` and friends subclass this, so the whole family is caught.
+    if isinstance(field, forms.FileField):
+        # Said explicitly because the generic note below is actively wrong
+        # here: a file is the one answer that cannot travel in a
+        # submission, so telling a caller to send its raw value sends it
+        # to the one door that refuses it.
+        return {"type": "string"}, (
+            "This field takes an uploaded file. A file cannot be sent as "
+            "part of a submission — supply it alongside one, keyed by this "
+            "field name."
+        )
     return {"type": "string"}, (
         f"{type(field).__name__} is not supported by the schema mapping; "
         "submit its raw form value."
