@@ -65,14 +65,15 @@ four fields printed on the card, and stops — because a misread character
 looks exactly like a correctly read one, and only you can tell.
 
 There are four ways to hand over the picture and they all end up in the
-same place. The button takes a photo and sends it immediately — it keeps
-`capture`, which opens the camera rather than a picker and is the
-difference between one tap and three. The chat itself takes a drag, a
-paste, or its own attach button, all of which come from CopilotKit: set
-`attachments={{ enabled: true }}` on `CopilotChat` and it handles the drop
-zone, scoped paste, thumbnails and a 20MB size check, then sends the file
-as an AG-UI `InputContentDataSource` — the same part the Django side reads
-either way.
+same place, though they do not all send at the same moment. The button takes a photo and sends it immediately — it keeps `capture`,
+which opens the camera rather than a picker and is the difference between
+one tap and three. The chat itself takes a drag, a paste, or its own
+attach button; those attach to the composer and go when you press send,
+which is what you want when you have something to say with the picture.
+All three come from CopilotKit: set `attachments={{ enabled: true }}` on
+`CopilotChat` and it handles the drop zone, scoped paste, thumbnails and a
+20MB size check, then sends the file as an AG-UI `InputContentDataSource`
+— the same part the Django side reads either way.
 
 Best seen from a phone, where the button opens the camera. Point the Vite
 dev server at your machine's address on the network to reach it from one.

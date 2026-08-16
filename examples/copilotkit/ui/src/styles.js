@@ -27,9 +27,6 @@ export const styles = {
     borderLeft: "1px solid #e2e5ea",
     borderRight: "1px solid #e2e5ea",
   },
-  // Only while a file is over the page, so there is no permanent box
-  // taking up room for something that happens once.
-  dragging: { outline: "3px dashed #2f5d8c", outlineOffset: "-6px" },
   muted: { color: "#697386" },
   card: {
     background: "#fff",
