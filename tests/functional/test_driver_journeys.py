@@ -8,25 +8,22 @@ what it says they do.
 
 import pytest
 
-from gandalf.driver import ConfirmationRequired, EditRefused, RunDriver
+from gandalf.driver import ConfirmationRequired, RunDriver
 from tests.testapp.readme_examples import (
     BranchingWizardViewSet,
     SignupWizardViewSet,
 )
 
 
-def _unattended(viewset_class):
-    """The same wizard, permitting completion without a person.
+def _is_the_drivers_own(driver, step):
+    """Whether this driver placed the answer at `step` itself.
 
-    Driving a run to `done()` is the unattended path by definition, so
-    these tests have to say so — which is the API working, not a wart.
+    The application's half of an edit policy, written on metadata alone.
+    Nothing in the library refuses an edit — who owns an answer is a
+    question about a domain rather than about wizards — so a caller that
+    cares asks before it submits. This is the whole recipe.
     """
-
-    return type(
-        f"Unattended{viewset_class.__name__}",
-        (viewset_class,),
-        {"may_finish_unattended": lambda self, bound_wizard: True},
-    )
+    return bool(driver.metadata().get(step, {}).get("unattended"))
 
 
 def test_a_wizard_that_says_nothing_will_not_be_finished_without_a_person():
@@ -55,7 +52,7 @@ def test_what_was_recorded_about_a_placement_survives_a_stash(tmp_path):
 
 
 def test_an_agent_drives_the_signup_wizard_to_done():
-    driver = RunDriver.begin(_unattended(SignupWizardViewSet))
+    driver = RunDriver.begin(SignupWizardViewSet, may_finish=True)
 
     assert driver.describe().step == "name"
     driver.submit({"name": "Ada"})
@@ -66,7 +63,7 @@ def test_an_agent_drives_the_signup_wizard_to_done():
 
 
 def test_an_agent_sees_validation_errors_and_recovers():
-    driver = RunDriver.begin(_unattended(SignupWizardViewSet))
+    driver = RunDriver.begin(SignupWizardViewSet, may_finish=True)
     driver.submit({"name": "Ada"})
 
     rejected = driver.submit({"email": "not-an-email"})
@@ -82,7 +79,7 @@ def test_an_earlier_answer_can_be_corrected_and_the_walk_re_routes():
     which is what makes the retry loop work, since correcting a rejected
     answer is itself an edit. Flipping the answer that chose the arm sends
     the run down the other one."""
-    driver = RunDriver.begin(_unattended(BranchingWizardViewSet))
+    driver = RunDriver.begin(BranchingWizardViewSet, may_finish=True)
     driver.submit({"account_type": "business"})
 
     driver.submit({"account_type": "personal"}, step="account_type")
@@ -90,23 +87,25 @@ def test_an_earlier_answer_can_be_corrected_and_the_walk_re_routes():
     assert driver.describe().step == "personal"
 
 
-class _WhatAPersonAnsweredIsTheirs(SignupWizardViewSet):
-    """The README's `may_edit_step` example, run for real.
+def test_a_driver_can_tell_its_own_answers_from_a_persons():
+    """What the metadata is for. The driver marks its own placements, so a
+    caller holding both kinds can tell them apart — which is what any
+    "leave their answers alone" rule needs and could not have without it."""
+    driver = RunDriver.begin(SignupWizardViewSet)
+    driver.submit({"name": "Ada"})
 
-    Whatever a person answered is theirs, whole; the driver may still
-    correct answers it placed itself.
-    """
+    assert _is_the_drivers_own(driver, "name")
 
-    def may_edit_step(self, bound_wizard, step, submission):
-        current = bound_wizard.path.find_step(name=step.context["name"])
-        return bool((current.metadata or {}).get("unattended"))
+    driver.submit({"name": "Grace"}, step="name", metadata={"placed_by": "person"})
+
+    assert not _is_the_drivers_own(driver, "name")
 
 
-def test_the_driver_may_correct_the_answers_it_placed_itself():
-    """Required, not merely convenient: recovering from a rejected answer
-    means replacing it, so a policy that refused every edit would break the
-    retry loop it was never aimed at."""
-    driver = RunDriver.begin(_WhatAPersonAnsweredIsTheirs)
+def test_correcting_its_own_earlier_answer_is_never_refused():
+    """Required rather than merely convenient: recovering from a rejected
+    answer means replacing it, so a policy that refused every edit would
+    break the retry loop it was never aimed at."""
+    driver = RunDriver.begin(SignupWizardViewSet)
     driver.submit({"name": "Ada"})
 
     result = driver.submit({"name": "Grace"}, step="name")
@@ -115,18 +114,8 @@ def test_the_driver_may_correct_the_answers_it_placed_itself():
     assert driver.answers()["name"] == {"name": "Grace"}
 
 
-def test_the_driver_may_not_overwrite_what_a_person_answered():
-    driver = RunDriver.begin(_WhatAPersonAnsweredIsTheirs)
-    driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
-
-    with pytest.raises(EditRefused):
-        driver.submit({"name": "Grace"}, step="name")
-
-    assert driver.answers()["name"] == {"name": "Ada"}
-
-
 def test_an_agent_drives_the_branching_wizard_down_the_business_arm():
-    driver = RunDriver.begin(_unattended(BranchingWizardViewSet))
+    driver = RunDriver.begin(BranchingWizardViewSet, may_finish=True)
 
     driver.submit({"account_type": "business"})
 

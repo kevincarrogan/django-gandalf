@@ -47,7 +47,6 @@ __all__ = [
     "RunDriver",
     "RunIncomplete",
     "ConfirmationRequired",
-    "EditRefused",
     "StepDescription",
     "SubmitResult",
     "fabricate_request",
@@ -70,21 +69,9 @@ class RunIncomplete(Exception):
     a step — `done()` must not fire until every answer holds."""
 
 
-class EditRefused(Exception):
-    """Raised when a driver would replace an answer the wizard will not let
-    it replace — see `WizardViewSet.may_edit_step`."""
-
-
 class ConfirmationRequired(Exception):
-    """Raised when `finish()` is called on a wizard that has not agreed to
-    be finished by anything but a person.
-
-    A driver is the unattended path by definition: somebody clicking
-    Confirm arrives through the viewset's own dispatch, so this refuses
-    nothing a human does. Say `may_finish_unattended` on the viewset to
-    permit it — and consider *when* the permission is given, because
-    agreement collected before the answers exist is not agreement about
-    the answers."""
+    """Raised by `finish()` on a driver that was not told it may conclude a
+    run — see `RunDriver.may_finish`."""
 
 
 class _MemorySession(dict):  # type: ignore[type-arg]
@@ -203,16 +190,26 @@ class RunDriver:
     the same walk decides them.
     """
 
+    #: Whether this driver may fire `done()`. False by default, so
+    #: `finish()` raises `ConfirmationRequired` until a caller says
+    #: otherwise — see `finish()`. Set it per driver (`may_finish=True`) or
+    #: on a subclass.
+    may_finish: bool = False
+
     def __init__(
         self,
         view: WizardViewSet,
         bound_wizard: BoundWizard,
         url_kwargs: dict[str, Any] | None = None,
+        *,
+        may_finish: bool | None = None,
     ) -> None:
         self.view = view
         self.bound_wizard = bound_wizard
         self._url_kwargs = url_kwargs if url_kwargs is not None else {}
         self._last_errors: Errors = {}
+        if may_finish is not None:
+            self.may_finish = may_finish
 
     @classmethod
     def begin(
@@ -220,6 +217,7 @@ class RunDriver:
         viewset_class: type[WizardViewSet],
         *,
         request: HttpRequest | None = None,
+        may_finish: bool | None = None,
         **url_kwargs: Any,
     ) -> RunDriver:
         """A driver over a fresh run of `viewset_class`'s wizard."""
@@ -228,7 +226,7 @@ class RunDriver:
         view = viewset_class()
         view.setup(request, **url_kwargs)
         bound_wizard = viewset_class.begin(request, **url_kwargs)
-        return cls(view, bound_wizard, url_kwargs)
+        return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
 
     @classmethod
     def resume(
@@ -237,6 +235,7 @@ class RunDriver:
         run_id: str,
         *,
         request: HttpRequest | None = None,
+        may_finish: bool | None = None,
         **url_kwargs: Any,
     ) -> RunDriver:
         """A driver over an existing run. Raises `RunNotFound` for a run the
@@ -247,7 +246,7 @@ class RunDriver:
         view = viewset_class()
         view.setup(request, **url_kwargs)
         bound_wizard = viewset_class.inspect(request, run_id, **url_kwargs)
-        return cls(view, bound_wizard, url_kwargs)
+        return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
 
     @property
     def run_id(self) -> str:
@@ -286,25 +285,6 @@ class RunDriver:
     #: says otherwise. A driver is not a person, and the answers alone
     #: cannot say so.
     default_metadata: ClassVar[Metadata] = {"unattended": True}
-
-    def _check_may_edit(
-        self, name: str, declaration: tree.Step, submission: Submission
-    ) -> None:
-        """Ask the wizard before replacing an answer that already exists.
-
-        Only an existing answer is in question: filling a blank step is not
-        an edit, and there is nothing to overwrite.
-        """
-        current = next(
-            (step for step in self.bound_wizard.path if step.name == name), None
-        )
-        if current is None or current.data is None:
-            return
-        if not self.view.may_edit_step(self.bound_wizard, declaration, submission):
-            raise EditRefused(
-                f"The answer stored at step {name!r} may not be replaced by "
-                "an unattended caller."
-            )
 
     def metadata(self) -> dict[str, Metadata]:
         """What each answered step's placement recorded about itself, keyed
@@ -354,8 +334,6 @@ class RunDriver:
             declaration = self._declaration(step)
             claim = {"name": step}
         submission = self._prefixed(declaration, data)
-        if step is not None:
-            self._check_may_edit(step, cast(tree.Step, declaration), submission)
         walk = bound_wizard.walk(
             claim=claim,
             submission=submission,
@@ -543,17 +521,34 @@ class RunDriver:
 
     def finish(self) -> HttpResponseBase:
         """Fire `done()` and retire the run — `WizardViewSet.finish()`,
-        guarded: a run whose cursor still sits at a step refuses."""
+        guarded twice: a run whose cursor still sits at a step refuses, and
+        so does a driver that was not told it may conclude one.
+
+        `done()` is where the irreversible things live, and a driver is the
+        unattended path by definition — somebody clicking Confirm reaches
+        `finish()` through the viewset's own dispatch, never through here.
+        So concluding a run is opt-in, per driver:
+
+            RunDriver.begin(QuoteViewSet, may_finish=True)
+
+        It is a plain flag rather than anything cleverer because the
+        interesting question is *when* it should be true, not how to spell
+        it, and that answer belongs to the caller. Agreement collected
+        before the answers exist is not agreement about the answers, so a
+        caller that means "once somebody has seen these" should construct
+        the driver at the point it knows that, rather than teaching the
+        library the rule.
+        """
         cursor = self.bound_wizard.cursor()
         if cursor.node is not None:
             raise RunIncomplete(
                 f"The run is still at step {_step_name(cursor.node)!r}."
             )
-        if not self.view.may_finish_unattended(self.bound_wizard):
+        if not self.may_finish:
             raise ConfirmationRequired(
-                f"{type(self.view).__name__} does not allow its runs to be "
-                "finished unattended; hand the run back so a person can "
-                "confirm it, or say may_finish_unattended on the viewset."
+                "This driver may not conclude a run; hand it back so a "
+                "person can confirm it, or construct the driver with "
+                "may_finish=True."
             )
         return self.view.finish(self.bound_wizard)
 

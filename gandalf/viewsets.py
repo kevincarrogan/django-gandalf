@@ -543,56 +543,6 @@ class WizardViewSet(View):
             },
         )
 
-    def may_edit_step(
-        self,
-        bound_wizard: BoundWizard,
-        step: tree.Step,
-        submission: Submission,
-    ) -> bool:
-        """Whether an unattended caller may replace this step's answer.
-
-        Asked only when a driver edits a step that already has one, and
-        permissive by default: filling a blank step is never in question,
-        and an agent correcting its own earlier answer is how it recovers
-        from a rejected one.
-
-        The case worth refusing is narrower — overwriting an answer a
-        *person* gave. `submission` is what would be stored, and the run's
-        current answer and the metadata recorded with it are both on the
-        path, so an application can compare the two and refuse only the
-        fields that matter:
-
-            def may_edit_step(self, bound_wizard, step, submission):
-                current = bound_wizard.path.find_step(name=step.context["name"])
-                if (current.metadata or {}).get("unattended"):
-                    return True  # its own answer to correct
-                return not any(
-                    submission.get(field) != value
-                    for field, value in (current.data or {}).items()
-                )
-        """
-        return True
-
-    def may_finish_unattended(self, bound_wizard: BoundWizard) -> bool:
-        """Whether something other than a person may fire `done()`.
-
-        A person confirming reaches `finish()` through this viewset's own
-        dispatch; `RunDriver` is what everything else holds. So this is
-        asked only of the unattended path, and answering False — the
-        default — costs a browser nothing.
-
-        It is a method rather than a flag so the answer can depend on the
-        run. "Only once the answers have been shown to somebody and agreed
-        to" is a sentence about *when*, and consent collected before the
-        answers exist is not consent about the answers:
-
-            def may_finish_unattended(self, bound_wizard):
-                return Review.objects.filter(
-                    run_id=bound_wizard.run_id, agreed=True
-                ).exists()
-        """
-        return False
-
     def finish(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """Complete the run: `done()` fires once, then the run is tombstoned
         so nothing can fire it again.

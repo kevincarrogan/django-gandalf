@@ -60,7 +60,11 @@ def run_driven(benchmark):
         driver = _timed(
             records,
             "begin",
-            lambda: RunDriver.begin(benchmark.viewset_class, request=request),
+            # The whole fill is measured, `done()` included, so this driver
+            # is one that may conclude a run.
+            lambda: RunDriver.begin(
+                benchmark.viewset_class, request=request, may_finish=True
+            ),
         )
         _timed(records, "check", lambda: driver.check(answers))
         _timed(records, "prefill", lambda: driver.prefill(answers))

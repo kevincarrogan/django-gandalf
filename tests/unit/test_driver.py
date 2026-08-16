@@ -14,7 +14,6 @@ from django.http import HttpResponse
 
 from gandalf.driver import (
     ConfirmationRequired,
-    EditRefused,
     RunDriver,
     RunComplete,
     RunIncomplete,
@@ -489,13 +488,6 @@ def test_a_value_no_encoder_can_render_is_refused_where_it_was_passed():
         driver.submit({**_BOOKING, "note": object()})
 
 
-class _UnattendedSignupViewSet(_SignupViewSet):
-    """Declares that something other than a person may finish its runs."""
-
-    def may_finish_unattended(self, bound_wizard):
-        return True
-
-
 # --- Step metadata -----------------------------------------------------
 
 
@@ -548,49 +540,7 @@ def test_a_step_answered_without_metadata_has_none():
     assert driver.metadata() == {}
 
 
-def test_a_wizard_can_refuse_to_have_an_answer_replaced():
-    class _Protective(_SignupViewSet):
-        def may_edit_step(self, bound_wizard, step, submission):
-            return False
-
-    driver = RunDriver.begin(_Protective)
-    driver.submit({"name": "Ada"})
-
-    with pytest.raises(EditRefused):
-        driver.submit({"name": "Grace"}, step="first")
-
-
-def test_filling_a_blank_step_is_never_an_edit():
-    """Nothing is being replaced, so nothing is asked. The permission is
-    about overwriting an answer, not about answering."""
-
-    class _Protective(_SignupViewSet):
-        def may_edit_step(self, bound_wizard, step, submission):
-            raise AssertionError("should not be asked")
-
-    driver = RunDriver.begin(_Protective)
-
-    assert driver.submit({"name": "Ada"}).status == "advanced"
-
-
-def test_the_wizard_is_told_which_step_and_what_would_replace_it():
-    """Enough to refuse a field rather than the whole answer: the demo
-    lets an agent change what it filled and not what a person did."""
-    asked = []
-
-    class _Watching(_SignupViewSet):
-        def may_edit_step(self, bound_wizard, step, submission):
-            asked.append((step.context["name"], submission))
-            return True
-
-    driver = RunDriver.begin(_Watching)
-    driver.submit({"name": "Ada"})
-    driver.submit({"name": "Grace"}, step="first")
-
-    assert asked == [("first", {"name": "Grace"})]
-
-
-def test_a_run_will_not_be_finished_unattended_unless_the_wizard_says_so():
+def test_a_run_will_not_be_finished_unless_the_driver_was_told_it_may():
     """The default. A driver is by definition not the person filling the
     form in, so `done()` firing from one has to be asked for."""
     driver = RunDriver.begin(_SignupViewSet)
@@ -601,41 +551,48 @@ def test_a_run_will_not_be_finished_unattended_unless_the_wizard_says_so():
         driver.finish()
 
 
-def test_a_wizard_can_permit_unattended_completion():
-    driver = RunDriver.begin(_UnattendedSignupViewSet)
+def test_a_caller_can_say_this_driver_may_conclude_a_run():
+    driver = RunDriver.begin(_SignupViewSet, may_finish=True)
     driver.submit({"name": "Ada"})
     driver.submit({"email": "ada@example.com"})
 
     assert driver.finish().content == b"agent done"
 
 
-def test_the_permission_is_asked_of_the_run_it_would_finish():
-    """A hook rather than a flag, so "only once somebody has reviewed it"
-    is expressible: the decision can read the run."""
-    seen = []
+def test_the_permission_belongs_to_the_driver_not_the_wizard():
+    """Two drivers over the same wizard, answering differently — which is
+    the point of moving it here. Whether a run may be concluded unattended
+    depends on what is holding it, not on what it is."""
 
-    class _Asks(_SignupViewSet):
-        def may_finish_unattended(self, bound_wizard):
-            seen.append(bound_wizard.run_id)
-            return True
+    def _filled(**kwargs):
+        driver = RunDriver.begin(_SignupViewSet, **kwargs)
+        driver.submit({"name": "Ada"})
+        driver.submit({"email": "ada@example.com"})
+        return driver
 
-    driver = RunDriver.begin(_Asks)
+    assert _filled(may_finish=True).finish().content == b"agent done"
+    with pytest.raises(ConfirmationRequired):
+        _filled().finish()
+
+
+def test_a_subclass_can_carry_the_permission():
+    """For a caller that is always allowed — an import command, say — so
+    every construction does not have to remember."""
+
+    class _Concluding(RunDriver):
+        may_finish = True
+
+    driver = _Concluding.begin(_SignupViewSet)
     driver.submit({"name": "Ada"})
     driver.submit({"email": "ada@example.com"})
-    driver.finish()
 
-    assert seen == [driver.run_id]
+    assert driver.finish().content == b"agent done"
 
 
 def test_an_unfinished_run_is_refused_before_permission_is_considered():
     """The more useful complaint wins: a run still at a step is refused for
     being unfinished, whether or not anything was allowed to finish it."""
-
-    class _Never(_SignupViewSet):
-        def may_finish_unattended(self, bound_wizard):
-            raise AssertionError("should not be asked")
-
-    driver = RunDriver.begin(_Never)
+    driver = RunDriver.begin(_SignupViewSet, may_finish=True)
     driver.submit({"name": "Ada"})
 
     with pytest.raises(RunIncomplete):
@@ -644,7 +601,7 @@ def test_an_unfinished_run_is_refused_before_permission_is_considered():
 
 def test_agent_driver_finish_fires_done_and_retires_the_run():
     request = fabricate_request()
-    driver = RunDriver.begin(_UnattendedSignupViewSet, request=request)
+    driver = RunDriver.begin(_SignupViewSet, request=request, may_finish=True)
     driver.submit({"name": "Ada"})
     driver.submit({"email": "ada@example.com"})
 
