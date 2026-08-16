@@ -5,7 +5,7 @@
         <div class="banner">
             <strong>You are editing one answer</strong>
             <p>
-                The rest of this quote stays exactly as it is. Save this step
+                The rest of your answers stay exactly as they are. Save this step
                 and you will be taken back to your answers.
             </p>
         </div>
@@ -14,7 +14,7 @@
         {% if request.wizard.back_url %}
             <p><a href="{{ request.wizard.back_url }}">Back</a></p>
         {% endif %}
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             {{ form.as_p }}
             <button type="submit">Save and continue</button>

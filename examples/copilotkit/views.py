@@ -8,20 +8,18 @@ once the stream has been watched and is gone.
 The response streams, so this must be served over ASGI (see `asgi.py`).
 """
 
+from functools import partial
+
 from django.shortcuts import render
 from django.utils import timezone
 
-from examples.copilotkit.agent import (
-    build_agent,
-    resolve_model,
-)
-from functools import partial
-
+from examples.copilotkit.agent import build_agent, resolve_model
 from examples.copilotkit.transcripts import record
-from examples.copilotkit.wizards import HybridQuoteViewSet
+from examples.copilotkit.wizards import HybridLicenceViewSet, HybridQuoteViewSet
 from gandalf.contrib.agent.agui import endpoint_for
 
 agent = build_agent(HybridQuoteViewSet, resolve_model())
+licence_agent = build_agent(HybridLicenceViewSet, resolve_model())
 
 
 def run_instructions(run_input):
@@ -54,10 +52,15 @@ def context_instructions(items):
 
 
 # The library serves the protocol; the demo supplies what is its own.
+# The attachments a chat carries are the library's business too — it
+# reads them off the same messages the model is about to be shown.
+_chat = partial(record, source="chat", model=resolve_model())
+
 agent_endpoint = endpoint_for(
-    agent,
-    instructions=run_instructions,
-    on_complete=partial(record, source="chat", model=resolve_model()),
+    agent, instructions=run_instructions, on_complete=_chat
+)
+licence_endpoint = endpoint_for(
+    licence_agent, instructions=run_instructions, on_complete=_chat
 )
 
 
