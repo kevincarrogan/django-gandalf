@@ -13,7 +13,9 @@ from http import HTTPStatus
 
 import pytest
 
+from gandalf.driver import RunDriver, fabricate_request
 from tests.testapp.counting import counting_walks
+from tests.testapp.views import WalkCountingWizardViewSet
 
 
 @pytest.fixture
@@ -73,6 +75,50 @@ def test_completing_one_step_costs_two_walks(run_at_third_step):
 
     assert counts.walks == 2
     assert counts.validations == 3 + 3
+
+
+# --- the driver's reads -----------------------------------------------------
+
+
+@pytest.fixture
+def driven_run():
+    """The same wizard filled from Python: `first` and `second` answered.
+
+    No HTTP here — a driver skips it deliberately — so these numbers are the
+    cost of reading a run rather than of serving a request.
+    """
+    driver = RunDriver.begin(WalkCountingWizardViewSet, request=fabricate_request())
+    driver.submit({"name": "Ada"})
+    driver.submit({"email": "ada@example.com"})
+    return driver
+
+
+def test_reading_the_answers_walks_once(driven_run):
+    """The floor for any read: one walk, re-proving each stored answer once.
+
+    Every driver read pays this, because a run lives in storage rather than
+    in the driver — there is no cached tree to read instead.
+    """
+    with counting_walks() as counts:
+        driven_run.answers()
+
+    assert counts.walks == 1
+    assert counts.validations == 2
+
+
+def test_describing_the_run_walks_twice(driven_run):
+    """Twice, for one question, and that is the bug.
+
+    `describe()` walks for the cursor, then reads the answers — which walks
+    again for the tree the cursor is already holding. The docstring on
+    `json_safe` exists to spare a caller exactly this second walk, so the
+    method is paying the cost it was written to save.
+    """
+    with counting_walks() as counts:
+        driven_run.describe()
+
+    assert counts.walks == 2
+    assert counts.validations == 2 + 2
 
 
 # --- a hub of sections ------------------------------------------------------
