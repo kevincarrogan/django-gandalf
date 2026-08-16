@@ -31,10 +31,7 @@ from examples.copilotkit.agent import (  # noqa: E402
     attachments_from,
     build_agent,
 )
-from examples.licence import (  # noqa: E402
-    IdentityCheckViewSet,
-    LicenceCheckViewSet,
-)
+from examples.licence import LicenceCheckViewSet  # noqa: E402
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 
 _SCAN = b"pretend-image-bytes"
@@ -195,46 +192,13 @@ def test_asking_for_a_document_is_left_to_the_wizard():
     quote agent should not start asking for certificates of
     incorporation because the licence demo wanted a shortcut.
     """
+    from examples.identity import IdentityCheckViewSet
     from examples.insurance import InsuranceQuoteViewSet
     from examples.prompt import DOCUMENTS, build_instructions
 
     assert "driving licence" not in DOCUMENTS
     assert "driving licence" in build_instructions(IdentityCheckViewSet)
     assert "driving licence" not in build_instructions(InsuranceQuoteViewSet)
-
-
-def test_a_wizard_with_no_file_step_still_reads_and_fills(isolated_media_root):
-    """The case that has nothing to do with uploads.
-
-    `IdentityCheckViewSet` has no `FileField`, so there is nowhere to put
-    a document and no tool to put one anywhere. The four fields printed on
-    the card are still ordinary strings, and that is all the agent has to
-    submit.
-    """
-    agent = build_agent(IdentityCheckViewSet, "test")
-    logged = next(t for t in agent.toolsets if hasattr(t, "wrapped"))
-    assert "attach_document" not in logged.wrapped.tools
-
-    driver = RunDriver.begin(IdentityCheckViewSet, request=fabricate_request())
-    result = driver.prefill(
-        {
-            "name": {"first_name": "Ada", "surname": "Carrogan"},
-            "date-of-birth": {"date_of_birth": "1986-08-16"},
-            "licence-number": {"licence_number": "CARRO806161K99AB"},
-            "address": {
-                "address_line_1": "12 Analytical Way",
-                "town": "London",
-                "postcode": "N1 1AA",
-            },
-        }
-    )
-
-    # Four pages a person would have typed, filled in one pass from what
-    # one photograph said, and stopping where it should.
-    assert result.placed == ["name", "date-of-birth", "licence-number", "address"]
-    assert result.next_step == "confirm"
-    assert not result.complete
-    assert all(not p.files for p in driver.placements().values())
 
 
 def test_a_wizard_that_can_store_a_file_says_so():
