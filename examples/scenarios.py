@@ -62,6 +62,11 @@ class Scenario:
     edit: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: What they say next, once they have changed it.
     follow_up: str = ""
+    #: Drop the run id before the follow-up, the way a page reload does.
+    #: The agent keeps the conversation and loses the handle to the run,
+    #: which is recoverable — every tool result carries the id — and is
+    #: not recovered by starting a fresh run over the top.
+    forget_run: bool = False
 
 
 SCENARIOS = [
@@ -171,6 +176,70 @@ SCENARIOS = [
         # to appear in what it says rather than in the answers.
         expect_answers={"coverage": {"excess": "250", "cover_types": ["property"]}},
         expect_mentions=("cyber",),
+        max_questions=1,
+    ),
+    Scenario(
+        name="asked for the link part way through",
+        prompt=(
+            "Quote please: property cover, £500 excess, starting 1 September "
+            "2026. Analytical Engines Ltd, limited company, AE123456, VAT "
+            "registered, founded 10 December 1837, 12 staff, no claims, "
+            "ada@analyticalengines.example."
+        ),
+        context=(PROFILE,),
+        # Not a request to weigh. It is their form, and an agent that keeps
+        # hold of it until it decides they are ready has the relationship
+        # backwards. Nothing here is complete, which is the point: the link
+        # used to be offered only at the end.
+        follow_up="Actually, just send me the link and I'll finish it myself.",
+        # A run URL, which is the only thing that could be one.
+        expect_mentions=("/quote/",),
+        max_questions=1,
+    ),
+    Scenario(
+        name="asked about an answer they changed themselves",
+        prompt=(
+            "Quote please: property cover, £500 excess, starting 1 September "
+            "2026. Analytical Engines Ltd, limited company, AE123456, VAT "
+            "registered, founded 10 December 1837, 12 staff, no claims, "
+            "ada@analyticalengines.example."
+        ),
+        context=(PROFILE,),
+        # They change it in the form, as the hybrid demo intends.
+        edit={
+            "coverage": {
+                "cover_types": ["property"],
+                "excess": "250",
+                "start_date": "2026-09-01",
+            }
+        },
+        # And then ask about the thing they just changed. The agent placed
+        # 500 and was told nothing since, so answering from memory gives
+        # the wrong number confidently — which is the failure this is here
+        # to catch. Getting it right means looking at the run again.
+        follow_up="What's my excess set to now?",
+        expect_answers={"coverage": {"excess": "250"}},
+        expect_mentions=("250",),
+        max_questions=1,
+    ),
+    Scenario(
+        name="the run id is lost between turns",
+        prompt=(
+            "Quote please: property cover, £500 excess, starting 1 September "
+            "2026. Analytical Engines Ltd, limited company, AE123456, VAT "
+            "registered, founded 10 December 1837, 12 staff, no claims, "
+            "ada@analyticalengines.example."
+        ),
+        context=(PROFILE,),
+        # What a page reload does: the client's state goes, and with it the
+        # run id the tools read. Everything the agent needs to recover is
+        # still in the conversation, because every tool result carries the
+        # id — so this measures whether it resumes or quietly starts again
+        # and abandons the run. A real person hit exactly this.
+        forget_run=True,
+        follow_up="Where had we got to?",
+        expect_answers={"coverage": {"excess": "500"}},
+        expect_mentions=("/quote/",),
         max_questions=1,
     ),
     Scenario(
