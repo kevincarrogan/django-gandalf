@@ -34,6 +34,18 @@ dependencies = [
   "django>=4.2,<6.1",
 ]
 
+# `gandalf.contrib.agent` only. The core stays on Django alone — a wizard
+# library should not make you install an AI SDK to render a form.
+#
+# No provider is named here on purpose. This brings the agent machinery
+# and the AG-UI transport; which model serves it is yours to choose:
+#
+#     pip install django-gandalf[agent] "pydantic-ai-slim[openai]"
+[project.optional-dependencies]
+agent = [
+  "pydantic-ai-slim[ag-ui]~=2.30",
+]
+
 [project.entry-points.pytest11]
 gandalf = "gandalf.pytest_plugin"
 
@@ -111,7 +123,20 @@ source = ["gandalf"]
 # the programmatic-driver API is measured (to 100%) by `just coverage-unit`
 # instead, and the functional suite proves it end-to-end over the README
 # wizards without re-proving every branch.
-omit = ["gandalf/pytest_plugin.py", "gandalf/driver.py"]
+# `gandalf.contrib.agent` follows driver.py's arrangement for the same
+# reason: its toolset, prompt and profile are pure Python over the driver
+# and are measured (to 100%) by `just coverage-unit`. Its `agui` module is
+# the exception and is *not* omitted here — an endpoint that streams over
+# ASGI can only honestly be covered by a real request, which is this
+# suite's job.
+omit = [
+  "gandalf/pytest_plugin.py",
+  "gandalf/driver.py",
+  "gandalf/contrib/agent/deps.py",
+  "gandalf/contrib/agent/profile.py",
+  "gandalf/contrib/agent/prompt.py",
+  "gandalf/contrib/agent/toolset.py",
+]
 
 [tool.coverage.report]
 fail_under = 100
