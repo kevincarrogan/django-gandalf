@@ -197,12 +197,48 @@ def test_help_text_and_choice_legend_share_the_description():
 
 
 def test_unsupported_field_falls_back_to_string_with_a_note():
+    schema = field_json_schema(forms.SplitDateTimeField(label="When"))
+
+    assert schema["type"] == "string"
+    assert schema["title"] == "When"
+    assert "SplitDateTimeField" in schema["description"]
+    assert "not supported" in schema["description"]
+
+
+def test_a_file_field_says_a_file_does_not_go_in_the_submission():
+    """The generic note would be worse than nothing here.
+
+    A file is the one answer that cannot travel in `data` — `submit()`
+    raises on it — so "submit its raw form value" points whatever is
+    reading this at the single door that refuses it.
+    """
     schema = field_json_schema(forms.FileField(label="Photo"))
 
     assert schema["type"] == "string"
     assert schema["title"] == "Photo"
-    assert "FileField" in schema["description"]
-    assert "not supported" in schema["description"]
+    assert "uploaded file" in schema["description"]
+    assert "cannot be sent" in schema["description"]
+    assert "not supported" not in schema["description"]
+
+
+def test_an_image_field_is_described_as_a_file_too():
+    """`ImageField` subclasses `FileField`, and a caller reading the note
+    needs the same answer for both."""
+    schema = field_json_schema(forms.ImageField())
+
+    assert "uploaded file" in schema["description"]
+
+
+def test_a_file_fields_own_help_text_survives_the_note():
+    """The note is appended to what the field says about itself, not
+    substituted for it — the help text is where a wizard explains which
+    document it wants."""
+    field = forms.FileField(help_text="The front of the card.")
+
+    description = field_json_schema(field)["description"]
+
+    assert description.startswith("The front of the card.")
+    assert "uploaded file" in description
 
 
 # --- The driver --------------------------------------------------------------
