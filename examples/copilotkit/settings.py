@@ -16,6 +16,14 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
+# A chat message carrying a photograph is one JSON body, and base64 makes
+# it a third bigger again. The browser shrinks a picture before sending it
+# (see `PhotoDemo.jsx`), which is what keeps this from mattering — but the
+# body also carries the conversation so far, images included, so a long
+# chat grows past Django's 2.5MB default without any single photo being
+# large. Matched to CopilotKit's own 20MB attachment ceiling.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",

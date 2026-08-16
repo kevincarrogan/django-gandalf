@@ -8,6 +8,14 @@ export default function Licence() {
       url="/licence-agent/"
       title="Driving licence check"
       prompt="Here is a photo of my driving licence. Please fill in the check."
+      greeting={[
+        "I can check a driving licence for you. Send me a photo of the front",
+        "of the card and I'll keep it with your check, read the details off",
+        "it, and hand it back for you to confirm.",
+      ].join(" ")}
+      labels={{
+        chatInputPlaceholder: "Send a photo of your licence, or type a message…",
+      }}
       blurb={
         "Photograph the front of the card. The agent attaches the picture to " +
         "the run, reads the details off it and fills them in; you check them " +

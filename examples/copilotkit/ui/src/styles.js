@@ -17,6 +17,19 @@ export const styles = {
     borderRight: "1px solid #e2e5ea",
   },
   chat: { height: "100vh", overflow: "hidden" },
+  // A chat reads badly the full width of a monitor — the eye loses the
+  // line. Centred in whatever column it is given, so the same style works
+  // beside the run panel and on its own.
+  chatAlone: {
+    maxWidth: "620px",
+    width: "100%",
+    margin: "0 auto",
+    borderLeft: "1px solid #e2e5ea",
+    borderRight: "1px solid #e2e5ea",
+  },
+  // Only while a file is over the page, so there is no permanent box
+  // taking up room for something that happens once.
+  dragging: { outline: "3px dashed #2f5d8c", outlineOffset: "-6px" },
   muted: { color: "#697386" },
   card: {
     background: "#fff",
@@ -38,6 +51,19 @@ export const styles = {
     borderRadius: "8px",
     padding: "1rem 1.25rem",
     marginBottom: "1rem",
+  },
+  debugToggle: {
+    position: "fixed",
+    top: "0.75rem",
+    right: "0.75rem",
+    zIndex: 10,
+    padding: "0.3rem 0.7rem",
+    borderRadius: "4px",
+    border: "1px solid #e2e5ea",
+    background: "#fff",
+    color: "#697386",
+    fontSize: "0.8rem",
+    cursor: "pointer",
   },
   handoffLink: {
     display: "inline-block",
