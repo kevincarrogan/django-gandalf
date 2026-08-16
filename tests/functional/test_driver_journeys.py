@@ -185,3 +185,157 @@ def test_a_driver_can_open_the_file_a_person_uploaded(
 
     assert opened.read() == b"hello"
     assert opened.name == "proof.txt"
+
+
+def test_the_driver_prefills_a_long_quote_wizard_from_a_profile():
+    """The value case: a fourteen-ish step wizard where one prefill from a
+    business profile crosses two branches and a grown fleet section,
+    leaving only the confirmation for a human."""
+    from examples.insurance import InsuranceQuoteViewSet
+
+    driver = RunDriver.begin(InsuranceQuoteViewSet, may_finish=True)
+
+    result = driver.prefill(
+        {
+            "company": {
+                "name": "Analytical Engines Ltd",
+                "company_type": "limited",
+                "founded": "1837-12-10",
+                "employees": "12",
+            },
+            "registration": {
+                "companies_house_number": "AE123456",
+                "vat_registered": "on",
+            },
+            "coverage": {
+                "cover_types": ["property", "vehicles"],
+                "excess": "500",
+                "start_date": "2026-09-01",
+            },
+            "claims": {"had_claims": "no"},
+            "contact": {"email": "ada@analyticalengines.example"},
+        }
+    )
+
+    assert result.placed == [
+        "company",
+        "registration",
+        "coverage",
+        "claims",
+        "contact",
+    ]
+    assert result.next_step == "confirm"
+    driver.submit({"confirmed": "on"})
+    response = driver.finish()
+    # The fleet is priced at nothing, because a driver cannot add a vehicle:
+    # the vehicles are a collection of separate runs, and this drives one.
+    assert response.content.decode() == (
+        "Quote for Analytical Engines Ltd: £670/year covering property, vehicles."
+    )
+
+
+def test_the_driver_walks_the_partnership_arm_and_its_partner_steps():
+    """The nasty composite: an expansion nested inside a branch arm, then a
+    claims branch — stepped through one answer at a time."""
+    from examples.insurance import InsuranceQuoteViewSet
+
+    driver = RunDriver.begin(InsuranceQuoteViewSet, may_finish=True)
+
+    driver.submit(
+        {
+            "name": "Byron & Lovelace",
+            "company_type": "partnership",
+            "founded": "1833-06-05",
+            "employees": "3",
+        }
+    )
+    assert driver.describe().step == "partners"
+    driver.submit({"partner_count": "2"})
+    assert driver.describe().step == "partner-0"
+    driver.submit({"full_name": "Ada Lovelace"})
+    driver.submit({"full_name": "George Byron"})
+    assert driver.describe().step == "coverage"
+    driver.submit(
+        {"cover_types": ["liability"], "excess": "250", "start_date": "2026-09-01"}
+    )
+    assert driver.describe().step == "claims"
+    driver.submit({"had_claims": "yes"})
+    assert driver.describe().step == "claims-detail"
+    driver.submit({"description": "Difference engine fire", "total_value": "1000"})
+    driver.submit({"email": "office@byronlovelace.example"})
+    result = driver.submit({"confirmed": "on"})
+
+    assert result.status == "complete"
+    assert driver.finish().content.decode() == (
+        "Quote for Byron & Lovelace: £530/year covering liability."
+    )
+
+
+def test_the_driver_reports_everything_a_profile_gets_wrong_at_once():
+    """The point of checking before placing: one message to the customer,
+    not one per failure. Two bad answers and three unanswered steps come
+    back together — and the steps that depend on an unmade choice are not
+    demanded at all."""
+    from examples.insurance import InsuranceQuoteViewSet
+
+    driver = RunDriver.begin(InsuranceQuoteViewSet, may_finish=True)
+
+    result = driver.check(
+        {
+            "company": {
+                "name": "Analytical Engines Ltd",
+                "company_type": "limited company",  # the label, not the value
+                "founded": "1837-12-10",
+                "employees": "twelve",  # a word, not a number
+            },
+            "coverage": {
+                "cover_types": ["property"],
+                "excess": "500",
+                "start_date": "next Tuesday",  # not a date
+            },
+        }
+    )
+
+    assert set(result.invalid) == {"company", "coverage"}
+    assert set(result.invalid["company"]) == {"company_type", "employees"}
+    assert set(result.invalid["coverage"]) == {"start_date"}
+    assert result.missing == ["claims", "contact", "confirm"]
+    # Registration only applies to a limited company, and the company step
+    # has not been answered — so it is not something to ask about yet.
+    assert "registration" not in result.missing
+    assert "partners" not in result.missing
+
+
+def test_the_fleet_is_where_the_driver_goes_quiet():
+    """The boundary this example exists to show.
+
+    Vehicles are a collection: a page the person grows, with one wizard run
+    per item behind it. `RunDriver` drives a run. So the fleet is invisible
+    to everything the driver offers — it is not a step, so the outline does
+    not mention it, `check()` cannot ask for it, and `prefill` has nowhere
+    to put it. An agent fills the quote and then has nothing to say.
+    """
+    from examples.insurance import InsuranceQuoteViewSet
+
+    driver = RunDriver.begin(InsuranceQuoteViewSet, may_finish=True)
+
+    named = [entry.get("step") for entry in driver.outline() if entry["kind"] == "step"]
+    assert "fleet" not in named
+    assert not any(name and name.startswith("vehicle") for name in named)
+
+    # Handed vehicles anyway, the driver can only say it does not know them.
+    result = driver.check(
+        {
+            "company": {
+                "name": "Analytical Engines Ltd",
+                "company_type": "limited",
+                "founded": "1837-12-10",
+                "employees": "12",
+            },
+            "vehicle-0": {"registration": "AE01 CAB", "value": "18000"},
+        }
+    )
+
+    assert result.unknown == ["vehicle-0"]
+    # And it never asks for one, because from here there is nothing to ask.
+    assert "fleet" not in result.missing
