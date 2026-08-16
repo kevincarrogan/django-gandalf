@@ -9,6 +9,7 @@ import "@copilotkit/react-core/v2/styles.css";
 
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
+import React from "react";
 
 // Dev-only direct connection to the AG-UI endpoint — no Node runtime in
 // between. The endpoint is a Django view (`just copilotkit-server`),
