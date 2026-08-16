@@ -12,6 +12,7 @@ from django.shortcuts import render
 
 from examples.eventlog import DemoObserver, log_event
 from examples.insurance import InsuranceQuoteViewSet, quote_for
+from examples.licence import LicenceCheckViewSet
 from tests.testapp.durable import ModelStorage
 
 
@@ -32,3 +33,23 @@ class HybridQuoteViewSet(InsuranceQuoteViewSet):
         quote = quote_for(bound_wizard)
         log_event("quote", run=bound_wizard.run_id, **quote)
         return render(self.request, "hybrid/done.html", quote)
+
+
+class HybridLicenceViewSet(LicenceCheckViewSet):
+    """The licence check, mounted and stored the way the quote is.
+
+    Same two changes and the same reason: addressable step URLs so the
+    agent can hand back a link, and durable storage so the run it filled
+    is the run the browser opens. The scan the agent attached is on that
+    run, so the person sees their own photograph above the details it was
+    read from.
+    """
+
+    url_name = "licence"
+    storage_class = ModelStorage
+    template_name = "hybrid/licence_step.html"
+
+    def configure_wizard(self, wizard):
+        return wizard.configure(
+            template_name=self.template_name, observer_class=DemoObserver
+        )

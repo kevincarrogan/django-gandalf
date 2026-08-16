@@ -55,6 +55,11 @@ class ConfirmLicenceForm(forms.Form):
 class LicenceCheckViewSet(WizardViewSet):
     description = "A three-step check whose first answer is an uploaded photograph."
     agent_purpose = "checking a driving licence"
+    # An agent driving this one may be handed a file. Declared rather than
+    # detected, and off by default, because a tool an agent cannot use is
+    # one it can only misuse — the quote wizard has no file step, and
+    # offering it a way to attach documents would invite it to invent one.
+    agent_accepts_documents = True
     # The one thing the wizard cannot say about itself. Reading a document
     # is not the same kind of act as filling a form from something you were
     # told, and the difference matters to whoever is being helped: a
