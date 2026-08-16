@@ -6,6 +6,7 @@ exercised further down this file.
 """
 
 import json
+from datetime import date
 
 import pytest
 from django import forms
@@ -446,6 +447,8 @@ class _BookingViewSet(WizardViewSet):
         return HttpResponse(b"booked")
 
 
+_DATE = date(2025, 10, 12)
+
 _BOOKING = {
     "starts_on": "2025-10-12",
     "collect_at": "2025-10-12 09:30",
@@ -479,6 +482,61 @@ def test_a_resubmitted_answer_is_stored_as_json():
 
     state = driver.bound_wizard.get_state()
     assert json.loads(json.dumps(state)) == state
+
+
+def test_answers_can_be_asked_for_as_json():
+    """The same answers, rendered as JSON holds them — for the callers the
+    driver mostly has, which speak JSON and cannot hold a `date`."""
+    driver = RunDriver.begin(_BookingViewSet)
+    driver.submit(_BOOKING)
+
+    answers = driver.answers(json_safe=True)["booking"]
+
+    assert json.loads(json.dumps(answers)) == answers
+    assert answers["starts_on"] == "2025-10-12"
+    assert answers["price"] == "12.50"
+
+
+def test_json_safe_answers_are_the_cleaned_ones_not_the_raw_submission():
+    """A ticked checkbox is `True`, not the `"on"` a browser posted. The
+    stored submission would be the wrong thing to hand anybody: `"on"` is
+    an artefact of HTML, and means nothing to a reader of the answers."""
+
+    class _TickForm(forms.Form):
+        agreed = forms.BooleanField()
+        count = forms.IntegerField()
+
+    class _TickViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+        wizard = Wizard().step(_TickForm, name="tick")
+
+        def done(self, bound_wizard):
+            return HttpResponse(b"ticked")
+
+    driver = RunDriver.begin(_TickViewSet)
+    driver.submit({"agreed": "on", "count": "12"})
+
+    assert driver.answers(json_safe=True)["tick"] == {"agreed": True, "count": 12}
+
+
+def test_json_safe_answers_still_feed_back_into_submit():
+    driver = RunDriver.begin(_BookingViewSet)
+    driver.submit(_BOOKING)
+
+    answers = driver.answers(json_safe=True)["booking"]
+    result = driver.submit({**answers, "note": "ring the bell"}, step="booking")
+
+    assert result.status == "complete"
+    assert driver.answers()["booking"]["starts_on"] == _DATE
+
+
+def test_describe_can_carry_json_safe_answers_without_reading_them_twice():
+    driver = RunDriver.begin(_BookingViewSet)
+    driver.submit(_BOOKING)
+
+    description = driver.describe(json_safe=True)
+
+    assert json.loads(json.dumps(description.answers)) == description.answers
 
 
 def test_a_value_no_encoder_can_render_is_refused_where_it_was_passed():

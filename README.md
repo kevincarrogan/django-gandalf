@@ -1650,6 +1650,14 @@ data they already hold:
 | `check(answers)` | what a bag of answers *would* do, without placing any of it: what is invalid, what is still missing, what could not be judged |
 | `prefill(answers)` | place as many as the tree will take, following branches and expansions, and report the residue |
 
+`answers()` hands back cleaned values — a `DateField` gives a `datetime.date`,
+which is what a management command wants and what `submit()` takes straight
+back. A caller that has to serialise them asks:
+`driver.answers(json_safe=True)`, or `driver.describe(json_safe=True)` to
+convert the whole description without reading the answers twice. It is the
+cleaned answer that is rendered, so a ticked checkbox is `True` rather than
+the `"on"` a browser posted.
+
 Nothing here is a second implementation. Every operation is the one a request
 performs, so a run filled programmatically is an ordinary run: same `run_id`,
 same stored state, same re-validation. With a durable
