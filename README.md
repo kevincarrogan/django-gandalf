@@ -1659,42 +1659,46 @@ the browser — and the two can take turns on the same run.
 
 ### Answering for somebody else
 
-A caller that is not a person gets two guard rails, because being able to
-fill a run is not the same as being allowed to conclude one.
+Two things follow from a caller that is not a person, and only one of them is
+the library's business.
 
-`finish()` refuses by default. A person clicking Confirm reaches `done()`
-through the viewset's own dispatch, so this restricts nothing a human does —
-it only asks a wizard to say, in as many words, that something unattended may
-conclude a run on somebody's behalf:
-
-```python
-class SignupWizardViewSet(WizardViewSet):
-    def may_finish_unattended(self, bound_wizard):
-        return True
-```
-
-Without it, `finish()` raises `ConfirmationRequired`.
-
-Every placement also carries a mapping recorded beside the answer — who
-answered this, and how. `RunDriver` marks its own placements
-`{"unattended": True}`, since the answers alone cannot say so; pass
-`metadata=` to describe a placement made on somebody else's behalf, and read
-it back with `driver.metadata()`. A wizard can then refuse to have an answer
-replaced:
+**Concluding a run is opt-in.** `done()` is where the irreversible things
+live — the charge, the submission, the email — and a person confirming reaches
+it through the viewset's own dispatch, never through a driver. So `finish()`
+refuses unless the driver was built to allow it:
 
 ```python
-class QuoteViewSet(WizardViewSet):
-    def may_edit_step(self, bound_wizard, step, submission):
-        """Whatever a person answered is theirs; the driver may still
-        correct its own earlier answers."""
-        current = bound_wizard.path.find_step(name=step.context["name"])
-        return bool((current.metadata or {}).get("unattended"))
+driver = RunDriver.begin(QuoteViewSet, may_finish=True)
 ```
 
-`submit(..., step=...)` then raises `EditRefused` rather than overwriting.
-The hook is only consulted for a step that already holds an answer — filling
-a blank one is not an edit — and it is given the submission that would
-replace it, so a policy can compare the two.
+Without it, `finish()` raises `ConfirmationRequired`. It is a plain flag
+because the interesting question is *when* it should be true — agreement
+collected before the answers exist is not agreement about the answers — and
+that is the caller's to answer, at the point it knows.
+
+**Every placement records who made it.** A mapping is stored beside the
+answer, and `RunDriver` marks its own placements `{"unattended": True}`, since
+the answers alone cannot say so:
+
+```python
+driver.submit({"excess": "250"}, metadata={"placed_by": "person"})
+driver.metadata()       # {"coverage": {"placed_by": "person"}, ...}
+```
+
+That is the fact. What to *do* with it is yours, because "whose answer is
+this" is a question about your domain rather than about wizards. A caller
+that must not overwrite what somebody typed asks before it submits:
+
+```python
+if not driver.metadata().get(step, {}).get("unattended"):
+    raise SomebodyElsesAnswer(step)      # your rule, your exception
+driver.submit(data, step=step)
+```
+
+Without the metadata there is no way to write that rule at all — a driver
+cannot tell the answer it placed from the one a person changed, and correcting
+its own earlier answer is something it must keep being allowed to do, since
+that is how it recovers from a rejected one.
 
 Files are the one gap: a `FileField` is described as a string in the schema
 and cannot be answered programmatically yet.

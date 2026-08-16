@@ -135,13 +135,7 @@ def _build_viewset(
     *, url_name, instrumented, wizard=None, get_wizard=None, preconfigured=True
 ):
     configuration = _configuration(instrumented)
-    # The driven benchmark measures the whole fill, `done()` included, and
-    # a driver is the unattended path — so these say so.
-    attrs = {
-        "url_name": url_name,
-        "done": _done,
-        "may_finish_unattended": lambda self, bound_wizard: True,
-    }
+    attrs = {"url_name": url_name, "done": _done}
     if get_wizard is not None:
         # A dynamic wizard is rebuilt from stored state every request by
         # definition, so there is nothing to pre-configure.
