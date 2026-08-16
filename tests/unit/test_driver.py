@@ -25,6 +25,7 @@ from gandalf.driver import (
     fabricate_request,
     field_json_schema,
     form_json_schema,
+    outline_steps,
 )
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.form_views import StepFormView
@@ -585,6 +586,70 @@ def test_a_value_no_encoder_can_render_is_refused_where_it_was_passed():
 
     with pytest.raises(TypeError, match="not JSON serializable"):
         driver.submit({**_BOOKING, "note": object()})
+
+
+# --- walking an outline ------------------------------------------------
+
+
+def test_outline_steps_finds_every_step_a_branch_buries():
+    """An outline is a tree, and both sides of a branch are in it.
+
+    A caller asking anything of every step — how many, does one take a
+    file, is one called this — should not have to know that arms nest.
+    """
+    outline = RunDriver.outline_for(_BranchingViewSet)
+
+    names = [entry["step"] for entry in outline_steps(outline)]
+
+    assert names == ["account_type", "business", "personal", "review"]
+
+
+def test_outline_steps_yields_entries_not_names():
+    """The interesting question is usually about the schema beside the
+    name, so the entry is what comes back."""
+    outline = RunDriver.outline_for(_SignupViewSet)
+
+    first = next(outline_steps(outline))
+
+    assert first["step"] == "first"
+    assert "properties" in first["schema"]
+
+
+def test_outline_steps_finds_every_case_of_a_switch():
+    """A switch spells its arms `cases` where a branch spells them `arms`,
+    and carries a `default` besides. Both shapes are the caller's problem
+    until something walks them."""
+    from tests.testapp.views import SwitchEntryWizardViewSet
+
+    outline = RunDriver.outline_for(SwitchEntryWizardViewSet)
+
+    names = [entry["step"] for entry in outline_steps(outline)]
+
+    assert sorted(names) == ["first", "neither", "second"]
+
+
+def test_outline_steps_yields_nothing_for_an_expansion():
+    """The steps an expansion grows do not exist until an answer makes
+    them, so describing them before that would be inventing them."""
+    outline = RunDriver.outline_for(_ExpandViewSet)
+
+    names = [entry["step"] for entry in outline_steps(outline)]
+
+    assert names == ["count", "review"]
+
+
+def test_outline_steps_of_a_flat_wizard_is_the_wizard():
+    outline = RunDriver.outline_for(_SignupViewSet)
+
+    assert [entry["step"] for entry in outline_steps(outline)] == ["first", "second"]
+
+
+def test_outline_steps_walks_plain_data():
+    """It takes the outline, not the driver that made it — by the time
+    most callers see one it has been through a tool call or a log."""
+    outline = json.loads(json.dumps(RunDriver.outline_for(_BranchingViewSet)))
+
+    assert len(list(outline_steps(outline))) == 4
 
 
 # --- Files -------------------------------------------------------------

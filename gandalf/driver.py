@@ -55,6 +55,7 @@ __all__ = [
     "fabricate_request",
     "field_json_schema",
     "form_json_schema",
+    "outline_steps",
 ]
 
 # Validation errors as data: `form.errors.get_json_data()`'s shape — field
@@ -842,6 +843,36 @@ def _json_safe(data: dict[str, Any]) -> dict[str, Any]:
     value it cannot render still raises, but at the door it was handed to.
     """
     return cast("dict[str, Any]", json.loads(json.dumps(data, cls=DjangoJSONEncoder)))
+
+
+def outline_steps(entries: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Every step an outline declares, however deeply an arm buries it.
+
+    An outline is a tree, not a list of steps: a branch carries `arms`, a
+    switch carries `cases`, and both may carry a `default`. So a caller
+    that wants to ask something of every step — how many are there, does
+    any of them take a file, is one of them named this — has to recurse,
+    and every caller was writing the same eight lines to do it.
+
+    Yields the step entries themselves rather than their names, because
+    the interesting question is usually about the `schema` beside the
+    name. Order is the declared one, arms before what follows them.
+
+    A plain function over plain data on purpose. An outline is JSON by
+    the time most callers see it — it has been through a tool call, an
+    API, a log — so the thing that walks it must not need the driver that
+    produced it.
+
+    An `expand` entry yields nothing: the steps it grows do not exist
+    until an answer makes them, and describing them before that would be
+    inventing them.
+    """
+    for entry in entries:
+        if entry["kind"] == "step":
+            yield entry
+        for arm in entry.get("arms", []) + entry.get("cases", []):
+            yield from outline_steps(arm["steps"])
+        yield from outline_steps(entry.get("default") or [])
 
 
 def form_json_schema(form: BaseForm) -> dict[str, Any]:
