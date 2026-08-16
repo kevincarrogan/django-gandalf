@@ -106,19 +106,19 @@ def test_reading_the_answers_walks_once(driven_run):
     assert counts.validations == 2
 
 
-def test_describing_the_run_walks_twice(driven_run):
-    """Twice, for one question, and that is the bug.
+def test_describing_the_run_walks_once(driven_run):
+    """One walk, because one question is being asked.
 
-    `describe()` walks for the cursor, then reads the answers — which walks
-    again for the tree the cursor is already holding. The docstring on
-    `json_safe` exists to spare a caller exactly this second walk, so the
-    method is paying the cost it was written to save.
+    `describe()` walks for the cursor and then reads the answers, which
+    would walk again for the tree the cursor is already holding. Handing
+    that tree over is what keeps a description at the floor `answers()`
+    sets above — describing a run costs no more than reading it.
     """
     with counting_walks() as counts:
         driven_run.describe()
 
-    assert counts.walks == 2
-    assert counts.validations == 2 + 2
+    assert counts.walks == 1
+    assert counts.validations == 2
 
 
 # --- a hub of sections ------------------------------------------------------
