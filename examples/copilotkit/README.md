@@ -99,7 +99,7 @@ The wizard behind it has no `FileField` anywhere, so there is nowhere a
 document could be kept and the agent is offered no way to add one. It only
 ever *reads* the picture. That is the common case and it needs nothing from
 the library: what makes the agent ask for a licence is one sentence in that
-wizard's `agent_notes`.
+wizard's `AgentProfile`.
 
 http://localhost:5173/identity/ is the same five pages as a plain form, if
 you want to feel what the shortcut is worth.
@@ -115,7 +115,7 @@ Same four fields, no `FileField`, no attach tool — the photograph is only
 ever *read*, and the agent submits four ordinary strings. That is the
 common case: a wizard need not know anything about documents for an agent
 to fill it from one. What makes it ask for a licence is a sentence in
-that wizard's `agent_notes`, not anything in the library.
+that wizard's `AgentProfile`, not anything in the library.
 
 ### The model key
 
