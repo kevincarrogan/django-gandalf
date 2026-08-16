@@ -55,6 +55,38 @@ Follow it, change the employee count or a vehicle value, and confirm: the
 run re-routes from your edit, keeps every answer that still holds, and
 `done()` fires once — on your submission, not the agent's.
 
+### The licence check
+
+http://localhost:5173/#licence is the same machinery with the arrows
+reversed. Instead of the page handing the agent a profile to type in, you
+hand it a photograph and it does the reading: take or choose a picture of
+a driving licence, and it attaches the image to the run, transcribes the
+four fields printed on the card, and stops — because a misread character
+looks exactly like a correctly read one, and only you can tell.
+
+There are four ways to hand over the picture and they all end up in the
+same place. The button takes a photo and sends it immediately — it keeps
+`capture`, which opens the camera rather than a picker and is the
+difference between one tap and three. The chat itself takes a drag, a
+paste, or its own attach button, all of which come from CopilotKit: set
+`attachments={{ enabled: true }}` on `CopilotChat` and it handles the drop
+zone, scoped paste, thumbnails and a 20MB size check, then sends the file
+as an AG-UI `InputContentDataSource` — the same part the Django side reads
+either way.
+
+Best seen from a phone, where the button opens the camera. Point the Vite
+dev server at your machine's address on the network to reach it from one.
+
+For the same thing without a browser, over an image you already have:
+
+```
+just licence-demo ~/Pictures/licence.jpg
+```
+
+It prints what the agent read, where the run stopped, and what the call
+cost. An image is worth roughly a thousand tokens, so that is the bulk of
+it.
+
 ### The model key
 
 The agent runs in the **server** process, so that is where the key has to
