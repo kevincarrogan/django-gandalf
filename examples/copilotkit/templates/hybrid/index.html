@@ -1,0 +1,16 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="card">
+        <h1>Hybrid demo — Django side</h1>
+        <p>
+            This process serves the wizard and the agent's AG-UI endpoint.
+            The chat lives in the React app: run <code>just copilotkit-ui</code>
+            and open <a href="http://localhost:5173">localhost:5173</a>.
+        </p>
+        <p>
+            <a href="{% url 'quote' %}">Or fill the quote in by hand</a> — the
+            fourteen-step version the agent exists to spare you.
+        </p>
+    </div>
+{% endblock %}

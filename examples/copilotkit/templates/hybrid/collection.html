@@ -1,0 +1,41 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="banner">
+        <strong>This part is yours</strong>
+        <p>
+            Your copilot filled the quote in, but a fleet is a list only you
+            can grow — add each vehicle, change one, or take one off.
+        </p>
+    </div>
+
+    <div class="card">
+        {% if collection.is_empty %}
+            <h1>You have not added any vehicles</h1>
+        {% else %}
+            <h1>You have added {{ collection.count }} vehicle{{ collection.count|pluralize }}</h1>
+            <ul class="task-list">
+                {% for row in collection.rows %}
+                    <li class="task-list__item">
+                        <span>{{ row.title }}</span>
+                        <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+                        <a href="{{ row.url }}">Change {{ row.title }}</a>
+                        <a href="{{ row.remove_url }}">Remove {{ row.title }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.errors.add_another }}
+            <button type="submit" name="add_another" value="yes">
+                Add {% if collection.is_empty %}a{% else %}another{% endif %} vehicle
+            </button>
+            {% if not collection.is_empty %}
+                <button type="submit" name="add_another" value="no">
+                    Back to my quote
+                </button>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

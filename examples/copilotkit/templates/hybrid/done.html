@@ -1,0 +1,15 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="card">
+        <h1>Your quote</h1>
+        <p>
+            <strong>{{ name }}</strong> — £{{ premium }} a year, covering
+            {{ covers }}.
+        </p>
+        <p>
+            Filled by an agent, checked and confirmed by you. The wizard's
+            <code>done()</code> fired exactly once, on your confirmation.
+        </p>
+    </div>
+{% endblock %}

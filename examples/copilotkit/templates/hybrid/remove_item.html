@@ -1,0 +1,13 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="card">
+        <h1>Remove {{ row.title }}?</h1>
+        <p>Its answers go with it, and your quote is re-priced without it.</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit">Remove {{ row.title }}</button>
+        </form>
+        <p><a href="{{ collection.url }}">Cancel</a></p>
+    </div>
+{% endblock %}

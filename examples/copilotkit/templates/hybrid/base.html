@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Business insurance quote{% endblock %}</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f6f7f9;
+            --surface: #fff;
+            --text: #1c2024;
+            --muted: #5c6670;
+            --border: #dfe3e8;
+            --accent: #2f5d8c;
+            --accent-soft: #eaf1f8;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #14171a; --surface: #1c2126; --text: #e6e9ec;
+                --muted: #9aa4ae; --border: #2c333a; --accent: #82b1de;
+                --accent-soft: #1e2933;
+            }
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; background: var(--bg); color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            line-height: 1.5;
+        }
+        a { color: var(--accent); }
+        .page { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+        .card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.25rem 1.5rem;
+        }
+        .banner {
+            background: var(--accent-soft); border: 1px solid var(--border);
+            border-left: 4px solid var(--accent); border-radius: 8px;
+            padding: 0.9rem 1.25rem; margin-bottom: 1.5rem;
+        }
+        .banner p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.92rem; }
+        .banner strong { font-size: 1.02rem; }
+        h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+        form p { margin: 0 0 1rem; }
+        form label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+        input[type="text"], input[type="email"], input[type="number"],
+        input[type="date"], select, textarea {
+            width: 100%; padding: 0.45rem 0.6rem; font: inherit; color: inherit;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+        .helptext { display: block; color: var(--muted); font-size: 0.85rem; }
+        ul.errorlist {
+            list-style: none; margin: 0 0 0.35rem; padding: 0;
+            color: #b3261e; font-size: 0.9rem;
+        }
+        button {
+            font: inherit; font-weight: 600; padding: 0.5rem 1.1rem; color: #fff;
+            background: var(--accent); border: 1px solid transparent;
+            border-radius: 4px; cursor: pointer;
+        }
+        @media (prefers-color-scheme: dark) { button { color: #14171a; } }
+        .summary { margin: 0 0 1.5rem; }
+        .summary dt {
+            font-weight: 600; padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+        .summary dd {
+            display: flex; flex-wrap: wrap; gap: 0.25rem 1rem;
+            justify-content: space-between; margin: 0.25rem 0 0.75rem;
+        }
+        .summary dd span { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <main class="page">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
