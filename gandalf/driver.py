@@ -32,7 +32,7 @@ from gandalf import tree
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, StepNotFound, Walk
 from gandalf.summary import _flatten_choices
-from gandalf.types import Metadata, Submission
+from gandalf.types import FileRefs, Metadata, Submission
 from gandalf.viewsets import WizardViewSet
 
 if TYPE_CHECKING:
@@ -47,6 +47,7 @@ __all__ = [
     "RunDriver",
     "RunIncomplete",
     "ConfirmationRequired",
+    "Placement",
     "StepDescription",
     "SubmitResult",
     "fabricate_request",
@@ -97,6 +98,29 @@ def fabricate_request(*, user: Any = None, session: Any = None) -> HttpRequest:
     if user is not None:
         request.user = user
     return request
+
+
+@dataclass(frozen=True)
+class Placement:
+    """One answered step: everything stored where the answer went.
+
+    A step's entry in state has three parts, and until this they could
+    only be read one and a half at a time. `answers` is the cleaned data,
+    `files` the stored references to anything uploaded with it, and
+    `metadata` whatever the placement recorded about itself — empty when
+    it recorded nothing, which is not the same as the step being
+    unanswered. A step that is unanswered has no `Placement` at all.
+
+    That distinction is the point. Asking *whose is this answer* used to
+    take two reads and a comparison of their key sets, because the
+    mapping that held the metadata dropped the steps whose metadata was
+    empty and so could not tell "a person answered this" from "nobody
+    did".
+    """
+
+    answers: dict[str, Any]
+    files: FileRefs
+    metadata: Metadata
 
 
 @dataclass(frozen=True)
@@ -280,6 +304,41 @@ class RunDriver:
             complete=False,
         )
 
+    def placements(self, *, json_safe: bool = False) -> dict[str, Placement]:
+        """Every answered step, keyed by step name in walk order.
+
+        The single read of a run: the answers, the files stored with them,
+        and what each placement recorded about itself, all from one walk.
+        `answers()` is this with the other two dropped, and anything asking
+        a question that spans them — *whose is this answer*, *did this step
+        carry a file* — should ask here rather than read twice and hope the
+        two views line up.
+
+        `json_safe` is `answers()`'s and applies throughout: the answers,
+        and the metadata, which is a caller's own mapping and so need not
+        have been JSON to begin with.
+        """
+        # The steps are held once: `path` walks per access, and each node
+        # validates its form at most once.
+        steps = list(self.bound_wizard.path)
+        return {
+            cast(str, step.name): self._placement(step, json_safe=json_safe)
+            for step in steps
+        }
+
+    def _placement(self, step: RuntimeStep, *, json_safe: bool) -> Placement:
+        files: FileRefs = dict(step.files or {})
+        answers = dict(step.form.cleaned_data)
+        metadata = dict(step.metadata or {})
+        if json_safe:
+            # An uploaded file is not JSON and never will be. Its stored
+            # reference is, and names the same bytes — so a caller
+            # serialising a run gets told a file is here and which one,
+            # where before this it got a `TypeError` and no run at all.
+            answers = _json_safe({**answers, **files})
+            metadata = _json_safe(metadata)
+        return Placement(answers=answers, files=files, metadata=metadata)
+
     def answers(self, *, json_safe: bool = False) -> dict[str, dict[str, Any]]:
         """Every answered step's `cleaned_data`, keyed by step name.
 
@@ -298,23 +357,22 @@ class RunDriver:
         There is no sensible default here, which is why it is asked. A
         management command wants the `date`; anything speaking JSON cannot
         hold one.
+
+        The exception to feeding straight back is a file: `json_safe=True`
+        renders an uploaded file as the stored reference `placements()`
+        carries, because an open file is not JSON, and `submit()` cannot
+        take a file back either way. Reading a run that has one works;
+        replaying it does not. See `submit()`.
         """
-        # The steps are held once: `path` walks per access, and each node
-        # validates its form at most once.
-        steps = list(self.bound_wizard.path)
-        answers = {cast(str, step.name): dict(step.form.cleaned_data) for step in steps}
-        return _json_safe(answers) if json_safe else answers
+        return {
+            name: placement.answers
+            for name, placement in self.placements(json_safe=json_safe).items()
+        }
 
     #: Recorded against everything this driver places, unless the caller
     #: says otherwise. A driver is not a person, and the answers alone
     #: cannot say so.
     default_metadata: ClassVar[Metadata] = {"unattended": True}
-
-    def metadata(self) -> dict[str, Metadata]:
-        """What each answered step's placement recorded about itself, keyed
-        by step name. Steps that recorded nothing are absent."""
-        steps = list(self.bound_wizard.path)
-        return {cast(str, step.name): step.metadata for step in steps if step.metadata}
 
     def submit(
         self,
@@ -340,6 +398,15 @@ class RunDriver:
         Raises `RunComplete` when there is nothing left to answer and
         `StepNotFound` when the named step cannot be reached — exactly the
         cases where the submission would otherwise be silently dropped.
+
+        **Files cannot be placed through a driver.** There is no `files`
+        argument, and an uploaded file passed in `data` raises `TypeError`
+        at this door rather than being stored as something unreadable. A
+        run that already has a file answered through a browser can be read
+        and driven onwards — `placements()` carries its reference — but
+        that step cannot be answered or re-answered from here. Filling a
+        wizard with a required `FileField` is a job for the browser until
+        this grows a way to hand blobs in.
         """
         bound_wizard = self.bound_wizard
         if step is None:

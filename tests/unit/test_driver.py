@@ -555,7 +555,7 @@ def test_a_placement_carries_metadata_that_can_be_read_back():
 
     driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
 
-    assert driver.metadata() == {"first": {"placed_by": "person"}}
+    assert driver.placements()["first"].metadata == {"placed_by": "person"}
 
 
 def test_the_driver_marks_its_own_placements_unattended():
@@ -564,7 +564,7 @@ def test_the_driver_marks_its_own_placements_unattended():
 
     driver.submit({"name": "Ada"})
 
-    assert driver.metadata() == {"first": {"unattended": True}}
+    assert driver.placements()["first"].metadata == {"unattended": True}
 
 
 def test_metadata_survives_the_steps_that_come_after_it():
@@ -576,7 +576,7 @@ def test_metadata_survives_the_steps_that_come_after_it():
 
     driver.submit({"email": "ada@example.com"})
 
-    assert driver.metadata()["first"] == {"placed_by": "person"}
+    assert driver.placements()["first"].metadata == {"placed_by": "person"}
 
 
 def test_re_answering_a_step_replaces_its_metadata():
@@ -587,15 +587,59 @@ def test_re_answering_a_step_replaces_its_metadata():
 
     driver.submit({"name": "Grace"}, step="first")
 
-    assert driver.metadata()["first"] == {"unattended": True}
+    assert driver.placements()["first"].metadata == {"unattended": True}
 
 
-def test_a_step_answered_without_metadata_has_none():
+def test_a_step_answered_recording_nothing_is_still_a_placement():
+    """The distinction the old two-mapping read could not make.
+
+    A step answered with `metadata={}` has a placement whose metadata is
+    empty. A step nobody has answered has no placement at all. Reading
+    them apart is what lets a caller say "a person put this here" rather
+    than "nothing here claims to be an agent's", which is the same
+    sentence about a step that does not exist yet.
+    """
     driver = RunDriver.begin(_SignupViewSet)
 
     driver.submit({"name": "Ada"}, metadata={})
 
-    assert driver.metadata() == {}
+    placements = driver.placements()
+    assert placements["first"].metadata == {}
+    assert "second" not in placements
+
+
+def test_a_placement_holds_the_answers_and_the_metadata_together():
+    """One read, both halves, and they cannot disagree about the run."""
+    driver = RunDriver.begin(_SignupViewSet)
+
+    driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
+
+    placement = driver.placements()["first"]
+    assert placement.answers == {"name": "Ada"}
+    assert placement.metadata == {"placed_by": "person"}
+    assert placement.files == {}
+
+
+def test_answers_is_the_placements_with_the_rest_dropped():
+    """`answers()` keeps its shape; it is now a view of the same read."""
+    driver = RunDriver.begin(_SignupViewSet)
+    driver.submit({"name": "Ada"})
+
+    assert driver.answers() == {
+        name: placement.answers for name, placement in driver.placements().items()
+    }
+
+
+def test_json_safe_renders_a_placements_metadata_too():
+    """Metadata is the caller's own mapping, so it need not have been JSON
+    before it was stored — and a caller serialising a run cannot hold what
+    it cannot render."""
+    driver = RunDriver.begin(_BookingViewSet)
+
+    driver.submit(_BOOKING, metadata={"placed_at": date(2026, 8, 16)})
+
+    placement = driver.placements(json_safe=True)["booking"]
+    assert placement.metadata == {"placed_at": "2026-08-16"}
 
 
 def test_a_run_will_not_be_finished_unless_the_driver_was_told_it_may():
