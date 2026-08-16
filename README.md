@@ -1570,7 +1570,7 @@ from gandalf.wizard import Wizard
 
 
 class CountRejections(WizardObserver):
-    def submission(self, step, accepted):
+    def submission(self, step, accepted, metadata):
         if not accepted:
             statsd.increment(
                 "wizard.rejected",
@@ -1604,9 +1604,20 @@ An observer is built once per run and knows which run it is watching, so no
 event repeats it. What it is *not* told is **who** is on the other end. The
 library cannot know: a submission arrives through a request, and whether that
 is a person in a browser, a script, or a management command is your
-application's knowledge. In a journey people and
-agents share, that distinction usually matters — record it where you already
-know it.
+application's knowledge.
+
+What it *is* told is whatever the placement claimed about itself, carried
+unread. `metadata` is `None` for a browser submission, because a request makes
+no such claim, and `{"unattended": True}` for one
+[a driver made](#driving-a-wizard-from-python) unless the caller said
+otherwise. In a journey people and agents share, that is usually the
+distinction you wanted:
+
+```python
+def submission(self, step, accepted, metadata):
+    if (metadata or {}).get("unattended"):
+        statsd.increment("wizard.unattended")
+```
 
 There is no "run started" event, because a run exists before its wizard is
 resolved — that ordering is what lets a dynamic `get_wizard()` read stored

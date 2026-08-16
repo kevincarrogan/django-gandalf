@@ -39,17 +39,22 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gandalf import tree
+    from gandalf.types import Metadata
 
 
 class WizardObserver:
     """No-op base. Subclass and override what you care about.
 
         class CountErrors(WizardObserver):
-            def submission(self, step, accepted):
+            def submission(self, step, accepted, metadata):
                 if not accepted:
                     statsd.increment(
                         "wizard.rejected",
-                        tags=[f"step:{step.context['name']}", f"run:{self.run_id}"],
+                        tags=[
+                            f"step:{step.context['name']}",
+                            f"run:{self.run_id}",
+                            f"unattended:{bool((metadata or {}).get('unattended'))}",
+                        ],
                     )
 
         wizard = Wizard().step(EmailForm, name="email").configure(
@@ -62,24 +67,40 @@ class WizardObserver:
     called from inside the walk, and a metrics backend having a bad day
     should not take the wizard down with it. Catch your own exceptions.
 
-    What it is *not* given is who is on the other end. The library cannot
-    know: a submission arrives through a request, and whether that request
-    is a person in a browser, a script, or a management command is your
-    application's knowledge, not a wizard's.
-    Where that distinction matters — and in a journey people and agents
-    share, it usually does — record it where you already know it.
+    What it is *not* given is who is on the other end. The library still
+    cannot know that: a submission arrives through a request, and whether
+    that request is a person in a browser, a script, or a management
+    command is your application's knowledge, not a wizard's. What it is
+    given is whatever the placement *claimed* about itself — its metadata,
+    recorded where that was known and carried here unread. A browser
+    submission claims nothing and arrives as `None`; `RunDriver` marks its
+    own `{"unattended": True}`. So in a journey people and agents share,
+    an observer can count the two apart without the library ever having
+    had to guess which it was watching.
     """
 
     def __init__(self, run_id: str) -> None:
         self.run_id = run_id
 
-    def submission(self, step: tree.Step, accepted: bool) -> None:
+    def submission(
+        self,
+        step: tree.Step,
+        accepted: bool,
+        metadata: Metadata | None,
+    ) -> None:
         """An answer was placed at `step`, and either satisfied it or did
         not.
 
         Fires once per placement — not for the replays the walk performs to
         re-prove earlier answers — so counting `accepted=False` counts
         mistakes people made, not pages they visited afterwards.
+
+        `metadata` is whatever the placement recorded about itself, and is
+        `None` for one that recorded nothing — which a browser submission
+        always does, because a request carries no such claim. `RunDriver`
+        marks its own placements `{"unattended": True}` by default, so an
+        observer can count what a person answered separately from what
+        something else did, without the library having had to guess.
         """
 
     def run_completed(self) -> None:

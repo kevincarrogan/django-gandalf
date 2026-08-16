@@ -40,8 +40,10 @@ def _run(observer_class, request):
     return bound_wizard
 
 
-def _submit(bound_wizard, submission):
-    walk = bound_wizard.walk(claim=bound_wizard.cursor().node, submission=submission)
+def _submit(bound_wizard, submission, metadata=None):
+    walk = bound_wizard.walk(
+        claim=bound_wizard.cursor().node, submission=submission, metadata=metadata
+    )
     bound_wizard.persist(walk)
     return walk
 
@@ -52,7 +54,7 @@ def test_an_observer_is_told_which_step_was_answered_and_whether_it_held(
     seen = []
 
     class _Recorder(WizardObserver):
-        def submission(self, step, accepted):
+        def submission(self, step, accepted, metadata):
             seen.append((step.context["name"], accepted))
 
     bound_wizard = _run(_Recorder, request_with_session)
@@ -70,7 +72,7 @@ def test_a_mistake_is_counted_once_however_many_pages_follow_it(request_with_ses
     seen = []
 
     class _Recorder(WizardObserver):
-        def submission(self, step, accepted):
+        def submission(self, step, accepted, metadata):
             seen.append(step.context["name"])
 
     bound_wizard = _run(_Recorder, request_with_session)
@@ -106,7 +108,7 @@ def test_an_observer_knows_which_run_it_is_watching(request_with_session):
     seen = []
 
     class _Watcher(WizardObserver):
-        def submission(self, step, accepted):
+        def submission(self, step, accepted, metadata):
             seen.append(self.run_id)
 
     bound_wizard = _run(_Watcher, request_with_session)
@@ -123,7 +125,7 @@ def test_an_observer_is_never_handed_the_answers(request_with_session):
     seen = []
 
     class _Recorder(WizardObserver):
-        def submission(self, step, accepted):
+        def submission(self, step, accepted, metadata):
             seen.append((step, accepted))
 
     bound_wizard = _run(_Recorder, request_with_session)
@@ -140,3 +142,37 @@ def test_a_wizard_without_one_is_watched_by_a_no_op(request_with_session):
     _submit(bound_wizard, {"name": "Ada"})
 
     assert bound_wizard.cursor().node.context == {"name": "second"}
+
+
+def test_an_observer_is_told_what_the_placement_claimed_about_itself(
+    request_with_session,
+):
+    """The distinction the library cannot make for itself. It never learns
+    who is on the other end — it repeats what the placement said it was."""
+    seen = []
+
+    class _Recorder(WizardObserver):
+        def submission(self, step, accepted, metadata):
+            seen.append(metadata)
+
+    bound_wizard = _run(_Recorder, request_with_session)
+
+    _submit(bound_wizard, {"name": "Ada"}, metadata={"unattended": True})
+
+    assert seen == [{"unattended": True}]
+
+
+def test_a_submission_that_claimed_nothing_arrives_as_none(request_with_session):
+    """Which is every browser submission: a request carries no such claim,
+    so an observer counting unattended placements counts none of them."""
+    seen = []
+
+    class _Recorder(WizardObserver):
+        def submission(self, step, accepted, metadata):
+            seen.append(metadata)
+
+    bound_wizard = _run(_Recorder, request_with_session)
+
+    _submit(bound_wizard, {"name": "Ada"})
+
+    assert seen == [None]
