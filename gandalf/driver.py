@@ -252,10 +252,16 @@ class RunDriver:
     def run_id(self) -> str:
         return self.bound_wizard.run_id
 
-    def describe(self) -> StepDescription:
-        """The run as the agent should see it right now."""
+    def describe(self, *, json_safe: bool = False) -> StepDescription:
+        """The run as the agent should see it right now.
+
+        `json_safe` is `answers()`'s, and is here so that a caller
+        serialising the whole description does not have to read the answers
+        a second time to convert them — reading them is a walk. Everything
+        else a description carries is JSON already.
+        """
         cursor = self.bound_wizard.cursor()
-        answers = self.answers()
+        answers = self.answers(json_safe=json_safe)
         if cursor.node is None:
             return StepDescription(
                 step=None, schema=None, answers=answers, errors={}, complete=True
@@ -268,18 +274,30 @@ class RunDriver:
             complete=False,
         )
 
-    def answers(self) -> dict[str, dict[str, Any]]:
+    def answers(self, *, json_safe: bool = False) -> dict[str, dict[str, Any]]:
         """Every answered step's `cleaned_data`, keyed by step name.
 
         Cleaned values are Python objects rather than the strings they were
         posted as — a `DateField` gives a `datetime.date`. `submit()` takes
         them back as they are, so a step can be read, changed and
         resubmitted without converting anything.
+
+        `json_safe=True` renders those same values as JSON holds them, for
+        a caller that has to serialise them — an agent adapter, an API, a
+        log. It is the same answers either way; only the values differ, and
+        they still feed straight back into `submit()`. Note that it is the
+        *cleaned* answer that is rendered, not the raw submission: a ticked
+        checkbox is `True` rather than the `"on"` a browser posted.
+
+        There is no sensible default here, which is why it is asked. A
+        management command wants the `date`; anything speaking JSON cannot
+        hold one.
         """
         # The steps are held once: `path` walks per access, and each node
         # validates its form at most once.
         steps = list(self.bound_wizard.path)
-        return {cast(str, step.name): dict(step.form.cleaned_data) for step in steps}
+        answers = {cast(str, step.name): dict(step.form.cleaned_data) for step in steps}
+        return _json_safe(answers) if json_safe else answers
 
     #: Recorded against everything this driver places, unless the caller
     #: says otherwise. A driver is not a person, and the answers alone
@@ -609,7 +627,7 @@ class RunDriver:
         """Map bare field names through the step view's form prefix, so the
         caller never has to know one is configured — and reduce the values to
         the ones a browser would have posted."""
-        data = _as_posted(data)
+        data = _json_safe(data)
         if declaration is None:
             return data
         prefix = self._view_for(declaration).get_prefix()
@@ -693,23 +711,28 @@ def _step_name(declaration: tree.Step) -> str | None:
     return cast("str | None", (declaration.context or {}).get("name"))
 
 
-def _as_posted(data: dict[str, Any]) -> dict[str, Any]:
-    """`data` reduced to the values a browser would have posted.
+def _json_safe(data: dict[str, Any]) -> dict[str, Any]:
+    """`data` with every value rendered as one JSON can hold.
 
-    A submission is stored with the run's state, and state is JSON. Over
-    HTTP that holds for free — a POST is strings — but a driver's caller
-    has richer values to hand, and the obvious source of them is
-    `answers()`, which returns `cleaned_data`: a `DateField` gives a
-    `datetime.date`. Read a step's answers, change one field, submit the
+    Used at both of the driver's doors, for reasons that are the same
+    mechanism and different problems.
+
+    Going *in*, a submission is stored with the run's state, and state is
+    JSON. Over HTTP that holds for free — a POST is strings — but a
+    driver's caller has richer values to hand, and the obvious source of
+    them is `answers()`, which returns `cleaned_data`: a `DateField` gives
+    a `datetime.date`. Read a step's answers, change one field, submit the
     result, and until this converted them the date went in unremarked and
     the run only failed later, when its state was written, by which time
     nothing could say which answer was at fault.
 
+    Coming *out*, the same values have to reach a caller that speaks JSON
+    and nothing else — which is most of what a driver is for.
+
     `DjangoJSONEncoder` renders exactly the types Django's own fields
     produce — dates, times, decimals, UUIDs — in the form those fields
     parse back, so a value survives the trip out and in again as itself. A
-    value it cannot render still raises, but here, where the caller can see
-    what it passed.
+    value it cannot render still raises, but at the door it was handed to.
     """
     return cast("dict[str, Any]", json.loads(json.dumps(data, cls=DjangoJSONEncoder)))
 
