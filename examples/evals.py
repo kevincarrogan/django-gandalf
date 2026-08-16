@@ -29,6 +29,7 @@ _setup()
 
 import json  # noqa: E402
 import sys  # noqa: E402
+import time  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -76,6 +77,7 @@ def _customer():
 
 def fill(scenario) -> Filled:
     """Run one scenario and read back what the agent actually did."""
+    started = time.monotonic()
     model = resolve_model()
     agent = build_agent(HybridQuoteViewSet, model)
     deps = WizardDeps(state=WizardState(), request=fabricate_request(user=_customer()))
@@ -138,7 +140,18 @@ def fill(scenario) -> Filled:
     # answers. Every answer here comes out of `scenarios.py`: an invented
     # company, an invented address, an invented registration. There is
     # nobody to disclose.
-    transcript = record(result)
+    transcript = record(result, source="eval", scenario=scenario.name, model=model)
+
+    # Printed as each case lands, because the report only arrives at the
+    # end and a sweep that has stalled looks exactly like one that is
+    # working. This is how you notice that a fourteen-second run has been
+    # waiting forty minutes on a model that is not answering.
+    print(
+        f"  {scenario.name[:44]:<44} {time.monotonic() - started:5.1f}s  "
+        f"{inputs:>6} in  {outputs:>5} out",
+        file=sys.stderr,
+        flush=True,
+    )
 
     answers: dict[str, Any] = {}
     step = None

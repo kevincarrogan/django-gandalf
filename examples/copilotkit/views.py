@@ -15,6 +15,8 @@ from examples.copilotkit.agent import (
     build_agent,
     resolve_model,
 )
+from functools import partial
+
 from examples.copilotkit.transcripts import record
 from examples.copilotkit.wizards import HybridQuoteViewSet
 from gandalf.contrib.agent.agui import endpoint_for
@@ -52,7 +54,11 @@ def context_instructions(items):
 
 
 # The library serves the protocol; the demo supplies what is its own.
-agent_endpoint = endpoint_for(agent, instructions=run_instructions, on_complete=record)
+agent_endpoint = endpoint_for(
+    agent,
+    instructions=run_instructions,
+    on_complete=partial(record, source="chat", model=resolve_model()),
+)
 
 
 def index(request):

@@ -74,8 +74,19 @@ def summarise(messages):
     }
 
 
-def record(result):
-    """Write one completed run to `runs/`. Returns the path."""
+def record(result, source="chat", **about):
+    """Write one completed run to `runs/`. Returns the path.
+
+    `source` says what produced it and `about` carries anything else worth
+    knowing — the scenario it came from, the model that ran it. Both land
+    in the file, because a transcript that cannot say what it is is a pile
+    of JSON rather than evidence.
+
+    That was not a hypothesis. `runs/` held a browser session and an
+    evaluation run side by side with nothing to tell them apart, and an
+    attempt to read the rates out of it counted somebody's manual testing
+    as scenario results.
+    """
     TRANSCRIPT_DIR.mkdir(exist_ok=True)
     messages = json.loads(to_json(result.all_messages()))
     usage = result.usage
@@ -85,6 +96,8 @@ def record(result):
         json.dumps(
             {
                 "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "source": source,
+                **about,
                 "usage": {
                     "requests": usage.requests,
                     "input_tokens": usage.input_tokens,

@@ -110,6 +110,33 @@ other, which is a different demo.
 
 ### 2. Re-run the whole evaluation
 
+**An attempt on 16 August was killed part way and should not be read as a
+sweep.** Runs took fourteen seconds each and then stalled — once for
+thirty-eight minutes, twice for ten — on established connections to a
+model that was not answering. Not a loop: eight seconds of CPU in ninety
+minutes. Twenty-one scenario runs completed, covering three scenarios;
+nothing added that day was reached. Re-run at three repeats, or in
+per-scenario batches, so one stall costs one scenario rather than the
+sweep.
+
+Two things were fixed on the way out of it. Transcripts now carry
+`source`, `scenario` and `model`, because `runs/` held browser sessions
+and evaluation runs side by side with nothing to tell them apart — and a
+first attempt to read rates out of that counted somebody's manual testing
+as scenario results. And `fill()` prints a line per case, because the
+report only arrives at the end, so a stalled sweep and a working one look
+identical for forty minutes.
+
+#### The old note, which is no longer true
+
+
+**Everything below predates a day of prompt changes.** The shared prompt
+gained the documents part, a rewritten handoff instruction and a "look at
+the run again" paragraph, and the toolset gained `get_run` and
+`resume_run` — all of which the quote agent sees. The paragraph below
+promising that nothing should have moved the rates is wrong now, and is
+kept only so the claim is visibly retracted rather than quietly deleted.
+
 **7 of the 8 scenarios have not been run since the changes that matter.** The
 last full sweep was at `6b6e33d`; since then `complete_run` was removed,
 `edit_step` began merging rather than replacing, the edit policy landed and
