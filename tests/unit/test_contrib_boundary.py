@@ -14,6 +14,8 @@ tell apart.
 import ast
 from pathlib import Path
 
+import pytest
+
 import gandalf
 
 FORBIDDEN = {"pydantic_ai", "ag_ui", "pydantic"}
@@ -53,3 +55,51 @@ def test_contrib_is_the_only_place_that_may():
     ]
 
     assert agent_imports
+
+
+def test_declaring_a_profile_does_not_need_the_extra():
+    """A profile is a declaration, and it sits on a Django class that a
+    production deployment imports to serve ordinary forms.
+
+    Run in a subprocess with the agent packages hidden, because this
+    suite's own environment has them installed and so cannot tell the
+    difference — the same reason the import check above is static.
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    script = textwrap.dedent(
+        """
+        import sys
+
+        class Blocked:
+            def find_module(self, name, path=None):
+                if name.split(".")[0] in {"pydantic_ai", "ag_ui"}:
+                    raise ImportError(f"{name} is not installed")
+
+        sys.meta_path.insert(0, Blocked())
+
+        from gandalf.contrib.agent import AgentProfile
+
+        assert AgentProfile(purpose="x").purpose == "x"
+        assert "gandalf.contrib.agent.toolset" not in sys.modules
+        assert "gandalf.contrib.agent.deps" not in sys.modules
+        print("ok")
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+
+
+def test_asking_for_something_that_is_not_there_still_says_so():
+    """The lazy hook must not turn a typo into an obscure import error."""
+    import gandalf.contrib.agent as agent
+
+    with pytest.raises(AttributeError, match="no attribute 'nonsense'"):
+        agent.nonsense
