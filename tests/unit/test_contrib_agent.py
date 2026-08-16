@@ -210,6 +210,22 @@ def test_accepts_documents_is_derived_from_the_wizard():
     assert accepts_documents(_SignupViewSet) is False
 
 
+def test_accepts_documents_reads_the_format_and_not_the_prose():
+    """The description is written for whoever reads it and may be
+    reworded; the `format` is what a decision should turn on."""
+    from gandalf.driver import RunDriver, fabricate_request, outline_steps
+
+    outline = RunDriver.outline_for(_PhotoViewSet, request=fabricate_request())
+    photo = next(
+        prop
+        for entry in outline_steps(outline)
+        for prop in entry["schema"]["properties"].values()
+        if prop.get("format") == "binary"
+    )
+
+    assert photo["type"] == "string"
+
+
 # --- driving a run -----------------------------------------------------
 
 

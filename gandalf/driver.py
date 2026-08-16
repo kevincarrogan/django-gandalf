@@ -955,11 +955,16 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
         return _string_schema(field), None
     # `ImageField` and friends subclass this, so the whole family is caught.
     if isinstance(field, forms.FileField):
-        # Said explicitly because the generic note below is actively wrong
-        # here: a file is the one answer that cannot travel in a
+        # `format: binary` is how a JSON Schema says "this is a file", and
+        # it is the only part of this a caller should ever branch on. The
+        # note beside it is prose for whoever reads it — a person or a
+        # model — and prose is a bad thing to make load-bearing.
+        #
+        # It is said at all because the generic note below is actively
+        # wrong here: a file is the one answer that cannot travel in a
         # submission, so telling a caller to send its raw value sends it
         # to the one door that refuses it.
-        return {"type": "string"}, (
+        return {"type": "string", "format": "binary"}, (
             "This field takes an uploaded file. A file cannot be sent as "
             "part of a submission — supply it alongside one, keyed by this "
             "field name."

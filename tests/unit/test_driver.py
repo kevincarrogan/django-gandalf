@@ -206,7 +206,22 @@ def test_unsupported_field_falls_back_to_string_with_a_note():
     assert "not supported" in schema["description"]
 
 
-def test_a_file_field_says_a_file_does_not_go_in_the_submission():
+def test_a_file_field_is_marked_binary():
+    """`format: binary` is how a JSON Schema says "this is a file".
+
+    It matters that this is a field rather than a phrase: anything
+    deciding *because* a step takes a file — an agent adapter working out
+    whether to offer a way to attach one — should branch on this and not
+    on the sentence beside it, which is prose and may be reworded.
+    """
+    schema = field_json_schema(forms.FileField(label="Photo"))
+
+    assert schema["type"] == "string"
+    assert schema["format"] == "binary"
+    assert schema["title"] == "Photo"
+
+
+def test_a_file_field_also_says_in_words_where_the_file_goes():
     """The generic note would be worse than nothing here.
 
     A file is the one answer that cannot travel in `data` — `submit()`
@@ -215,18 +230,17 @@ def test_a_file_field_says_a_file_does_not_go_in_the_submission():
     """
     schema = field_json_schema(forms.FileField(label="Photo"))
 
-    assert schema["type"] == "string"
-    assert schema["title"] == "Photo"
     assert "uploaded file" in schema["description"]
     assert "cannot be sent" in schema["description"]
     assert "not supported" not in schema["description"]
 
 
 def test_an_image_field_is_described_as_a_file_too():
-    """`ImageField` subclasses `FileField`, and a caller reading the note
-    needs the same answer for both."""
+    """`ImageField` subclasses `FileField`, and a caller needs the same
+    answer for both."""
     schema = field_json_schema(forms.ImageField())
 
+    assert schema["format"] == "binary"
     assert "uploaded file" in schema["description"]
 
 

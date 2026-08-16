@@ -61,10 +61,16 @@ def accepts_documents(viewset_class: type[WizardViewSet]) -> bool:
     flag beside it could only ever agree or be wrong — and it would be
     wrong quietly, as an agent being unhelpful rather than as anything
     failing.
+
+    Asked of the schema's `format`, which is the machine-readable half of
+    what a field says about itself. The description beside it says the
+    same thing in words, and reading *that* would make a sentence somebody
+    might reasonably reword into the thing that decides whether an agent
+    gets a tool.
     """
     outline = RunDriver.outline_for(viewset_class, request=fabricate_request())
     return any(
-        "takes an uploaded file" in prop.get("description", "")
+        prop.get("format") == "binary"
         for entry in outline_steps(outline)
         for prop in entry["schema"]["properties"].values()
     )

@@ -1752,9 +1752,10 @@ back keeps the document attached to it. What lands is an ordinary placement
 marked `{"unattended": True}` like any other, so a rule about whose answers
 may be changed governs an uploaded document with no special case for it.
 
-A `FileField` is still described as a string in the JSON Schema, so a caller
-learns a file is wanted there from the schema's description rather than from
-its type.
+A `FileField` is described as `{"type": "string", "format": "binary"}` — the
+JSON Schema way of saying *this is a file*. Branch on the `format` if you
+need to know; the description beside it says the same thing in words, and
+words get reworded.
 
 > **Source:** the snippets above are driven against the README's own wizards in
 > [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).
