@@ -300,18 +300,28 @@ def build_toolset(
 
         @toolset.tool
         def handoff(ctx: RunContext[WizardDeps]) -> ToolReturn:
-            """Hand the run back to the person: returns the URL of their
-            check-your-answers page, where they can review everything
-            filled in their name, change any answer, and confirm. Use this
-            instead of confirming yourself.
+            """Give the person a link into their own run, so they can pick
+            it up in the form themselves. It lands on whatever they need to
+            do next: the step the run is waiting on, or the page that lists
+            everything filled in their name for them to check and confirm.
 
-            Put the URL in your reply as a markdown link — `[Check and
-            confirm](the url)` — and not as bare text. The chat renders
+            Use this whenever they ask to take over, to see it, to finish
+            it themselves, or to carry on later — not only at the end. It
+            is their run, and asking for it is not a request you have to
+            weigh. Use it at the end as well, instead of confirming
+            anything yourself.
+
+            Put the URL in your reply as a markdown link — `[carry on
+            here](the url)` — and not as bare text. The chat renders
             markdown, so a bare URL arrives as something they cannot
             click, which makes the one thing you are asking them to do the
             hardest thing on the page."""
             driver = _driver(ctx)
-            url = driver.bound_wizard.entry_url("confirm")
+            # No step named: the run is asked where it is. Naming one —
+            # this used to say "confirm" — assumes every wizard has a step
+            # called that, which is true of the demo it was written against
+            # and of nothing else.
+            url = driver.bound_wizard.entry_url()
             state = ctx.deps.state
             state.handoff_url = url
             return _sync(ctx, driver, extra={"handoff_url": url})

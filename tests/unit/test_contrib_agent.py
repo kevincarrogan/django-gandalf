@@ -614,3 +614,52 @@ def test_handing_back_returns_the_persons_own_link():
 
     assert "/walk-counting-wizard/" in result.return_value["handoff_url"]
     assert ctx.deps.state.handoff_url == result.return_value["handoff_url"]
+
+
+def test_handing_back_lands_on_whatever_the_run_is_waiting_for():
+    """Somebody who asks to take over half way through wants the step
+    they are on, not the beginning and not the end.
+
+    Asking the run rather than naming a step also stops this assuming
+    every wizard has one called "confirm" — which was true of the demo it
+    was written against and of nothing else.
+    """
+    from tests.testapp.views import WalkCountingWizardViewSet
+
+    tools = _tools(WalkCountingWizardViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+
+    result = tools["handoff"](ctx)
+
+    assert result.return_value["handoff_url"].endswith("/second/")
+
+
+def test_handing_back_works_for_a_wizard_with_no_step_called_confirm():
+    """The `_SignupViewSet` here ends on `second`. A hardcoded step name
+    would have returned a link to a page that does not exist."""
+    from gandalf.contrib.agent import build_toolset
+
+    class _Named(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+        url_name = "walk-counting-wizard"
+        wizard = Wizard().step(NameForm, name="first")
+
+        def done(self, bound_wizard):
+            return HttpResponse(b"done")
+
+    tools = {n: t.function for n, t in build_toolset(_Named).tools.items()}
+    ctx = _ctx()
+    tools["start_run"](ctx)
+
+    assert tools["handoff"](ctx).return_value["handoff_url"].endswith("/first/")
+
+
+def test_the_agent_is_told_it_may_hand_back_at_any_point():
+    """Somebody who asks for their own form should get it. The procedure
+    otherwise reads as though the link is a reward for finishing."""
+    instructions = build_instructions(_SignupViewSet)
+
+    assert "take over" in instructions
+    assert "carry on later" in instructions

@@ -51,7 +51,12 @@ Work through this silently, without narrating it:
    some answers could not be placed yet, supply what is being waited on
    and place them — do not ask the person again.
 5. When only the final confirmation is left, hand it back to them with
-   their link so they can check it over and confirm it themselves.\
+   their link so they can check it over and confirm it themselves.
+
+At any point, if they ask to see it, take over, finish it themselves or
+carry on later, give them their link. It is their form and their run;
+being asked for it is not a request you have to weigh, and there is never
+a reason to keep it from them until you are ready.\
 """
 
 DOCUMENTS = """\
