@@ -30,3 +30,11 @@ htmlcov/
 # Local node for examples (nodeenv --prebuilt)
 .nodeenv/
 node_modules/
+
+.gandalf-hybrid.sqlite3
+
+# Vite dependency cache
+.vite/
+
+# Recorded demo runs
+runs/

@@ -1,0 +1,32 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="banner">
+        <strong>Your copilot filled this in for you</strong>
+        <p>
+            Every answer below came from your chat and your business profile.
+            Change anything that looks wrong, then confirm — nothing is
+            submitted until you do.
+        </p>
+    </div>
+
+    <div class="card">
+        <h1>Check your answers</h1>
+        <dl class="summary">
+            {% for row in summary %}
+                <dt>{{ row.label }}</dt>
+                <dd>
+                    {% for field in row.fields %}
+                        <span>{{ field.label }}: {{ field.value }}</span>
+                    {% endfor %}
+                    <a href="{{ row.url }}">Change {{ row.label }}</a>
+                </dd>
+            {% endfor %}
+        </dl>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Confirm and get my quote</button>
+        </form>
+    </div>
+{% endblock %}

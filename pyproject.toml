@@ -65,12 +65,18 @@ packages = ["gandalf"]
 include = [
   "/gandalf",
   "/tests",
+  "/AGENT_ACCESS.md",
   "/ARCHITECTURE.md",
   "/CONTRIBUTING.md",
   "/README.md",
 ]
 
 [dependency-groups]
+agents = [
+    "pydantic-ai-slim[ag-ui,anthropic]~=2.30",
+    "pydantic-evals>=2.30.0",
+    "uvicorn~=0.52.3",
+]
 dev = [
     "ipdb~=0.13.13",
     "pytest~=8.3.5",
