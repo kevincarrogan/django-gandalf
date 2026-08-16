@@ -12,19 +12,25 @@ import { styles } from "./styles.js";
 // the browser does, which is the point worth showing: reading a document
 // takes no support from the form at all.
 
-// CopilotKit's own attachments are deliberately not used, and it is worth
-// saying why because they are better made than this.
+// Drag and drop, paste, the composer's own attach button, thumbnails and
+// size validation all come from CopilotKit — `CopilotChat` wires them
+// internally and an attachment lands as an AG-UI `InputContentDataSource`,
+// which is the part the Django side already reads.
 //
-// They queue: a file attaches to the composer and waits for you to send a
-// message, which is right for a chat where the picture illustrates
-// something you are about to say. Here the picture *is* the message —
-// handing it over is the whole interaction — and there is no exposed way
-// to submit the composer from outside it. `onSubmitMessage` intercepts a
-// submission; nothing triggers one.
-//
-// So drop, paste and the button are handled here and all three send
-// immediately. What that costs is CopilotKit's thumbnails and queue UI,
-// which a demo about handing over one photograph does not need.
+// These were briefly replaced with hand-rolled drop and paste handlers, to
+// make a file send the moment it arrived rather than waiting for you to
+// press send. That was a bad trade twice over: it left the composer's own
+// attach button inert, and the handlers never fired anyway, because the
+// chat is a child of the element they were bound to and handles its own
+// drag events. Instant send is what the camera button is for.
+const ATTACHMENTS = {
+  enabled: true,
+  accept: "image/*",
+  // Shrink before sending, for the same reason the button does — see
+  // `downscale`. `onUpload` is the seam CopilotKit leaves for exactly
+  // this: return an input content source and it sends that instead.
+  onUpload: async (file) => ({ type: "data", ...(await downscale(file)) }),
+};
 
 // The one thing `AttachmentsConfig` has no setting for. `capture` opens
 // the camera directly instead of a picker, which is the difference
@@ -118,9 +124,9 @@ function Panel({ title, blurb, prompt, emptyJourney }) {
       <h1 style={{ marginTop: 0 }}>{title}</h1>
       <p style={styles.muted}>{blurb}</p>
       <p style={styles.muted}>
-        Take a photo with the button, drop one anywhere on this page, or
-        paste one. All three send straight away — the picture is the
-        message, so there is nothing to type after it.
+        The button takes a photo and sends it straight away. You can also
+        attach one in the chat, drop it there, or paste it — those wait for
+        you to press send, so you can say something with it.
       </p>
 
       <div style={styles.card}>
@@ -189,10 +195,6 @@ function Panel({ title, blurb, prompt, emptyJourney }) {
   );
 }
 
-function imageIn(list) {
-  return Array.from(list ?? []).find((file) => file.type.startsWith("image/"));
-}
-
 export function PhotoDemo({ url, greeting, labels, ...panel }) {
   // Built per render rather than at module scope so the two demos cannot
   // share one agent between them.
@@ -217,48 +219,18 @@ export function PhotoDemo({ url, greeting, labels, ...panel }) {
   // else; the journey, the answers landing one by one and the run's own
   // link are all things *we* want to watch while it works.
   const [debug, setDebug] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const { prompt } = panel;
-
-  // Paste anywhere on the page. Scoped to the window rather than the chat
-  // because somebody who has just copied a photo does not know where the
-  // drop zone is, and there is nothing else here paste could mean.
-  useEffect(() => {
-    function onPaste(event) {
-      const file = imageIn(event.clipboardData?.files);
-      if (!file) return;
-      event.preventDefault();
-      sendPhoto(agent, file, prompt);
-    }
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [agent, prompt]);
-
-  function onDrop(event) {
-    event.preventDefault();
-    setDragging(false);
-    const file = imageIn(event.dataTransfer?.files);
-    if (file) sendPhoto(agent, file, prompt);
-  }
 
   return (
     <CopilotKit agents__unsafe_dev_only={{ default: agent }}>
       <div
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
         style={{
           ...styles.page,
           gridTemplateColumns: debug ? "1fr 480px" : "1fr",
-          ...(dragging ? styles.dragging : {}),
         }}
       >
         {debug && <Panel {...panel} />}
         <div style={{ ...styles.chat, ...(debug ? {} : styles.chatAlone) }}>
-          <CopilotChat labels={labels} />
+          <CopilotChat attachments={ATTACHMENTS} labels={labels} />
         </div>
       </div>
       <button style={styles.debugToggle} onClick={() => setDebug(!debug)}>
