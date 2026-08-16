@@ -12,7 +12,7 @@ from django.shortcuts import render
 
 from examples.eventlog import DemoObserver, log_event
 from examples.insurance import InsuranceQuoteViewSet, quote_for
-from examples.licence import LicenceCheckViewSet
+from examples.licence import IdentityCheckViewSet, LicenceCheckViewSet
 from tests.testapp.durable import ModelStorage
 
 
@@ -48,6 +48,25 @@ class HybridLicenceViewSet(LicenceCheckViewSet):
     url_name = "licence"
     storage_class = ModelStorage
     template_name = "hybrid/licence_step.html"
+
+    def configure_wizard(self, wizard):
+        return wizard.configure(
+            template_name=self.template_name, observer_class=DemoObserver
+        )
+
+
+class HybridIdentityViewSet(IdentityCheckViewSet):
+    """The document-free check, mounted and stored like the others.
+
+    Worth having beside `HybridLicenceViewSet` rather than instead of it:
+    they ask for the same four things and differ only in whether the run
+    keeps the photograph. One proves a document can be *stored*; this one
+    proves it only ever had to be *read*.
+    """
+
+    url_name = "identity"
+    storage_class = ModelStorage
+    template_name = "hybrid/identity_step.html"
 
     def configure_wizard(self, wizard):
         return wizard.configure(

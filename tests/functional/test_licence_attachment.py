@@ -31,7 +31,10 @@ from examples.copilotkit.agent import (  # noqa: E402
     attachments_from,
     build_agent,
 )
-from examples.licence import LicenceCheckViewSet  # noqa: E402
+from examples.licence import (  # noqa: E402
+    IdentityCheckViewSet,
+    LicenceCheckViewSet,
+)
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 
 _SCAN = b"pretend-image-bytes"
@@ -162,3 +165,126 @@ def _context(deps):
     ctx = _Ctx()
     ctx.deps = deps
     return ctx
+
+
+# --- reading a document, which needs nothing -------------------------------
+
+
+def test_every_agent_is_told_what_to_do_with_a_document():
+    """Unconditional, because it only fires when one arrives.
+
+    An agent driving a wizard with nowhere to put a file can still be
+    handed a photograph in the chat and fill ordinary fields from it, so
+    withholding this from wizards without a file step would withhold it
+    from exactly the ones that need it most.
+    """
+    from examples.insurance import InsuranceQuoteViewSet
+    from examples.prompt import build_instructions
+
+    for viewset_class in (InsuranceQuoteViewSet, LicenceCheckViewSet):
+        instructions = build_instructions(viewset_class)
+        assert "share a photo or a scan" in instructions
+        assert "check them" in instructions
+
+
+def test_asking_for_a_document_is_left_to_the_wizard():
+    """The other half of the rule, deliberately not in the shared prompt.
+
+    "Ask for a document instead of asking for fields" changes what an
+    agent volunteers, which is a decision about one application — the
+    quote agent should not start asking for certificates of
+    incorporation because the licence demo wanted a shortcut.
+    """
+    from examples.insurance import InsuranceQuoteViewSet
+    from examples.prompt import DOCUMENTS, build_instructions
+
+    assert "driving licence" not in DOCUMENTS
+    assert "driving licence" in build_instructions(IdentityCheckViewSet)
+    assert "driving licence" not in build_instructions(InsuranceQuoteViewSet)
+
+
+def test_a_wizard_with_no_file_step_still_reads_and_fills(isolated_media_root):
+    """The case that has nothing to do with uploads.
+
+    `IdentityCheckViewSet` has no `FileField`, so there is nowhere to put
+    a document and no tool to put one anywhere. The four fields printed on
+    the card are still ordinary strings, and that is all the agent has to
+    submit.
+    """
+    agent = build_agent(IdentityCheckViewSet, "test")
+    logged = next(t for t in agent.toolsets if hasattr(t, "wrapped"))
+    assert "attach_document" not in logged.wrapped.tools
+
+    driver = RunDriver.begin(IdentityCheckViewSet, request=fabricate_request())
+    result = driver.prefill(
+        {
+            "name": {"first_name": "Ada", "surname": "Carrogan"},
+            "date-of-birth": {"date_of_birth": "1986-08-16"},
+            "licence-number": {"licence_number": "CARRO806161K99AB"},
+            "address": {
+                "address_line_1": "12 Analytical Way",
+                "town": "London",
+                "postcode": "N1 1AA",
+            },
+        }
+    )
+
+    # Four pages a person would have typed, filled in one pass from what
+    # one photograph said, and stopping where it should.
+    assert result.placed == ["name", "date-of-birth", "licence-number", "address"]
+    assert result.next_step == "confirm"
+    assert not result.complete
+    assert all(not p.files for p in driver.placements().values())
+
+
+def test_a_wizard_that_can_store_a_file_says_so():
+    """The flag is declared, so it can go stale. This is what notices.
+
+    Add a file step and forget the flag and the agent quietly loses the
+    only tool that could answer it — a failure that shows up as the model
+    being unhelpful rather than as anything breaking.
+    """
+
+    from examples.copilotkit.wizards import (
+        HybridIdentityViewSet,
+        HybridLicenceViewSet,
+        HybridQuoteViewSet,
+    )
+    from gandalf.driver import RunDriver
+
+    for viewset_class in (
+        HybridQuoteViewSet,
+        HybridLicenceViewSet,
+        HybridIdentityViewSet,
+    ):
+        outline = RunDriver.outline_for(viewset_class, request=fabricate_request())
+        has_file = _mentions_a_file(outline)
+        declared = getattr(viewset_class, "agent_accepts_documents", False)
+        assert has_file == declared, (
+            f"{viewset_class.__name__} has "
+            f"{'a' if has_file else 'no'} file step but declares "
+            f"agent_accepts_documents={declared}"
+        )
+
+
+def _mentions_a_file(entries):
+    """Whether any step in the outline takes a file, however deeply an arm
+    buries it. The schema is the only description of a step the agent gets,
+    so it is the honest place to ask.
+
+    The phrase comes from #68, which replaced "FileField is not supported;
+    submit its raw form value" — an instruction that pointed a caller at
+    the one door a file cannot go through — with a description of where it
+    actually goes.
+    """
+    for entry in entries:
+        if entry["kind"] == "step":
+            for prop in entry["schema"]["properties"].values():
+                if "takes an uploaded file" in prop.get("description", ""):
+                    return True
+        for arm in entry.get("arms", []) + entry.get("cases", []):
+            if _mentions_a_file(arm["steps"]):
+                return True
+        if _mentions_a_file(entry.get("default") or []):
+            return True
+    return False

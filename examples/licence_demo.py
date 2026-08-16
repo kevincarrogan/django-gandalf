@@ -46,19 +46,33 @@ from examples.copilotkit.agent import (  # noqa: E402
     resolve_model,
 )
 from examples.copilotkit.views import context_instructions  # noqa: E402
-from examples.copilotkit.wizards import HybridLicenceViewSet  # noqa: E402
+from examples.copilotkit.wizards import (  # noqa: E402
+    HybridIdentityViewSet,
+    HybridLicenceViewSet,
+)
 from examples.costs import dollars  # noqa: E402
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 
 PROMPT = "Here is a photo of my driving licence. Please fill in the check for me."
 
+#: The two ways a photograph can be useful, one command apart. `check`
+#: keeps it — there is a file step, and the agent attaches the image to
+#: the run. `identity` never wanted it: same four fields, no file step, no
+#: attach tool, and the picture is only ever *read*. If the second works
+#: and the first does not, the reading is fine and the storing is broken;
+#: if neither does, the model could not read the card.
+WIZARDS = {
+    "check": HybridLicenceViewSet,
+    "identity": HybridIdentityViewSet,
+}
 
-def read_licence(path: Path, model: str):
+
+def read_licence(path: Path, model: str, viewset_class):
     """One run: hand the agent the photograph and let it work."""
     data = path.read_bytes()
     media_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
 
-    agent = build_agent(HybridLicenceViewSet, model)
+    agent = build_agent(viewset_class, model)
     deps = WizardDeps(
         state=WizardState(),
         request=fabricate_request(),
@@ -86,10 +100,17 @@ def read_licence(path: Path, model: str):
 
 def main():
     if len(sys.argv) < 2:
-        raise SystemExit("Usage: just licence-demo <path to a licence photo>")
+        raise SystemExit(
+            "Usage: just licence-demo <path to a licence photo> "
+            f"[{' | '.join(WIZARDS)}]"
+        )
     path = Path(sys.argv[1])
     if not path.is_file():
         raise SystemExit(f"No such file: {path}")
+    which = sys.argv[2] if len(sys.argv) > 2 else "check"
+    if which not in WIZARDS:
+        raise SystemExit(f"Unknown wizard {which!r}; pick one of {', '.join(WIZARDS)}.")
+    viewset_class = WIZARDS[which]
 
     model = resolve_model()
     if model == "test":
@@ -98,9 +119,9 @@ def main():
             "in .env, or set GANDALF_AGENT_MODEL."
         )
 
-    result, deps = read_licence(path, model)
+    result, deps = read_licence(path, model, viewset_class)
 
-    print(f"\nShowed {path.name} to {model}.\n")
+    print(f"\nShowed {path.name} to {model}, driving the {which!r} wizard.\n")
     print(result.output.strip() or "(the agent said nothing)")
 
     run_id = deps.state.run_id
@@ -108,7 +129,7 @@ def main():
         print("\nNo run was started, so there is nothing to check.")
         return
 
-    driver = RunDriver.resume(HybridLicenceViewSet, run_id, request=deps.request)
+    driver = RunDriver.resume(viewset_class, run_id, request=deps.request)
     print("\nWhat it read off the picture:\n")
     for step, placement in driver.placements().items():
         for field, value in placement.answers.items():

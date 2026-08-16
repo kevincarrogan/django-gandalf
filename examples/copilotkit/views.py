@@ -15,11 +15,16 @@ from django.utils import timezone
 
 from examples.copilotkit.agent import build_agent, resolve_model
 from examples.copilotkit.transcripts import record
-from examples.copilotkit.wizards import HybridLicenceViewSet, HybridQuoteViewSet
+from examples.copilotkit.wizards import (
+    HybridIdentityViewSet,
+    HybridLicenceViewSet,
+    HybridQuoteViewSet,
+)
 from gandalf.contrib.agent.agui import endpoint_for
 
 agent = build_agent(HybridQuoteViewSet, resolve_model())
 licence_agent = build_agent(HybridLicenceViewSet, resolve_model())
+identity_agent = build_agent(HybridIdentityViewSet, resolve_model())
 
 
 def run_instructions(run_input):
@@ -61,6 +66,9 @@ agent_endpoint = endpoint_for(
 )
 licence_endpoint = endpoint_for(
     licence_agent, instructions=run_instructions, on_complete=_chat
+)
+identity_endpoint = endpoint_for(
+    identity_agent, instructions=run_instructions, on_complete=record
 )
 
 

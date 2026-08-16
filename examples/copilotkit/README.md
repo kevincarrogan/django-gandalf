@@ -87,6 +87,36 @@ It prints what the agent read, where the run stopped, and what the call
 cost. An image is worth roughly a thousand tokens, so that is the bulk of
 it.
 
+### The identity check
+
+http://localhost:5173/#identity is the same idea with nothing stored. Five
+pages, one question each — name, date of birth, licence number, address,
+then check your answers — which is the shape a real service of this kind
+takes. Every one of those answers is printed on a driving licence, so a
+photo of one fills the lot.
+
+The wizard behind it has no `FileField` anywhere, so there is nowhere a
+document could be kept and the agent is offered no way to add one. It only
+ever *reads* the picture. That is the common case and it needs nothing from
+the library: what makes the agent ask for a licence is one sentence in that
+wizard's `agent_notes`.
+
+http://localhost:5173/identity/ is the same five pages as a plain form, if
+you want to feel what the shortcut is worth.
+
+Pass `identity` as a second argument for the wizard that has no file step
+at all:
+
+```
+just licence-demo ~/Pictures/licence.jpg identity
+```
+
+Same four fields, no `FileField`, no attach tool — the photograph is only
+ever *read*, and the agent submits four ordinary strings. That is the
+common case: a wizard need not know anything about documents for an agent
+to fill it from one. What makes it ask for a licence is a sentence in
+that wizard's `agent_notes`, not anything in the library.
+
 ### The model key
 
 The agent runs in the **server** process, so that is where the key has to

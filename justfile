@@ -62,9 +62,11 @@ agent-eval repeats="1" only="":
 # Show the agent a photograph of a driving licence and print what it read
 # off it, beside where the run stopped. Needs a model key; costs a real
 # call, and an image is worth about a thousand tokens of one.
-licence-demo image:
+# Pass `identity` as the second argument for the wizard that has no file
+# step at all — same four fields, read from the photo, never stored.
+licence-demo image wizard="check":
     PYTHONPATH=. uv run --group agents django-admin migrate --settings examples.copilotkit.settings
-    PYTHONPATH=. uv run --group agents python -m examples.licence_demo {{image}}
+    PYTHONPATH=. uv run --group agents python -m examples.licence_demo {{image}} {{wizard}}
 
 # Read back the most recent agent run: what it called, what it said, what
 # it cost, and the events either side of it. Pass a number for more runs.
