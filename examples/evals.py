@@ -100,6 +100,14 @@ def fill(scenario) -> Filled:
         for step, answers in scenario.edit.items():
             editor.submit(answers, step=step, metadata={})
 
+    started_as = deps.state.run_id
+    if scenario.forget_run:
+        # What a page reload does. The conversation survives and the handle
+        # to the run does not, which is recoverable — every tool result
+        # carries the id — and is not recovered by starting a fresh run
+        # over the top of it.
+        deps.state.run_id = None
+
     if scenario.follow_up:
         result = agent.run_sync(
             scenario.follow_up,
@@ -134,10 +142,11 @@ def fill(scenario) -> Filled:
 
     answers: dict[str, Any] = {}
     step = None
-    if deps.state.run_id:
-        driver = RunDriver.resume(
-            HybridQuoteViewSet, deps.state.run_id, request=deps.request
-        )
+    # The run the agent *started* is the one being judged. A scenario that
+    # took the id away is asking whether it found its way back, and reading
+    # whatever run it ended on would score a fresh empty one as a pass.
+    if started_as:
+        driver = RunDriver.resume(HybridQuoteViewSet, started_as, request=deps.request)
         answers, step = driver.answers(), driver.describe().step
     return Filled(
         summary=summarise(json.loads(to_json(result.all_messages()))),

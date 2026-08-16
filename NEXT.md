@@ -81,11 +81,18 @@ written from scratch now receives a `metadata` keyword. Subclassing
 
 The cheap one first, because it changes what the expensive one is worth.
 
-### 1. Add the scenarios the suite is missing
+### 1. Add the scenarios the suite is still missing
 
-Do this **before** the sweep: it is one sweep either way, so adding them now
-pays for one run rather than two. Three new scenarios take five repeats from
-about $2 to about $2.75.
+Three went in with the work that created the behaviour they measure —
+*asked for the link part way through*, *asked about an answer they changed
+themselves*, and *the run id is lost between turns*. The last needed one
+new field, `forget_run`, which drops the run id before the follow-up the
+way a page reload does; the harness then reads back the run the agent
+*started*, so beginning a fresh one over the top cannot score as a pass.
+
+Three are still outstanding. Do them **before** the sweep: it is one sweep
+either way, so adding them now pays for one run rather than two. Six new
+scenarios take five repeats from about $2 to about $3.50.
 
 **The one that closes a hole rather than adding coverage: the agent editing its
 own answer.** Seven of the eight scorers are negatives —
