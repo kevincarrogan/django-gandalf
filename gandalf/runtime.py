@@ -1115,7 +1115,7 @@ class CursorWalker(tree.Interpreter):
             # Only a placement is a submission. The walk re-proves stored
             # answers on every request, and counting those would count one
             # mistake once per page that follows it.
-            self._bound_wizard.observer.submission(step, satisfied)
+            self._bound_wizard.observer.submission(step, satisfied, self._metadata)
 
         node = RuntimeStep(
             declaration=step,
