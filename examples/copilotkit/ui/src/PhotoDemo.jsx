@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
+import React from "react";
 
 // Both photograph demos are this page with different words and a
 // different endpoint. They differ in the wizard behind them — one keeps

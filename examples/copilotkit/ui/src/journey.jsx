@@ -7,6 +7,11 @@
 // its absence is a fact about the conversation rather than about the
 // wizard, and the panels say so rather than hiding the card.
 
+// Imported although nothing here names it: Vite is transforming JSX with
+// the classic runtime, so a tag compiles to `React.createElement` and
+// needs React in scope.
+import React from "react";
+
 export function StepBadge({ label, status }) {
   const palette = {
     answered: { background: "#ecfdf3", border: "#b7e4c7" },

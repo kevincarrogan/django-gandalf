@@ -1,4 +1,5 @@
 import { PhotoDemo } from "./PhotoDemo.jsx";
+import React from "react";
 
 // The wizard behind this one has no file step at all — five pages of
 // plain text, one question each, and nowhere a document could be stored.

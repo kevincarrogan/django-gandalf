@@ -48,6 +48,15 @@ just copilotkit-ui       # Vite on :5173 (provisions a local node via nodeenv)
 Both take the Django port if 8100 is taken too — move them together:
 `just copilotkit-server 8200` and `just copilotkit-ui 8200`.
 
+**Restart the Vite server after switching branches.** `main` has no
+`examples/` directory, so checking it out while the dev server is running
+makes `vite.config.js` vanish underneath it. Vite restarts against a
+default config and comes back without the proxy — every `/…-agent/` call
+404s — and without the React plugin, so JSX compiles to
+`React.createElement` rather than the automatic runtime. Both look like
+the demo breaking rather than the server being misconfigured, which is how
+an hour goes missing.
+
 Open http://localhost:5173 and ask for a quote — for example *"Get me a
 quote: property and vehicle cover, £500 excess, starting 1 September."*
 The panel fills as the agent works, then offers **Review and finish →**.

@@ -1,4 +1,5 @@
 import { PhotoDemo } from "./PhotoDemo.jsx";
+import React from "react";
 
 // The wizard behind this one has a file step, so the scan it is sent is
 // kept on the run as an answer in its own right.
