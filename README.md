@@ -1701,26 +1701,40 @@ the answers alone cannot say so:
 
 ```python
 driver.submit({"excess": "250"}, metadata={"placed_by": "person"})
-driver.metadata()       # {"coverage": {"placed_by": "person"}, ...}
+driver.placements()["coverage"].metadata     # {"placed_by": "person"}
 ```
+
+`placements()` is the single read of a run: every answered step, keyed by
+name, carrying the answers, the files stored with them, and that metadata —
+all from one walk. `answers()` is the same read with the other two dropped.
 
 That is the fact. What to *do* with it is yours, because "whose answer is
 this" is a question about your domain rather than about wizards. A caller
 that must not overwrite what somebody typed asks before it submits:
 
 ```python
-if not driver.metadata().get(step, {}).get("unattended"):
+placement = driver.placements().get(step)
+if placement and not placement.metadata.get("unattended"):
     raise SomebodyElsesAnswer(step)      # your rule, your exception
 driver.submit(data, step=step)
 ```
+
+A step nobody has answered has no placement at all, which is why the rule
+asks for one rather than defaulting: "not the driver's own answer" and "no
+answer yet" are different facts, and only the first is somebody else's.
 
 Without the metadata there is no way to write that rule at all — a driver
 cannot tell the answer it placed from the one a person changed, and correcting
 its own earlier answer is something it must keep being allowed to do, since
 that is how it recovers from a rejected one.
 
-Files are the one gap: a `FileField` is described as a string in the schema
-and cannot be answered programmatically yet.
+Files are the one gap, and only on the way in. A run whose file step was
+answered through a browser reads back fine — `placements()` carries the
+stored reference, and `json_safe=True` renders it as that reference rather
+than failing on an open file. But a `FileField` is described as a string in
+the schema and still cannot be *answered* through a driver: `submit()` takes
+no files, and handing it one raises at the door rather than storing
+something unreadable.
 
 > **Source:** the snippets above are driven against the README's own wizards in
 > [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).

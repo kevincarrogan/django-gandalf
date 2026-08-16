@@ -7,12 +7,14 @@ what it says they do.
 """
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
-from gandalf.driver import ConfirmationRequired, RunDriver
+from gandalf.driver import ConfirmationRequired, RunDriver, fabricate_request
 from tests.testapp.readme_examples import (
     BranchingWizardViewSet,
     SignupWizardViewSet,
 )
+from tests.testapp.views import FileUploadingWizardViewSet
 
 
 def _is_the_drivers_own(driver, step):
@@ -22,8 +24,13 @@ def _is_the_drivers_own(driver, step):
     Nothing in the library refuses an edit — who owns an answer is a
     question about a domain rather than about wizards — so a caller that
     cares asks before it submits. This is the whole recipe.
+
+    One read, because the question spans two of a placement's three parts:
+    a step nobody has answered has no placement, and is a different thing
+    from one answered by somebody who recorded nothing.
     """
-    return bool(driver.metadata().get(step, {}).get("unattended"))
+    placement = driver.placements().get(step)
+    return placement is not None and bool(placement.metadata.get("unattended"))
 
 
 def test_a_wizard_that_says_nothing_will_not_be_finished_without_a_person():
@@ -124,3 +131,31 @@ def test_an_agent_drives_the_branching_wizard_down_the_business_arm():
     result = driver.submit({"confirmed": "on"})
     assert result.status == "complete"
     assert driver.finish().content == b"Onboarded Ada Ltd"
+
+
+def test_a_driver_reads_a_run_whose_file_step_was_answered(client, wizard_driver):
+    """The read side of the file gap, which used to be a `TypeError`.
+
+    A person uploads through the browser and hands the run on. Everything
+    after that point is the driver's, so it has to be able to read what
+    came before — and an open file is not JSON, which is what a driver's
+    caller almost always speaks.
+    """
+    run = wizard_driver("file-uploading-wizard").start()
+    run.post_step("photo", {"photo": SimpleUploadedFile("proof.txt", b"hello")})
+
+    driver = RunDriver.resume(
+        FileUploadingWizardViewSet,
+        run.run_id,
+        request=fabricate_request(session=client.session),
+    )
+
+    placement = driver.placements()["photo"]
+    # The reference is what state holds, so it is JSON already and names
+    # the same bytes the browser stored.
+    assert placement.files["photo"]["name"] == "proof.txt"
+    assert placement.answers["photo"].name == "proof.txt"
+
+    # The call both agent adapters make on every tool call.
+    described = driver.describe(json_safe=True)
+    assert described.answers["photo"]["photo"] == placement.files["photo"]
