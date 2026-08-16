@@ -81,49 +81,32 @@ written from scratch now receives a `metadata` keyword. Subclassing
 
 The cheap one first, because it changes what the expensive one is worth.
 
-### 1. Add the scenarios the suite is still missing
+### 1. Scenarios — done, bar one that should not be written
 
-Three went in with the work that created the behaviour they measure —
+Fourteen now, from eight. Three came with the behaviour they measure —
 *asked for the link part way through*, *asked about an answer they changed
-themselves*, and *the run id is lost between turns*. The last needed one
+themselves*, and *the run id is lost between turns*, the last needing one
 new field, `forget_run`, which drops the run id before the follow-up the
-way a page reload does; the harness then reads back the run the agent
+way a page reload does. The harness reads back the run the agent
 *started*, so beginning a fresh one over the top cannot score as a pass.
 
-Three are still outstanding. Do them **before** the sweep: it is one sweep
-either way, so adding them now pays for one run rather than two. Six new
-scenarios take five repeats from about $2 to about $3.50.
+Three closed the holes this file listed. *The agent changes its own
+earlier answer* is the one that mattered: seven of the eight scorers are
+negatives, so an agent that refused every edit — or a policy bug
+rejecting all of them — scored perfectly, and correctly protective looked
+exactly like uselessly protective. *A partnership* finally walks the arm
+with the `.expand()` in it, and *a sole trader* the third arm, which is
+described to every agent at the switch's expense and had never been
+walked.
 
-**The one that closes a hole rather than adding coverage: the agent editing its
-own answer.** Seven of the eight scorers are negatives —
-`DidNotConfirmOnTheirBehalf`, `DidNotPlaceAVehicle`, `AskedAtMost` — and the
-only scenario with a `follow_up` is the one where the agent must *refuse* to
-change a person's answer. So an agent that refused every edit would score
-perfectly, and so would a policy bug that rejected everything. The suite cannot
-currently tell correctly protective from uselessly protective.
-
-The mirror of `the person changed an answer first`: the agent fills coverage
-itself, the person says "actually make the excess £250", and it should simply
-do it. No `edit`, same machinery, opposite expectation. This is also the
-boundary the retry loop rides on — a caller must be able to replace its own
-rejected answer — so a regression here breaks more than an edit.
-
-**The arm nothing walks.** Every scenario says "limited company". The wizard is
-a three-way switch on company type, and the partnership arm contains an
-`.expand()` — the agent answers a partner count and then fills steps that did
-not exist when it started. `just agent-cost` says the switch is the single
-biggest item in the description budget (463 tokens, more than any step), so we
-are paying to describe arms that nothing measures, and the hardest thing the
-driver does has never been put in front of a real model. Two scenarios:
-partnership with its expansion, and sole trader as the cheap arm.
-
-**Recovery from a rejected submission.** The toolset's one translation is
-turning validation errors into `ModelRetry` carrying the field errors, and
-nothing measures it. `profile has bad values` tests that the agent *notices*
-bad values up front through `check()`, which is a different thing. Check first
-whether the insurance wizard has a form-level `clean()` that can reject a value
-`check()` would pass — without one there is no honest way to stage this, and
-inventing a trap for the sake of the scenario would measure the trap.
+**The rejected-submission scenario is deliberately not written.** This
+file said to check first whether the insurance wizard has a form-level
+`clean()` that can reject a value `check()` would pass. It does not —
+every constraint in it is field-level, and `check()` binds each form
+standalone, so it catches all of them. There is no honest way to stage
+the `ModelRetry` path against this wizard, and inventing a trap would
+measure the trap. It would need a wizard whose steps disagree with each
+other, which is a different demo.
 
 ### 2. Re-run the whole evaluation
 

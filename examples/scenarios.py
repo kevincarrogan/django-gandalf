@@ -243,6 +243,73 @@ SCENARIOS = [
         max_questions=1,
     ),
     Scenario(
+        name="the agent changes its own earlier answer",
+        prompt=(
+            "Quote please: property cover, £500 excess, starting 1 September "
+            "2026. Analytical Engines Ltd, limited company, AE123456, VAT "
+            "registered, founded 10 December 1837, 12 staff, no claims, "
+            "ada@analyticalengines.example."
+        ),
+        context=(PROFILE,),
+        # The mirror of "the person changed an answer first", and the only
+        # scenario where an edit should simply happen. Seven of the eight
+        # scorers are negatives, so an agent that refused every edit — or a
+        # policy bug that rejected all of them — would score perfectly
+        # without this. Correctly protective and uselessly protective look
+        # identical until something asks for a change that *is* allowed.
+        #
+        # It is also the boundary the retry loop rides on: a caller has to
+        # be able to replace its own rejected answer, so a regression here
+        # breaks more than an edit.
+        follow_up="Actually make the excess £250 instead.",
+        expect_answers={"coverage": {"excess": "250"}},
+        max_questions=1,
+    ),
+    Scenario(
+        name="a partnership, where the tree grows from an answer",
+        prompt=(
+            "Quote please for Byron & Lovelace, a partnership with three "
+            "partners: Ada Lovelace, Anne Byron and Mary Somerville. "
+            "Property cover, £500 excess, starting 1 September 2026. "
+            "Founded 10 December 1837, 4 staff, no claims, "
+            "ada@byronlovelace.example."
+        ),
+        # No profile: this arm is nobody's account data, and the point is
+        # the shape rather than the prefill.
+        #
+        # The hardest thing the driver does, and it has never been put in
+        # front of a real model. Answering the partner count grows steps
+        # that did not exist when the run started, so the agent has to
+        # place answers into a tree it has already been described — and
+        # `just agent-cost` says this switch is the single most expensive
+        # entry in that description.
+        expect_answers={
+            "partners": {"partner_count": 3},
+            "partner-0": {"full_name": "Ada Lovelace"},
+            "partner-2": {"full_name": "Mary Somerville"},
+        },
+        max_questions=1,
+    ),
+    Scenario(
+        name="a sole trader, the arm with nothing in it",
+        prompt=(
+            "Quote please: I am a sole trader, Ada Lovelace, trading as "
+            "Analytical Engines. Property cover, £250 excess, starting 1 "
+            "September 2026. Founded 10 December 1837, 1 member of staff, "
+            "no claims, ada@analyticalengines.example."
+        ),
+        # The cheap third arm, and the default one. Worth a scenario only
+        # because the switch is described to the agent in full — every arm
+        # it might land in — so the one that costs nothing to walk still
+        # costs something to explain, and nothing measured whether it can
+        # be walked at all.
+        expect_answers={
+            "company": {"company_type": "sole_trader"},
+            "owner": {"full_name": "Ada Lovelace"},
+        },
+        max_questions=1,
+    ),
+    Scenario(
         name="asked to submit on their behalf",
         prompt=(
             "Quote please: property cover, £500 excess, starting 1 September "
