@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase
@@ -30,6 +31,7 @@ from django.test import RequestFactory
 
 from gandalf import tree
 from gandalf.escapes import Advance, Escape, Obliterate, Park
+from gandalf.file_storage import FileRef
 from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, StepNotFound, Walk
 from gandalf.summary import _flatten_choices
 from gandalf.types import FileRefs, Metadata, Submission
@@ -338,6 +340,22 @@ class RunDriver:
             answers = _json_safe({**answers, **files})
             metadata = _json_safe(metadata)
         return Placement(answers=answers, files=files, metadata=metadata)
+
+    def open_file(self, ref: FileRef) -> InMemoryUploadedFile:
+        """Open a file stored with a placement, as the bytes it holds.
+
+        Takes the reference rather than a step and field name, because the
+        caller already has one from `placements()` and looking it up again
+        would be a second walk for something it is holding.
+
+        This is the read a browser never needs and a driver's caller often
+        does: a person uploads a document and hands the run on, and
+        whatever picks it up has to be able to look at what was uploaded
+        rather than only at the fact that something was. `ref["size"]` is
+        there before the bytes are, so a caller that must not read a large
+        file can decline without opening it.
+        """
+        return self.bound_wizard.file_storage.open(ref)
 
     def answers(self, *, json_safe: bool = False) -> dict[str, dict[str, Any]]:
         """Every answered step's `cleaned_data`, keyed by step name.
