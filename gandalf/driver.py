@@ -261,7 +261,13 @@ class RunDriver:
         else a description carries is JSON already.
         """
         cursor = self.bound_wizard.cursor()
-        answers = self.answers(json_safe=json_safe)
+        # Reading the answers walks for the runtime tree, and this cursor is
+        # already holding it. `walking()` hands that tree over for the read,
+        # which is the difference between describing a run in one walk and
+        # in two. Without it this method pays the very cost `json_safe` is
+        # documented above as sparing its caller.
+        with self.bound_wizard.walking(cursor.state):
+            answers = self.answers(json_safe=json_safe)
         if cursor.node is None:
             return StepDescription(
                 step=None, schema=None, answers=answers, errors={}, complete=True
