@@ -80,7 +80,7 @@ dev server at your machine's address on the network to reach it from one.
 For the same thing without a browser, over an image you already have:
 
 ```
-just licence-demo ~/Pictures/licence.jpg
+just photo-demo ~/Pictures/licence.jpg
 ```
 
 It prints what the agent read, where the run stopped, and what the call
@@ -108,7 +108,7 @@ Pass `identity` as a second argument for the wizard that has no file step
 at all:
 
 ```
-just licence-demo ~/Pictures/licence.jpg identity
+just photo-demo ~/Pictures/licence.jpg identity
 ```
 
 Same four fields, no `FileField`, no attach tool — the photograph is only

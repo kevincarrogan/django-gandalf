@@ -10,6 +10,17 @@ export default function Identity() {
       url="/identity-agent/"
       title="Identity check"
       prompt="Here is a photo of my driving licence. Please fill this in for me."
+      greeting={[
+        "I can confirm your identity for you. Normally that is five pages —",
+        "your name, date of birth, driving licence number and address.",
+        "",
+        "Send me a photo of the front of your driving licence and I'll fill",
+        "all of it in for you to check. If you'd rather type it out, just",
+        "say so.",
+      ].join(" ")}
+      labels={{
+        chatInputPlaceholder: "Send a photo of your licence, or type a message…",
+      }}
       blurb={
         "Five pages, one question each — the shape a real service of this " +
         "kind takes. Every answer is printed on a driving licence, so a photo " +

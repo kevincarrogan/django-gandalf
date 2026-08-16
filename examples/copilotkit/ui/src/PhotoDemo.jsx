@@ -1,7 +1,7 @@
 import { HttpAgent } from "@ag-ui/client";
 import { CopilotChat, CopilotKit, useAgent } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
@@ -12,12 +12,19 @@ import { styles } from "./styles.js";
 // the browser does, which is the point worth showing: reading a document
 // takes no support from the form at all.
 
-// Drag and drop, paste, a file picker, thumbnails and size validation all
-// come from CopilotKit: `CopilotChat` wires `onDragOver`/`onDrop` and
-// scoped paste handling internally, and an attachment lands as an AG-UI
-// `InputContentDataSource` — the very part the Django side already reads.
-// Nothing here has to encode anything.
-const ATTACHMENTS = { enabled: true, accept: "image/*" };
+// CopilotKit's own attachments are deliberately not used, and it is worth
+// saying why because they are better made than this.
+//
+// They queue: a file attaches to the composer and waits for you to send a
+// message, which is right for a chat where the picture illustrates
+// something you are about to say. Here the picture *is* the message —
+// handing it over is the whole interaction — and there is no exposed way
+// to submit the composer from outside it. `onSubmitMessage` intercepts a
+// submission; nothing triggers one.
+//
+// So drop, paste and the button are handled here and all three send
+// immediately. What that costs is CopilotKit's thumbnails and queue UI,
+// which a demo about handing over one photograph does not need.
 
 // The one thing `AttachmentsConfig` has no setting for. `capture` opens
 // the camera directly instead of a picker, which is the difference
@@ -26,21 +33,35 @@ const ATTACHMENTS = { enabled: true, accept: "image/*" };
 // than instead of them.
 const CAPTURE = { type: "file", accept: "image/*", capture: "environment" };
 
-function asBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    // `readAsDataURL` gives `data:<type>;base64,<payload>`; the protocol
-    // wants the payload on its own.
-    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+// A phone camera produces something like 11MB, base64 inflates it by a
+// third, and the whole conversation travels in one JSON body — so an
+// unshrunk photo breaks the request before the model ever sees it. It
+// would be wasted anyway: the model resizes large images itself, and a
+// licence is legible long before 4000px. The long edge here is well
+// above what it takes to read a licence number and well below anything
+// that costs real money.
+const MAX_EDGE = 1600;
+const QUALITY = 0.85;
+
+async function downscale(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  // JPEG whatever came in: a photograph of a card gains nothing from PNG
+  // and costs several times the bytes.
+  const dataUrl = canvas.toDataURL("image/jpeg", QUALITY);
+  return { value: dataUrl.split(",", 2)[1], mimeType: "image/jpeg" };
 }
 
 // Only the camera button needs this. An attachment added through the chat
 // is encoded and sent by CopilotKit; this is the shortcut that skips the
 // composer and sends the photo the moment it is taken.
 async function sendPhoto(agent, file, prompt) {
+  const source = await downscale(file);
   agent.addMessage({
     id: crypto.randomUUID(),
     role: "user",
@@ -52,7 +73,7 @@ async function sendPhoto(agent, file, prompt) {
         // wire even though the Python models spell it with an underscore.
         // Getting this wrong fails quietly — the part is dropped and the
         // agent simply says it cannot see a photograph.
-        source: { type: "data", value: await asBase64(file), mimeType: file.type },
+        source: { type: "data", ...source },
       },
     ],
   });
@@ -97,9 +118,9 @@ function Panel({ title, blurb, prompt, emptyJourney }) {
       <h1 style={{ marginTop: 0 }}>{title}</h1>
       <p style={styles.muted}>{blurb}</p>
       <p style={styles.muted}>
-        The button below takes a photo and sends it straight away. You can
-        also drag a file onto the chat, paste one into it, or attach one
-        with its own button — all four land in the same place.
+        Take a photo with the button, drop one anywhere on this page, or
+        paste one. All three send straight away — the picture is the
+        message, so there is nothing to type after it.
       </p>
 
       <div style={styles.card}>
@@ -168,18 +189,81 @@ function Panel({ title, blurb, prompt, emptyJourney }) {
   );
 }
 
-export function PhotoDemo({ url, ...panel }) {
+function imageIn(list) {
+  return Array.from(list ?? []).find((file) => file.type.startsWith("image/"));
+}
+
+export function PhotoDemo({ url, greeting, labels, ...panel }) {
   // Built per render rather than at module scope so the two demos cannot
   // share one agent between them.
   const [agent] = useState(() => new HttpAgent({ url }));
+
+  // Seeded as a real assistant message rather than set as
+  // `welcomeMessageText`, which CopilotKit renders as a welcome *screen*
+  // — a hero above an empty thread. That reads as page furniture, and the
+  // first thing this demo has to establish is that you are in a
+  // conversation. It costs an assistant turn in the context, which is
+  // honest: it is a thing the assistant said.
+  useEffect(() => {
+    if (agent.messages?.length) return;
+    agent.addMessage({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: greeting,
+    });
+  }, [agent, greeting]);
+  // Off by default, because the panel is instrumentation rather than the
+  // product. What somebody using this would see is a chat and nothing
+  // else; the journey, the answers landing one by one and the run's own
+  // link are all things *we* want to watch while it works.
+  const [debug, setDebug] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const { prompt } = panel;
+
+  // Paste anywhere on the page. Scoped to the window rather than the chat
+  // because somebody who has just copied a photo does not know where the
+  // drop zone is, and there is nothing else here paste could mean.
+  useEffect(() => {
+    function onPaste(event) {
+      const file = imageIn(event.clipboardData?.files);
+      if (!file) return;
+      event.preventDefault();
+      sendPhoto(agent, file, prompt);
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [agent, prompt]);
+
+  function onDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    const file = imageIn(event.dataTransfer?.files);
+    if (file) sendPhoto(agent, file, prompt);
+  }
+
   return (
     <CopilotKit agents__unsafe_dev_only={{ default: agent }}>
-      <div style={styles.page}>
-        <Panel {...panel} />
-        <div style={styles.chat}>
-          <CopilotChat attachments={ATTACHMENTS} />
+      <div
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        style={{
+          ...styles.page,
+          gridTemplateColumns: debug ? "1fr 480px" : "1fr",
+          ...(dragging ? styles.dragging : {}),
+        }}
+      >
+        {debug && <Panel {...panel} />}
+        <div style={{ ...styles.chat, ...(debug ? {} : styles.chatAlone) }}>
+          <CopilotChat labels={labels} />
         </div>
       </div>
+      <button style={styles.debugToggle} onClick={() => setDebug(!debug)}>
+        {debug ? "Hide run details" : "Run details"}
+      </button>
     </CopilotKit>
   );
 }
