@@ -1728,13 +1728,33 @@ cannot tell the answer it placed from the one a person changed, and correcting
 its own earlier answer is something it must keep being allowed to do, since
 that is how it recovers from a rejected one.
 
-Files are the one gap, and only on the way in. A run whose file step was
-answered through a browser reads back fine — `placements()` carries the
-stored reference, and `json_safe=True` renders it as that reference rather
-than failing on an open file. But a `FileField` is described as a string in
-the schema and still cannot be *answered* through a driver: `submit()` takes
-no files, and handing it one raises at the door rather than storing
-something unreadable.
+**Files go both ways.** A run whose file step was answered through a browser
+reads back as an ordinary placement — `placements()` carries the stored
+reference, and `json_safe=True` renders it as that reference rather than
+failing on an open file. `open_file()` gets from the reference to the bytes,
+which is the check a form's own `clean()` cannot make:
+
+```python
+placement = driver.placements()["licence"]
+document = driver.open_file(placement.files["scan"])   # -> UploadedFile
+```
+
+And a driver can place one, exactly as a multipart POST would:
+
+```python
+driver.submit({}, files={"scan": uploaded_file})
+```
+
+A file goes in `files` rather than in `data`, because `data` is stored as
+state and state is JSON. Omitting `files` says nothing about files rather
+than clearing them, so reading a step, changing one field and submitting it
+back keeps the document attached to it. What lands is an ordinary placement
+marked `{"unattended": True}` like any other, so a rule about whose answers
+may be changed governs an uploaded document with no special case for it.
+
+A `FileField` is still described as a string in the JSON Schema, so a caller
+learns a file is wanted there from the schema's description rather than from
+its type.
 
 > **Source:** the snippets above are driven against the README's own wizards in
 > [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).
