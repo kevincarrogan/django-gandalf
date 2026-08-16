@@ -1,6 +1,6 @@
 """Test-client helpers for driving wizards in functional tests.
 
-`WizardDriver` binds a Django test client to one wizard's published URL
+`WizardTestDriver` binds a Django test client to one wizard's published URL
 names (`<url_name>`, `<url_name>-run`, `<url_name>-step`) and hands out
 `WizardRun` objects that make requests and read stored state without the
 caller ever touching the session keys directly. The module-level functions
@@ -39,7 +39,7 @@ else:
 
 __all__ = [
     "RunDiscoveryError",
-    "WizardDriver",
+    "WizardTestDriver",
     "WizardRun",
     "seed_collection_item",
     "seed_run",
@@ -172,13 +172,19 @@ def seed_collection_item(
     session.save()
 
 
-class WizardDriver:
+class WizardTestDriver:
     """Drives one wizard, mounted via `WizardViewSet.urls()`, through a
     Django test client.
 
     `url_kwargs` are the mount-prefix kwargs (for a wizard mounted under
     `path("prefix/<slug:org>/", include(...))`, pass `org=...`); they are
     forwarded into every URL reversal.
+
+    The `Test` in the name is structural rather than a note about where to
+    use it: this takes a `django.test.Client` and cannot work without one,
+    so a test is the only place it runs. What it proves is the whole HTTP
+    stack — reversal, dispatch, redirects, the session — which is exactly
+    what a caller answering a wizard without a browser wants to skip.
     """
 
     def __init__(self, client: Client, url_name: str, **url_kwargs: Any) -> None:
@@ -275,7 +281,7 @@ class WizardRun:
     the POST-redirect-GET cycle is its whole point.
     """
 
-    def __init__(self, driver: WizardDriver, run_id: str) -> None:
+    def __init__(self, driver: WizardTestDriver, run_id: str) -> None:
         self.driver = driver
         self.run_id = str(run_id)
 

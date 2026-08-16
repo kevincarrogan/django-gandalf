@@ -12,7 +12,7 @@ from pytest_django.asserts import (
 )
 
 from gandalf.testing import (
-    WizardDriver,
+    WizardTestDriver,
     seed_run,
     seed_stash,
     stored_runs,
@@ -805,7 +805,7 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(
 def test_linear_wizard_submissions_do_not_leak_to_new_client(client, wizard_driver):
     second_client = client.__class__()
     first_run = wizard_driver("linear-wizard").start()
-    second_run = WizardDriver(second_client, "linear-wizard").start()
+    second_run = WizardTestDriver(second_client, "linear-wizard").start()
 
     first_run.post_step("first", {"name": "Ada"}, follow=True)
     response = second_run.get(follow=True)
