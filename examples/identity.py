@@ -6,14 +6,16 @@ this kind takes, and the reason the demo has a point: answered by hand it
 is four pages of transcribing a card that is sitting in front of you.
 
 Nothing here knows about documents. There is no `FileField`, no step a
-file could be stored at, and no `agent_accepts_documents` — so the agent
-is offered no way to attach anything and needs none. A photograph shared
+file could be stored at — so the agent is offered no way to attach
+anything and needs none, which the library works out from the wizard
+rather than being told. A photograph shared
 in the chat reaches the model as an image; it reads the details off the
 card and submits ordinary strings.
 
 Which makes this the more useful half of the pair. Reading a document
 takes no support from the form at all, and the one thing that makes it
-happen is a sentence in `agent_notes` saying which document holds what.
+happen is one sentence of an `AgentProfile` naming which document holds
+what.
 `examples.licence` is the same journey for a wizard that does keep the
 picture.
 """
@@ -22,6 +24,7 @@ from django import forms
 from django.http import HttpResponse
 
 from examples.eventlog import log_event
+from gandalf.contrib.agent import AgentProfile
 from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
@@ -77,11 +80,11 @@ class IdentityCheckViewSet(WizardViewSet):
     """One question per page, and nowhere to put a document.
 
     The case that has nothing to do with file uploads. No `FileField`
-    anywhere, no step a document could be stored at, and no
-    `agent_accepts_documents` — so the agent is offered no way to attach
-    anything, and needs none. A photograph shared in the chat reaches the
-    model as an image; it reads the details off the card and submits
-    ordinary strings.
+    anywhere and no step a document could be stored at, so the agent is
+    offered no way to attach one — which the library works out from the
+    wizard rather than being told. A photograph shared in the chat still
+    reaches the model as an image; it reads the details off the card and
+    submits ordinary strings.
 
     Laid out one thing per page, which is the shape a real service of this
     kind takes and the reason the demo has a point. Answered by hand it is
@@ -90,20 +93,22 @@ class IdentityCheckViewSet(WizardViewSet):
     The tedium is the product being demonstrated.
 
     Nothing about these fields says a driving licence carries all of them.
-    The wizard's author knows it, and `agent_notes` is where they say so —
+    The wizard's author knows it, and the profile is where they say so —
     no library feature is involved, and none is needed.
     """
 
     description = "A five-page identity check, asked one question at a time."
-    agent_purpose = "confirming somebody's identity"
-    agent_notes = (
-        "Ask for a photo of the front of their driving licence up front. It "
-        "shows their name, their date of birth, the licence number and the "
-        "address it is registered to — everything this asks for — so one "
-        "photograph saves five pages of typing. Read the details off it "
-        "rather than asking for them one at a time. If they would rather not "
-        "send a photo, just ask for the details instead; it is a shortcut and "
-        "not a requirement."
+    agent = AgentProfile(
+        purpose="confirming somebody's identity",
+        notes=(
+            "Ask for a photo of the front of their driving licence up front. "
+            "It shows their name, their date of birth, the licence number and "
+            "the address it is registered to — everything this asks for — so "
+            "one photograph saves five pages of typing. Read the details off "
+            "it rather than asking for them one at a time. If they would "
+            "rather not send a photo, just ask for the details instead; it is "
+            "a shortcut and not a requirement."
+        ),
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (

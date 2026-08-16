@@ -25,6 +25,7 @@ from django import forms
 from django.http import HttpResponse
 
 from examples.eventlog import log_event
+from gandalf.contrib.agent import AgentProfile
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -59,23 +60,24 @@ class ConfirmLicenceForm(forms.Form):
 
 class LicenceCheckViewSet(WizardViewSet):
     description = "A three-step check whose first answer is an uploaded photograph."
-    agent_purpose = "checking a driving licence"
-    # An agent driving this one may be handed a file. Declared rather than
-    # detected, and off by default, because a tool an agent cannot use is
-    # one it can only misuse — the quote wizard has no file step, and
-    # offering it a way to attach documents would invite it to invent one.
-    agent_accepts_documents = True
     # The one thing the wizard cannot say about itself. Reading a document
     # is not the same kind of act as filling a form from something you were
     # told, and the difference matters to whoever is being helped: a
     # misread digit looks exactly like a confident one.
-    agent_notes = (
-        "If you are given a photograph of the licence, read the details off "
-        "it and fill them in yourself rather than asking for them one at a "
-        "time. Say that you have read them from the photo and that they "
-        "should be checked, because you can misread a character and it will "
-        "not look like a mistake. Never confirm the details yourself — hand "
-        "the run back so they can check the card against what you typed."
+    #
+    # Nothing here declares that a file may be attached: the wizard has a
+    # `FileField`, and `gandalf.contrib.agent` works that out for itself.
+    agent = AgentProfile(
+        purpose="checking a driving licence",
+        notes=(
+            "If you are given a photograph of the licence, read the details "
+            "off it and fill them in yourself rather than asking for them one "
+            "at a time. Say that you have read them from the photo and that "
+            "they should be checked, because you can misread a character and "
+            "it will not look like a mistake. Never confirm the details "
+            "yourself — hand the run back so they can check the card against "
+            "what you typed."
+        ),
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
