@@ -133,7 +133,9 @@ def test_an_agent_drives_the_branching_wizard_down_the_business_arm():
     assert driver.finish().content == b"Onboarded Ada Ltd"
 
 
-def test_a_driver_reads_a_run_whose_file_step_was_answered(client, wizard_driver):
+def test_a_driver_reads_a_run_whose_file_step_was_answered(
+    client, wizard_driver, isolated_media_root
+):
     """The read side of the file gap, which used to be a `TypeError`.
 
     A person uploads through the browser and hands the run on. Everything
@@ -159,3 +161,27 @@ def test_a_driver_reads_a_run_whose_file_step_was_answered(client, wizard_driver
     # The call both agent adapters make on every tool call.
     described = driver.describe(json_safe=True)
     assert described.answers["photo"]["photo"] == placement.files["photo"]
+
+
+def test_a_driver_can_open_the_file_a_person_uploaded(
+    client, wizard_driver, isolated_media_root
+):
+    """The read a browser never needs and a caller often does.
+
+    The reference says a file is there; only the bytes say whether it is
+    the right one. Checking that is the sort of thing a wizard's own
+    `clean()` cannot do and whatever is driving the run might.
+    """
+    run = wizard_driver("file-uploading-wizard").start()
+    run.post_step("photo", {"photo": SimpleUploadedFile("proof.txt", b"hello")})
+
+    driver = RunDriver.resume(
+        FileUploadingWizardViewSet,
+        run.run_id,
+        request=fabricate_request(session=client.session),
+    )
+
+    opened = driver.open_file(driver.placements()["photo"].files["photo"])
+
+    assert opened.read() == b"hello"
+    assert opened.name == "proof.txt"

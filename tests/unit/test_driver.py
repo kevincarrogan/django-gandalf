@@ -6,12 +6,15 @@ exercised further down this file.
 """
 
 import json
+import tempfile
 from datetime import date
 
 import pytest
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
+from django.test import override_settings
 
 from gandalf.driver import (
     ConfirmationRequired,
@@ -544,6 +547,30 @@ def test_a_value_no_encoder_can_render_is_refused_where_it_was_passed():
 
     with pytest.raises(TypeError, match="not JSON serializable"):
         driver.submit({**_BOOKING, "note": object()})
+
+
+# --- Files -------------------------------------------------------------
+
+
+def test_a_driver_opens_a_file_stored_against_the_run():
+    """The bytes behind a reference.
+
+    A driver hands its caller the reference because that is what state
+    holds and what serialises; this is how the caller gets from the
+    reference to what was actually uploaded.
+    """
+    driver = RunDriver.begin(_SignupViewSet)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            ref = driver.bound_wizard.file_storage.save(
+                driver.run_id, SimpleUploadedFile("proof.txt", b"hello")
+            )
+
+            opened = driver.open_file(ref)
+
+    assert opened.read() == b"hello"
+    assert opened.name == "proof.txt"
 
 
 # --- Step metadata -----------------------------------------------------
