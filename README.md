@@ -1759,6 +1759,9 @@ words get reworded.
 
 > **Source:** the snippets above are driven against the README's own wizards in
 > [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).
+>
+> **See also:** [AGENT_ACCESS.md](AGENT_ACCESS.md) for the design behind this,
+> including how an AI agent uses it and the worked examples in `examples/`.
 
 ---
 
@@ -1921,7 +1924,9 @@ so you only configure what you need. For a custom URL scheme, subclass
 [URLs and routing](#urls-and-routing).
 
 For a runtime-level view of how the pieces fit together, see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[ARCHITECTURE.md](ARCHITECTURE.md). For driving a wizard programmatically —
+an AI agent submitting steps as data instead of clicking the forms — see
+[AGENT_ACCESS.md](AGENT_ACCESS.md).
 
 ---
 
