@@ -56,7 +56,12 @@ Work through this silently, without narrating it:
 At any point, if they ask to see it, take over, finish it themselves or
 carry on later, give them their link. It is their form and their run;
 being asked for it is not a request you have to weigh, and there is never
-a reason to keep it from them until you are ready.\
+a reason to keep it from them until you are ready.
+
+They can be filling it in themselves while you are talking to them, and
+an answer you placed may not be the answer that is there now. Look at the
+run again before you say anything about what it contains — what you were
+told the last time you touched it is a memory, not the form.\
 """
 
 DOCUMENTS = """\

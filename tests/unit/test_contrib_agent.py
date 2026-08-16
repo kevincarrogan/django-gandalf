@@ -35,7 +35,7 @@ from gandalf.contrib.agent import (  # noqa: E402
     profile_for,
 )
 from gandalf.contrib.agent.prompt import DOCUMENTS, PROCEDURE, REGISTER  # noqa: E402
-from gandalf.driver import fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 from gandalf.viewsets import WizardViewSet  # noqa: E402
 from gandalf.wizard import Wizard  # noqa: E402
 
@@ -172,6 +172,7 @@ def test_the_toolset_drives_a_run_and_hands_it_back():
 
     assert set(tools) == {
         "start_run",
+        "get_run",
         "get_outline",
         "check_answers",
         "prefill",
@@ -663,3 +664,54 @@ def test_the_agent_is_told_it_may_hand_back_at_any_point():
 
     assert "take over" in instructions
     assert "carry on later" in instructions
+
+
+# --- looking at a run somebody else has touched ------------------------
+
+
+def test_the_run_can_be_read_without_changing_it():
+    """Every other tool that shows the run also moves it. Somebody asking
+    "what does my form say now" should not have to submit something to
+    find out."""
+    tools = _tools(_SignupViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+
+    before = tools["get_run"](ctx).return_value
+    after = tools["get_run"](ctx).return_value
+
+    assert before == after
+    assert before["step"] == "email"
+    assert before["answers"] == {"name": {"name": "Ada"}}
+
+
+def test_a_change_made_outside_the_agent_is_seen_when_it_looks_again():
+    """The whole point of the handover working in both directions.
+
+    The person opens the form and changes an answer while the chat is
+    still open. The agent's memory of the run is now wrong, and the only
+    thing that fixes that is looking.
+    """
+    tools = _tools(_SignupViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+
+    # Their turn, through the same door a browser uses: a different
+    # driver, on the same run, recorded as theirs.
+    theirs = RunDriver.resume(
+        _SignupViewSet, ctx.deps.state.run_id, request=ctx.deps.request
+    )
+    theirs.submit({"name": "Grace"}, step="name", metadata={})
+
+    seen = tools["get_run"](ctx).return_value
+
+    assert seen["answers"]["name"] == {"name": "Grace"}
+    assert ctx.deps.state.answers["name"] == {"name": "Grace"}
+
+
+def test_the_agent_is_told_the_form_may_have_moved_under_it():
+    instructions = build_instructions(_SignupViewSet)
+
+    assert "filling it in themselves while you are talking" in instructions
