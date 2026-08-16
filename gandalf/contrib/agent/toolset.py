@@ -51,6 +51,7 @@ from gandalf.driver import (
     outline_steps,
 )
 from gandalf.runtime import StepNotFound
+from gandalf.storage import RunNotFound
 from gandalf.viewsets import WizardViewSet
 
 
@@ -85,7 +86,18 @@ def build_toolset(
     def _driver(ctx: RunContext[WizardDeps]) -> RunDriver:
         run_id = ctx.deps.state.run_id
         if run_id is None:
-            raise ModelRetry("No run is active; call start_run first.")
+            # Both ways out, because the id is very often recoverable: it
+            # comes back on every tool call, so it is somewhere in the
+            # conversation even when the client's state has lost it. An
+            # agent told only to start a run will start one, and the
+            # person's half-filled form is quietly abandoned.
+            raise ModelRetry(
+                "No run is active. If you have seen a run id in this "
+                "conversation — every tool returns one — call resume_run "
+                "with it rather than starting again, because starting "
+                "again abandons whatever is already filled in. Call "
+                "start_run only if there is genuinely no run yet."
+            )
         # Resumed per call rather than cached: a run lives in storage, not
         # in this process, which is the whole point of the handover.
         return RunDriver.resume(viewset_class, run_id, request=ctx.deps.request)
@@ -122,6 +134,26 @@ def build_toolset(
         step's name, a JSON Schema for the answers it wants, everything
         answered so far, and whether the run is complete."""
         driver = RunDriver.begin(viewset_class, request=ctx.deps.request)
+        return _sync(ctx, driver)
+
+    @toolset.tool
+    def resume_run(ctx: RunContext[WizardDeps], run_id: str) -> ToolReturn:
+        """Pick an existing run back up by its id and describe where it is.
+
+        Use this rather than `start_run` whenever you know a run id — you
+        will have seen one in an earlier tool result, and the person may
+        have been filling the form in themselves since. Starting a fresh
+        run does not resume anything; it leaves whatever was already
+        answered behind, and the person will be the one who notices."""
+        try:
+            driver = RunDriver.resume(viewset_class, run_id, request=ctx.deps.request)
+        except RunNotFound:
+            raise ModelRetry(
+                f"There is no run with the id {run_id!r}. Check the id "
+                "against an earlier tool result, or call start_run if this "
+                "is a new one."
+            ) from None
+        ctx.deps.state.run_id = driver.run_id
         return _sync(ctx, driver)
 
     @toolset.tool
