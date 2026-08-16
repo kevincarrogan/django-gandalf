@@ -7,6 +7,9 @@ import {
 } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 
+import { Outline } from "./journey.jsx";
+import { styles } from "./styles.js";
+
 // Dev-only direct connection to the AG-UI endpoint — no Node runtime in
 // between. The endpoint is a Django view (`just copilotkit-server`),
 // proxied by Vite so the chat and the wizard share an origin.
@@ -31,121 +34,7 @@ const businessProfile = {
   contact_email: "ada@analyticalengines.example",
 };
 
-const styles = {
-  page: {
-    display: "grid",
-    gridTemplateColumns: "1fr 420px",
-    height: "100vh",
-    margin: 0,
-    fontFamily: "system-ui, sans-serif",
-    color: "#1a202c",
-  },
-  panel: {
-    padding: "2rem 2.5rem",
-    overflowY: "auto",
-    background: "#f7f8fa",
-    borderRight: "1px solid #e2e5ea",
-  },
-  chat: { height: "100vh", overflow: "hidden" },
-  muted: { color: "#697386" },
-  card: {
-    background: "#fff",
-    border: "1px solid #e2e5ea",
-    borderRadius: "8px",
-    padding: "1rem 1.25rem",
-    marginBottom: "1rem",
-  },
-  confirmation: {
-    background: "#ecfdf3",
-    border: "1px solid #b7e4c7",
-    borderRadius: "8px",
-    padding: "1rem 1.25rem",
-    marginBottom: "1rem",
-  },
-  handoff: {
-    background: "#fffbeb",
-    border: "1px solid #fde68a",
-    borderRadius: "8px",
-    padding: "1rem 1.25rem",
-    marginBottom: "1rem",
-  },
-  handoffLink: {
-    display: "inline-block",
-    marginTop: "0.5rem",
-    padding: "0.5rem 1.1rem",
-    borderRadius: "4px",
-    background: "#2f5d8c",
-    color: "#fff",
-    fontWeight: 600,
-    textDecoration: "none",
-  },
-  progress: {
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: "8px",
-    padding: "0.75rem 1.25rem",
-    marginBottom: "1rem",
-  },
-};
 
-function StepBadge({ label, status }) {
-  const palette = {
-    answered: { background: "#ecfdf3", border: "#b7e4c7" },
-    current: { background: "#eff6ff", border: "#bfdbfe" },
-    pending: { background: "#fff", border: "#e2e5ea" },
-  }[status];
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "0.15rem 0.6rem",
-        margin: "0.15rem 0.3rem 0.15rem 0",
-        borderRadius: "999px",
-        fontSize: "0.85rem",
-        background: palette.background,
-        border: `1px solid ${palette.border}`,
-      }}
-    >
-      {status === "answered" ? "✓ " : ""}
-      {label}
-    </span>
-  );
-}
-
-function Outline({ entries, state }) {
-  return entries.map((entry, index) => {
-    if (entry.kind === "step") {
-      const status =
-        state.answers && entry.step in state.answers
-          ? "answered"
-          : entry.step === state.step
-            ? "current"
-            : "pending";
-      return <StepBadge key={index} label={entry.step} status={status} />;
-    }
-    if (entry.kind === "branch") {
-      return (
-        <span key={index} style={{ margin: "0 0.3rem" }}>
-          {"{ "}
-          {entry.arms.map((arm, armIndex) => (
-            <span key={armIndex} title={arm.description ?? arm.when ?? ""}>
-              <em style={{ color: "#697386", fontSize: "0.8rem" }}>
-                if {arm.when}:{" "}
-              </em>
-              <Outline entries={arm.steps} state={state} />
-              {" | "}
-            </span>
-          ))}
-          <Outline entries={entry.default} state={state} />
-          {" }"}
-        </span>
-      );
-    }
-    return (
-      <StepBadge key={index} label="…grows from an answer" status="pending" />
-    );
-  });
-}
 
 function fieldCount(answers) {
   return Object.values(answers ?? {}).reduce(
@@ -256,6 +145,10 @@ function WizardPanel() {
           </p>
         )}
       </div>
+
+      <p style={styles.muted}>
+        <a href="#licence">the driving licence check →</a>
+      </p>
     </div>
   );
 }
