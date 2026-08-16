@@ -125,6 +125,20 @@ def build_toolset(
         return _sync(ctx, driver)
 
     @toolset.tool
+    def get_run(ctx: RunContext[WizardDeps]) -> ToolReturn:
+        """Look at the run as it is right now: the step it is waiting on, a
+        JSON Schema for the answers that step wants, everything answered so
+        far, and whether it is complete. Changes nothing.
+
+        The person can open the form themselves at any time — you may have
+        given them the link yourself — so what you were told earlier may no
+        longer be true. Call this before answering anything about what the
+        run contains or where it has got to, rather than describing what
+        you remember. Somebody who has just changed an answer and is asking
+        you about it will not enjoy being told what it used to say."""
+        return _sync(ctx, _driver(ctx))
+
+    @toolset.tool
     def get_outline(ctx: RunContext[WizardDeps]) -> ToolReturn:
         """The wizard's full declared shape: every step with its JSON
         Schema, every fork with all of its possible routes, and markers
