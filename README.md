@@ -1685,9 +1685,9 @@ A few notes:
   `seed_section_run(...)` do it for a hub's section-to-run bookkeeping — no
   session keys in your tests.
 - **Outside pytest** the helpers work from any test:
-  `WizardDriver(Client(), "signup")` (with
+  `WizardTestDriver(Client(), "signup")` (with
   `from django.test import Client` and
-  `from gandalf.testing import WizardDriver`).
+  `from gandalf.testing import WizardTestDriver`).
 - Wizards with a **custom URL scheme** (overriding `get_wizard_url` /
   `get_step_url`) fall outside the driver's contract — drive those with the
   plain test client. To keep the plugin out of a run entirely:

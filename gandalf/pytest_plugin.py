@@ -17,17 +17,17 @@ import pytest
 if TYPE_CHECKING:
     from django.test import Client
 
-    from gandalf.testing import WizardDriver
+    from gandalf.testing import WizardTestDriver
 
 
 @pytest.fixture
-def wizard_driver(client: Client) -> Callable[..., WizardDriver]:
-    """Factory for `WizardDriver` bound to pytest-django's `client`:
+def wizard_driver(client: Client) -> Callable[..., WizardTestDriver]:
+    """Factory for `WizardTestDriver` bound to pytest-django's `client`:
     `wizard_driver("signup")` or `wizard_driver("onboarding", org="acme")`.
     """
-    from gandalf.testing import WizardDriver
+    from gandalf.testing import WizardTestDriver
 
-    def factory(url_name: str, **url_kwargs: Any) -> WizardDriver:
-        return WizardDriver(client, url_name, **url_kwargs)
+    def factory(url_name: str, **url_kwargs: Any) -> WizardTestDriver:
+        return WizardTestDriver(client, url_name, **url_kwargs)
 
     return factory
