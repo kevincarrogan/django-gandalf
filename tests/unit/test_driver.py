@@ -8,6 +8,7 @@ exercised further down this file.
 import json
 import tempfile
 from datetime import date
+from pathlib import Path
 
 import pytest
 from django import forms
@@ -38,6 +39,7 @@ from tests.testapp.forms import (
     ItemCountForm,
     ItemForm,
     PersonalDetailsForm,
+    ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
     SummaryDisplayForm,
@@ -550,6 +552,82 @@ def test_a_value_no_encoder_can_render_is_refused_where_it_was_passed():
 
 
 # --- Files -------------------------------------------------------------
+
+
+class _PhotoViewSet(WizardViewSet):
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard().step(ProfilePhotoForm, name="photo").step(FirstStepForm, name="first")
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(b"photo done")
+
+
+def test_a_driver_places_a_file_as_its_own_answer():
+    """The way in, which used to be shut.
+
+    A file goes in `files` rather than in `data` because `data` is stored
+    as state and state is JSON. What comes back is an ordinary placement:
+    the reference in `files`, and metadata saying the driver put it there,
+    so a rule about whose answers may be changed governs an uploaded
+    document with no special case for it.
+    """
+    driver = RunDriver.begin(_PhotoViewSet)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            result = driver.submit(
+                {}, files={"photo": SimpleUploadedFile("licence.png", b"bytes")}
+            )
+            placement = driver.placements()["photo"]
+            content = driver.open_file(placement.files["photo"]).read()
+
+    assert result.status == "advanced"
+    assert placement.files["photo"]["name"] == "licence.png"
+    assert content == b"bytes"
+    assert placement.metadata == {"unattended": True}
+
+
+def test_re_answering_a_step_without_files_keeps_the_file_it_has():
+    """Omitting `files` says nothing about files rather than clearing them.
+
+    The read-change-write loop reads answers, changes one and submits the
+    result — and `answers()` cannot hand a file back, so without this every
+    edit of a step would silently drop its upload.
+    """
+    driver = RunDriver.begin(_PhotoViewSet)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            driver.submit(
+                {}, files={"photo": SimpleUploadedFile("licence.png", b"bytes")}
+            )
+
+            driver.submit({}, step="photo")
+
+            placement = driver.placements()["photo"]
+
+    assert placement.files["photo"]["name"] == "licence.png"
+
+
+def test_a_file_sent_to_a_step_the_run_cannot_reach_is_not_left_behind():
+    """Uploads are saved before the walk can say whether the step exists,
+    so a submission that goes nowhere has to take its bytes with it."""
+    driver = RunDriver.begin(_PhotoViewSet)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            with pytest.raises(StepNotFound):
+                driver.submit(
+                    {},
+                    files={"photo": SimpleUploadedFile("licence.png", b"bytes")},
+                    step="no-such-step",
+                )
+
+            left_behind = [path for path in Path(tmpdir).rglob("*") if path.is_file()]
+
+    assert left_behind == []
 
 
 def test_a_driver_opens_a_file_stored_against_the_run():

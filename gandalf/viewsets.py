@@ -3,11 +3,9 @@ from __future__ import annotations
 from typing import Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
-from django.core.files.uploadedfile import UploadedFile
 from django.http import HttpRequest, HttpResponseBase
 from django.shortcuts import redirect
 from django.urls import URLPattern, path, reverse
-from django.utils.datastructures import MultiValueDict
 from django.views import View
 
 from gandalf import tree
@@ -418,7 +416,7 @@ class WizardViewSet(View):
         it with its errors, and a step that escapes returns the escape's
         redirect.
         """
-        files = self._store_uploads(bound_wizard, self.request.FILES)
+        files = bound_wizard.store_uploads(self.request.FILES)
         walk = bound_wizard.walk(
             *args, claim=route_context, submission=submission, files=files, **kwargs
         )
@@ -558,18 +556,6 @@ class WizardViewSet(View):
         bound_wizard.cleanup_files()
         bound_wizard.complete()
         return response
-
-    def _store_uploads(
-        self, bound_wizard: BoundWizard, uploaded_files: MultiValueDict[str, Any]
-    ) -> FileRefs | None:
-        if not uploaded_files:
-            return None
-        return {
-            field: bound_wizard.file_storage.save(
-                bound_wizard.run_id, cast(UploadedFile, uploaded_file)
-            )
-            for field, uploaded_file in uploaded_files.items()
-        }
 
     def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         raise NotImplementedError("WizardViewSet subclasses must define done().")

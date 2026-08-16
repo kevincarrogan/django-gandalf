@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
@@ -9,6 +9,7 @@ from functools import cached_property
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
+from django.core.files.uploadedfile import UploadedFile
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase, QueryDict
 from django.utils.datastructures import MultiValueDict
@@ -928,6 +929,25 @@ class BoundWizard:
             initial=initial,
             **url_kwargs,
         )
+
+    def store_uploads(
+        self, uploaded_files: Mapping[str, UploadedFile]
+    ) -> FileRefs | None:
+        """Save `uploaded_files` under this run and return their references,
+        which is what a submission carries and what state holds.
+
+        `None` rather than `{}` for nothing given, because a walk reads a
+        missing `files` as "this submission says nothing about files" and
+        keeps whatever the step already had. An empty mapping would mean
+        the same thing here, and saying it once is cheaper than relying on
+        every caller to know that.
+        """
+        if not uploaded_files:
+            return None
+        return {
+            field: self.file_storage.save(self.run_id, uploaded_file)
+            for field, uploaded_file in uploaded_files.items()
+        }
 
     def delete_file_refs(self, refs: FileRefs | None) -> None:
         for ref in (refs or {}).values():

@@ -17,13 +17,13 @@ the same run, one after the other.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
-from django.core.files.uploadedfile import InMemoryUploadedFile
+from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase
@@ -396,6 +396,7 @@ class RunDriver:
         self,
         data: dict[str, Any],
         *,
+        files: Mapping[str, UploadedFile] | None = None,
         step: str | None = None,
         metadata: Metadata | None = None,
     ) -> SubmitResult:
@@ -417,14 +418,17 @@ class RunDriver:
         `StepNotFound` when the named step cannot be reached — exactly the
         cases where the submission would otherwise be silently dropped.
 
-        **Files cannot be placed through a driver.** There is no `files`
-        argument, and an uploaded file passed in `data` raises `TypeError`
-        at this door rather than being stored as something unreadable. A
-        run that already has a file answered through a browser can be read
-        and driven onwards — `placements()` carries its reference — but
-        that step cannot be answered or re-answered from here. Filling a
-        wizard with a required `FileField` is a job for the browser until
-        this grows a way to hand blobs in.
+        `files` places uploads, keyed by form field name, exactly as a
+        multipart POST would — they are saved under the run and the
+        submission carries their references. Pass Django's own
+        `UploadedFile`; a file belongs in `files` and not in `data`, where
+        it would raise, because `data` is stored as state and state is
+        JSON.
+
+        Omitting `files` says nothing about files rather than clearing
+        them: a step re-answered without them keeps the upload it has, so
+        reading a step, changing one field and submitting it back does not
+        quietly discard the document attached to it.
         """
         bound_wizard = self.bound_wizard
         if step is None:
@@ -443,17 +447,23 @@ class RunDriver:
             declaration = self._declaration(step)
             claim = {"name": step}
         submission = self._prefixed(declaration, data)
+        stored_files = bound_wizard.store_uploads(files or {})
         walk = bound_wizard.walk(
             claim=claim,
             submission=submission,
+            files=stored_files,
             metadata=self.default_metadata if metadata is None else metadata,
         )
         if not walk.reached:
+            # The uploads were saved before the walk could say whether the
+            # step was reachable, so a submission that goes nowhere must
+            # take its bytes with it rather than leave them under the run.
+            bound_wizard.delete_file_refs(stored_files)
             raise StepNotFound({"name": step})
         target = cast(RuntimeStep, walk.target)
         escape = walk.cursor.escape_for(target.declaration)
         if escape is not None:
-            return self._escaped(escape, walk)
+            return self._escaped(escape, walk, stored_files)
         bound_wizard.persist(walk)
         next_cursor = self._refresh(walk)
         if target.form.errors:
@@ -684,7 +694,9 @@ class RunDriver:
             return walk.cursor
         return self.bound_wizard.cursor()
 
-    def _escaped(self, escape: Escape, walk: Walk) -> SubmitResult:
+    def _escaped(
+        self, escape: Escape, walk: Walk, files: FileRefs | None = None
+    ) -> SubmitResult:
         """Settle what the escape leaves behind — the viewset's dispositions
         without the redirect (the caller gets the escape's name instead)."""
         if isinstance(escape, Obliterate):
@@ -692,7 +704,11 @@ class RunDriver:
         elif isinstance(escape, Advance):
             self.bound_wizard.persist(walk)
             self._refresh(walk)
-        elif not isinstance(escape, Park):
+        elif isinstance(escape, Park):
+            # Nothing was persisted, so the uploads this submission brought
+            # have nowhere to belong.
+            self.bound_wizard.delete_file_refs(files)
+        else:
             raise ImproperlyConfigured(
                 "Raise Park, Advance or Obliterate to escape a wizard; "
                 f"{type(escape).__name__} names no disposition for the run."
