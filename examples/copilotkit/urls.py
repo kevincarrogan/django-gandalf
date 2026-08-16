@@ -14,7 +14,11 @@ the other's door.
 from django.urls import include, path
 
 from examples.copilotkit import views
-from examples.copilotkit.wizards import HybridLicenceViewSet, HybridQuoteViewSet
+from examples.copilotkit.wizards import (
+    HybridIdentityViewSet,
+    HybridLicenceViewSet,
+    HybridQuoteViewSet,
+)
 from examples.insurance import VehicleCollectionView, VehicleItemViewSet
 
 urlpatterns = [
@@ -23,6 +27,8 @@ urlpatterns = [
     path("quote/", include(HybridQuoteViewSet.urls())),
     path("licence-agent/", views.licence_endpoint, name="licence-agent"),
     path("licence/", include(HybridLicenceViewSet.urls())),
+    path("identity-agent/", views.identity_endpoint, name="identity-agent"),
+    path("identity/", include(HybridIdentityViewSet.urls())),
     path("vehicles/", include(VehicleCollectionView.urls())),
     path("vehicle/<uuid:item>/", include(VehicleItemViewSet.urls())),
 ]
