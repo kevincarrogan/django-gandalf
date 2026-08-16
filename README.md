@@ -1761,6 +1761,53 @@ its type.
 
 ---
 
+## Driving a wizard with a model
+
+`RunDriver` is deliberately ignorant of agents — it takes answers and gives
+back schemas, and where those answers came from is not its business. If you
+want the other half, it ships beside the library rather than inside it:
+
+```
+pip install django-gandalf[agent] "pydantic-ai-slim[openai]"
+```
+
+The extra brings [pydantic-ai](https://ai.pydantic.dev/) and the AG-UI
+transport. **It names no provider** — that is yours to choose and yours to
+install, and `build_agent` takes whatever pydantic-ai takes.
+
+```python
+from gandalf.contrib.agent import AgentProfile, build_agent
+
+class QuoteViewSet(WizardViewSet):
+    wizard = ...
+    agent = AgentProfile(
+        purpose="a business insurance quote",
+        notes="Vehicles are added on the fleet page, not here.",
+    )
+
+agent = build_agent(QuoteViewSet, "openai:gpt-5.2")
+```
+
+`AgentProfile` is the only thing that changes between wizards. `purpose`
+completes the sentence *"you are helping someone with —"*; `notes` is for
+what a wizard cannot say about itself, like something the person needs
+living on a different page.
+
+The agent gets tools that are the driver: read the journey before starting,
+try a bag of answers without placing any, fill what it holds, correct
+itself, hand the run back. Two things it does not get:
+
+- **No tool concludes a run.** `done()` is where the irreversible things
+  live, and an agent that can reach them will eventually reach them on
+  somebody's behalf. `handoff` returns a link to the person instead.
+- **No edit policy.** Whose an answer is is a question about your domain,
+  not about wizards — `placements()` tells you who placed what, and `wrap`
+  is where a rule about it goes.
+
+To serve it over HTTP, `gandalf.contrib.agent.agui.endpoint_for(agent)`
+returns a Django view that speaks AG-UI. One process, one origin, one
+database: the run the agent fills is the run the browser opens.
+
 ## Testing your wizards
 
 Driving a multi-step wizard with the raw Django test client means chasing the
