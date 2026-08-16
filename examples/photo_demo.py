@@ -1,6 +1,7 @@
 """Show the agent a photograph and see what it makes of it.
 
-    just licence-demo path/to/licence.jpg
+    just photo-demo path/to/licence.jpg            # keeps the picture
+    just photo-demo path/to/licence.jpg identity   # never wanted it
 
 The browser demo is the same journey with a camera on the front. This is
 the version you can run over a folder of images and read the output of,
@@ -56,11 +57,12 @@ from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 PROMPT = "Here is a photo of my driving licence. Please fill in the check for me."
 
 #: The two ways a photograph can be useful, one command apart. `check`
-#: keeps it — there is a file step, and the agent attaches the image to
-#: the run. `identity` never wanted it: same four fields, no file step, no
-#: attach tool, and the picture is only ever *read*. If the second works
-#: and the first does not, the reading is fine and the storing is broken;
-#: if neither does, the model could not read the card.
+#: (`examples.licence`) keeps it: there is a file step, and the agent
+#: attaches the image to the run. `identity` (`examples.identity`) never
+#: wanted it — five pages of plain text, no file step, no attach tool, and
+#: the picture is only ever *read*. If the second works and the first does
+#: not, the reading is fine and the storing is broken; if neither does,
+#: the model could not read the card.
 WIZARDS = {
     "check": HybridLicenceViewSet,
     "identity": HybridIdentityViewSet,
@@ -101,8 +103,7 @@ def read_licence(path: Path, model: str, viewset_class):
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(
-            "Usage: just licence-demo <path to a licence photo> "
-            f"[{' | '.join(WIZARDS)}]"
+            f"Usage: just photo-demo <path to a licence photo> [{' | '.join(WIZARDS)}]"
         )
     path = Path(sys.argv[1])
     if not path.is_file():

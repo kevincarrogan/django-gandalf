@@ -12,7 +12,8 @@ from django.shortcuts import render
 
 from examples.eventlog import DemoObserver, log_event
 from examples.insurance import InsuranceQuoteViewSet, quote_for
-from examples.licence import IdentityCheckViewSet, LicenceCheckViewSet
+from examples.identity import IdentityCheckViewSet
+from examples.licence import LicenceCheckViewSet
 from tests.testapp.durable import ModelStorage
 
 
