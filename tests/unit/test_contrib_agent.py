@@ -172,6 +172,7 @@ def test_the_toolset_drives_a_run_and_hands_it_back():
 
     assert set(tools) == {
         "start_run",
+        "resume_run",
         "get_run",
         "get_outline",
         "check_answers",
@@ -715,3 +716,52 @@ def test_the_agent_is_told_the_form_may_have_moved_under_it():
     instructions = build_instructions(_SignupViewSet)
 
     assert "filling it in themselves while you are talking" in instructions
+
+
+# --- picking a run back up ---------------------------------------------
+
+
+def test_a_run_can_be_resumed_by_its_id():
+    """The recovery that was missing. A run id comes back on every tool
+    call, so it is somewhere in the conversation even after the client's
+    state has lost it — and picking it up is the difference between
+    carrying on and quietly abandoning somebody's half-filled form.
+    """
+    tools = _tools(_SignupViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+    run_id = ctx.deps.state.run_id
+
+    # A new turn whose state did not survive: same session, no run id.
+    later = _Ctx(deps=WizardDeps(state=WizardState(), request=ctx.deps.request))
+
+    resumed = tools["resume_run"](later, run_id).return_value
+
+    assert resumed["run_id"] == run_id
+    assert resumed["answers"] == {"name": {"name": "Ada"}}
+    assert later.deps.state.run_id == run_id
+
+
+def test_resuming_a_run_that_does_not_exist_says_so():
+    """A model that has misread an id should be told, not handed an
+    exception it cannot act on."""
+    tools = _tools(_SignupViewSet)
+
+    with pytest.raises(ModelRetry, match="no run with the id"):
+        tools["resume_run"](_ctx(), "3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+
+
+def test_the_no_run_message_offers_resuming_before_starting():
+    """What the agent is told when it has no run is what it will do. Told
+    only to start one, it starts one — which is what happened, and what
+    lost somebody's answers.
+    """
+    tools = _tools(_SignupViewSet)
+
+    with pytest.raises(ModelRetry) as raised:
+        tools["get_run"](_ctx())
+
+    message = str(raised.value)
+    assert "resume_run" in message
+    assert "abandons whatever is already filled in" in message

@@ -1795,8 +1795,9 @@ what a wizard cannot say about itself, like something the person needs
 living on a different page.
 
 The agent gets tools that are the driver: read the journey before starting,
-look at the run without touching it, try a bag of answers without placing
-any, fill what it holds, correct itself, hand the run back. That last pair
+start a run or pick an existing one back up by its id, look at it without
+touching it, try a bag of answers without placing any, fill what it holds,
+correct itself, hand the run back. That last pair
 is what makes a handover work in both directions — the person can open the
 form mid-conversation, change something, and the agent sees it when it
 looks again, because a run lives in storage rather than in the chat. Two things it does not get:
