@@ -10,6 +10,7 @@ from django.views.generic.edit import FormView
 
 import gandalf.wizard
 from gandalf import tree
+from gandalf.context import WizardContext
 from gandalf.file_storage import WizardFileStorage
 from gandalf.runtime import BoundWizard, StepNotFound
 from gandalf.storage import SessionStorage
@@ -39,7 +40,8 @@ def _replay(bound_wizard, *args, **kwargs):
 def _make_bound_wizard(wizard, request, storage_class=SessionStorage):
     """Mirrors `WizardViewSet._make_bound_wizard`: storage comes from the
     viewset, not the wizard, because it has to exist before the wizard does."""
-    return BoundWizard(request, storage_class(request), wizard=wizard)
+    context = WizardContext.from_request(request)
+    return BoundWizard(context, storage_class(context), wizard=wizard)
 
 
 def _submit(bound_wizard, submission, **kwargs):
@@ -501,8 +503,8 @@ def test_bound_wizard_uses_the_storage_class_it_is_given(
     request_with_session_factory,
 ):
     class FakeStorage:
-        def __init__(self, request):
-            self.request = request
+        def __init__(self, context):
+            self.context = context
 
     request = request_with_session_factory()
     wizard = Wizard().configure()
@@ -510,7 +512,7 @@ def test_bound_wizard_uses_the_storage_class_it_is_given(
     bound_wizard = _make_bound_wizard(wizard, request, storage_class=FakeStorage)
 
     assert isinstance(bound_wizard.storage, FakeStorage)
-    assert bound_wizard.storage.request is request
+    assert bound_wizard.storage.context is bound_wizard.context
 
 
 def test_configuring_storage_class_on_a_wizard_is_rejected():
@@ -563,8 +565,8 @@ def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -929,8 +931,8 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
     class ReviewForm(forms.Form):
         confirmed = forms.BooleanField()
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -966,8 +968,8 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
 def test_bound_wizard_renders_first_step_in_default_branch(
     request_with_session_factory,
 ):
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1003,8 +1005,8 @@ def test_bound_wizard_renders_first_step_in_default_branch(
 def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
     request_with_session_factory,
 ):
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1045,8 +1047,8 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
 def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
     request_with_session_factory,
 ):
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1301,8 +1303,8 @@ def test_bound_wizard_render_step_finds_step_inside_branch(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1475,8 +1477,8 @@ def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1520,8 +1522,8 @@ def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1567,8 +1569,8 @@ def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -1610,8 +1612,8 @@ def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
 def _branching_review_wizard():
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     return (
@@ -1775,12 +1777,12 @@ def _cross_branch_wizard():
     is dormant or unanswered."""
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    def business_was_acme(request):
-        business_step = request.wizard.path.find_step(name="business_name")
+    def business_was_acme(context):
+        business_step = context.run.path.find_step(name="business_name")
         return business_step.data["business_name"] == "Acme"
 
     return (
@@ -2238,8 +2240,8 @@ def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -2316,8 +2318,8 @@ def test_bound_wizard_edit_does_not_mutate_original_stored_state(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -2539,8 +2541,8 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
 ):
     from gandalf.runtime import RuntimeStep
 
-    def is_business(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -2813,8 +2815,8 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
 ):
     from gandalf.runtime import RuntimeStep
 
-    def is_business(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -2893,8 +2895,8 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
 ):
     from gandalf.wizard import MergeCleanedData
 
-    def is_business(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
     wizard = (
@@ -3438,8 +3440,8 @@ def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
 ):
     import gandalf.wizard
 
-    def is_business_account(request):
-        account_step = request.wizard.path.find_step(name="account_type")
+    def is_business_account(context):
+        account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
     wizard = (
@@ -3555,9 +3557,9 @@ def test_configured_wizard_uses_configured_file_storage_class(
 # --- Switch: branching on a value rather than on N predicates ---------------
 
 
-def _account_type(request):
+def _account_type(context):
     """The account type the customer chose."""
-    return request.wizard.path.find_step(name="account_type").form.cleaned_data[
+    return context.run.path.find_step(name="account_type").form.cleaned_data[
         "account_type"
     ]
 

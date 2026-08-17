@@ -18,6 +18,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects
 
+from gandalf.context import WizardContext
 from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
 from tests.testapp.durable import ModelCollectionStore, ModelStorage
@@ -173,10 +174,8 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
 # --- the storage protocol's own contracts ------------------------------------
 
 
-def test_model_storage_answers_an_unknown_run_as_not_found(rf, user):
-    request = rf.get("/")
-    request.user = user
-    storage = ModelStorage(request)
+def test_model_storage_answers_an_unknown_run_as_not_found(user):
+    storage = ModelStorage(WizardContext(actor=user))
 
     with pytest.raises(RunNotFound):
         storage.retrieve_run("00000000-0000-0000-0000-000000000000")
@@ -184,10 +183,8 @@ def test_model_storage_answers_an_unknown_run_as_not_found(rf, user):
         storage.retrieve_run("not-a-uuid")
 
 
-def test_model_storage_leaves_a_completed_run_addressable_and_empty(rf, user):
-    request = rf.get("/")
-    request.user = user
-    storage = ModelStorage(request)
+def test_model_storage_leaves_a_completed_run_addressable_and_empty(user):
+    storage = ModelStorage(WizardContext(actor=user))
     run_id = storage.initialise_run()
     storage.set_state(run_id, [{"step": {"name": "Ada"}}])
 
@@ -199,10 +196,8 @@ def test_model_storage_leaves_a_completed_run_addressable_and_empty(rf, user):
     assert storage.get_state(run_id) == []
 
 
-def test_model_storage_forgets_a_deleted_run_entirely(rf, user):
-    request = rf.get("/")
-    request.user = user
-    storage = ModelStorage(request)
+def test_model_storage_forgets_a_deleted_run_entirely(user):
+    storage = ModelStorage(WizardContext(actor=user))
     run_id = storage.initialise_run()
 
     storage.delete_run(run_id)
@@ -301,7 +296,7 @@ def test_removing_an_item_takes_its_row_and_its_run_out_of_the_database(logged_i
 def test_a_unique_constraint_settles_the_race_the_session_store_loses(logged_in):
     """Two tabs adding at once both read the same list and both append one,
     so a session-backed registry loses an item outright. A table cannot."""
-    store = ModelCollectionStore(type("_R", (), {"user": User.objects.get()})())
+    store = ModelCollectionStore(WizardContext(actor=User.objects.get()))
 
     store.add_item("durable-guests", "same-id")
     store.add_item("durable-guests", "same-id")

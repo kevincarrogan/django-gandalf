@@ -1,5 +1,6 @@
 from gandalf import tree as tree_module
 from gandalf import wizard
+from gandalf.context import WizardContext
 from gandalf.form_views import form_view_factory
 from gandalf.wizard import (
     MergeCleanedData,
@@ -71,8 +72,8 @@ class IndexView(TemplateView):
         return context
 
 
-def is_business_account(request):
-    account_step = request.wizard.path.find_step(name="account_type")
+def is_business_account(context):
+    account_step = context.run.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -583,7 +584,7 @@ class EmptyWizardViewSet(WizardViewSet):
 
 class EmailStepPrefilledFromPath(FormView):
     """Second-step view that pre-fills its email field from the
-    previous step's submitted name, by reading `request.wizard.path`
+    previous step's submitted name, by reading `context.run.path`
     mid-wizard."""
 
     form_class = SecondStepForm
@@ -604,7 +605,7 @@ class EmailStepPrefilledFromPath(FormView):
 class PathAwareLinearWizardViewSet(WizardViewSet):
     description = (
         "Linear wizard whose second step pre-fills its initial value from "
-        "request.wizard.path mid-wizard."
+        "context.run.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.step(FirstStepForm, name="first").step(
@@ -633,7 +634,7 @@ class PathAwareFormViewFirstStepWizardViewSet(WizardViewSet):
     description = (
         "Linear wizard whose first step is a user-supplied FormView; the "
         "second step still pre-fills its initial value from "
-        "request.wizard.path mid-wizard."
+        "context.run.path mid-wizard."
     )
     template_name = "testapp/linear_wizard.html"
     wizard = wizard.step(FirstStepFromFormView, name="first").step(
@@ -1037,7 +1038,9 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             bound_wizard.delete_file_refs({"upload": ref})
         deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
 
-        detached = BoundWizard(self.request, bound_wizard.storage)
+        detached = BoundWizard(
+            WizardContext.from_request(self.request), bound_wizard.storage
+        )
         cursor = bound_wizard.cursor()
         foreign_declaration = gandalf_tree.Step(FirstStepForm)
         nav_probe = (
@@ -1075,13 +1078,13 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
         )
 
 
-def _business_was_acme(request):
-    business_step = request.wizard.path.find_step(name="business_name")
+def _business_was_acme(context):
+    business_step = context.run.path.find_step(name="business_name")
     return business_step.data["business_name"] == "Acme"
 
 
 class PathProbeStepView(FormView):
-    """Step view that reads request.wizard.path while rendering — the
+    """Step view that reads context.run.path while rendering — the
     mid-run introspection that must stay safe when later branch regions
     are opaque."""
 
@@ -1372,10 +1375,10 @@ class WalkCountingWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-def build_item_steps(request):
+def build_item_steps(context):
     """Expansion builder: read the count answered earlier and produce that
     many item steps. Runs mid-walk, behind the validated count."""
-    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
+    count = int(context.run.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -1431,7 +1434,7 @@ class EmptyExpandWizardViewSet(WizardViewSet):
 
 
 class PathReadingGate(FormView):
-    """A step that reads `request.wizard.path` as it renders, so a run whose
+    """A step that reads `context.run.path` as it renders, so a run whose
     expansion is sealed behind this cursor exercises flattening over a
     `PreservedExpand`."""
 
@@ -1553,7 +1556,7 @@ class EmptyPathReadingStepView(FormView):
 
 
 class EmptyPathFirstStepWizardViewSet(WizardViewSet):
-    description = "First step reads request.wizard.path, which is empty there."
+    description = "First step reads context.run.path, which is empty there."
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
@@ -1567,9 +1570,9 @@ class EmptyPathFirstStepWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-def has_no_prior_answers(request):
+def has_no_prior_answers(context):
     """Branch predicate reading the run from position 0, where it is empty."""
-    return len(list(request.wizard.path)) == 0
+    return len(list(context.run.path)) == 0
 
 
 class EmptyPathBranchWizardViewSet(WizardViewSet):

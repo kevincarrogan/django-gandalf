@@ -22,6 +22,7 @@ from gandalf.file_storage import FileRef
 if TYPE_CHECKING:
     from django.utils.functional import _StrPromise
 
+    from gandalf.context import WizardContext
     from gandalf.runtime import BoundWizard
 
     #: Display text that may still be a lazy translation — what Django hands
@@ -77,12 +78,17 @@ class WizardRequest(HttpRequest):
     """An `HttpRequest` inside a wizard dispatch.
 
     Never instantiated — it names the one thing a dispatch adds to the
-    request, so the code a wizard calls out to can say what it is handed:
+    request, so a step's own view can say what it is handed:
 
-        def is_business(request: WizardRequest) -> bool:
-            return request.wizard.path.find_step(name="account") is not None
+        class BillingStepView(StepFormView):
+            def get_initial(self):
+                self.request.wizard.path.find_step(name="account")
 
     Step views get this narrowing from `StepFormView` already.
+
+    Not what a branch predicate, expansion builder or switch selector
+    receives — those are walk-time code and are handed a `WizardContext`,
+    which is true of a run whether or not a browser is driving it.
     """
 
     wizard: BoundWizard
@@ -95,9 +101,13 @@ class WizardStorage(Protocol):
     inheriting anything, and so does a storage of your own that keeps runs
     somewhere longer-lived. A run id is minted by the storage and opaque to
     everything else, so it need not be a UUID.
+
+    Constructed from the run's `WizardContext` rather than from a request,
+    which is what lets a durable backend scope runs by `context.actor`
+    whether the person is browsing or an agent is filling it in for them.
     """
 
-    def __init__(self, request: HttpRequest) -> None: ...
+    def __init__(self, context: WizardContext) -> None: ...
 
     def initialise_run(self) -> str: ...
 
@@ -119,4 +129,6 @@ class WizardStorage(Protocol):
 #: A storage class as it is configured — named on the viewset and called
 #: with the request. Spelled as a callable rather than `type[WizardStorage]`
 #: because a protocol type cannot be instantiated through the checker.
-StorageClass: TypeAlias = "type[WizardStorage] | Callable[[HttpRequest], WizardStorage]"
+StorageClass: TypeAlias = (
+    "type[WizardStorage] | Callable[[WizardContext], WizardStorage]"
+)

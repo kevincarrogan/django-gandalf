@@ -8,6 +8,7 @@ turns one click into a step URL, walking only the section the user chose.
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
+from gandalf.context import WizardContext
 from gandalf.runtime import STASH_VERSION
 from gandalf.sections import (
     COMPLETE,
@@ -327,7 +328,8 @@ def test_a_section_that_keys_itself_per_request_stashes_under_that_key(rf):
     )
     view = _PerItem()
     view.setup(request, item="7")
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     view.done(bound_wizard)
@@ -349,7 +351,8 @@ def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf):
     request.session = _Session({"gandalf_runs": {"run-1": {"state": []}}})
     view = _Undecided()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     with pytest.raises(ImproperlyConfigured, match="get_section_key"):
@@ -548,7 +551,8 @@ def test_finishing_a_section_stashes_its_answers_and_clears_its_run(rf):
     )
     view = _SectionViewSet()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     view.done(bound_wizard)
@@ -581,7 +585,8 @@ def test_a_section_done_that_raises_leaves_the_section_resumable(rf):
     )
     view = _Failing()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     with pytest.raises(RuntimeError):
@@ -618,7 +623,8 @@ def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_section_d
     )
     view = _Recording()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     view.done(bound_wizard)
@@ -668,7 +674,8 @@ def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
     )
     view = _Reshaped()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     view.done(bound_wizard)
@@ -687,7 +694,8 @@ def test_a_section_without_a_key_is_misconfigured(rf):
     request.session = _Session({"gandalf_runs": {"run-1": {"state": []}}})
     view = _Keyless()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     with pytest.raises(ImproperlyConfigured, match="section_key"):
@@ -721,7 +729,8 @@ def test_a_finished_section_sends_the_user_back_to_its_hub(rf):
     )
     view = _Homed()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.retrieve("run-1")
 
     response = view.done(bound_wizard)

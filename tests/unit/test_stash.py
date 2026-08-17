@@ -9,6 +9,7 @@ re-proves every answer.
 
 import pytest
 
+from gandalf.context import WizardContext
 from gandalf.runtime import STASH_VERSION, BoundWizard, InvalidStash
 from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard
@@ -39,7 +40,8 @@ def request_factory(rf):
 
 def _bound(request, state):
     request.session["gandalf_runs"] = {"run": {"state": state}}
-    bound = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound = BoundWizard(context, SessionStorage(context))
     bound.retrieve("run")
     return bound
 
@@ -215,7 +217,8 @@ def _linear_wizard():
 
 
 def _fresh_bound(request, wizard=None):
-    return BoundWizard(request, SessionStorage(request), wizard=wizard)
+    context = WizardContext.from_request(request)
+    return BoundWizard(context, SessionStorage(context), wizard=wizard)
 
 
 def test_resurrect_seeds_a_fresh_run_holding_the_payload_state(request_factory):

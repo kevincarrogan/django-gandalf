@@ -41,11 +41,11 @@ from .models import (
 class ModelStorage:
     """`SessionStorage`'s protocol, against a table scoped to the user."""
 
-    def __init__(self, request):
-        self.request = request
+    def __init__(self, context):
+        self.context = context
 
     def _runs(self):
-        return WizardRun.objects.filter(owner=self.request.user)
+        return WizardRun.objects.filter(owner=self.context.actor)
 
     def _get(self, run_id):
         try:
@@ -56,7 +56,7 @@ class ModelStorage:
             raise RunNotFound(str(run_id))
 
     def initialise_run(self):
-        run = WizardRun.objects.create(id=uuid.uuid4(), owner=self.request.user)
+        run = WizardRun.objects.create(id=uuid.uuid4(), owner=self.context.actor)
         return str(run.pk)
 
     def retrieve_run(self, run_id):
@@ -96,11 +96,11 @@ class ModelSectionStore:
     section survive its run being deleted.
     """
 
-    def __init__(self, request):
-        self.request = request
+    def __init__(self, context):
+        self.context = context
 
     def _records(self):
-        return SectionRecord.objects.filter(owner=self.request.user)
+        return SectionRecord.objects.filter(owner=self.context.actor)
 
     def _record(self, key):
         return self._records().filter(key=key).first()
@@ -113,7 +113,7 @@ class ModelSectionStore:
 
     def set_run(self, key, run_id):
         SectionRecord.objects.update_or_create(
-            owner=self.request.user, key=key, defaults={"run_id": run_id}
+            owner=self.context.actor, key=key, defaults={"run_id": run_id}
         )
 
     def clear_run(self, key):
@@ -130,7 +130,7 @@ class ModelSectionStore:
 
     def put_stash(self, key, payload):
         SectionRecord.objects.update_or_create(
-            owner=self.request.user, key=key, defaults={"stash": payload}
+            owner=self.context.actor, key=key, defaults={"stash": payload}
         )
 
     def delete_stash(self, key):
@@ -154,7 +154,7 @@ class ModelCollectionStore(ModelSectionStore):
 
     def _items(self, key):
         return CollectionItemRecord.objects.filter(
-            owner=self.request.user, collection_key=key
+            owner=self.context.actor, collection_key=key
         )
 
     def item_ids(self, key):
@@ -169,7 +169,7 @@ class ModelCollectionStore(ModelSectionStore):
         # the values. `get_or_create` makes adding an id already listed a
         # no-op, as the session store's early return does.
         CollectionItemRecord.objects.get_or_create(
-            owner=self.request.user,
+            owner=self.context.actor,
             collection_key=key,
             item_id=item_id,
             defaults={"position": self._items(key).count()},
@@ -187,10 +187,10 @@ class ModelCollectionStore(ModelSectionStore):
 
     def is_declared_done(self, key):
         return CollectionRecord.objects.filter(
-            owner=self.request.user, key=key, declared_done=True
+            owner=self.context.actor, key=key, declared_done=True
         ).exists()
 
     def set_declared_done(self, key, declared_done):
         CollectionRecord.objects.update_or_create(
-            owner=self.request.user, key=key, defaults={"declared_done": declared_done}
+            owner=self.context.actor, key=key, defaults={"declared_done": declared_done}
         )

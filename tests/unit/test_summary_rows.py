@@ -8,6 +8,7 @@ import pytest
 from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from gandalf.context import WizardContext
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
 from gandalf.summary import SummaryMixin, format_value
@@ -182,9 +183,11 @@ def summary_view(rf):
             },
         }
     )
-    bound_wizard = BoundWizard(request, SessionStorage(request), wizard=wizard)
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context), wizard=wizard)
     bound_wizard.retrieve("existing-run")
     bound_wizard.urls = _StubUrls()
+    # The view reads its own request, exactly as a dispatch hands it one.
     request.wizard = bound_wizard
     return _SummaryView(request)
 

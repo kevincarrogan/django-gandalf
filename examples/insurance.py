@@ -131,20 +131,20 @@ class ReviewStepView(SummaryMixin, StepFormView):
 # that has to be compared, and neither is "what did they say".
 
 
-def vehicle_cover_was_chosen(request):
+def vehicle_cover_was_chosen(context):
     """The cover step includes "vehicles", so the fleet has to be listed."""
-    step = request.wizard.path.find_step(name="coverage")
+    step = context.run.path.find_step(name="coverage")
     return "vehicles" in step.form.cleaned_data["cover_types"]
 
 
-def claims_were_declared(request):
+def claims_were_declared(context):
     """The claims step answered "yes", so the claim needs describing."""
-    step = request.wizard.path.find_step(name="claims")
+    step = context.run.path.find_step(name="claims")
     return step.form.cleaned_data["had_claims"] == "yes"
 
 
-def build_partner_steps(request):
-    count_step = request.wizard.path.find_step(name="partners")
+def build_partner_steps(context):
+    count_step = context.run.path.find_step(name="partners")
     steps = Wizard()
     for index in range(int(count_step.form.cleaned_data["partner_count"])):
         steps = steps.step(
@@ -233,7 +233,7 @@ def quote_for(bound_wizard):
     premium = 250
     premium += answers["employees"] * 10
     premium += 150 * len(answers["cover_types"])
-    premium += sum(saved_vehicle_values(bound_wizard.request)) // 100
+    premium += sum(saved_vehicle_values(bound_wizard.context)) // 100
     if answers["had_claims"] == "yes":
         premium += answers["total_value"] // 10
     return {
@@ -290,11 +290,11 @@ def forget_vehicle(request, item_id):
         log_event("vehicle_removed", item=str(item_id), by="person")
 
 
-def saved_vehicle_values(request):
+def saved_vehicle_values(context):
     """Every saved vehicle value, for pricing."""
     return [
         vehicle["value"]
-        for vehicle in request.session.get(VEHICLES_SESSION_KEY, {}).values()
+        for vehicle in context.session.get(VEHICLES_SESSION_KEY, {}).values()
     ]
 
 

@@ -9,6 +9,7 @@ from django.urls import URLPattern, path, reverse
 from django.views import View
 
 from gandalf import tree
+from gandalf.context import WizardContext
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, Walk, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
@@ -200,8 +201,9 @@ class WizardViewSet(View):
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
     def _make_bound_wizard(self, request: HttpRequest) -> BoundWizard:
-        storage = self.storage_class(request)
-        return BoundWizard(request, storage)
+        context = WizardContext.from_request(request, **self.get_url_kwargs())
+        storage = self.storage_class(context)
+        return BoundWizard(context, storage)
 
     def _resolve_wizard(self, bound_wizard: BoundWizard) -> BoundWizard:
         wizard = self._configured_wizard(self.get_wizard(bound_wizard))

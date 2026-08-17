@@ -196,7 +196,7 @@ GROUPS = (
     ),
     Group(
         "Reading the run from inside it",
-        "Steps that look at request.wizard while they render — to pre-fill a "
+        "Steps that look at context.run while they render — to pre-fill a "
         "field from an earlier answer, or to ask where in the flow they are. "
         "The interesting cases are the awkward positions: the first step, "
         "where the path is empty, and a step the walk replays on every later "

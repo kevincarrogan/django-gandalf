@@ -10,6 +10,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
+from gandalf.context import WizardContext
 from gandalf.runtime import (
     BoundWizard,
     MergeCleanedData,
@@ -45,8 +46,8 @@ def request_factory(rf):
     return build
 
 
-def _build_items(request):
-    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
+def _build_items(context):
+    count = int(context.run.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -65,7 +66,8 @@ def _expand_wizard(builder=_build_items):
 
 def _bound(wizard, request, state):
     request.session["gandalf_runs"] = {"run": {"state": state}}
-    bound = BoundWizard(request, SessionStorage(request), wizard=wizard)
+    context = WizardContext.from_request(request)
+    bound = BoundWizard(context, SessionStorage(context), wizard=wizard)
     bound.retrieve("run")
     return bound
 

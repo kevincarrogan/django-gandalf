@@ -400,9 +400,9 @@ class _SignupViewSet(WizardViewSet):
         return HttpResponse(b"agent done")
 
 
-def _is_business(request):
+def _is_business(context):
     """The customer asked for a business account."""
-    account_step = request.wizard.path.find_step(name="account_type")
+    account_step = context.run.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -425,8 +425,8 @@ class _BranchingViewSet(WizardViewSet):
         return HttpResponse(b"branch done")
 
 
-def _build_items(request):
-    count_step = request.wizard.path.find_step(name="count")
+def _build_items(context):
+    count_step = context.run.path.find_step(name="count")
     steps = Wizard()
     for index in range(int(count_step.form.cleaned_data["count"])):
         steps = steps.step(ItemForm, name=f"item-{index}")
@@ -1451,9 +1451,9 @@ def test_prefill_on_a_complete_run_places_nothing():
 # --- Outlining a switch ------------------------------------------------------
 
 
-def _company_route(request):
+def _company_route(context):
     """Which registration details this company owes."""
-    return request.wizard.path.find_step(name="account_type").form.cleaned_data[
+    return context.run.path.find_step(name="account_type").form.cleaned_data[
         "account_type"
     ]
 

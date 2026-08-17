@@ -2,6 +2,7 @@
 
 import pytest
 
+from gandalf.context import WizardContext
 from gandalf.observers import WizardObserver
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
@@ -32,9 +33,9 @@ def _wizard(observer_class):
     )
 
 
-def _answered_ada(request):
+def _answered_ada(context):
     """The first step said Ada."""
-    first = request.wizard.path.find_step(name="first")
+    first = context.run.path.find_step(name="first")
     return first.form.cleaned_data["name"] == "Ada"
 
 
@@ -53,8 +54,9 @@ def _branching_wizard(observer_class):
 
 
 def _run(observer_class, request, wizard=_wizard):
+    context = WizardContext.from_request(request)
     bound_wizard = BoundWizard(
-        request, SessionStorage(request), wizard=wizard(observer_class)
+        context, SessionStorage(context), wizard=wizard(observer_class)
     )
     bound_wizard.initialise()
     return bound_wizard

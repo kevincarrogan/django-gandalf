@@ -96,8 +96,8 @@ def _chose(segment, value):
     `condition_dict` callables calling `get_cleaned_data_for_step()`.
     """
 
-    def predicate(request):
-        step = request.wizard.path.find_step(name=segment)
+    def predicate(context):
+        step = context.run.path.find_step(name=segment)
         return step.form.cleaned_data["choice"] == value
 
     predicate.__name__ = f"chose_{value}_at_{segment.replace('-', '_')}"

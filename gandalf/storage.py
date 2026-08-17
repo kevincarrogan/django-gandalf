@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import cast
 
-from django.http import HttpRequest
-
+from gandalf.context import WizardContext
 from gandalf.types import CollectionData, CollectionItem, RunData, Stash, State
 
 
@@ -26,26 +25,26 @@ class SessionStorage:
     # 4KB), so only the most recently completed are kept.
     max_completed_runs = 25
 
-    def __init__(self, request: HttpRequest) -> None:
-        self.request = request
+    def __init__(self, context: WizardContext) -> None:
+        self.context = context
 
     def _runs(self) -> dict[str, RunData]:
         # The session is an untyped JSON store; what Gandalf keeps under its
         # own key is this shape by construction.
-        return cast(dict[str, RunData], self.request.session.get(self.SESSION_KEY, {}))
+        return cast(dict[str, RunData], self.context.session.get(self.SESSION_KEY, {}))
 
     def initialise_run(self) -> str:
         run_id = str(uuid.uuid4())
-        gandalf_runs = self.request.session.setdefault(self.SESSION_KEY, {})
+        gandalf_runs = self.context.session.setdefault(self.SESSION_KEY, {})
         gandalf_runs[run_id] = {}
-        self.request.session.modified = True
+        self.context.session.modified = True
         return run_id
 
     def retrieve_run(self, run_id: str) -> str:
         """Return the run id as given, raising `RunNotFound` when this
         session holds no such run."""
         self.get_run_data(run_id)
-        self.request.session.modified = True
+        self.context.session.modified = True
         return run_id
 
     def get_run_data(self, run_id: str) -> RunData:
@@ -61,14 +60,14 @@ class SessionStorage:
     def set_state(self, run_id: str, state: State) -> None:
         run_data = self.get_run_data(run_id)
         run_data["state"] = state
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def delete_run(self, run_id: str) -> None:
         """Forget the run entirely. Idempotent: deleting an unknown run is
         not an error, so callers need not check first."""
         gandalf_runs = self._runs()
         gandalf_runs.pop(str(run_id), None)
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def complete_run(self, run_id: str) -> None:
         """Replace the run's answers with a completion tombstone.
@@ -84,7 +83,7 @@ class SessionStorage:
         gandalf_runs.pop(run_id, None)
         gandalf_runs[run_id] = {"completed": True}
         self._prune_completed(gandalf_runs)
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def is_run_complete(self, run_id: str) -> bool:
         run_data = self._runs().get(str(run_id))
@@ -113,17 +112,17 @@ class SessionStashStore:
 
     SESSION_KEY = "gandalf_stashes"
 
-    def __init__(self, request: HttpRequest) -> None:
-        self.request = request
+    def __init__(self, context: WizardContext) -> None:
+        self.context = context
 
     def _stashes(self) -> dict[str, Stash]:
-        return cast(dict[str, Stash], self.request.session.get(self.SESSION_KEY, {}))
+        return cast(dict[str, Stash], self.context.session.get(self.SESSION_KEY, {}))
 
     def put(self, key: str, payload: Stash) -> None:
         """Store `payload` under `key`, replacing any existing stash."""
-        stashes = self.request.session.setdefault(self.SESSION_KEY, {})
+        stashes = self.context.session.setdefault(self.SESSION_KEY, {})
         stashes[key] = payload
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def get(self, key: str) -> Stash:
         """Return the stash under `key`, raising `StashNotFound` without one."""
@@ -137,14 +136,14 @@ class SessionStashStore:
         without one."""
         payload = self.get(key)
         del self._stashes()[key]
-        self.request.session.modified = True
+        self.context.session.modified = True
         return payload
 
     def delete(self, key: str) -> None:
         """Forget the stash under `key`. Idempotent: deleting an unknown key
         is not an error, so callers need not check first."""
         self._stashes().pop(key, None)
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def keys(self) -> list[str]:
         """The stored stash keys, in insertion order."""
@@ -170,12 +169,12 @@ class SessionSectionStore:
     RUNS_SESSION_KEY = "gandalf_section_runs"
     stash_store_class = SessionStashStore
 
-    def __init__(self, request: HttpRequest) -> None:
-        self.request = request
-        self.stashes = self.stash_store_class(request)
+    def __init__(self, context: WizardContext) -> None:
+        self.context = context
+        self.stashes = self.stash_store_class(context)
 
     def _runs(self) -> dict[str, str]:
-        return cast(dict[str, str], self.request.session.get(self.RUNS_SESSION_KEY, {}))
+        return cast(dict[str, str], self.context.session.get(self.RUNS_SESSION_KEY, {}))
 
     def get_run(self, key: str) -> str | None:
         """The run this section is being answered in, or None when it is not
@@ -185,16 +184,16 @@ class SessionSectionStore:
     def set_run(self, key: str, run_id: str) -> None:
         """Record `run_id` as where this section is answered, replacing any
         run already recorded for it."""
-        runs = self.request.session.setdefault(self.RUNS_SESSION_KEY, {})
+        runs = self.context.session.setdefault(self.RUNS_SESSION_KEY, {})
         runs[key] = str(run_id)
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def clear_run(self, key: str) -> None:
         """Forget where this section was being answered. Idempotent: clearing
         a section with no run is not an error, so callers need not check
         first."""
         self._runs().pop(key, None)
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def get_stash(self, key: str) -> Stash:
         """The finished section's stash, raising `StashNotFound` without
@@ -252,13 +251,13 @@ class SessionCollectionStore(SessionSectionStore):
     def _collections(self) -> dict[str, CollectionData]:
         return cast(
             dict[str, CollectionData],
-            self.request.session.get(self.COLLECTIONS_SESSION_KEY, {}),
+            self.context.session.get(self.COLLECTIONS_SESSION_KEY, {}),
         )
 
     def _collection(self, key: str) -> CollectionData:
         """The collection's record, created on first write. Read-only callers
         go through `_collections()` so a render cannot dirty the session."""
-        collections = self.request.session.setdefault(self.COLLECTIONS_SESSION_KEY, {})
+        collections = self.context.session.setdefault(self.COLLECTIONS_SESSION_KEY, {})
         record = collections.setdefault(key, {})
         record.setdefault("items", [])
         return cast(CollectionData, record)
@@ -286,7 +285,7 @@ class SessionCollectionStore(SessionSectionStore):
         if self.has_item(key, item_id):
             return
         self._collection(key)["items"].append({"id": item_id, "title": None})
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def remove_item(self, key: str, item_id: str) -> None:
         """Forget an item and the title cached for it, keeping the order of
@@ -294,7 +293,7 @@ class SessionCollectionStore(SessionSectionStore):
         callers need not check first."""
         record = self._collection(key)
         record["items"] = [item for item in record["items"] if item["id"] != item_id]
-        self.request.session.modified = True
+        self.context.session.modified = True
 
     def get_item_title(self, key: str, item_id: str) -> str | None:
         """The title cached at this item's last completion, or None for one
@@ -311,7 +310,7 @@ class SessionCollectionStore(SessionSectionStore):
         for item in self._collection(key)["items"]:
             if item["id"] == item_id:
                 item["title"] = title
-                self.request.session.modified = True
+                self.context.session.modified = True
                 return
 
     def is_declared_done(self, key: str) -> bool:
@@ -325,4 +324,4 @@ class SessionCollectionStore(SessionSectionStore):
     def set_declared_done(self, key: str, declared_done: bool) -> None:
         """Record or withdraw the user's answer to *add another*."""
         self._collection(key)["declared_done"] = declared_done
-        self.request.session.modified = True
+        self.context.session.modified = True

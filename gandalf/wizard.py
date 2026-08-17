@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
+from gandalf.context import WizardContext
 from gandalf.file_storage import WizardFileStorage
 from gandalf.form_views import StepFormView, form_view_factory
 from gandalf.observers import WizardObserver
@@ -130,8 +131,9 @@ class on_field:
     def __name__(self) -> str:
         return f"{self.step}.{self.field}"
 
-    def __call__(self, request: Any) -> str:
-        found = request.wizard.path.find_step(name=self.step)
+    def __call__(self, context: WizardContext) -> str:
+        run = cast("BoundWizard", context.run)
+        found = run.path.find_step(name=self.step)
         if found is None:
             raise ImproperlyConfigured(
                 f"on_field({self.step!r}, {self.field!r}) found no answered "
@@ -264,7 +266,7 @@ class Wizard:
         cases: dict[str, Wizard],
         default: Wizard | None = None,
     ) -> Wizard:
-        """Route on what `selector(request)` returns, one case per outcome.
+        """Route on what `selector(context)` returns, one case per outcome.
 
         The same arbitrary code a predicate may run, asked a different
         question: *which* rather than *whether*. The selector is called
@@ -296,7 +298,7 @@ class Wizard:
         return self.__class__(tree=tree.build(declarations))
 
     def expand(self, builder: tree.Builder) -> Wizard:
-        """Grow the tree here from `builder(request)`, called mid-walk.
+        """Grow the tree here from `builder(context)`, called mid-walk.
 
         `builder` returns a `Wizard` whose steps are spliced in at this point.
         It runs behind a fully-validated prefix, so it can read prior answers

@@ -207,7 +207,7 @@ def test_form_view_step_prefills_from_a_prior_answer(wizard_driver):
 
     response = run.post_step("account", {"email": "ada@example.com"}, follow=True)
 
-    # get_initial() read the account step's answer off request.wizard.path.
+    # get_initial() read the account step's answer off context.run.path.
     assert response.context["form"]["company"].value() == "example.com"
 
 

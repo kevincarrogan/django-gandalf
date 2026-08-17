@@ -33,6 +33,7 @@ from django.utils.text import capfirst
 from django.utils.translation import gettext
 from django.views.generic import TemplateView
 
+from gandalf.context import WizardContext
 from gandalf.runtime import BoundWizard, InvalidStash
 from gandalf.storage import RunNotFound, SessionSectionStore, StashNotFound
 from gandalf.types import State, StrOrPromise
@@ -224,7 +225,7 @@ class SectionMixin(_SectionMixinBase):
         return self.section_label
 
     def get_section_store(self) -> SessionSectionStore:
-        return self.section_store_class(self.request)
+        return self.section_store_class(WizardContext.from_request(self.request))
 
     def get_hub_url(self) -> str:
         """Where a finished section sends the user back to. Forwards this
@@ -381,7 +382,7 @@ class HubMixin(_HubMixinBase):
         raise SectionNotFound(key)
 
     def get_section_store(self) -> SessionSectionStore:
-        return self.section_store_class(self.request)
+        return self.section_store_class(WizardContext.from_request(self.request))
 
     def section_viewset(self, section: Section) -> type[WizardViewSet]:
         """The wizard behind a section, for the four places that run one.
@@ -460,7 +461,9 @@ class HubMixin(_HubMixinBase):
         run_id = store.get_run(section.key)
         if run_id is None:
             return []
-        storage = self.section_viewset(section).storage_class(self.request)
+        storage = self.section_viewset(section).storage_class(
+            WizardContext.from_request(self.request)
+        )
         try:
             return storage.get_state(run_id)
         except RunNotFound:

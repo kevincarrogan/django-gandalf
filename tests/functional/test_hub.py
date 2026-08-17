@@ -16,6 +16,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
+from gandalf.context import WizardContext
 from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED, Section
 from gandalf.testing import (
     seed_run,
@@ -527,7 +528,8 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
     request.session = client.session
     view = _Keyless()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.initialise()
 
     with pytest.raises(ImproperlyConfigured, match="section_key"):
@@ -548,7 +550,8 @@ def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf, client):
     request.session = client.session
     view = _Undecided()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.initialise()
 
     with pytest.raises(ImproperlyConfigured, match="get_section_key"):
@@ -685,7 +688,8 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
     request.session = client.session
     view = _Reshaped()
     view.setup(request)
-    bound_wizard = BoundWizard(request, SessionStorage(request))
+    context = WizardContext.from_request(request)
+    bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.initialise()
 
     view.done(bound_wizard)

@@ -2,35 +2,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeAlias, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
 
+from gandalf.context import WizardContext
 from gandalf.form_views import form_view_factory
-from gandalf.types import Context, WizardRequest
+from gandalf.types import Context
 
 
 if TYPE_CHECKING:
     from gandalf.form_views import StepDeclaration, StepViewClass
+    from gandalf.runtime import BoundWizard
     from gandalf.wizard import Wizard
 
 
 Node: TypeAlias = "Step | Branch | Expand"
 
-#: A branch arm's guard, called with the request mid-walk. Annotated with
-#: the request the walk actually passes; a predicate of your own is free to
-#: declare a plain `HttpRequest` instead and still fit.
-Predicate: TypeAlias = Callable[["WizardRequest"], bool]
+#: A branch arm's guard, called with the run's context mid-walk. It reads
+#: the answers behind it through `context.run`, and whoever is answering
+#: through `context.actor` — neither of which needs a browser to be true.
+Predicate: TypeAlias = Callable[["WizardContext"], bool]
 
-#: An expansion's builder, called with the request mid-walk to produce the
-#: wizard whose steps are spliced in.
-Builder: TypeAlias = Callable[["WizardRequest"], "Wizard"]
+#: An expansion's builder, called with the run's context mid-walk to produce
+#: the wizard whose steps are spliced in.
+Builder: TypeAlias = Callable[["WizardContext"], "Wizard"]
 
-#: A switch's selector, called with the request mid-walk to name which case
-#: applies. Arbitrary code, exactly like a predicate — what changes is that
-#: it returns *which* rather than *whether*.
-Selector: TypeAlias = Callable[["WizardRequest"], str]
+#: A switch's selector, called with the run's context mid-walk to name which
+#: case applies. Arbitrary code, exactly like a predicate — what changes is
+#: that it returns *which* rather than *whether*.
+Selector: TypeAlias = Callable[["WizardContext"], str]
 
 # The visitors below are duck-typed rather than tied to a protocol: the same
 # `accept_*` plumbing carries both declaration trees (this module) and
@@ -123,10 +125,11 @@ class CaseGuard:
         name = getattr(self.selector, "__name__", type(self.selector).__name__)
         return f"{name} == {self.case!r}"
 
-    def __call__(self, request: WizardRequest) -> bool:
+    def __call__(self, context: WizardContext) -> bool:
         # Asked through the run rather than directly, so the selector is
         # called once for the switch however many cases ask.
-        return request.wizard.switch_value(self.selector, request) == self.case
+        run = cast("BoundWizard", context.run)
+        return run.switch_value(self.selector, context) == self.case
 
 
 @dataclass(frozen=True)
@@ -154,10 +157,10 @@ class Switch(Branch):
 class Expand:
     """A point where the tree grows during the walk.
 
-    `builder(request)` returns a `Wizard` whose steps are spliced in here.
+    `builder(context)` returns a `Wizard` whose steps are spliced in here.
     It is called mid-walk, behind a fully-validated prefix — the same
     contract a branch predicate has — so it can read prior answers
-    (`request.wizard.path.find_step(...).form.cleaned_data`) and produce however
+    (`context.run.path.find_step(...).form.cleaned_data`) and produce however
     many steps they imply. The declared node carries only the builder; the
     subtree does not exist until the walk reaches it, which is why an
     expansion's steps are validated when built rather than at resolve time.

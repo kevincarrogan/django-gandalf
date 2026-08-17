@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from copy import copy, deepcopy
+from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
 from functools import cached_property
 from http import HTTPStatus
@@ -15,6 +15,7 @@ from django.http import HttpRequest, HttpResponseBase, QueryDict
 from django.utils.datastructures import MultiValueDict
 
 from gandalf import tree
+from gandalf.context import WizardContext
 from gandalf.escapes import Escape
 from gandalf.file_storage import FileRef, WizardFileStorage
 from gandalf.observers import WizardObserver
@@ -197,10 +198,10 @@ class RuntimeStep:
         `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()`,
         and `get_prefix()` overrides on the user's FormView.
 
-        Note: the synthetic request is built from `bound_wizard.request` — the
-        *current* request, not the request that originally submitted the step.
-        For typical single-user flows they're equivalent; for flows where one
-        user edits another's run, `request.user` reflects the editor.
+        Note: the synthetic request comes from `bound_wizard.context` — the
+        *current* environment, not the one that originally submitted the
+        step. For typical single-user flows they're equivalent; for flows
+        where one user edits another's run, the actor reflects the editor.
 
         Customizations beyond composition (overrides of `form_valid()`,
         `post()`, `dispatch()`, or `setup()`) are not surfaced here — `.form`
@@ -528,9 +529,16 @@ class StepDispatcher:
         submission: Submission | None = None,
         files: MultiValueDict[str, Any] | None = None,
     ) -> WizardRequest:
-        request = cast(WizardRequest, copy(self._bound_wizard.request))
+        """A request shaped to dispatch one step view with.
+
+        The context supplies the request — a copy of the browser's, or one
+        built for a run nobody is browsing — and this shapes it into the
+        submission being replayed. Both halves matter and only one of them
+        is about HTTP: where a request comes from is the context's business,
+        what Django's parsing expects to find on it is this module's.
+        """
+        request = cast(WizardRequest, self._bound_wizard.context.http_request())
         request.method = method
-        request.wizard = self._bound_wizard
         if method == "POST":
             request.POST = _as_post_data(submission)
             if files is not None:
@@ -561,7 +569,7 @@ class StepDispatcher:
 class BoundWizard:
     def __init__(
         self,
-        request: HttpRequest,
+        context: WizardContext,
         storage: WizardStorage,
         wizard: ConfiguredWizard | None = None,
     ) -> None:
@@ -570,7 +578,11 @@ class BoundWizard:
         # reader runs after that, so they are typed as though always present.
         # Reaching either during the gap in between is a programming error.
         self.wizard: ConfiguredWizard = wizard  # type: ignore[assignment]
-        self.request = request
+        self.context = context
+        # The context is the run's environment and the run is the context's
+        # subject; each needs the other. Closed once, here, rather than on
+        # every synthetic request as `request.wizard = ...` used to be.
+        context.run = self
         self.storage = storage
         self.run_id: str = None  # type: ignore[assignment]
         self.urls: WizardViewSet | None = None
@@ -971,9 +983,8 @@ class BoundWizard:
         inside it reads prior answers and nothing after the cursor. The
         subtree it returns is configured and vetted (routable names, no
         nested expansion) before it is walked."""
-        request = self.dispatcher.build_request("GET")
         with self.walking(partial_runtime_head):
-            built = expand_node.builder(request)
+            built = expand_node.builder(self.context)
         return self.wizard.configure_expansion(built)
 
     def _select_branch_arm(
@@ -990,15 +1001,14 @@ class BoundWizard:
         in order here too; what keeps its selector from running once per
         case is `switch_value`, memoised for this one selection.
         """
-        request = self.dispatcher.build_request("GET")
         with self.walking(partial_runtime_head):
             self._selector_values = {}
             for index, (predicate, subtree) in enumerate(branch_node.arms):
-                if predicate(request):
+                if predicate(self.context):
                     return branch_node.arm_id(index), subtree
             return "default", branch_node.default
 
-    def switch_value(self, selector: tree.Selector, request: WizardRequest) -> str:
+    def switch_value(self, selector: tree.Selector, context: WizardContext) -> str:
         """What the selector deciding the current switch returned.
 
         Every case of a switch asks the same question, and the answer
@@ -1008,7 +1018,7 @@ class BoundWizard:
         should not decide how often it runs.
         """
         if selector not in self._selector_values:
-            self._selector_values[selector] = selector(request)
+            self._selector_values[selector] = selector(context)
         return self._selector_values[selector]
 
 

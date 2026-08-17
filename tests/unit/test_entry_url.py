@@ -8,6 +8,7 @@ it, and it names a step instead.
 
 import pytest
 
+from gandalf.context import WizardContext
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard
@@ -53,7 +54,8 @@ def _bound(request, state, wizard=None):
     if wizard is None:
         wizard = _linear_wizard()
     request.session["gandalf_runs"] = {"run": {"state": state}}
-    bound = BoundWizard(request, SessionStorage(request), wizard=wizard)
+    context = WizardContext.from_request(request)
+    bound = BoundWizard(context, SessionStorage(context), wizard=wizard)
     bound.retrieve("run")
     bound.urls = _Urls()
     return bound
