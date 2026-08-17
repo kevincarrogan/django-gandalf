@@ -3,13 +3,14 @@
 Almost everything that used to be here is now in the library. What is
 left is the three things a demo wants and a library should not have an
 opinion about: which model to talk to, that every tool call is written to
-an event log, and the fact that both are wired the same way for every
-wizard in this project.
+an event log, whose answers the agent may change — and the fact that all
+three are wired the same way for every wizard in this project.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -67,6 +68,16 @@ class LoggedToolset(WrapperToolset[WizardDeps]):
         return result
 
 
+THEIR_ANSWERS = """\
+A step the person answered themselves is theirs to change, not yours.
+Anything you placed you may still change — correcting your own answers is
+expected, and one that failed validation is fixed by replacing it. An
+answer of theirs stays as they left it, and putting a document on one of
+their steps counts as changing it. When something they answered needs to
+change, tell them what you would change and why, and give them the link to
+that step so they can do it themselves."""
+
+
 @dataclass
 class TheirAnswersToolset(WrapperToolset[WizardDeps]):
     """A step somebody answered themselves is theirs, whole.
@@ -90,6 +101,26 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
     """
 
     viewset_class: type[WizardViewSet]
+
+    async def get_instructions(self, ctx):
+        """Say the rule as well as enforce it.
+
+        A refusal an agent can predict is one it can explain. Told nothing,
+        it learns the rule by being refused and reports a tool that said
+        no; told it, it does the thing the rule is for — says what it would
+        change and hands over the link — first time.
+
+        Said here rather than in the demo's other instructions so that the
+        words and the rule cannot drift apart: they are the same object,
+        and taking the wrapper away takes the sentence with it. The library
+        cannot say it, because the library has no such rule.
+        """
+        inherited = await super().get_instructions(ctx)
+        if inherited is None:
+            return THEIR_ANSWERS
+        if isinstance(inherited, Sequence) and not isinstance(inherited, str):
+            return [*inherited, THEIR_ANSWERS]
+        return [inherited, THEIR_ANSWERS]
 
     async def call_tool(self, name, tool_args, ctx, tool):
         # Asked of the step a call names rather than of the tool's name,

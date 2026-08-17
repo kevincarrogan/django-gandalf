@@ -195,9 +195,12 @@ anything at it, and hands back a link to that step instead. It reads the
 step a call names rather than the tool's name, so it covers a document as
 well as an edit: putting a photograph over somebody's own re-affirms their
 step the same way, and would relabel their answer as the agent's into the
-bargain. It is here rather than in the library because whose an answer is
-is a question about a domain rather than about wizards; the library records
-who placed what and stops there.
+bargain. The same wrapper tells the agent the rule, through the toolset's
+own instructions, so the words and the enforcement cannot drift apart — a
+refusal it can predict is one it can explain, rather than a tool it reports
+as having said no. It is here rather than in the library because whose an
+answer is is a question about a domain rather than about wizards; the
+library records who placed what and stops there.
 
 **What that second rule cost to learn**, because it is the argument for the
 library recording anything at all. On 2026-08-15 the scenario for the

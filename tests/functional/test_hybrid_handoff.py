@@ -412,3 +412,30 @@ def test_the_agent_cannot_put_a_document_over_the_one_the_person_gave(
     # relabelled it.
     assert placement.metadata == {}
     assert "answered this step themselves" in repr(result.all_messages())
+
+
+def test_the_agent_is_told_the_rule_rather_than_only_refused_by_it():
+    """A refusal it can predict is one it can explain. Told nothing, the
+    agent learns the rule by trying and reports a tool that said no; told
+    it, it says what it would change and hands over the link — which is
+    what the rule is for, and is only ever done well by an agent that knew
+    before it opened its mouth.
+
+    The wrapper says it, so the words and the rule cannot drift apart: take
+    the wrapper away and the sentence goes with it.
+    """
+    seen = []
+
+    def respond(messages, info):
+        seen.append(repr(messages))
+        return ModelResponse(parts=[TextPart("noted")])
+
+    agent = build_agent(HybridQuoteViewSet, "test")
+    with agent.override(model=FunctionModel(respond)):
+        agent.run_sync("Hello", deps=WizardDeps(state=WizardState()))
+
+    assert seen
+    # The rule...
+    assert "theirs to change" in seen[0]
+    # ...and the half of it that keeps the agent useful.
+    assert "your own" in seen[0]
