@@ -11,10 +11,16 @@ walk, whichever door it is reached through.
 from django.shortcuts import render
 
 from examples.eventlog import DemoObserver, log_event
-from examples.insurance import InsuranceQuoteViewSet, quote_for
+from gandalf.contrib.agent import AgentProfile
+from examples.insurance import (
+    InsuranceQuoteViewSet,
+    VehicleCollectionView,
+    VehicleItemViewSet,
+    quote_for,
+)
 from examples.identity import IdentityCheckViewSet
 from examples.licence import LicenceCheckViewSet
-from tests.testapp.durable import ModelStorage
+from tests.testapp.durable import ModelCollectionStore, ModelStorage
 
 
 class HybridQuoteViewSet(InsuranceQuoteViewSet):
@@ -31,9 +37,87 @@ class HybridQuoteViewSet(InsuranceQuoteViewSet):
     def done(self, bound_wizard):
         """Fires once, from whichever side confirmed — and in this demo
         that is always the human, on the review page."""
-        quote = quote_for(bound_wizard)
+        quote = quote_for(bound_wizard, vehicle_values=fleet_values)
         log_event("quote", run=bound_wizard.run_id, **quote)
         return render(self.request, "hybrid/done.html", quote)
+
+
+class AdaptiveQuoteViewSet(HybridQuoteViewSet):
+    """The same quote, for the agent that can reach the fleet.
+
+    It exists for one sentence. `InsuranceQuoteViewSet`'s profile tells an
+    agent it cannot add a vehicle and must never try, which is true of every
+    agent holding only `RunDriver` — and false of this one, which has the
+    collection's own verbs. Left in place the two would contradict each
+    other, and a rule a model can find on both sides of is one it will
+    break: this demo has already lost a boundary that way once, and the
+    lesson written down then was that the tool's description and the prompt
+    must not disagree.
+
+    Everything else is inherited, `url_name` included, so a handover link
+    still points at the same pages.
+    """
+
+    agent = AgentProfile(
+        purpose="a business insurance quote",
+        notes=(
+            "Vehicles are not steps of this quote — they are a list of their "
+            "own — but you can add to that list, with `get_the_fleet` and "
+            "`add_a_vehicle`. Add one whenever they tell you about it. What "
+            "you cannot do is say the fleet is finished: only they know "
+            "whether there is another, so ask them and hand over the page."
+        ),
+    )
+
+
+class HybridVehicleItemViewSet(VehicleItemViewSet):
+    """One vehicle, kept where somebody other than this browser can find it.
+
+    Both stores are swapped, which is what a durable collection needs:
+    `storage_class` for the run itself and `section_store_class` for the
+    registry that says the run exists. Swapping one gives you durable
+    answers nobody can find, or an index into runs that have expired.
+    """
+
+    storage_class = ModelStorage
+    section_store_class = ModelCollectionStore
+
+
+class HybridVehicleCollectionView(VehicleCollectionView):
+    """The fleet page, over the same two stores.
+
+    This is what lets an agent add a vehicle at all. It drives a fabricated
+    request — no browser, no session, and this demo's sessions live in a
+    signed cookie, so there is nothing it could share even in principle.
+    Scoped to the *user* instead, both sides see one fleet.
+    """
+
+    section_store_class = ModelCollectionStore
+    item_viewset = HybridVehicleItemViewSet
+
+
+def fleet_values(request):
+    """Every finished vehicle's value, read off the collection itself.
+
+    The session copy `examples.insurance` keeps is the right shape for a
+    demo with no database and the wrong one here: an agent writes it to a
+    request the browser will never see. The collection already holds the
+    answers durably — a finished section stashes its own state — so this
+    reads them from there and there is no second copy to disagree.
+    """
+    page = HybridVehicleCollectionView()
+    page.setup(request)
+    store = page.get_collection_store()
+    values = []
+    for item_id in page.get_item_ids():
+        stash = store.get_stash(page.item_section_key(item_id))
+        if not stash:
+            continue
+        for entry in stash.get("state", []):
+            answers = entry.get("step") or {}
+            if "value" in answers:
+                values.append(answers["value"])
+    return values
 
 
 class HybridLicenceViewSet(LicenceCheckViewSet):

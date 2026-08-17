@@ -14,8 +14,10 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from examples.copilotkit.agent import build_agent, resolve_model
+from examples.copilotkit.fleet import FLEET_RULE, fleet_tools
 from examples.copilotkit.transcripts import record
 from examples.copilotkit.wizards import (
+    AdaptiveQuoteViewSet,
     HybridIdentityViewSet,
     HybridLicenceViewSet,
     HybridQuoteViewSet,
@@ -141,10 +143,10 @@ the errors if any of it does not hold."""
 
 
 def adaptive_instructions(run_input):
-    return f"{run_instructions(run_input)}\n\n{COLLECTING}"
+    return f"{run_instructions(run_input)}\n\n{COLLECTING}\n\n{FLEET_RULE}"
 
 
-adaptive_agent = build_agent(HybridQuoteViewSet, resolve_model())
+adaptive_agent = build_agent(AdaptiveQuoteViewSet, resolve_model(), extra=fleet_tools())
 adaptive_endpoint = endpoint_for(
     adaptive_agent, instructions=adaptive_instructions, on_complete=_chat
 )

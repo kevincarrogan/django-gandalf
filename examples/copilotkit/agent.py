@@ -16,7 +16,7 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from pydantic_ai import Agent
-from pydantic_ai.toolsets import WrapperToolset
+from pydantic_ai.toolsets import CombinedToolset, WrapperToolset
 
 from examples.eventlog import log_event
 from gandalf.contrib.agent import WizardDeps, build_agent as build_wizard_agent
@@ -171,14 +171,25 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
 
 
 def build_agent(
-    viewset_class: type[WizardViewSet], model: Any
+    viewset_class: type[WizardViewSet], model: Any, extra: Any = None
 ) -> Agent[WizardDeps, str]:
     """The library's agent for `viewset_class`, with this demo's logging and
-    its edit rule."""
+    its edit rule.
+
+    `extra` is a toolset of this demo's own, for a wizard that needs a verb
+    the library does not have — the fleet, which is a second collection of
+    runs rather than a step of this one. It goes *beside* the wizard tools
+    rather than inside the wrapper: the rule the wrapper enforces is about
+    re-affirming a step somebody answered, and a tool that touches a
+    different run entirely has no step here to re-affirm.
+    """
 
     def wrap(toolset):
         # Logging outermost, so a refused call is written to the event log
         # like any other; the rule inside it, next to the call it refuses.
-        return LoggedToolset(TheirAnswersToolset(toolset, viewset_class))
+        wrapped = LoggedToolset(TheirAnswersToolset(toolset, viewset_class))
+        if extra is None:
+            return wrapped
+        return CombinedToolset([wrapped, extra])
 
     return build_wizard_agent(viewset_class, model, wrap=wrap)

@@ -221,7 +221,7 @@ class InsuranceQuoteViewSet(WizardViewSet):
         )
 
 
-def quote_for(bound_wizard):
+def quote_for(bound_wizard, *, vehicle_values=None):
     """Price the run: a base rate, a bit per employee, a bit per cover, a
     percentage of the fleet, and a loading for prior claims.
 
@@ -233,7 +233,8 @@ def quote_for(bound_wizard):
     premium = 250
     premium += answers["employees"] * 10
     premium += 150 * len(answers["cover_types"])
-    premium += sum(saved_vehicle_values(bound_wizard.context)) // 100
+    read_values = saved_vehicle_values if vehicle_values is None else vehicle_values
+    premium += sum(read_values(bound_wizard.context)) // 100
     if answers["had_claims"] == "yes":
         premium += answers["total_value"] // 10
     return {
@@ -253,8 +254,16 @@ def quote_for(bound_wizard):
 #
 # The trade is worth naming, because it is the whole point of this example.
 # Each item is its own wizard run, so a collection is many runs behind one
-# page. `gandalf.driver` drives one run: an agent can fill the quote, but it
-# has no vocabulary for adding an item, and the fleet is where it goes quiet.
+# page. `gandalf.driver` drives one run: an agent holding only that can fill
+# the quote and has no vocabulary for adding an item, which is why this
+# wizard's `AgentProfile` tells it so rather than letting it discover the
+# silence.
+#
+# It is a limit of the toolset rather than of the library, and
+# `examples/copilotkit/fleet.py` lifts it without new library API: a
+# collection page is an ordinary view whose verbs are ordinary methods, and
+# an item id is a URL kwarg, which `RunDriver` already takes. The demo's
+# adaptive agent has those verbs and a profile that says so.
 
 
 VEHICLES_SESSION_KEY = "insurance_vehicles"

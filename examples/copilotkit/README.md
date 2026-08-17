@@ -150,6 +150,53 @@ A rough transcript plus a person confirming beats a good transcript nobody
 checks. That is the same conclusion the licence check reached about reading
 a photograph, and for the same reason.
 
+#### The fleet, which used to be where it went quiet
+
+Vehicles are not steps of the quote. They are a **collection** — a list the
+person grows, one wizard run per vehicle, behind its own page — and
+`gandalf.driver` drives one run. So an agent holding only `RunDriver` could
+fill a fourteen-step quote and not add a van, and `examples/insurance.py`
+said so in a comment while the wizard's `AgentProfile` said so out loud.
+
+`fleet.py` lifts that, and needs no new library API to do it. A collection
+page is an ordinary Django view whose four verbs — add, change, remove,
+declare done — are ordinary methods: `add_item()` mints and registers an id,
+`get_item_ids()` is the registry, `get_section_rows()` is what the person
+sees. Set it up against a fabricated request and they all answer. The item
+id is then just a URL kwarg, and `RunDriver.begin(ItemViewSet, item=…)`
+already takes those. Same driver, same walk, a different run.
+
+What it *did* need was durable storage on both halves. The agent drives a
+fabricated request, and this demo keeps sessions in a signed cookie, so
+there is no session it could share even in principle. `HybridVehicleItem…`
+and `HybridVehicleCollection…` swap `storage_class` **and**
+`section_store_class` — the durable-storage docstring warns that one without
+the other gives you "durable answers nobody can find" — and both sides then
+see one fleet, scoped to the user. `fleet_values` reads the values off the
+collection's own stashes rather than the session copy `insurance.py` keeps,
+so there is no second copy to disagree.
+
+Two decisions neither obvious nor forced:
+
+- **It finishes what it adds.** Everywhere else this demo stops short of
+  confirming, and that rule is about the quote — `done()` is where the price
+  is struck. A vehicle is a row on the person's own list, removable, and
+  committing them to nothing; and an unfinished item has no title, shows as
+  *not started* and prices as zero. Half a vehicle is not a smaller vehicle.
+- **It never declares the fleet complete.** That is the answer to *any more
+  to add?*, the one thing storage genuinely cannot infer, so there is no
+  tool for it and the agent hands over the page.
+
+Everything it adds is marked `{"unattended": True}`, so a row's provenance
+survives.
+
+One honest caveat. Asked directly — *"add my van AE01 CAB, worth 18000"* —
+it calls `get_the_fleet` then `add_a_vehicle` and the row lands, titled and
+priced. Mentioned in passing, inside a general quote request, three runs of
+one prompt gave three answers: a form covering the whole quote, a chat
+reply, and a form again. The tools are reliable; noticing that a sentence
+about vans is a job for them is not yet.
+
 #### Checking it without a browser
 
 ```sh
