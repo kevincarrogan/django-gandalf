@@ -84,6 +84,23 @@ export const styles = {
     width: "100%",
   },
   openerNote: { color: "#697386", fontSize: "0.78rem" },
+  // Beside the panel toggle, clear of it and of CopilotKit's own inspector
+  // button — see `debugToggle` below for why anything up here needs saying
+  // out loud about what it is sitting next to.
+  cornerLink: {
+    position: "fixed",
+    top: "0.75rem",
+    right: "11.5rem",
+    zIndex: 10,
+    padding: "0.3rem 0.7rem",
+    borderRadius: "4px",
+    border: "1px solid #e2e5ea",
+    background: "#fff",
+    color: "#2f5d8c",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    textDecoration: "none",
+  },
   handoffLink: {
     display: "inline-block",
     marginTop: "0.5rem",

@@ -10,6 +10,12 @@ import { styles } from "./styles.js";
 
 const adaptiveAgent = new HttpAgent({ url: "/adaptive-agent/" });
 
+// The run is an ordinary `HybridQuoteViewSet` run — the adaptive endpoint
+// drives the same wizard as `/agent/` — so its bare run URL is the wizard's
+// own, and lands on whichever step the walk has stopped at. Vite proxies
+// `/quote` through to Django, so this is one origin like everything else.
+const runUrl = (runId) => `/quote/${runId}/`;
+
 // Openers that lead somewhere different, and the two at the top are the
 // ones this was actually driven against — the same tool and the same
 // wizard produced a seventeen-field form for the first and a four-field
@@ -98,6 +104,22 @@ function Panel() {
 
       <Openers agent={agent} />
 
+      {state.run_id && (
+        <div style={styles.card}>
+          <h3 style={{ marginTop: 0 }}>The same run, as an ordinary form</h3>
+          <p style={{ ...styles.muted, marginTop: 0 }}>
+            Whatever the agent drew, the answers went onto a normal gandalf
+            run — same id, same storage, same walk. This is that run in the
+            wizard's own Django pages, with none of the above involved.
+          </p>
+          <p style={{ margin: 0 }}>
+            <a style={styles.handoffLink} href={runUrl(state.run_id)}>
+              Open in the Django form →
+            </a>
+          </p>
+        </div>
+      )}
+
       {state.handoff_url && (
         <div style={styles.handoff}>
           <strong>Your turn</strong>
@@ -155,6 +177,20 @@ function Panel() {
   );
 }
 
+// The one thing worth keeping on screen when the panel is folded away:
+// the form is the other half of the demo, and hiding the panel to watch a
+// bare conversation should not cost you the way into it.
+function FormLink() {
+  const { agent } = useAgent({ agentId: "default" });
+  const runId = agent.state?.run_id;
+  if (!runId) return null;
+  return (
+    <a style={styles.cornerLink} href={runUrl(runId)}>
+      Open in the Django form →
+    </a>
+  );
+}
+
 // Inside `CopilotKit`, because registering a tool needs its context — and
 // beside the chat, because that is where the tool renders.
 function Chat({ alone }) {
@@ -192,6 +228,7 @@ export default function Adaptive() {
         {panel && <Panel />}
         <Chat alone={!panel} />
       </div>
+      <FormLink />
       <button style={styles.debugToggle} onClick={() => setPanel(!panel)}>
         {panel ? "Hide panel" : "Show panel"}
       </button>
