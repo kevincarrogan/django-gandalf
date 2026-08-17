@@ -14,6 +14,7 @@ import pytest
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.validators import RegexValidator
 from django.http import HttpResponse
 from django.test import override_settings
 
@@ -86,6 +87,29 @@ def test_char_field_maps_to_string_with_length_bounds():
 
 def test_char_field_without_bounds_is_a_bare_string():
     assert field_json_schema(forms.CharField()) == {"type": "string"}
+
+
+def test_a_regex_validator_becomes_the_schema_pattern():
+    """Without this the format lives only in the help text, which makes a
+    sentence load-bearing: reword it and the field becomes unanswerable
+    without the schema having changed at all."""
+    field = forms.CharField(
+        validators=[RegexValidator(r"^[A-Z]{2}\d{2} \d[A-Z]{2}$")],
+        help_text="Enter as AB12 3CD.",
+    )
+
+    schema = field_json_schema(field)
+
+    assert schema["pattern"] == r"^[A-Z]{2}\d{2} \d[A-Z]{2}$"
+
+
+def test_a_format_is_preferred_over_the_pattern_behind_it():
+    """`URLField` carries `URLValidator`, a `RegexValidator` whose pattern is
+    a kilobyte of alternation. `format` says the same thing, shorter, and in
+    the vocabulary a reader already knows."""
+    schema = field_json_schema(forms.URLField())
+
+    assert schema == {"type": "string", "format": "uri"}
 
 
 def test_email_field_carries_the_email_format():
@@ -191,6 +215,20 @@ def test_multiple_choice_field_maps_to_an_array_of_choices():
     assert schema["description"] == (
         "Choices: cheese (Cheese), olives (Olives), basil (Basil)."
     )
+
+
+def test_a_required_multiple_choice_field_wants_at_least_one():
+    """`type: array` says a list is allowed, not that anything has to be in
+    it. "Choose as many as apply" is a floor, and only the prose said so."""
+    field = forms.MultipleChoiceField(choices=[("a", "Alpha"), ("b", "Beta")])
+
+    assert field_json_schema(field)["minItems"] == 1
+
+
+def test_an_optional_multiple_choice_field_has_no_floor():
+    field = forms.MultipleChoiceField(choices=[("a", "Alpha")], required=False)
+
+    assert "minItems" not in field_json_schema(field)
 
 
 def test_a_model_multiple_choice_field_maps_to_an_array():

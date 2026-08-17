@@ -17,6 +17,7 @@ the same run, one after the other.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
@@ -25,6 +26,7 @@ from django import forms
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import RegexValidator
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase
 from django.test import RequestFactory
@@ -909,6 +911,9 @@ def field_json_schema(field: forms.Field) -> dict[str, Any]:
     walk will still validate whatever is sent.
     """
     schema, note = _base_schema(field)
+    pattern = _pattern(field, schema)
+    if pattern is not None:
+        schema["pattern"] = pattern
     if field.label is not None:
         schema["title"] = str(field.label)
     notes = []
@@ -930,7 +935,16 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
     # list, like its non-model sibling, and belongs here with it.
     if isinstance(field, (forms.MultipleChoiceField, forms.ModelMultipleChoiceField)):
         values, legend = _choice_values(field)
-        return {"type": "array", "items": {"type": "string", "enum": values}}, legend
+        array_schema: dict[str, Any] = {
+            "type": "array",
+            "items": {"type": "string", "enum": values},
+        }
+        # `type: array` says a list is allowed, not that anything has to be in
+        # it. Where the field is required the floor is one, and without this
+        # only the prose ever said so.
+        if field.required:
+            array_schema["minItems"] = 1
+        return array_schema, legend
     if isinstance(field, forms.ChoiceField):
         values, legend = _choice_values(field)
         return {"type": "string", "enum": values}, legend
@@ -961,6 +975,11 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
         return {"type": "string", "format": "time"}, None
     if isinstance(field, forms.EmailField):
         return _string_schema(field, format="email"), None
+    # Before `CharField`, which it subclasses. Its `URLValidator` is a
+    # `RegexValidator` carrying a kilobyte of alternation; `format` says the
+    # same thing in the vocabulary a reader already knows.
+    if isinstance(field, forms.URLField):
+        return _string_schema(field, format="uri"), None
     if isinstance(field, forms.CharField):
         return _string_schema(field), None
     # `ImageField` and friends subclass this, so the whole family is caught.
@@ -983,6 +1002,27 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
         f"{type(field).__name__} is not supported by the schema mapping; "
         "submit its raw form value."
     )
+
+
+def _pattern(field: forms.Field, schema: dict[str, Any]) -> str | None:
+    """The regex a field enforces, where the schema can carry it.
+
+    Without this a format lives only in the help text, which makes a sentence
+    load-bearing: reword it and the field becomes unanswerable without the
+    schema having changed at all.
+
+    A `format` already in hand wins — it says what the pattern would say, and
+    says it in the vocabulary a reader already knows.
+    """
+    if schema.get("type") != "string" or "format" in schema:
+        return None
+    for validator in field.validators:
+        if isinstance(validator, RegexValidator):
+            # Annotated `str | Pattern[str]`, but `__init__` compiles whatever
+            # it was given, so by the time anyone holds one it is a pattern.
+            compiled = cast("re.Pattern[str]", validator.regex)
+            return compiled.pattern
+    return None
 
 
 def _bounded_schema(
