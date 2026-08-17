@@ -66,6 +66,24 @@ export const styles = {
     fontSize: "0.8rem",
     cursor: "pointer",
   },
+  // A canned opening line, clickable. Left-aligned and full width because
+  // these are sentences rather than labels, and a centred sentence that
+  // wraps is hard to read down a column of them.
+  opener: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.2rem",
+    textAlign: "left",
+    font: "inherit",
+    fontSize: "0.9rem",
+    background: "#fff",
+    border: "1px solid #e2e5ea",
+    borderRadius: "6px",
+    padding: "0.6rem 0.75rem",
+    cursor: "pointer",
+    width: "100%",
+  },
+  openerNote: { color: "#697386", fontSize: "0.78rem" },
   handoffLink: {
     display: "inline-block",
     marginTop: "0.5rem",

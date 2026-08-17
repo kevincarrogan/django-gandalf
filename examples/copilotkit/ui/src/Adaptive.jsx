@@ -1,7 +1,7 @@
 import { HttpAgent } from "@ag-ui/client";
 import { CopilotChat, CopilotKit, useAgent } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import React from "react";
+import React, { useState } from "react";
 
 import { useGeneratedForm } from "./GeneratedForm.jsx";
 import { inspectorEnabled } from "./inspector.js";
@@ -10,15 +10,75 @@ import { styles } from "./styles.js";
 
 const adaptiveAgent = new HttpAgent({ url: "/adaptive-agent/" });
 
-// Things to say that lead somewhere different. The first gets an ordinary
-// conversation; the rest are somebody telling the agent how they would
-// rather be asked, which is when it starts drawing.
+// Openers that lead somewhere different, and the two at the top are the
+// ones this was actually driven against — the same tool and the same
+// wizard produced a seventeen-field form for the first and a four-field
+// one for the second, which is the whole point and is easier to believe
+// having watched it happen twice.
 const OPENERS = [
-  "I need a quote for my business.",
-  "Can you ask me everything at once rather than one thing at a time?",
-  "This is my first policy and I don't know what any of these words mean.",
-  "I find typing hard — can you give me things to pick from?",
+  {
+    said: (
+      "I've never bought insurance before and I find these back-and-forth " +
+      "chats really hard. Can you just give me things to fill in?"
+    ),
+    got: "flattened all fourteen steps into one form",
+  },
+  {
+    said: (
+      "I'm getting business insurance for the first time and I genuinely " +
+      "don't know what any of these words mean. Please go slowly and " +
+      "explain things."
+    ),
+    got: "explained first, then asked four questions",
+  },
+  {
+    said: "I find typing hard — can you give me things to pick from?",
+    got: "prefers choices over free text",
+  },
+  {
+    said: "I need a quote for my business.",
+    got: "no stated need — it just talks",
+  },
 ];
+
+function Openers({ agent }) {
+  const [sent, setSent] = useState(false);
+
+  const send = async (said) => {
+    setSent(true);
+    agent.addMessage({ id: crypto.randomUUID(), role: "user", content: said });
+    await agent.runAgent();
+  };
+
+  return (
+    <div style={styles.card}>
+      <h3 style={{ marginTop: 0 }}>Try saying</h3>
+      <p style={{ ...styles.muted, marginTop: 0 }}>
+        Click one to send it. What it draws is its decision each time — the
+        same wizard, the same tool, a different form.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {OPENERS.map(({ said, got }) => (
+          <button
+            key={said}
+            type="button"
+            style={styles.opener}
+            disabled={sent}
+            onClick={() => send(said)}
+          >
+            <span>“{said}”</span>
+            <span style={styles.openerNote}>{got}</span>
+          </button>
+        ))}
+      </div>
+      {sent && (
+        <p style={{ ...styles.muted, margin: "0.6rem 0 0" }}>
+          Reload the page to start another conversation.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Panel() {
   const { agent } = useAgent({ agentId: "default" });
@@ -32,20 +92,11 @@ function Panel() {
         Chat is a queue: one question, one answer, repeat. Tell this one how
         you would rather be asked and it stops queuing — it designs a form,
         shows it to you in the conversation, and fills the quote from what
-        you put in it. Which it does, and what the form looks like, is its
-        decision every time.
+        you put in it. It reads the wizard's shape first, so the options it
+        offers are the wizard's own.
       </p>
 
-      <div style={styles.card}>
-        <h3 style={{ marginTop: 0 }}>Try saying</h3>
-        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
-          {OPENERS.map((line) => (
-            <li key={line} style={{ marginBottom: "0.35rem" }}>
-              “{line}”
-            </li>
-          ))}
-        </ul>
-      </div>
+      <Openers agent={agent} />
 
       {state.handoff_url && (
         <div style={styles.handoff}>
@@ -91,7 +142,7 @@ function Panel() {
           </table>
         ) : (
           <p style={{ ...styles.muted, marginBottom: 0 }}>
-            Nothing yet. Whatever the form looks like, what lands here is an
+            Nothing yet. Whatever the form looked like, what lands here is an
             ordinary answer on an ordinary run.
           </p>
         )}
@@ -106,13 +157,14 @@ function Panel() {
 
 // Inside `CopilotKit`, because registering a tool needs its context — and
 // beside the chat, because that is where the tool renders.
-function Chat() {
+function Chat({ alone }) {
   useGeneratedForm();
   return (
-    <div style={styles.chat}>
+    <div style={{ ...styles.chat, ...(alone ? styles.chatAlone : {}) }}>
       <CopilotChat
         labels={{
-          chatInputPlaceholder: "Ask for a quote — or say how you'd rather be asked…",
+          chatInputPlaceholder:
+            "Ask for a quote — or say how you'd rather be asked…",
         }}
       />
     </div>
@@ -120,15 +172,29 @@ function Chat() {
 }
 
 export default function Adaptive() {
+  // On by default here, unlike the photo demos: the openers live in it,
+  // and the thing worth watching is the form the agent draws, which is in
+  // the chat either way. Collapse it to see what somebody using this would
+  // actually see — a conversation, and nothing else.
+  const [panel, setPanel] = useState(true);
+
   return (
     <CopilotKit
       agents__unsafe_dev_only={{ default: adaptiveAgent }}
       enableInspector={inspectorEnabled}
     >
-      <div style={styles.page}>
-        <Panel />
-        <Chat />
+      <div
+        style={{
+          ...styles.page,
+          gridTemplateColumns: panel ? "1fr 480px" : "1fr",
+        }}
+      >
+        {panel && <Panel />}
+        <Chat alone={!panel} />
       </div>
+      <button style={styles.debugToggle} onClick={() => setPanel(!panel)}>
+        {panel ? "Hide panel" : "Show panel"}
+      </button>
     </CopilotKit>
   );
 }
