@@ -78,6 +78,13 @@ agent-eval repeats="1" only="":
 # call, and an image is worth about a thousand tokens of one.
 # `check` keeps the picture on the run; `identity` is the wizard with no
 # file step at all — five pages of plain text, read from the photo.
+# Say something to the adaptive agent and see how it decides to ask back.
+# Add `heard` to send it as a transcript instead, which is the browser's
+# path once somebody stops speaking. Needs a model key; costs one call.
+collect-demo said mode="typed":
+    PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
+    PYTHONPATH=. uv run --extra agent --group agents python -m examples.collect_demo {{quote(said)}} {{mode}}
+
 photo-demo image wizard="check":
     PYTHONPATH=. uv run --group agents django-admin migrate --settings examples.copilotkit.settings
     PYTHONPATH=. uv run --group agents python -m examples.photo_demo {{image}} {{wizard}}
