@@ -196,6 +196,22 @@ It is here rather than in the library because whose an answer is is a
 question about a domain rather than about wizards; the library records who
 placed what and stops there.
 
+**What that second rule cost to learn**, because it is the argument for the
+library recording anything at all. On 2026-08-15 the scenario for the
+obvious hybrid case — the person changes an answer, then asks for something
+else — failed five times out of five. The agent added the cyber cover it
+was asked for and set the excess back to £500 in the same breath, then
+reported the cyber and said nothing about the excess. The first fix made
+`edit_step` merge changed fields over stored ones rather than replacing the
+step wholesale; the agent immediately started sending minimal diffs, and it
+did not help at all. The failure is not carelessness: the person said "£500
+excess" in their opening message, the run said £250, and repairing what
+looks like drift is the same instinct that makes an agent correctly fix a
+genuine mistake elsewhere. Any instruction to leave stored answers alone
+fights it. The agent was not missing an instruction — it was missing a
+fact, because nothing in the system recorded that a *person* put £250
+there. Step metadata is that fact, and the rule above is what reads it.
+
 ## What the evaluation measured
 
 **Taken at `6b6e33d`, and history rather than the current state** — see
