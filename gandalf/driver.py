@@ -924,12 +924,22 @@ def field_json_schema(field: forms.Field) -> dict[str, Any]:
 def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
     """The type-shaped half of a field's schema, plus an optional note
     destined for the property's description."""
-    if isinstance(field, forms.MultipleChoiceField):
+    # `ModelMultipleChoiceField` subclasses `ModelChoiceField` rather than
+    # `MultipleChoiceField`, so it would otherwise fall through to the
+    # single-choice branch below and be described as a string. It takes a
+    # list, like its non-model sibling, and belongs here with it.
+    if isinstance(field, (forms.MultipleChoiceField, forms.ModelMultipleChoiceField)):
         values, legend = _choice_values(field)
         return {"type": "array", "items": {"type": "string", "enum": values}}, legend
     if isinstance(field, forms.ChoiceField):
         values, legend = _choice_values(field)
         return {"type": "string", "enum": values}, legend
+    # Before `BooleanField`, which it subclasses. Its `validate()` is a no-op,
+    # so it never rejects anything: true, false and none are all answers and
+    # `required` decides nothing. Its parent's `const: true` would say the
+    # opposite.
+    if isinstance(field, forms.NullBooleanField):
+        return {"type": ["boolean", "null"]}, None
     if isinstance(field, forms.BooleanField):
         boolean_schema: dict[str, Any] = {"type": "boolean"}
         # A required BooleanField is "you must tick this": the only value
@@ -996,6 +1006,12 @@ def _string_schema(field: forms.CharField, **extra: Any) -> dict[str, Any]:
 
 def _choice_values(field: forms.ChoiceField) -> tuple[list[str], str]:
     pairs = list(_flatten_choices(field.choices))
+    # The empty choice is a prompt — "Select..." — rather than an answer, and
+    # a required field rejects it. Advertising it would invite a caller to
+    # send the one value the field is certain to refuse. Where the field is
+    # optional it really is submittable: it is how somebody says nothing.
+    if field.required:
+        pairs = [(value, label) for value, label in pairs if str(value) != ""]
     values = [str(value) for value, _ in pairs]
     legend = ", ".join(f"{value} ({label})" for value, label in pairs)
     return values, f"Choices: {legend}."

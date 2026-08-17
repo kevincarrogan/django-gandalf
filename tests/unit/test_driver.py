@@ -47,6 +47,7 @@ from tests.testapp.forms import (
     SummaryFieldsForm,
     ToppingsForm,
 )
+from tests.testapp.models import WizardRun
 
 
 class SignupForm(forms.Form):
@@ -136,12 +137,44 @@ def test_required_boolean_field_must_be_true():
     assert schema["const"] is True
 
 
+def test_null_boolean_field_admits_the_third_answer():
+    """`NullBooleanField` subclasses `BooleanField` but its `validate()` is a
+    no-op, so it never rejects: True, False and None are all answers, and
+    `required` decides nothing. The `const: true` its parent earns would say
+    the only submittable value is true, which is the opposite of the truth."""
+    schema = field_json_schema(forms.NullBooleanField())
+
+    assert schema == {"type": ["boolean", "null"]}
+
+
 def test_choice_field_enumerates_values_and_explains_labels():
     schema = field_json_schema(AccountTypeForm().fields["account_type"])
 
     assert schema["type"] == "string"
     assert schema["enum"] == ["personal", "business"]
     assert schema["description"] == "Choices: personal (Personal), business (Business)."
+
+
+def test_a_required_choice_field_does_not_offer_its_empty_choice():
+    """A "Select..." placeholder is a prompt, not an answer — submitting it
+    fails validation. Advertising it in the enum invites a caller to send the
+    one value the field is certain to reject."""
+    field = forms.ChoiceField(choices=[("", "Select..."), ("a", "Alpha")])
+
+    schema = field_json_schema(field)
+
+    assert schema["enum"] == ["a"]
+    assert schema["description"] == "Choices: a (Alpha)."
+
+
+def test_an_optional_choice_field_keeps_its_empty_choice():
+    """Where the field is optional the empty value really is submittable —
+    it is how the person says nothing."""
+    field = forms.ChoiceField(
+        choices=[("", "Select..."), ("a", "Alpha")], required=False
+    )
+
+    assert field_json_schema(field)["enum"] == ["", "a"]
 
 
 def test_grouped_choices_flatten_into_one_enum():
@@ -158,6 +191,18 @@ def test_multiple_choice_field_maps_to_an_array_of_choices():
     assert schema["description"] == (
         "Choices: cheese (Cheese), olives (Olives), basil (Basil)."
     )
+
+
+def test_a_model_multiple_choice_field_maps_to_an_array():
+    """`ModelMultipleChoiceField` subclasses `ModelChoiceField`, not
+    `MultipleChoiceField`, so it slips past the array branch on the way to
+    the single-choice one and gets described as a string. It takes a list."""
+    field = forms.ModelMultipleChoiceField(queryset=WizardRun.objects.none())
+
+    schema = field_json_schema(field)
+
+    assert schema["type"] == "array"
+    assert schema["items"]["type"] == "string"
 
 
 def test_temporal_fields_carry_their_formats():
