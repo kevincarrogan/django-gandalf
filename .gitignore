@@ -10,8 +10,6 @@ wheels/
 .venv
 .uv-cache
 
-.python-version
-
 .pytest_cache
 .coverage
 coverage-*.xml

@@ -15,6 +15,17 @@ Install the project and development dependencies:
 uv sync --group dev --group lint
 ```
 
+`.python-version` pins the default environment to Python 3.12, which is what
+every CI workflow installs — so `just coverage-unit` locally is the gate CI
+runs, not an approximation of it. It is committed rather than left to
+whoever checked out the repo because without it uv picks the newest Python
+it can find, and the lock's floor Django (4.2) does not run on 3.14: the
+default environment fails 221 tests before anyone has changed a line.
+
+The pin is the *default* only. `just test-django` passes `--python`
+explicitly, so the compatibility matrix still spans 3.10 to 3.14 as
+`requires-python` promises.
+
 ## Testing and linting
 
 Run the test suite with:
