@@ -20,6 +20,7 @@ import pytest
 pytest.importorskip("pydantic_ai")
 
 from django.contrib.auth import get_user_model  # noqa: E402
+from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
 from django.urls import reverse  # noqa: E402
 from pytest_django.asserts import assertContains, assertRedirects  # noqa: E402
 
@@ -28,8 +29,11 @@ from pydantic_ai.models.function import FunctionModel  # noqa: E402
 
 from examples.copilotkit import settings as hybrid_settings  # noqa: E402
 from examples.copilotkit.agent import build_agent  # noqa: E402
-from examples.copilotkit.wizards import HybridQuoteViewSet  # noqa: E402
-from gandalf.contrib.agent import WizardDeps, WizardState  # noqa: E402
+from examples.copilotkit.wizards import (  # noqa: E402
+    HybridLicenceViewSet,
+    HybridQuoteViewSet,
+)
+from gandalf.contrib.agent import Attachment, WizardDeps, WizardState  # noqa: E402
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 from tests.testapp.models import WizardRun  # noqa: E402
 
@@ -288,11 +292,17 @@ def _scripted_model(calls):
     return FunctionModel(respond)
 
 
-def _agent_turn(customer, calls):
+def _agent_turn(customer, calls, viewset_class=HybridQuoteViewSet, attachments=None):
     """One turn of the demo's agent — its wrapping included, since the rule
     under test lives there rather than in a tool."""
-    agent = build_agent(HybridQuoteViewSet, "test")
-    deps = WizardDeps(state=WizardState(), request=fabricate_request(user=customer))
+    if attachments is None:
+        attachments = {}
+    agent = build_agent(viewset_class, "test")
+    deps = WizardDeps(
+        state=WizardState(),
+        request=fabricate_request(user=customer),
+        attachments=attachments,
+    )
     with agent.override(model=_scripted_model(calls)):
         return agent.run_sync("Put the employee count up to twenty.", deps=deps)
 
@@ -354,3 +364,51 @@ def test_the_agent_may_still_correct_its_own_earlier_answer(hybrid, committed_cu
     )
 
     assert driver.answers()["company"]["employees"] == 20
+
+
+def test_the_agent_cannot_put_a_document_over_the_one_the_person_gave(
+    hybrid, committed_customer, isolated_media_root
+):
+    """The same rule through the other door that places an answer.
+
+    An attachment names a step just as an edit does, and a photograph put
+    over somebody's own re-affirms their step exactly the way changing a
+    field of it would — with the added cost that a placement replaces the
+    metadata beside it, so an unguarded attach would relabel their answer as
+    the agent's and open every later edit to it.
+    """
+    driver = RunDriver.begin(
+        HybridLicenceViewSet, request=fabricate_request(user=committed_customer)
+    )
+    driver.submit(
+        {},
+        files={"scan": SimpleUploadedFile("theirs.png", b"theirs", "image/png")},
+        metadata={},
+    )
+
+    result = _agent_turn(
+        committed_customer,
+        [
+            ("resume_run", {"run_id": driver.run_id}),
+            (
+                "attach_document",
+                {"attachment_id": "attachment-1", "field": "scan", "step": "scan"},
+            ),
+        ],
+        viewset_class=HybridLicenceViewSet,
+        attachments={
+            "attachment-1": Attachment(
+                id="attachment-1",
+                name="mine.png",
+                media_type="image/png",
+                data=b"mine",
+            )
+        },
+    )
+
+    placement = driver.placements()["scan"]
+    assert driver.open_file(placement.files["scan"]).read() == b"theirs"
+    # And it is still theirs: the placement was refused, so nothing
+    # relabelled it.
+    assert placement.metadata == {}
+    assert "answered this step themselves" in repr(result.all_messages())

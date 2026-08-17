@@ -190,11 +190,14 @@ it says what it would change and lets them change it. The cost is real —
 it cannot add cyber cover to a step somebody has touched, even though that
 field was never theirs. This lives in `TheirAnswersToolset` here — the
 wrapper `build_agent` puts round the library's tools — which asks
-`driver.placements()` who answered the step before letting `edit_step`
-touch it, and hands back a link to that step instead of making the change.
-It is here rather than in the library because whose an answer is is a
-question about a domain rather than about wizards; the library records who
-placed what and stops there.
+`driver.placements()` who answered a step before letting any call place
+anything at it, and hands back a link to that step instead. It reads the
+step a call names rather than the tool's name, so it covers a document as
+well as an edit: putting a photograph over somebody's own re-affirms their
+step the same way, and would relabel their answer as the agent's into the
+bargain. It is here rather than in the library because whose an answer is
+is a question about a domain rather than about wizards; the library records
+who placed what and stops there.
 
 **What that second rule cost to learn**, because it is the argument for the
 library recording anything at all. On 2026-08-15 the scenario for the

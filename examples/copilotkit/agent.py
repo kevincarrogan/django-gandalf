@@ -73,8 +73,9 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
 
     Submitting a form affirms everything on it, so an agent changing one
     field of somebody's step re-affirms the rest in their name. This
-    refuses that edit and hands back the link to the step instead: the
-    agent says what it would change and lets them change it.
+    refuses any call that would place something at such a step — an edit or
+    a document, since both are placements — and hands back the link to it
+    instead: the agent says what it would put there and lets them do it.
 
     An answer the *agent* placed it may still replace, whatever else the
     rule says — that is how it recovers from one that failed validation.
@@ -91,22 +92,31 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
     viewset_class: type[WizardViewSet]
 
     async def call_tool(self, name, tool_args, ctx, tool):
-        if name == "edit_step":
+        # Asked of the step a call names rather than of the tool's name,
+        # because naming a step is what placing an answer at one looks
+        # like: `edit_step` does it, and so does `attach_document`, where a
+        # photograph put over somebody's own is the same act as changing a
+        # field of their step — and worse, since a placement replaces the
+        # metadata beside it and would relabel their answer as the agent's.
+        # A call naming no step can only place at the cursor, which is by
+        # definition a step nobody has answered.
+        step = tool_args.get("step") if tool_args else None
+        if step is not None:
             # Off the event loop, because reading the run is ordinary
             # Django and Django refuses to be ordinary in an async context.
             # The tools this wraps are sync for the same reason; they are
             # only spared this because pydantic-ai calls them in a thread.
-            refusal = await sync_to_async(self._refusal)(ctx, tool_args.get("step"))
+            refusal = await sync_to_async(self._refusal)(ctx, step)
             if refusal is not None:
                 return refusal
         return await super().call_tool(name, tool_args, ctx, tool)
 
     def _refusal(self, ctx, step):
-        """What to say instead of making this edit, or None to allow it."""
+        """What to say instead of placing this, or None to allow it."""
         run_id = ctx.deps.state.run_id
-        if run_id is None or step is None:
-            # No run or no step named: whatever is wrong with the call, the
-            # tool says it better than a policy can.
+        if run_id is None:
+            # Whatever is wrong with a call made against no run, the tool
+            # says it better than a policy can.
             return None
         driver = RunDriver.resume(self.viewset_class, run_id, request=ctx.deps.request)
         placement = driver.placements().get(step)
@@ -117,13 +127,13 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
             "step": step,
             "reason": (
                 "They answered this step themselves, so it is theirs whole: "
-                "submitting a form affirms every field on it, and changing "
-                "one would re-affirm the rest in their name. Nothing was "
-                "changed."
+                "submitting a form affirms every field on it, and placing "
+                "anything on it now would re-affirm the rest in their name. "
+                "Nothing was changed."
             ),
             "instead": (
-                "Tell them what you would change and why, and give them this "
-                "link as a markdown link so they can change it themselves."
+                "Tell them what you would put there and why, and give them "
+                "this link as a markdown link so they can do it themselves."
             ),
             "change_url": driver.bound_wizard.entry_url(step),
         }
