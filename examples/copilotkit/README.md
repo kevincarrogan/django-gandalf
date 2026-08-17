@@ -23,6 +23,7 @@ Everything is one Django process:
 | The wizard, at real URLs | `wizards.py` + `urls.py` — `HybridQuoteViewSet.urls()` |
 | The run itself | `tests/testapp/durable.py::ModelStorage` — a database row, scoped to its owner |
 | The chat UI | `ui/` — React + CopilotKit, proxied to Django by Vite |
+| Forms the agent draws | `ui/src/GeneratedForm.jsx` — a frontend tool; nothing server-side knows |
 
 Two properties make the handover work, and both come from gandalf rather
 than from the agent:
@@ -63,6 +64,67 @@ The panel fills as the agent works, then offers **Review and finish →**.
 Follow it, change the employee count or a vehicle value, and confirm: the
 run re-routes from your edit, keeps every answer that still holds, and
 `done()` fires once — on your submission, not the agent's.
+
+### The adaptive quote
+
+http://localhost:5173/#adaptive is the same quote wizard, asked however
+suits the person answering. Chat is a queue — one question, one answer,
+repeat — and for somebody who finds that hard it is the wrong shape. So
+this agent has a second way to ask: it draws a form, in the conversation,
+and decides for itself what is on it.
+
+Tell it how you would rather be asked and watch what it makes. Driven
+against Sonnet, the same wizard and the same tool gave:
+
+| Told | Drew |
+|---|---|
+| *"I've never bought insurance before and I find these back-and-forth chats really hard. Can you just give me things to fill in?"* | all fourteen steps flattened into one form, with the branch-dependent fields marked *"Only needed if you're a limited company"* |
+| *"I'm getting business insurance for the first time and I genuinely don't know what any of these words mean. Please go slowly and explain things."* | an explanation in chat, then **four** fields for the first step alone, each option annotated — *"A separate legal entity registered at Companies House"* |
+
+It reads the wizard before it draws: `get_outline` gives it every step and
+every schema, so the options it offers are the wizard's own and the values
+behind them are exact.
+
+**None of this is in Django.** `collect_with_a_form` is a *frontend* tool,
+declared by the browser with `useHumanInTheLoop` and carried to the model
+in the run input — AG-UI passes the client's tools along, and pydantic-ai's
+adapter hands them to the agent like any other. No new wizard, no new
+viewset, nothing server-side that knows a form was drawn. Collecting is the
+front end's business; what comes back is placed with the ordinary wizard
+tools and re-proved by the walk exactly as a typed answer would be. As far
+as gandalf is concerned, it was typed.
+
+Which is also why there is no paranoia here about what a drawn form may
+ask. A radio group the agent invented is no more trusted than a sentence it
+read in the chat: both end at `submit_step`, and the form is the authority
+on what holds. The **widgets** are ours, though, and deliberately: the
+agent picks the fields, their order, their grouping and their words, and
+`GeneratedForm.jsx` decides that a group of choices is a real `fieldset`
+with a `legend`, that help text is tied to its input with
+`aria-describedby`, and that everything has a label. A form generated per
+person is only worth having if it is well built, and that is not something
+to leave to a sentence in a prompt.
+
+Everything it collects lands on an ordinary run, and the panel links
+straight to it — *"Open in the Django form"* opens the same `run_id` in the
+wizard's own pages, wherever the walk has stopped. That link is the claim
+this demo is making, so it is worth clicking. **Hide panel** folds the
+instrumentation away for the view somebody using this would actually have:
+a conversation, and nothing else.
+
+Two things that cost an afternoon each and are easy to hit again:
+
+- **Send through the core, not the agent.** `agent.runAgent()` posts what
+  the agent holds, and the frontend tools a page registers are attached by
+  `copilotkit.runAgent({ agent })`. Call the agent directly and the run
+  goes out with `tools: []` — so the model never learns it can draw a form
+  and writes one out in prose instead. Nothing errors and the reply is
+  perfectly coherent; it looks exactly like the model choosing not to.
+- **`TestModel` goes quiet once it has spoken.** It calls every tool it is
+  offered, but only in a conversation with no assistant turn in it — and
+  this page greets you. So the free CI run cannot see a drawn form, and the
+  smoke test asserts the *request* instead. Against a real model the
+  greeting changes nothing.
 
 ### The licence check
 
