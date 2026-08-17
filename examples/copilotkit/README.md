@@ -150,6 +150,26 @@ A rough transcript plus a person confirming beats a good transcript nobody
 checks. That is the same conclusion the licence check reached about reading
 a photograph, and for the same reason.
 
+#### Checking it without a browser
+
+```sh
+just collect-demo "I would rather just talk than type all this out."
+just collect-demo "yeah so it's analytical engines limited um we started..." heard
+```
+
+Prints which of the three ways to collect the agent picked and what it
+drew. With `heard`, the sentence arrives as the *result* of an
+`ask_out_loud` call — which is what the browser posts once somebody stops
+speaking, and the half most worth re-checking, since it is where a rough
+transcript has to come back as a form with the right things already in it.
+No microphone and no browser.
+
+It posts to `/adaptive-agent/` rather than driving the agent in-process,
+because the tools under test are the browser's: they reach the model only
+by way of the run input. Same shape as `just photo-demo`, and for the same
+reason — the model's judgement is the output, so the only way to know it is
+any good is to read what came out beside what went in.
+
 Two things that cost an afternoon each and are easy to hit again:
 
 - **Send through the core, not the agent.** `agent.runAgent()` posts what

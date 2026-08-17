@@ -205,8 +205,11 @@ def _print_form(form):
     print(f"    title:  {form.get('title') or '—'}")
     if form.get("intro"):
         print(f"    intro:  {form['intro']}")
-    # The two that only matter to somebody who cannot read or type easily,
-    # and the two this demo has never yet caught the model setting itself.
+    # Printed because it is easy to build a thing the model then never
+    # reaches for. `speak` it does set, and unprompted — a form drawn after
+    # somebody had been talking came back reading itself aloud. A field
+    # marked for dictation has not been seen yet, which is worth knowing
+    # when reading the output rather than assuming.
     print(f"    reads itself aloud: {bool(form.get('speak'))}")
     print()
     for field in form.get("fields", []):
