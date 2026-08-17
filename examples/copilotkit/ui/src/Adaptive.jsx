@@ -6,7 +6,7 @@ import {
   useCopilotKit,
 } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { useGeneratedForm } from "./GeneratedForm.jsx";
 import { inspectorEnabled } from "./inspector.js";
@@ -203,10 +203,38 @@ function FormLink() {
   );
 }
 
+// Said before anything happens, because the interesting behaviour is
+// behind somebody volunteering how they would rather be asked, and an
+// empty chat box asks for nothing. It names both ways of doing this so
+// that saying "just give me a form" is an obvious thing to say rather than
+// a lucky guess.
+//
+// Added to the conversation rather than rendered above it, so it costs an
+// assistant turn in the context — which is honest, because it is a thing
+// the assistant said.
+const GREETING = [
+  "I can sort out a business insurance quote for you.",
+  "It is a long one — fourteen steps filled in by hand — so tell me how",
+  "you would rather do it. I can ask as we talk, or put together a form",
+  "with everything on it at once. If the wording is unfamiliar, say so and",
+  "I will explain as I go.",
+].join(" ");
+
 // Inside `CopilotKit`, because registering a tool needs its context — and
 // beside the chat, because that is where the tool renders.
 function Chat({ alone }) {
   useGeneratedForm();
+  const { agent } = useAgent({ agentId: "default" });
+
+  useEffect(() => {
+    if (agent.messages?.length) return;
+    agent.addMessage({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: GREETING,
+    });
+  }, [agent]);
+
   return (
     <div style={{ ...styles.chat, ...(alone ? styles.chatAlone : {}) }}>
       <CopilotChat

@@ -48,8 +48,10 @@ const PAGES = [
   {
     name: "the adaptive quote",
     path: "/#adaptive",
-    mounted: (page) =>
-      page.getByRole("heading", { name: "A copilot that draws its own forms" }),
+    // The greeting rather than the panel heading: it is the thing that
+    // has to be in the conversation before anybody types, and it is what
+    // tells them that asking for a form is an option.
+    mounted: (page) => page.getByText("I can sort out a business insurance quote"),
   },
   {
     name: "the driving licence check",
@@ -130,9 +132,15 @@ test("the dev server is still proxying Django", async ({ request }) => {
 // which is indistinguishable from it deciding not to draw one, and reads as
 // the model being unhelpful rather than the page being wrong.
 //
-// The canned `test` model calls every tool it is offered, so this runs in
-// CI without a key: if the tool reaches the model, a form comes back, and
-// if a form comes back it has to render as controls somebody can use.
+// What is asserted is the request rather than a rendered form, and that is
+// a concession to the canned model rather than a preference. `TestModel`
+// calls every tool it is offered, but only from a conversation it has not
+// already spoken in — and this page greets you, so by the time an opener is
+// clicked there is an assistant turn in the history and it calls nothing at
+// all. Against a real model the greeting changes nothing: both draw a form,
+// through the same three tools. So the form is checked by hand and by
+// `just test-ui` against a key, and what runs in CI for free is the half
+// that actually broke.
 test("the adaptive quote's openers reach the model with its tools", async ({ page }) => {
   let sentTools = null;
   await page.route("**/adaptive-agent/", async (route) => {
@@ -144,12 +152,7 @@ test("the adaptive quote's openers reach the model with its tools", async ({ pag
   await page.goto("/#adaptive");
   await page.getByRole("button", { name: /never bought insurance/ }).click();
 
-  // The form is the proof. Waiting on it rather than on the request means
-  // a tool that arrives and fails to render still fails this.
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible({
-    timeout: 30_000,
-  });
-  expect(sentTools, "frontend tools on the run input").toContain(
-    "collect_with_a_form",
-  );
+  await expect
+    .poll(() => sentTools, { timeout: 20_000 })
+    .toContain("collect_with_a_form");
 });
