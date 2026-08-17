@@ -14,7 +14,11 @@ import pytest
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.core.validators import RegexValidator
+from django.core.validators import (
+    MaxValueValidator,
+    MinValueValidator,
+    RegexValidator,
+)
 from django.http import HttpResponse
 from django.test import override_settings
 
@@ -128,6 +132,35 @@ def test_integer_field_carries_value_bounds():
 
 def test_integer_field_without_bounds_is_a_bare_integer():
     assert field_json_schema(forms.IntegerField()) == {"type": "integer"}
+
+
+def test_value_validators_bound_a_number_like_the_keywords_do():
+    """`min_value=` is sugar for a `MinValueValidator`, so a field given the
+    validator directly is bounded exactly as tightly — and was being
+    described as though it were not bounded at all."""
+    field = forms.IntegerField(validators=[MinValueValidator(5), MaxValueValidator(10)])
+
+    assert field_json_schema(field) == {
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 10,
+    }
+
+
+def test_the_tightest_of_two_bounds_is_the_one_that_holds():
+    """Django runs both, so the answer has to satisfy both."""
+    field = forms.IntegerField(min_value=1, validators=[MinValueValidator(5)])
+
+    assert field_json_schema(field)["minimum"] == 5
+
+
+def test_a_bound_that_is_computed_is_left_out():
+    """`limit_value` may be a callable, which has no value to state until it
+    is called — and calling it here would be evaluating somebody's code to
+    describe a form."""
+    field = forms.IntegerField(validators=[MinValueValidator(lambda: 5)])
+
+    assert "minimum" not in field_json_schema(field)
 
 
 def test_fractional_number_fields_map_to_number():

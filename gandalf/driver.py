@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
@@ -26,7 +26,12 @@ from django import forms
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.validators import RegexValidator
+from django.core.validators import (
+    BaseValidator,
+    MaxValueValidator,
+    MinValueValidator,
+    RegexValidator,
+)
 from django.forms import BaseForm
 from django.http import HttpRequest, HttpResponseBase
 from django.test import RequestFactory
@@ -1028,11 +1033,39 @@ def _pattern(field: forms.Field, schema: dict[str, Any]) -> str | None:
 def _bounded_schema(
     schema: dict[str, Any], field: forms.IntegerField
 ) -> dict[str, Any]:
-    if field.min_value is not None:
-        schema["minimum"] = field.min_value
-    if field.max_value is not None:
-        schema["maximum"] = field.max_value
+    minimum = _bound(field, MinValueValidator, field.min_value, max)
+    if minimum is not None:
+        schema["minimum"] = minimum
+    maximum = _bound(field, MaxValueValidator, field.max_value, min)
+    if maximum is not None:
+        schema["maximum"] = maximum
     return schema
+
+
+def _bound(
+    field: forms.IntegerField,
+    validator_class: type[BaseValidator],
+    declared: Any,
+    tightest: Callable[[list[Any]], Any],
+) -> Any:
+    """The tightest of a field's declared bound and any it validates for.
+
+    `min_value=` is sugar for a `MinValueValidator`, so a field may carry a
+    bound either way, and a field given the validator directly was being
+    described as though it had no bound at all. Django runs everything it
+    holds, so where both exist an answer has to satisfy both.
+
+    A `limit_value` that is callable is left out: it has no value to state
+    until it is called, and calling it would mean evaluating somebody's code
+    in order to describe a form.
+    """
+    limits = [] if declared is None else [declared]
+    for validator in field.validators:
+        if isinstance(validator, validator_class) and not callable(
+            validator.limit_value
+        ):
+            limits.append(validator.limit_value)
+    return tightest(limits) if limits else None
 
 
 def _string_schema(field: forms.CharField, **extra: Any) -> dict[str, Any]:
