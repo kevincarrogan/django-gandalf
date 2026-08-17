@@ -68,8 +68,12 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
     toolset: FunctionToolset[WizardDeps] = FunctionToolset()
 
     def _page(ctx: RunContext[WizardDeps]) -> HybridVehicleCollectionView:
+        # A collection page is a Django view and still wants a request; the
+        # context makes one on demand, which is the point of it — the walk
+        # no longer needs a browser but a `TemplateView` never stopped being
+        # one.
         page = HybridVehicleCollectionView()
-        page.setup(ctx.deps.request)
+        page.setup(ctx.deps.context.http_request())
         return page
 
     def _fleet(page: HybridVehicleCollectionView) -> dict[str, Any]:
@@ -122,7 +126,11 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
         driver = RunDriver.begin(
             HybridVehicleItemViewSet,
             item=item_id,
-            request=ctx.deps.request,
+            # The conversation's own context, addressing this vehicle. Url
+            # kwargs named beside a context used to be dropped, which made
+            # this the one call that had to reach for the actor instead;
+            # `WizardContext.addressing` means it no longer does.
+            context=ctx.deps.context,
             may_finish=True,
         )
         result = driver.prefill(answers)

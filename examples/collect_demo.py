@@ -257,13 +257,11 @@ def _print_placed(run_id):
 
     from django.contrib.auth import get_user_model
 
-    from gandalf.driver import RunDriver, fabricate_request
+    from gandalf.driver import RunDriver
     from examples.copilotkit.wizards import HybridQuoteViewSet
 
     user, _ = get_user_model().objects.get_or_create(username="demo")
-    driver = RunDriver.resume(
-        HybridQuoteViewSet, run_id, request=fabricate_request(user=user)
-    )
+    driver = RunDriver.resume(HybridQuoteViewSet, run_id, actor=user)
     answers = driver.answers(json_safe=True)
     if not answers:
         print("Nothing reached the run. It collected and did not place.\n")

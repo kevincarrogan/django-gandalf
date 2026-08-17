@@ -96,7 +96,7 @@ class HybridVehicleCollectionView(VehicleCollectionView):
     item_viewset = HybridVehicleItemViewSet
 
 
-def fleet_values(request):
+def fleet_values(context):
     """Every finished vehicle's value, read off the collection itself.
 
     The session copy `examples.insurance` keeps is the right shape for a
@@ -106,7 +106,7 @@ def fleet_values(request):
     reads them from there and there is no second copy to disagree.
     """
     page = HybridVehicleCollectionView()
-    page.setup(request)
+    page.setup(context.http_request())
     store = page.get_collection_store()
     values = []
     for item_id in page.get_item_ids():
