@@ -23,6 +23,8 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.collections import COMPLETE, INCOMPLETE, NOT_STARTED, CollectionView
+from gandalf.context import WizardContext
+from gandalf.driver import RunDriver
 from tests.testapp.views import GuestCollectionView, GuestItemViewSet
 from gandalf.testing import (
     seed_collection_item,
@@ -821,3 +823,46 @@ def test_a_collection_reports_its_own_shape_to_a_template(client):
         False,
         True,
     )
+
+
+def test_a_driver_fills_one_item_of_a_collection():
+    """An item is a run like any other, and its id is a URL kwarg.
+
+    This is the shape an agent needs: one context held for whoever it is
+    working for, addressing one item and then the next. It is here rather
+    than in the driver's own tests because the thing worth proving is that
+    the collection *page* then sees what the driver did — one registry,
+    whichever door it was reached through.
+    """
+    context = WizardContext()
+    page = GuestCollectionView()
+    page.setup(context.http_request())
+    page.add_item()
+    item_id = page.get_item_ids()[-1]
+
+    driver = RunDriver.begin(
+        GuestItemViewSet, item=item_id, context=context, may_finish=True
+    )
+    driver.prefill({"guest": {"name": "Ada Lovelace"}})
+    driver.submit({"confirmed": True}, step="review")
+    driver.finish()
+
+    seen = GuestCollectionView()
+    seen.setup(context.http_request())
+    assert [str(row.title) for row in seen.get_section_rows()] == ["Ada Lovelace"]
+
+
+def test_addressing_a_second_item_does_not_disturb_the_first():
+    """One context, two items. The url kwarg is the part that varies, and
+    naming it must not hand the second run the first one's identity."""
+    context = WizardContext()
+
+    first = RunDriver.begin(GuestItemViewSet, item="one", context=context)
+    second = RunDriver.begin(GuestItemViewSet, item="two", context=context)
+
+    assert first.view.kwargs == {"item": "one"}
+    assert second.view.kwargs == {"item": "two"}
+    assert first.run_id != second.run_id
+    # The context itself is untouched, so the next call starts from the
+    # same place rather than from wherever the last one left it.
+    assert context.url_kwargs == {}
