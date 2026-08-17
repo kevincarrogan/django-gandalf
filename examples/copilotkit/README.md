@@ -82,6 +82,50 @@ wiring works, the conversation is nonsense.
 
 Both run under `just test-agents`, no API key required.
 
+## Decided, and not worth re-litigating
+
+Two rules this demo settled the hard way. Both are the application's, not
+the library's — `gandalf.contrib.agent` has an opinion about neither.
+
+**The agent never confirms.** A finishing tool was removed from this demo
+entirely. It broke the "never confirm on their behalf" rule one run in
+five — not from unreliability, but because the tool's own description said
+the opposite of the prompt, and someone asking it to submit was exactly
+the case both spoke to. A rule a model can break is a tool it should not
+have. `handoff` returns a link instead, and there is nothing else.
+
+**A step somebody answered is theirs, whole.** Submitting a form affirms
+everything on it, so an agent editing one field would be re-affirming the
+rest on the person's behalf. The agent is redirected rather than blocked:
+it says what it would change and lets them change it. The cost is real —
+it cannot add cyber cover to a step somebody has touched, even though that
+field was never theirs. This lives in `edit_step` here, asked of
+`driver.placements()`, because whose an answer is is a question about a
+domain rather than about wizards; the library records who placed what and
+stops there.
+
+## What the evaluation measured
+
+**Taken at `6b6e33d`, and history rather than the current state** — see
+[#78](../../issues/78). Sonnet 5, five repeats per scenario, $1.93; Haiku
+4.5 the same for $0.58.
+
+- Front-loading works: 0 questions when the context has the answers,
+  exactly 1 when it does not — and that one asks for everything missing at
+  once.
+- Sonnet held every boundary 5/5 except consent (4/5, now structural).
+- Haiku is 3.3× cheaper and held consent 5/5, but handed back only 1/5 in
+  two scenarios and asked unnecessary questions 3/5 — worse at exactly the
+  things the design exists for. Protocol discipline, not cost, is the
+  deciding factor.
+- `just agent-cost` reports what describing a wizard costs an agent: 1,524
+  tokens for the insurance wizard, of which the biggest single entry is
+  the *switch* (463). An agent is told about every arm it might land in,
+  so branching costs more to describe than to walk.
+
+The evaluation reports **rates, not pass/fail**, and is a script rather
+than a pytest suite because it costs money and must never run in CI.
+
 ## Caveats
 
 Prototype wiring, on purpose. Everyone is signed in as the same demo user

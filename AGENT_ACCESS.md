@@ -107,14 +107,15 @@ The toolset is runnable end to end:
 ## The tool surface
 
 The toolset exposes a small, *static* vocabulary — `start_run`,
-`resume_run`, `get_outline`, `get_current_step`, `submit_step`, `prefill`,
-`edit_step`, `get_answers`, `complete_run` — and puts the dynamism in the
-payloads (the CopilotKit demo drops `complete_run`: see *the agent never
-confirms* in `NEXT.md`):
-`get_current_step` carries the current step's JSON Schema, the answers so
-far, and any validation errors. Branching and expansion need no tool-level
-support at all; the walk decides where the run is, and `get_current_step`
-simply reports it.
+`resume_run`, `get_run`, `get_outline`, `check_answers`, `prefill`,
+`submit_step`, `edit_step`, `handoff` — and puts the dynamism in the
+payloads: every one of them returns the current step's JSON Schema, the
+answers so far, and any validation errors. Branching and expansion need no
+tool-level support at all; the walk decides where the run is and the tools
+report it.
+
+There is deliberately no tool that concludes a run — see *the agent never
+confirms* in the demo's README.
 
 The alternative — generating one typed tool per step from the wizard tree —
 gives the model precise argument schemas but means the tool list churns as
