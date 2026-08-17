@@ -154,6 +154,23 @@ wiring works, the conversation is nonsense.
 
 Both run under `just test-agents`, no API key required.
 
+- `ui/tests/smoke.spec.js` — the pages, in a real browser: each one
+  mounts, none of them throws, the composer still opens a file chooser,
+  and Vite is still proxying Django. `just test-ui` starts both servers
+  itself, or uses them if the demo is already up.
+
+That last one exists because `npm run build` only checks syntax: it
+cannot see an undefined identifier, a component that fails to mount, or a
+button that renders and does nothing, and four failures of exactly those
+kinds shipped past a green build in one afternoon. It runs in CI too
+(`.github/workflows/ui-smoke.yml`), on any change to this directory or to
+`gandalf/contrib/agent/`.
+
+It starts Vite with CopilotKit's dev inspector switched off — see
+`src/inspector.js`. With it off these pages make no request that does not
+go to localhost, which is what lets the suite fail on *any* console error
+instead of on a curated list of them.
+
 ## Decided, and not worth re-litigating
 
 Two rules this demo settled the hard way. Both are the application's, not

@@ -52,7 +52,11 @@ export const styles = {
   debugToggle: {
     position: "fixed",
     top: "0.75rem",
-    right: "0.75rem",
+    // Clear of CopilotKit's own dev inspector, which floats a 4rem button
+    // in the top-right corner at the highest z-index there is. At 0.75rem
+    // this button sat underneath it and half of it could not be clicked —
+    // which is exactly what it looks like when a click handler is broken.
+    right: "5rem",
     zIndex: 10,
     padding: "0.3rem 0.7rem",
     borderRadius: "4px",

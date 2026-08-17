@@ -36,5 +36,9 @@ node_modules/
 # Vite dependency cache
 .vite/
 
+# Playwright output (traces and screenshots from a failed browser run)
+test-results/
+playwright-report/
+
 # Recorded demo runs
 runs/

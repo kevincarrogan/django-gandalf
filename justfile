@@ -49,6 +49,20 @@ copilotkit-ui django_port="8100":
     PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui install
     GANDALF_DJANGO_URL="http://localhost:{{django_port}}" PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui run dev
 
+# The demo UI in a real browser: does each page mount, does it mount without
+# throwing, does the composer still attach a photo, is Vite still proxying
+# Django. `npm run build` sees none of that — it checks syntax and stops, and
+# four failures shipped past it in one afternoon (#81).
+#
+# Starts both servers itself, or uses them if you already have the demo up.
+# Also runs in CI (`.github/workflows/ui-smoke.yml`) whenever the demo or the
+# agent contrib changes — the whole point is a check nobody has to remember.
+test-ui:
+    [ -d .nodeenv ] || uvx nodeenv --prebuilt .nodeenv
+    PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui install
+    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npx playwright install chromium
+    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm test
+
 # What describing the wizard costs an agent (counts tokens, generates none)
 agent-cost:
     PYTHONPATH=. uv run --extra agent --group agents python -m examples.costs

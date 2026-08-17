@@ -3,6 +3,7 @@ import { CopilotChat, CopilotKit, useAgent } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { useEffect, useState } from "react";
 
+import { inspectorEnabled } from "./inspector.js";
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
 import React from "react";
@@ -222,7 +223,10 @@ export function PhotoDemo({ url, greeting, labels, ...panel }) {
   const [debug, setDebug] = useState(false);
 
   return (
-    <CopilotKit agents__unsafe_dev_only={{ default: agent }}>
+    <CopilotKit
+      agents__unsafe_dev_only={{ default: agent }}
+      enableInspector={inspectorEnabled}
+    >
       <div
         style={{
           ...styles.page,

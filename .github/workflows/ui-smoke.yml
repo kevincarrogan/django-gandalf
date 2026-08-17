@@ -1,0 +1,89 @@
+name: UI smoke test
+
+# Only when the demo UI or what serves it changes. This job starts two
+# servers and a browser, and the library's own suites already run on
+# everything else.
+on:
+  push:
+    paths:
+      - "examples/copilotkit/**"
+      - "gandalf/contrib/agent/**"
+      - ".github/workflows/ui-smoke.yml"
+      - "justfile"
+  pull_request:
+    paths:
+      - "examples/copilotkit/**"
+      - "gandalf/contrib/agent/**"
+      - ".github/workflows/ui-smoke.yml"
+      - "justfile"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    env:
+      # No key, so the demo's agent boots on pydantic-ai's canned model.
+      # These tests never send it a message — but a job that could spend
+      # money if somebody added one later is a job worth pinning.
+      GANDALF_AGENT_MODEL: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install just
+        uses: extractions/setup-just@v4
+
+      # Node comes from the runner rather than from `just test-ui`'s
+      # nodeenv, which exists to give the demo a node on a machine that
+      # has none. This one has one.
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/copilotkit/ui/package-lock.json
+
+      - name: Install UI dependencies
+        working-directory: examples/copilotkit/ui
+        run: npm ci
+
+      # `--with-deps` for the system libraries headless Chromium needs,
+      # which the runner does not ship. Cached on the lockfile, so a run
+      # that changes nothing about Playwright skips the 95MB download.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('examples/copilotkit/ui/package-lock.json') }}
+
+      - name: Install Chromium
+        working-directory: examples/copilotkit/ui
+        run: npx playwright install --with-deps chromium
+
+      # Playwright starts Django and Vite itself, from playwright.config.js.
+      - name: Run the smoke tests
+        working-directory: examples/copilotkit/ui
+        run: npx playwright test
+
+      - name: Upload the failure trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            examples/copilotkit/ui/playwright-report/
+            examples/copilotkit/ui/test-results/
+          retention-days: 7

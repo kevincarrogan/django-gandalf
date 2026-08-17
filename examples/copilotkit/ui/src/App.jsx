@@ -7,6 +7,7 @@ import {
 } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 
+import { inspectorEnabled } from "./inspector.js";
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
 import React from "react";
@@ -156,7 +157,10 @@ function WizardPanel() {
 
 export default function App() {
   return (
-    <CopilotKit agents__unsafe_dev_only={{ default: wizardAgent }}>
+    <CopilotKit
+      agents__unsafe_dev_only={{ default: wizardAgent }}
+      enableInspector={inspectorEnabled}
+    >
       <div style={styles.page}>
         <WizardPanel />
         <div style={styles.chat}>
