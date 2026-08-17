@@ -1723,3 +1723,51 @@ def test_outlining_a_run_and_outlining_the_wizard_agree():
     driver = RunDriver.begin(_SignupViewSet)
 
     assert driver.outline() == RunDriver.outline_for(_SignupViewSet)
+
+
+def test_a_context_and_url_kwargs_reach_the_same_view():
+    """Naming a url kwarg beside a context used to lose it.
+
+    A whole context was taken as it stood, so `begin(ViewSet, item=x,
+    context=…)` set the view up with no `item` at all — and a wizard
+    mounted under a segment fails on that with a complaint about not being
+    mounted, from a call that named the segment plainly. Both are the
+    caller saying something, so both are honoured.
+    """
+    context = WizardContext(actor="ada")
+
+    driver = RunDriver.begin(_SignupViewSet, context=context, item="v1")
+
+    assert driver.view.kwargs == {"item": "v1"}
+    # And it is the context the view was set up from, so the run is still
+    # scoped to whoever the context named.
+    assert driver.bound_wizard.context.actor == "ada"
+
+
+def test_url_kwargs_named_at_the_call_win_over_the_contexts_own():
+    """The call is the more specific statement — a context is held for a
+    conversation and a kwarg names one thing inside it."""
+    context = WizardContext(url_kwargs={"item": "held", "shared": "kept"})
+
+    driver = RunDriver.begin(_SignupViewSet, context=context, item="named")
+
+    assert driver.view.kwargs == {"item": "named", "shared": "kept"}
+
+
+def test_a_contexts_own_url_kwargs_survive_a_call_that_names_none():
+    context = WizardContext(url_kwargs={"item": "held"})
+
+    driver = RunDriver.begin(_SignupViewSet, context=context)
+
+    assert driver.view.kwargs == {"item": "held"}
+
+
+def test_addressing_a_url_keeps_the_session_the_context_was_using():
+    """The twin must not invent its own store, or the run it starts is one
+    the original context cannot find."""
+    context = WizardContext()
+    context.session["planted"] = True
+
+    driver = RunDriver.begin(_SignupViewSet, context=context, item="v1")
+
+    assert driver.bound_wizard.context.session is context.session

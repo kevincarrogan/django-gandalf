@@ -92,13 +92,15 @@ def _context(
 ) -> WizardContext:
     """The environment a driver runs against.
 
-    Given one, it is used as it stands. Otherwise one is built from what
-    the caller named: `actor` for a durable storage to scope runs by,
-    `session` to share a session-backed one with another driver or with a
-    browser.
+    Given one, it is used as it stands — except for url kwargs named
+    alongside it, which are the one part a caller varies while holding the
+    same context. A conversation's context outlives the item it is
+    addressing. Otherwise one is built from what the caller named: `actor`
+    for a durable storage to scope runs by, `session` to share a
+    session-backed one with another driver or with a browser.
     """
     if context is not None:
-        return context
+        return context.addressing(**url_kwargs) if url_kwargs else context
     return WizardContext(actor=actor, session=session, url_kwargs=url_kwargs)
 
 
@@ -226,13 +228,11 @@ class RunDriver:
         self,
         view: WizardViewSet,
         bound_wizard: BoundWizard,
-        url_kwargs: dict[str, Any] | None = None,
         *,
         may_finish: bool | None = None,
     ) -> None:
         self.view = view
         self.bound_wizard = bound_wizard
-        self._url_kwargs = url_kwargs if url_kwargs is not None else {}
         self._last_errors: Errors = {}
         if may_finish is not None:
             self.may_finish = may_finish
@@ -252,12 +252,15 @@ class RunDriver:
 
         `actor` is whoever the run is for, which a durable storage scopes
         by; `session` shares a session-backed one with another driver or
-        with a browser. Pass a whole `context` instead when you have one.
+        with a browser. Pass a whole `context` instead when you have one —
+        url kwargs named beside it still apply, so a context held for a
+        conversation can address one item of a collection and then the
+        next.
         """
         view, bound_wizard = viewset_class.begin_for(
             _context(context, actor, session, url_kwargs)
         )
-        return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
+        return cls(view, bound_wizard, may_finish=may_finish)
 
     @classmethod
     def resume(
@@ -277,7 +280,7 @@ class RunDriver:
         view, bound_wizard = viewset_class.inspect_for(
             _context(context, actor, session, url_kwargs), run_id
         )
-        return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
+        return cls(view, bound_wizard, may_finish=may_finish)
 
     @property
     def run_id(self) -> str:
@@ -773,7 +776,7 @@ class RunDriver:
         view, bound_wizard = viewset_class.resolve_for(
             _context(context, actor, session, url_kwargs)
         )
-        driver = cls(view, bound_wizard, url_kwargs)
+        driver = cls(view, bound_wizard)
         return driver._with_schemas(bound_wizard.wizard.outline())
 
     def _with_schemas(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:

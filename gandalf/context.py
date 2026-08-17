@@ -154,6 +154,34 @@ class WizardContext:
         """The context a browser request implies."""
         return cls(request=request, url_kwargs=url_kwargs)
 
+    def addressing(self, **url_kwargs: Any) -> WizardContext:
+        """This environment, pointed at a different URL.
+
+        A context is held for as long as whoever it describes — a
+        conversation, a management command — while the thing it addresses
+        changes within that: one item of a collection, then the next. So
+        the url kwargs are the part worth varying, and this varies only
+        them. Names given here win over the ones already held, because a
+        call is the more specific statement.
+
+        `run` is deliberately not carried over. It belongs to a
+        `BoundWizard` and the twin is about to be given its own.
+        """
+        session = self._session
+        if session is None and self.request is None:
+            # Resolved now rather than left lazy: with no request to read
+            # one off, the twin would otherwise invent its own in-memory
+            # session, and a run started through it would be one the
+            # original context could not find.
+            session = self.session
+        return type(self)(
+            actor=self._actor,
+            session=session,
+            url_kwargs={**self.url_kwargs, **url_kwargs},
+            request=self.request,
+            path=self.path,
+        )
+
     @property
     def actor(self) -> Any:
         """Whoever is answering: `request.user` on the HTTP path, or whoever
