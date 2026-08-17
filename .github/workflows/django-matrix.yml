@@ -50,6 +50,13 @@ jobs:
 
       - name: Install just
         uses: extractions/setup-just@v4
+        with:
+          # Pinned, so a version that cannot be resolved is this line
+          # rather than an outage. Unpinned, one failed lookup upstream
+          # took out every workflow at once — nothing gets past this
+          # step, so it reads as the tests being broken. Matches what
+          # the project is developed against; bumping it is deliberate.
+          just-version: 1.52.0
 
       - name: Run tests
         run: just test-django "${{ matrix.python-version }}" "${{ matrix.django-version }}"
