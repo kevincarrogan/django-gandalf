@@ -188,10 +188,13 @@ everything on it, so an agent editing one field would be re-affirming the
 rest on the person's behalf. The agent is redirected rather than blocked:
 it says what it would change and lets them change it. The cost is real —
 it cannot add cyber cover to a step somebody has touched, even though that
-field was never theirs. This lives in `edit_step` here, asked of
-`driver.placements()`, because whose an answer is is a question about a
-domain rather than about wizards; the library records who placed what and
-stops there.
+field was never theirs. This lives in `TheirAnswersToolset` here — the
+wrapper `build_agent` puts round the library's tools — which asks
+`driver.placements()` who answered the step before letting `edit_step`
+touch it, and hands back a link to that step instead of making the change.
+It is here rather than in the library because whose an answer is is a
+question about a domain rather than about wizards; the library records who
+placed what and stops there.
 
 ## What the evaluation measured
 

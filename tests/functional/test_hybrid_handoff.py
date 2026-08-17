@@ -23,8 +23,13 @@ from django.contrib.auth import get_user_model  # noqa: E402
 from django.urls import reverse  # noqa: E402
 from pytest_django.asserts import assertContains, assertRedirects  # noqa: E402
 
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart  # noqa: E402
+from pydantic_ai.models.function import FunctionModel  # noqa: E402
+
 from examples.copilotkit import settings as hybrid_settings  # noqa: E402
+from examples.copilotkit.agent import build_agent  # noqa: E402
 from examples.copilotkit.wizards import HybridQuoteViewSet  # noqa: E402
+from gandalf.contrib.agent import WizardDeps, WizardState  # noqa: E402
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 from tests.testapp.models import WizardRun  # noqa: E402
 
@@ -248,3 +253,104 @@ def test_an_answer_returns_when_the_person_changes_their_mind_back(
 
     assert filled_run.answers()["registration"]["companies_house_number"] == "AE123456"
     assert filled_run.describe().step == "confirm"
+
+
+# --- A step somebody answered is theirs, whole -------------------------
+#
+# The demo's edit rule. The library refuses nothing — `contrib.agent` hands
+# out who placed each answer and stops there, because whose an answer is is
+# a question about a domain rather than about wizards — so the rule lives in
+# the wrapper this demo puts round the toolset, and is proved through the
+# demo's own agent rather than by calling the wrapper directly.
+
+
+COMPANY = {
+    "name": "Analytical Engines Ltd",
+    "company_type": "limited",
+    "founded": "1837-12-10",
+    "employees": "12",
+}
+
+
+def _scripted_model(calls):
+    """A model that plays `(tool, args)` in order, then stops talking. What
+    is under test is what the call does to the run, not that a model can be
+    told to make one."""
+    queue = iter(calls)
+
+    def respond(messages, info):
+        try:
+            name, args = next(queue)
+        except StopIteration:
+            return ModelResponse(parts=[TextPart("done")])
+        return ModelResponse(parts=[ToolCallPart(name, args)])
+
+    return FunctionModel(respond)
+
+
+def _agent_turn(customer, calls):
+    """One turn of the demo's agent — its wrapping included, since the rule
+    under test lives there rather than in a tool."""
+    agent = build_agent(HybridQuoteViewSet, "test")
+    deps = WizardDeps(state=WizardState(), request=fabricate_request(user=customer))
+    with agent.override(model=_scripted_model(calls)):
+        return agent.run_sync("Put the employee count up to twenty.", deps=deps)
+
+
+@pytest.fixture
+def committed_customer(transactional_db):
+    """The agent's tools run in a worker thread, so the run they read has to
+    be committed rather than held open in a test transaction."""
+    return get_user_model().objects.create(username="demo")
+
+
+@pytest.fixture
+def their_run(hybrid, committed_customer):
+    """A run carrying one answer the person made themselves — which is what
+    `metadata={}` says: a browser records nothing about a placement."""
+    driver = RunDriver.begin(
+        HybridQuoteViewSet, request=fabricate_request(user=committed_customer)
+    )
+    driver.submit(COMPANY, metadata={})
+    return driver
+
+
+def test_the_agent_cannot_overwrite_an_answer_the_person_made(
+    committed_customer, their_run
+):
+    """Submitting a form affirms everything on it, so an agent changing one
+    field of somebody's step re-affirms the rest on their behalf."""
+    result = _agent_turn(
+        committed_customer,
+        [
+            ("resume_run", {"run_id": their_run.run_id}),
+            ("edit_step", {"step": "company", "data": {"employees": "20"}}),
+        ],
+    )
+
+    # Nothing was placed: the answer is the one they gave.
+    assert their_run.answers()["company"]["employees"] == 12
+    # And the agent is redirected rather than blocked — it is told where
+    # they can make the change themselves.
+    said = repr(result.all_messages())
+    assert "answered this step themselves" in said
+    assert _step_url(their_run.run_id, "company") in said
+
+
+def test_the_agent_may_still_correct_its_own_earlier_answer(hybrid, committed_customer):
+    """The case the rule must not catch: recovering from an answer it got
+    wrong means replacing one of its own, and every retry loop needs it."""
+    driver = RunDriver.begin(
+        HybridQuoteViewSet, request=fabricate_request(user=committed_customer)
+    )
+    driver.submit(COMPANY)
+
+    _agent_turn(
+        committed_customer,
+        [
+            ("resume_run", {"run_id": driver.run_id}),
+            ("edit_step", {"step": "company", "data": {"employees": "20"}}),
+        ],
+    )
+
+    assert driver.answers()["company"]["employees"] == 20

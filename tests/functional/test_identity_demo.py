@@ -18,6 +18,16 @@ from examples.identity import IdentityCheckViewSet  # noqa: E402
 from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
 
 
+def _agent_tools(agent):
+    """The wizard's tools, through however many wrappers the demo has put
+    round them — it wraps for logging and again for its edit rule, and how
+    many layers there are is not what this is about."""
+    toolset = next(t for t in agent.toolsets if hasattr(t, "wrapped"))
+    while hasattr(toolset, "wrapped"):
+        toolset = toolset.wrapped
+    return toolset.tools
+
+
 def test_a_wizard_with_no_file_step_still_reads_and_fills(isolated_media_root):
     """The case that has nothing to do with uploads.
 
@@ -27,8 +37,7 @@ def test_a_wizard_with_no_file_step_still_reads_and_fills(isolated_media_root):
     submit.
     """
     agent = build_agent(IdentityCheckViewSet, "test")
-    logged = next(t for t in agent.toolsets if hasattr(t, "wrapped"))
-    assert "attach_document" not in logged.wrapped.tools
+    assert "attach_document" not in _agent_tools(agent)
 
     driver = RunDriver.begin(IdentityCheckViewSet, request=fabricate_request())
     result = driver.prefill(
