@@ -552,6 +552,18 @@ def test_a_driven_context_hands_a_step_view_a_usable_request():
     assert request.method == "GET"
 
 
+def test_a_context_from_a_request_answers_with_the_browsers_user(rf):
+    """The HTTP path's half of `actor`. A durable storage scopes runs by it
+    either way, so the person browsing and the person an agent is working
+    for reach the same answer through the same attribute."""
+    request = rf.get("/wizard/")
+    request.user = object()
+
+    context = WizardContext.from_request(request)
+
+    assert context.actor is request.user
+
+
 def test_agent_driver_begins_a_run_and_describes_the_first_step():
     driver = RunDriver.begin(_SignupViewSet)
 
@@ -1134,6 +1146,34 @@ def test_agent_driver_resume_continues_an_existing_run():
     description = resumed.describe()
     assert description.step == "second"
     assert description.answers == {"first": {"name": "Ada"}}
+
+
+def test_the_driver_re_cursors_when_a_dynamic_wizard_changes_shape():
+    """The answer that decides the tree is placed against a tree that does
+    not contain the steps it grows, so the cursor the walk ended on cannot
+    be the answer. A dynamic `get_wizard()` builds a fresh declaration each
+    call, which is what tells the driver to resolve again and take its
+    cursor from the new tree; a static wizard hands back the very same
+    declaration and is spared the second walk.
+    """
+
+    class _DynamicViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_wizard(self, bound_wizard):
+            state = bound_wizard.get_state()
+            wizard = Wizard().step(ItemCountForm, name="count")
+            if state:
+                for index in range(int(state[0]["step"]["count"])):
+                    wizard = wizard.step(ItemForm, name=f"item-{index}")
+            return wizard
+
+    driver = RunDriver.begin(_DynamicViewSet)
+
+    result = driver.submit({"count": "2"})
+
+    assert result.status == "advanced"
+    assert result.next_step == "item-0"
 
 
 def test_agent_driver_resume_of_an_unknown_run_raises():
