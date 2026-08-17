@@ -112,6 +112,44 @@ this demo is making, so it is worth clicking. **Hide panel** folds the
 instrumentation away for the view somebody using this would actually have:
 a conversation, and nothing else.
 
+#### Talking instead of typing
+
+There is a third way to collect, and it is a tool for the same reason the
+form is: a microphone in the corner is something you have to notice and
+then guess the purpose of, whereas a press-to-talk panel that appears at
+the moment somebody says they would rather talk is an offer that explains
+itself. `ask_out_loud` puts one in the conversation and reads the question
+out; `collect_with_a_form` takes `speak` to read a whole form aloud and
+`dictate` per field for a microphone on that answer.
+
+Both are the browser's own — `speechSynthesis` and `SpeechRecognition` —
+so there is no key, no per-minute charge and no transcription service
+anywhere in this. Two caveats that are not about money: **Chrome sends the
+audio to Google's servers** (Safari uses its own, Firefox cannot listen at
+all and everything degrades to typing), and free recognition is worst on
+exactly this wizard's content — registrations, reference numbers, surnames.
+
+Which is why what comes back is a **transcript and nothing else**. The
+design does not need the recogniser to be good, because the model reads
+the transcript and hands back a form with its understanding filled in for
+checking. Driven against Sonnet with somebody saying
+
+> *"yeah so it's analytical engines limited it's a limited company um we
+> started back in december 1837 there's twelve of us we want property cover
+> and public liability five hundred excess starting first of september and
+> no claims ever email is ada at analyticalengines dot example"*
+
+it produced `excess: "500"`, `["property", "liability"]`,
+`ada@analyticalengines.example`, ran the lot through `check_answers`, and
+drew **one** form carrying its reading of the date (`1837-12-01`, labelled
+*"if unsure, just pick the 1st"*) beside the two things the speech never
+covered — the Companies House number and VAT registration, which it knew
+to want because the answer routed down the limited-company arm.
+
+A rough transcript plus a person confirming beats a good transcript nobody
+checks. That is the same conclusion the licence check reached about reading
+a photograph, and for the same reason.
+
 Two things that cost an afternoon each and are easy to hit again:
 
 - **Send through the core, not the agent.** `agent.runAgent()` posts what

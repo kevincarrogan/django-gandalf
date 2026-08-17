@@ -2,6 +2,8 @@ import { useHumanInTheLoop } from "@copilotkit/react-core/v2";
 import React from "react";
 import { z } from "zod";
 
+import { canListen, canSpeak, hush, listen, speak } from "./speech.js";
+
 // A form the agent draws, rendered where the conversation is.
 //
 // The agent already knows every step of the wizard and the schema of each
@@ -71,6 +73,22 @@ const FIELD = z.object({
     .describe("Required for `choice` and `multichoice`."),
   required: z.boolean().optional(),
   placeholder: z.string().optional(),
+  value: z
+    .string()
+    .optional()
+    .describe(
+      "Fill it in for them. This is how you hand back what you understood " +
+        "from something they said or sent, for checking — always prefer " +
+        "showing them your reading of it to placing it unseen.",
+    ),
+  dictate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Offer a microphone on this field. For answers that are prose. Never " +
+        "for a registration, a reference number or a postcode: a misheard " +
+        "character looks exactly like a correctly heard one.",
+    ),
 });
 
 export const FORM_SPEC = z.object({
@@ -81,6 +99,14 @@ export const FORM_SPEC = z.object({
     .describe("A sentence above the fields, saying what this is for."),
   fields: z.array(FIELD).min(1),
   submitLabel: z.string().optional().describe("Defaults to “Send”."),
+  speak: z
+    .boolean()
+    .optional()
+    .describe(
+      "Read the form's questions aloud when it appears, and offer a button " +
+        "to hear them again. For anybody who has said that reading is the " +
+        "hard part.",
+    ),
 });
 
 const styles = {
@@ -133,17 +159,100 @@ const styles = {
     cursor: "pointer",
   },
   done: { color: "#5b6c7a", fontSize: "0.88rem", margin: 0 },
+  mic: {
+    font: "inherit",
+    fontSize: "0.8rem",
+    background: "#fff",
+    border: "1px solid #d7dde3",
+    borderRadius: "999px",
+    padding: "0.3rem 0.75rem",
+    cursor: "pointer",
+    alignSelf: "flex-start",
+    marginTop: "0.35rem",
+  },
+  micOn: { background: "#b42318", color: "#fff", borderColor: "#b42318" },
+  speaker: {
+    font: "inherit",
+    fontSize: "0.78rem",
+    background: "transparent",
+    border: 0,
+    color: "#5b6c7a",
+    cursor: "pointer",
+    padding: "0.1rem 0.3rem",
+  },
+  problem: { color: "#b42318", fontSize: "0.8rem", margin: "0.3rem 0 0" },
 };
 
 function initialValues(fields) {
   const values = {};
   for (const field of fields ?? []) {
-    values[field.name] = field.control === "multichoice" ? [] : "";
+    if (field.control === "multichoice") {
+      // Sent as one string because the tool schema keeps it simple; split
+      // on commas so a pre-filled multi-answer arrives ticked rather than
+      // as a single option nobody offered.
+      values[field.name] = field.value
+        ? field.value.split(",").map((each) => each.trim()).filter(Boolean)
+        : [];
+    } else {
+      values[field.name] = field.value ?? "";
+    }
   }
   return values;
 }
 
-function Field({ field, value, onChange }) {
+/** The question as it should be heard, rather than as it is laid out. */
+function aloud(field) {
+  const options = (field.options ?? []).map((option) => option.label);
+  return [field.label, field.help, options.join(", ")]
+    .filter(Boolean)
+    .join(". ");
+}
+
+function Dictate({ onHeard }) {
+  const [listening, setListening] = React.useState(false);
+  const [problem, setProblem] = React.useState(null);
+  const stopRef = React.useRef(null);
+
+  React.useEffect(() => () => stopRef.current?.(), []);
+
+  if (!canListen()) return null;
+
+  const toggle = () => {
+    if (listening) {
+      stopRef.current?.();
+      setListening(false);
+      return;
+    }
+    hush();
+    setProblem(null);
+    setListening(true);
+    stopRef.current = listen({
+      onTranscript: onHeard,
+      onProblem: (message) => {
+        setProblem(message);
+        setListening(false);
+      },
+      onEnd: () => setListening(false),
+    });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        style={{ ...styles.mic, ...(listening ? styles.micOn : {}) }}
+        onClick={toggle}
+        aria-pressed={listening}
+        aria-label={listening ? "Stop dictating" : "Dictate this answer"}
+      >
+        {listening ? "◼ Stop" : "🎤 Speak"}
+      </button>
+      {problem && <p style={styles.problem}>{problem}</p>}
+    </>
+  );
+}
+
+function Field({ field, value, onChange, spoken }) {
   const id = `gf-${field.name}`;
   const helpId = field.help ? `${id}-help` : undefined;
   const help = field.help ? (
@@ -151,6 +260,19 @@ function Field({ field, value, onChange }) {
       {field.help}
     </p>
   ) : null;
+  // Offered per question rather than only for the whole form: somebody
+  // re-reading one question should not have to sit through the others.
+  const hear =
+    spoken && canSpeak() ? (
+      <button
+        type="button"
+        style={styles.speaker}
+        onClick={() => speak(aloud(field))}
+        aria-label={`Read aloud: ${field.label}`}
+      >
+        🔊
+      </button>
+    ) : null;
 
   // A group of choices is a group, and says so. The legend is the question
   // — which is what a screen reader announces before each option, and what
@@ -165,7 +287,10 @@ function Field({ field, value, onChange }) {
         : (field.options ?? []);
     return (
       <fieldset style={styles.field}>
-        <legend style={styles.label}>{field.label}</legend>
+        <legend style={styles.label}>
+          {field.label}
+          {hear}
+        </legend>
         {help}
         <div style={styles.options}>
           {options.map((option) => (
@@ -195,7 +320,10 @@ function Field({ field, value, onChange }) {
     const chosen = Array.isArray(value) ? value : [];
     return (
       <fieldset style={styles.field}>
-        <legend style={styles.label}>{field.label}</legend>
+        <legend style={styles.label}>
+          {field.label}
+          {hear}
+        </legend>
         {help}
         <div style={styles.options}>
           {(field.options ?? []).map((option) => (
@@ -241,6 +369,7 @@ function Field({ field, value, onChange }) {
       <label style={styles.label} htmlFor={id}>
         {field.label}
       </label>
+      {hear}
       {help}
       {type === "textarea" ? (
         <textarea
@@ -265,6 +394,7 @@ function Field({ field, value, onChange }) {
           onChange={(event) => onChange(event.target.value)}
         />
       )}
+      {field.dictate && <Dictate onHeard={onChange} />}
     </div>
   );
 }
@@ -285,6 +415,15 @@ function GeneratedForm({ args, status, respond }) {
       return { ...current, ...initialValues(missing) };
     });
   }, [fields.map((field) => field.name).join(" ")]);
+
+  // Read it out once when it lands, if asked to. Cancelled on the way out
+  // so navigating away does not leave a voice talking to an empty room.
+  React.useEffect(() => {
+    if (status === "executing" && args?.speak) {
+      speak([args.title, args.intro, ...fields.map(aloud)].filter(Boolean).join(". "));
+    }
+    return hush;
+  }, [status, args?.speak, fields.length]);
 
   if (status === "inProgress") {
     return (
@@ -317,6 +456,7 @@ function GeneratedForm({ args, status, respond }) {
         <Field
           key={field.name}
           field={field}
+          spoken={Boolean(args.speak)}
           value={values[field.name] ?? ""}
           onChange={(next) =>
             setValues((current) => ({ ...current, [field.name]: next }))

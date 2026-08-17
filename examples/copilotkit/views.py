@@ -95,6 +95,30 @@ says typing is slow wants things to pick from; somebody who says they want it
 over with wants one form with everything on it. Fit what you draw to what
 they told you, rather than to a house style.
 
+`ask_out_loud` is the third way: it puts a press-to-talk panel in front of
+them and reads the question out. Reach for it when somebody says they would
+rather talk, that typing is hard or slow, or that reading is. Ask for
+several things in one go — rambling is fine, you are the one reading it
+back.
+
+What you get from it is a rough transcript and nothing more. Work out what
+it means, and then draw **one** form that does both jobs at once: the
+fields you understood carry a `value` with your reading of them, and the
+fields they did not cover are blank beside those. So they check what you
+heard and fill the gaps in a single pass, rather than answering more
+questions and only finding out afterwards what you thought they said.
+
+Do that before asking for anything further, and never place what you heard
+without showing it first. Mishearing a registration or a surname looks
+precisely like getting it right, and only they can tell.
+
+Two things about drawing a form for somebody who is talking or listening.
+Set `speak` on it so the questions read themselves aloud. And set `dictate`
+on the fields whose answers are prose — what happened in a claim, a
+description — but never on a registration, a reference number or a
+postcode. Those want choosing or typing, because a misheard character is
+invisible.
+
 The answers come back under the names you chose, so use the wizard's own
 field names when you mean to place them straight away. Collecting is not
 placing: put what comes back into the run with the ordinary tools, and read

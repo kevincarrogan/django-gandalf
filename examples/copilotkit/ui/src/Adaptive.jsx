@@ -9,6 +9,7 @@ import "@copilotkit/react-core/v2/styles.css";
 import React, { useEffect, useState } from "react";
 
 import { useGeneratedForm } from "./GeneratedForm.jsx";
+import { useVoiceAnswer } from "./VoiceAnswer.jsx";
 import { inspectorEnabled } from "./inspector.js";
 import { Outline } from "./journey.jsx";
 import { styles } from "./styles.js";
@@ -43,8 +44,12 @@ const OPENERS = [
     got: "explained first, then asked four questions",
   },
   {
-    said: "I find typing hard — can you give me things to pick from?",
-    got: "prefers choices over free text",
+    said: "I would honestly rather just talk than type all this out.",
+    got: "asks out loud, then shows you what it heard",
+  },
+  {
+    said: "I find reading hard. Can you read things out to me?",
+    got: "draws a form that reads itself aloud",
   },
   {
     said: "I need a quote for my business.",
@@ -215,15 +220,16 @@ function FormLink() {
 const GREETING = [
   "I can sort out a business insurance quote for you.",
   "It is a long one — fourteen steps filled in by hand — so tell me how",
-  "you would rather do it. I can ask as we talk, or put together a form",
-  "with everything on it at once. If the wording is unfamiliar, say so and",
-  "I will explain as I go.",
+  "you would rather do it. I can ask as we talk, put together a form with",
+  "everything on it at once, or let you say it out loud and fill it in for",
+  "you. If the wording is unfamiliar, say so and I will explain as I go.",
 ].join(" ");
 
 // Inside `CopilotKit`, because registering a tool needs its context — and
 // beside the chat, because that is where the tool renders.
 function Chat({ alone }) {
   useGeneratedForm();
+  useVoiceAnswer();
   const { agent } = useAgent({ agentId: "default" });
 
   useEffect(() => {

@@ -155,4 +155,7 @@ test("the adaptive quote's openers reach the model with its tools", async ({ pag
   await expect
     .poll(() => sentTools, { timeout: 20_000 })
     .toContain("collect_with_a_form");
+  // Both ways of collecting, because a page that offers one and drops the
+  // other is the same bug with half the symptoms.
+  expect(sentTools, "the voice tool too").toContain("ask_out_loud");
 });
