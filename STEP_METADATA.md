@@ -115,6 +115,15 @@ existed reads fine — a missing key is no metadata.
 One real break: a `cursor_walker_class` written from scratch now receives a
 `metadata` keyword. Subclassing `CursorWalker` is unaffected.
 
+One thing it cost that nothing noticed for a while: an arm and an expansion are
+walked by a *nested* walk, and the two places that build one passed the claim,
+the submission and the files down but not the metadata. So a placement anywhere
+behind a fork recorded nothing — in stored state and in `placements()` alike —
+and the feature quietly held only for steps at the top of the tree, which is
+not where most wizards worth the metadata keep their answers. Fixed by passing
+it, and pinned by tests either side of the seam: the driver's placements, and
+what the observer is told.
+
 ## Alternatives considered
 
 - **Application-side table, keyed by run and step, populated from the

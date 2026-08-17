@@ -5,7 +5,7 @@ import pytest
 from gandalf.observers import WizardObserver
 from gandalf.runtime import BoundWizard
 from gandalf.storage import SessionStorage
-from gandalf.wizard import Wizard
+from gandalf.wizard import Wizard, condition
 from tests.testapp.forms import FirstStepForm, SecondStepForm
 
 
@@ -32,9 +32,29 @@ def _wizard(observer_class):
     )
 
 
-def _run(observer_class, request):
+def _answered_ada(request):
+    """The first step said Ada."""
+    first = request.wizard.path.find_step(name="first")
+    return first.form.cleaned_data["name"] == "Ada"
+
+
+def _branching_wizard(observer_class):
+    """The same two steps, with the second one behind a fork — so the
+    submission that answers it is placed by a nested walk."""
+    return (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .branch(condition(_answered_ada, Wizard().step(SecondStepForm, name="second")))
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            observer_class=observer_class,
+        )
+    )
+
+
+def _run(observer_class, request, wizard=_wizard):
     bound_wizard = BoundWizard(
-        request, SessionStorage(request), wizard=_wizard(observer_class)
+        request, SessionStorage(request), wizard=wizard(observer_class)
     )
     bound_wizard.initialise()
     return bound_wizard
@@ -160,6 +180,29 @@ def test_an_observer_is_told_what_the_placement_claimed_about_itself(
     _submit(bound_wizard, {"name": "Ada"}, metadata={"unattended": True})
 
     assert seen == [{"unattended": True}]
+
+
+def test_a_placement_inside_a_branch_arm_reports_what_it_claimed(request_with_session):
+    """An arm is walked by a nested walk, and the claim has to reach it.
+    Without that, an observer telling a person's answer from an agent's
+    could do it only for the steps outside every fork."""
+    seen = []
+
+    class _Recorder(WizardObserver):
+        def submission(self, step, accepted, metadata):
+            seen.append((step.context["name"], metadata))
+
+    bound_wizard = _run(_Recorder, request_with_session, _branching_wizard)
+    _submit(bound_wizard, {"name": "Ada"}, metadata={"unattended": True})
+
+    _submit(
+        bound_wizard, {"email": "ada@example.com"}, metadata={"placed_by": "person"}
+    )
+
+    assert seen == [
+        ("first", {"unattended": True}),
+        ("second", {"placed_by": "person"}),
+    ]
 
 
 def test_a_submission_that_claimed_nothing_arrives_as_none(request_with_session):

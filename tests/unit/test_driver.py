@@ -799,6 +799,42 @@ def test_metadata_survives_the_steps_that_come_after_it():
     assert driver.placements()["first"].metadata == {"placed_by": "person"}
 
 
+def test_metadata_records_a_placement_inside_a_branch_arm():
+    """A branch arm is walked by a nested walk, and a placement made in one
+    is still a placement. Losing the metadata there would leave it recorded
+    for the steps that happen to sit at the top of the tree and nowhere
+    else — and most wizards worth the metadata have a branch in them."""
+    driver = RunDriver.begin(_BranchingViewSet)
+    driver.submit({"account_type": "business"})
+
+    driver.submit({"business_name": "Ada Ltd"}, metadata={"placed_by": "person"})
+
+    assert driver.placements()["business"].metadata == {"placed_by": "person"}
+
+
+def test_metadata_inside_a_branch_arm_survives_the_steps_after_it():
+    """The re-proof property, one level down: a later walk carries the arm's
+    stored entry back through the nested walk it came from."""
+    driver = RunDriver.begin(_BranchingViewSet)
+    driver.submit({"account_type": "business"})
+    driver.submit({"business_name": "Ada Ltd"}, metadata={"placed_by": "person"})
+
+    driver.submit({"confirmed": "on"})
+
+    assert driver.placements()["business"].metadata == {"placed_by": "person"}
+
+
+def test_metadata_records_a_placement_inside_an_expansion():
+    """An expansion is walked the same way an arm is, so an answer to a
+    grown step records what it claimed about itself too."""
+    driver = RunDriver.begin(_ExpandViewSet)
+    driver.submit({"count": "1"})
+
+    driver.submit({"name": "Hat"}, metadata={"placed_by": "person"})
+
+    assert driver.placements()["item-0"].metadata == {"placed_by": "person"}
+
+
 def test_re_answering_a_step_replaces_its_metadata():
     """Metadata describes the placement that is there now, not the history
     of the ones that were."""

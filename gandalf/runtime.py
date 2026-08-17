@@ -1176,7 +1176,10 @@ class CursorWalker(tree.Interpreter):
         arm_id, arm = self._bound_wizard._select_branch_arm(branch, self._head)
         sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
         # A claim is satisfied once; an arm walked after that carries neither
-        # the claim nor the submission, so nothing can be placed twice.
+        # the claim nor the submission, so nothing can be placed twice. The
+        # files and the metadata travel with the submission wherever it lands:
+        # a placement inside an arm is a placement, and it records what it
+        # claimed about itself like any other.
         sub = type(self)(
             self._dispatcher,
             sub_entries,
@@ -1186,6 +1189,7 @@ class CursorWalker(tree.Interpreter):
             claim=None if self.reached else self._claim,
             submission=None if self.reached else self._submission,
             files=self._files,
+            metadata=self._metadata,
         )
         sub.walk(arm)
         self._append(
@@ -1229,6 +1233,7 @@ class CursorWalker(tree.Interpreter):
             claim=None if self.reached else self._claim,
             submission=None if self.reached else self._submission,
             files=self._files,
+            metadata=self._metadata,
         )
         sub.walk(subtree)
         self._append(RuntimeExpand(declaration=expand, selected_arm=sub._head))
