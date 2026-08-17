@@ -46,6 +46,12 @@ const PAGES = [
       page.getByRole("heading", { name: "Business insurance quote" }),
   },
   {
+    name: "the adaptive quote",
+    path: "/#adaptive",
+    mounted: (page) =>
+      page.getByRole("heading", { name: "A copilot that draws its own forms" }),
+  },
+  {
     name: "the driving licence check",
     path: "/#licence",
     mounted: (page) => page.getByText("I can check a driving licence for you"),
@@ -101,7 +107,12 @@ test("the dev server is still proxying Django", async ({ request }) => {
   // A GET is no use here: Vite answers anything it does not recognise with
   // index.html and a 200, so a missing proxy reads as a working page. A
   // POST to the same path 404s, which is how the chat found out.
-  for (const endpoint of ["/agent/", "/licence-agent/", "/identity-agent/"]) {
+  for (const endpoint of [
+    "/agent/",
+    "/adaptive-agent/",
+    "/licence-agent/",
+    "/identity-agent/",
+  ]) {
     const response = await request.post(endpoint, { failOnStatusCode: false });
     expect(response.status(), `POST ${endpoint}`).not.toBe(404);
   }

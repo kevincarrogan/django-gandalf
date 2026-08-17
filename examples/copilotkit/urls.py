@@ -25,6 +25,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("agent/", views.agent_endpoint, name="agent"),
     path("quote/", include(HybridQuoteViewSet.urls())),
+    path("adaptive-agent/", views.adaptive_endpoint, name="adaptive-agent"),
     path("licence-agent/", views.licence_endpoint, name="licence-agent"),
     path("licence/", include(HybridLicenceViewSet.urls())),
     path("identity-agent/", views.identity_endpoint, name="identity-agent"),

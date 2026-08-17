@@ -61,14 +61,53 @@ def context_instructions(items):
 # reads them off the same messages the model is about to be shown.
 _chat = partial(record, source="chat", model=resolve_model())
 
-agent_endpoint = endpoint_for(
-    agent, instructions=run_instructions, on_complete=_chat
-)
+agent_endpoint = endpoint_for(agent, instructions=run_instructions, on_complete=_chat)
 licence_endpoint = endpoint_for(
     licence_agent, instructions=run_instructions, on_complete=_chat
 )
 identity_endpoint = endpoint_for(
     identity_agent, instructions=run_instructions, on_complete=record
+)
+
+
+# The same quote wizard as `/agent/`, and the same tools. What differs is
+# one sentence: this agent is told it may draw a form instead of asking in
+# chat. The form itself is the browser's — the tool arrives with the run
+# input, because AG-UI carries the client's tools and pydantic-ai's adapter
+# hands them to the model like any other. Nothing in Django renders it, and
+# nothing here knows what is on it.
+COLLECTING = """\
+You have two ways to ask for something, and choosing between them is part
+of the job.
+
+Chat is a queue: one question, one answer. That suits a person who knows
+what they are doing and wants to say it in a sentence.
+
+`collect_with_a_form` draws a form in the conversation instead — you decide
+the fields, their order, their wording, and how each one is asked. Reach for
+it when several answers are wanted together, when picking from options beats
+describing something, or when somebody has said that going back and forth is
+hard for them.
+
+Ask people how they would like to be asked, and believe them. Somebody who
+says the words are unfamiliar wants a form that explains them; somebody who
+says typing is slow wants things to pick from; somebody who says they want it
+over with wants one form with everything on it. Fit what you draw to what
+they told you, rather than to a house style.
+
+The answers come back under the names you chose, so use the wizard's own
+field names when you mean to place them straight away. Collecting is not
+placing: put what comes back into the run with the ordinary tools, and read
+the errors if any of it does not hold."""
+
+
+def adaptive_instructions(run_input):
+    return f"{run_instructions(run_input)}\n\n{COLLECTING}"
+
+
+adaptive_agent = build_agent(HybridQuoteViewSet, resolve_model())
+adaptive_endpoint = endpoint_for(
+    adaptive_agent, instructions=adaptive_instructions, on_complete=_chat
 )
 
 

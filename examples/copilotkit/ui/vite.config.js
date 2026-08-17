@@ -3,8 +3,8 @@ import { defineConfig } from "vite";
 
 // The chat and everything Django serves are one origin as far as the
 // browser is concerned, so session cookies flow and there is no CORS to
-// configure: the AG-UI endpoints (`/agent/`, `/licence-agent/` and
-// `/identity-agent/`), the
+// configure: the AG-UI endpoints (`/agent/`, `/adaptive-agent/`,
+// `/licence-agent/` and `/identity-agent/`), the
 // wizards the handover links point at (`/quote/`, `/licence/` and
 // `/identity/`), and the
 // fleet the person grows themselves (`/vehicles/`, and `/vehicle/` for the
@@ -16,6 +16,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/agent": django,
+      // Its own entry: these match a leading path segment, and
+      // `/adaptive-agent` does not start with `/agent`.
+      "/adaptive-agent": django,
       "/licence-agent": django,
       "/identity-agent": django,
       "/quote": django,

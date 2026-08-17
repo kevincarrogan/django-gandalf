@@ -1,14 +1,15 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
+import Adaptive from "./Adaptive.jsx";
 import App from "./App.jsx";
 import Identity from "./Identity.jsx";
 import Licence from "./Licence.jsx";
 
-// Two demos, one dev server. A hash rather than a router: there are two
+// Several demos, one dev server. A hash rather than a router: there are two
 // pages and they share nothing but a layout, so a dependency to choose
 // between them would be the largest thing on the page.
-const PAGES = { licence: Licence, identity: Identity };
+const PAGES = { licence: Licence, identity: Identity, adaptive: Adaptive };
 
 // Normalised rather than matched literally: `#identity`, `#identity/` and
 // `#Identity` are the same request as far as anybody typing one is
