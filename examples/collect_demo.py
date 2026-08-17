@@ -183,7 +183,7 @@ async def _collect(messages):
     )
     stream = "".join([chunk.decode() async for chunk in response.streaming_content])
 
-    calls, arguments, spoken, usage = [], {}, [], {}
+    calls, arguments, spoken, usage, run_id = [], {}, [], {}, None
     for line in stream.splitlines():
         if not line.startswith("data: "):
             continue
@@ -196,9 +196,11 @@ async def _collect(messages):
             arguments[event["toolCallId"]] += event.get("delta", "")
         elif kind == "TEXT_MESSAGE_CONTENT":
             spoken.append(event.get("delta", ""))
+        elif kind == "STATE_SNAPSHOT":
+            run_id = (event.get("snapshot") or {}).get("run_id") or run_id
         elif kind == "RUN_FINISHED":
             usage = (event.get("result") or {}).get("usage") or {}
-    return calls, arguments, "".join(spoken), usage
+    return calls, arguments, "".join(spoken), usage, run_id
 
 
 def _print_form(form):
@@ -240,6 +242,39 @@ def _print_question(question):
     print(f"    reads it aloud: {question.get('speak') is not False}")
 
 
+def _print_placed(run_id):
+    """What actually reached the run.
+
+    Printed because its absence is invisible from the conversation alone,
+    and was: an early version of the demo's instructions had the agent
+    collect a whole quote across four spoken turns and two forms without
+    ever calling `prefill` once. Everything read correctly, nothing was
+    written down, and the only way to notice was to open the run.
+    """
+    if run_id is None:
+        print("No run was started, so nothing could be placed.\n")
+        return
+
+    from django.contrib.auth import get_user_model
+
+    from gandalf.driver import RunDriver, fabricate_request
+    from examples.copilotkit.wizards import HybridQuoteViewSet
+
+    user, _ = get_user_model().objects.get_or_create(username="demo")
+    driver = RunDriver.resume(
+        HybridQuoteViewSet, run_id, request=fabricate_request(user=user)
+    )
+    answers = driver.answers(json_safe=True)
+    if not answers:
+        print("Nothing reached the run. It collected and did not place.\n")
+        return
+    print("What reached the run:\n")
+    for step, fields in answers.items():
+        for field, value in fields.items():
+            print(f"    {step:<14} {field:<24} {value!r}")
+    print(f"\n    still waiting on: {driver.describe().step or 'nothing — complete'}\n")
+
+
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(
@@ -257,7 +292,7 @@ def main():
             "ANTHROPIC_API_KEY in .env, or set GANDALF_AGENT_MODEL."
         )
 
-    calls, arguments, spoken, usage = asyncio.run(
+    calls, arguments, spoken, usage, run_id = asyncio.run(
         _collect(_messages(said, as_transcript=as_transcript))
     )
 
@@ -282,6 +317,8 @@ def main():
             print("It asked out loud:\n")
             _print_question(payload)
             print()
+
+    _print_placed(run_id)
 
     inputs = usage.get("inputTokens") or usage.get("input_tokens") or 0
     outputs = usage.get("outputTokens") or usage.get("output_tokens") or 0

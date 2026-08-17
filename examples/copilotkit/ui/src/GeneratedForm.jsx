@@ -183,6 +183,32 @@ const styles = {
   problem: { color: "#b42318", fontSize: "0.8rem", margin: "0.3rem 0 0" },
 };
 
+// Answering the tool call even when nobody answers the form.
+//
+// A drawn form is a *pending tool call*, and typing in the chat starts a
+// new run which abandons it. Left alone that call simply evaporates: the
+// agent is told "interrupted before a result was produced" with no idea
+// whether the person filled anything in, ignored it, or never saw it. So
+// on the way out we answer for them — not with their half-typed values,
+// which they never sent and never checked, but with the fact that they
+// went elsewhere. What they typed is worth nothing; what they *did* is
+// worth knowing.
+function useAnswerIfAbandoned(respond, sentRef) {
+  const latest = React.useRef(respond);
+  latest.current = respond;
+  React.useEffect(
+    () => () => {
+      if (sentRef.current || !latest.current) return;
+      try {
+        latest.current({ submitted: false, abandoned: true });
+      } catch {
+        // The run is already gone, which is the case this cannot help.
+      }
+    },
+    [sentRef],
+  );
+}
+
 function initialValues(fields) {
   const values = {};
   for (const field of fields ?? []) {
@@ -403,6 +429,8 @@ function GeneratedForm({ args, status, respond }) {
   const fields = args?.fields ?? [];
   const [values, setValues] = React.useState(() => initialValues(fields));
   const [sent, setSent] = React.useState(false);
+  const sentRef = React.useRef(false);
+  useAnswerIfAbandoned(respond, sentRef);
 
   // The args stream in a token at a time, so the field list is still
   // growing while the model writes it. Seed any field that appears after
@@ -446,6 +474,7 @@ function GeneratedForm({ args, status, respond }) {
       style={styles.card}
       onSubmit={(event) => {
         event.preventDefault();
+        sentRef.current = true;
         setSent(true);
         respond({ submitted: true, answers: values });
       }}

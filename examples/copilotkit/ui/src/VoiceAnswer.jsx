@@ -95,6 +95,32 @@ const styles = {
   done: { color: "#5b6c7a", fontSize: "0.88rem", margin: 0 },
 };
 
+// Answering the tool call even when nobody answers the form.
+//
+// A drawn form is a *pending tool call*, and typing in the chat starts a
+// new run which abandons it. Left alone that call simply evaporates: the
+// agent is told "interrupted before a result was produced" with no idea
+// whether the person filled anything in, ignored it, or never saw it. So
+// on the way out we answer for them — not with their half-typed values,
+// which they never sent and never checked, but with the fact that they
+// went elsewhere. What they typed is worth nothing; what they *did* is
+// worth knowing.
+function useAnswerIfAbandoned(respond, sentRef) {
+  const latest = React.useRef(respond);
+  latest.current = respond;
+  React.useEffect(
+    () => () => {
+      if (sentRef.current || !latest.current) return;
+      try {
+        latest.current({ submitted: false, abandoned: true });
+      } catch {
+        // The run is already gone, which is the case this cannot help.
+      }
+    },
+    [sentRef],
+  );
+}
+
 function VoiceAnswer({ args, status, respond }) {
   const { question, hint } = args ?? {};
   const shouldSpeak = args?.speak !== false;
@@ -103,7 +129,9 @@ function VoiceAnswer({ args, status, respond }) {
   const [listening, setListening] = React.useState(false);
   const [problem, setProblem] = React.useState(null);
   const [sent, setSent] = React.useState(false);
+  const sentRef = React.useRef(false);
   const stopRef = React.useRef(null);
+  useAnswerIfAbandoned(respond, sentRef);
 
   // Read it out as it arrives, once. Somebody being asked to speak is
   // usually somebody who would rather be spoken to.
@@ -153,6 +181,7 @@ function VoiceAnswer({ args, status, respond }) {
   const send = () => {
     stop();
     hush();
+    sentRef.current = true;
     setSent(true);
     respond({ transcript: heard.trim() });
   };

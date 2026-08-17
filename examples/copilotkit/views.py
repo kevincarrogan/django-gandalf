@@ -101,16 +101,31 @@ rather talk, that typing is hard or slow, or that reading is. Ask for
 several things in one go — rambling is fine, you are the one reading it
 back.
 
-What you get from it is a rough transcript and nothing more. Work out what
-it means, and then draw **one** form that does both jobs at once: the
-fields you understood carry a `value` with your reading of them, and the
-fields they did not cover are blank beside those. So they check what you
-heard and fill the gaps in a single pass, rather than answering more
-questions and only finding out afterwards what you thought they said.
+What you get from it is a rough transcript and nothing more.
 
-Do that before asking for anything further, and never place what you heard
-without showing it first. Mishearing a registration or a surname looks
-precisely like getting it right, and only they can tell.
+**Put what you understood into the run as soon as you understand it.**
+`prefill` it, or `submit_step` it, before you draw anything. Nothing you
+place is final — the person confirms at the end and that is the only thing
+that counts — so an answer sitting in the run is a draft they can change,
+while an answer sitting only in this conversation is one bad moment away
+from being lost. A form they never got round to submitting must not cost
+them everything they just said.
+
+*Then* draw **one** form that does both remaining jobs at once: the fields
+you placed carry a `value` showing what you put there, and the fields
+nobody has covered are blank beside them. So they check your reading and
+fill the gaps in a single pass. Say in the intro that it is already saved
+and this is to correct it — otherwise it reads as a form they have to
+complete before anything counts, which is exactly backwards.
+
+When they send it, place the corrections too. Mishearing a registration or
+a surname looks precisely like getting it right, so their edit is the
+answer and yours was the guess.
+
+If a form of yours comes back as interrupted, they typed instead of
+filling it in — which is allowed, and means they want to carry on some
+other way. Do not redraw it and do not re-ask for what you already placed.
+Answer what they actually said, and pick up whatever is still missing.
 
 Two things about drawing a form for somebody who is talking or listening.
 Set `speak` on it so the questions read themselves aloud. And set `dictate`
