@@ -140,7 +140,7 @@ def test_unroutable_expanded_step_is_rejected_when_built(client, started):
         def done(self, bound_wizard):  # pragma: no cover
             return HttpResponse("done")
 
-    started.seed_state([{"step": {"count": "1"}}])
+    started.post_step("count", {"count": "1"})
 
     with pytest.raises(ImproperlyConfigured, match="routable name"):
         _drive(_ViewSet, client, started.run_id)
@@ -167,7 +167,7 @@ def test_expansion_cannot_contain_an_expansion(client, started):
         def done(self, bound_wizard):  # pragma: no cover
             return HttpResponse("done")
 
-    started.seed_state([{"step": {"count": "1"}}])
+    started.post_step("count", {"count": "1"})
 
     with pytest.raises(ImproperlyConfigured, match="cannot contain another expansion"):
         _drive(_ViewSet, client, started.run_id)
@@ -196,6 +196,8 @@ def test_path_read_is_safe_while_an_expansion_is_sealed(sealable_run):
     """The gate is unanswered, so the walk seals before the expansion. A GET
     that renders the gate reads `path`, which must flatten over the sealed
     expansion without rebuilding it."""
+    # Seeded rather than driven: an answer behind an unanswered step is the
+    # one thing no walk will place, so neither door produces this state.
     sealable_run.seed_state(
         [
             {"step": {"count": "1"}},

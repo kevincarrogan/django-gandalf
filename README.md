@@ -1879,6 +1879,29 @@ A few notes:
 - **Uploads** ride along as ordinary POST data:
   `run.post_step("photo", {"photo": SimpleUploadedFile("a.png", b"...")})`
   (with `from django.core.files.uploadedfile import SimpleUploadedFile`).
+- **Arranging a part-answered run.** `seed_state` writes stored state
+  *verbatim*, so reach for it only when the state is one no walk would place —
+  a legacy shape, a tampered entry, an answer sitting behind an unanswered
+  step. Answers the walk can reach are better placed than written: fill the run
+  with a [`RunDriver`](#driving-a-wizard-from-python) over the client's own
+  session, and the state is whatever the runtime really produces.
+
+  ```python
+  from gandalf.driver import RunDriver, fabricate_request
+
+  session = client.session
+  driver = RunDriver.resume(
+      SignupWizardViewSet,
+      run.run_id,
+      request=fabricate_request(session=session),
+  )
+  driver.prefill({"name": {"name": "Ada"}, "email": {"email": "ada@example.com"}})
+  session.save()   # nothing saves a session outside the request cycle
+  ```
+
+  It is also how you arrange a run that is *complete* but unfinished — the last
+  answer a browser posts fires `done()` on the way past, and a driver's does
+  not.
 - **Session peeking and seeding.** `stored_runs(client)` /
   `stored_run(client, run_id)` / `seed_run(client, run_id, data)` read and
   write raw run entries; `stored_stash(client, key)` / `seed_stash(...)` do

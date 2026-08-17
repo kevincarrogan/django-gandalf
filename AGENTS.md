@@ -119,7 +119,6 @@ When creating commits in this repository, follow the existing project style:
 - Start with a capitalized verb.
 - Do not use Conventional Commits prefixes like `docs:` or `feat:`.
 - Do not end the subject with a period.
-- Do not add `Co-Authored-By` trailers.
 
 Preferred examples:
 

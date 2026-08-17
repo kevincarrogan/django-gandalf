@@ -11,6 +11,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
+from gandalf.driver import RunDriver, fabricate_request
 from gandalf.testing import (
     WizardTestDriver,
     seed_run,
@@ -27,6 +28,7 @@ from tests.testapp.forms import (
     ReviewForm,
     SecondStepForm,
 )
+from tests.testapp.views import CrossBranchWizardViewSet, DynamicWizardViewSet
 
 
 def test_wizard_viewset_redirects_to_run_url_on_initialise(client, wizard_driver):
@@ -742,16 +744,33 @@ def test_programmatic_lookup_wizard_edit_of_missing_step_deletes_new_uploads(
 
 
 @pytest.fixture
-def cross_branch_run(wizard_driver):
+def cross_branch_run(client, wizard_driver):
+    """A run answered all the way down the business arm and then diverted to
+    the personal one, so both branches hold dormant answers and the review
+    answer still stands behind the step the divert re-asks.
+
+    Filled with a `RunDriver` rather than seeded, because the last answer a
+    browser would post is the review — which completes the run and fires
+    `done()`. A driver places the same answers and stops there, leaving the
+    run to be diverted afterwards. `metadata={}` for the same reason: this
+    stands in for a journey somebody made in a browser, and a browser records
+    nothing about a placement.
+    """
     run = wizard_driver("cross-branch-wizard").start()
-    run.seed_state(
-        [
-            {"step": {"account_type": "personal"}},
-            {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
-            {"branch": {"0": [{"step": {"email": "ada@example.com"}}]}},
-            {"step": {"confirmed": "on"}},
-        ]
+    session = client.session
+    driver = RunDriver.resume(
+        CrossBranchWizardViewSet,
+        run.run_id,
+        request=fabricate_request(session=session),
     )
+    driver.submit({"account_type": "business"}, metadata={})
+    driver.submit({"business_name": "Acme"}, metadata={})
+    driver.submit({"email": "ada@example.com"}, metadata={})
+    driver.submit({"confirmed": "on"}, metadata={})
+    driver.submit({"account_type": "personal"}, step="account_type", metadata={})
+    # Nothing saves a session outside the request cycle, and the run the
+    # test then requests is read back from the store.
+    session.save()
     return run
 
 
@@ -950,16 +969,30 @@ def test_dynamic_list_payload_wizard_condenses_items_into_list(wizard_driver):
     }
 
 
-def test_dynamic_wizard_regenerates_tree_from_current_stored_state(wizard_driver):
-    run = wizard_driver("dynamic-wizard").start()
+def test_dynamic_wizard_regenerates_tree_from_current_stored_state(
+    client, wizard_driver
+):
+    """A run whose stored state already holds every answer: the GET has to
+    rebuild the item steps from the count before it can call the run finished.
 
-    run.seed_state(
-        [
-            {"step": {"count": "2"}},
-            {"step": {"name": "Ada"}},
-            {"step": {"name": "Grace"}},
-        ]
+    A `RunDriver` fills it, because the browser's last POST would complete the
+    run itself and there would be no request left to prove anything.
+    """
+    run = wizard_driver("dynamic-wizard").start()
+    session = client.session
+    driver = RunDriver.resume(
+        DynamicWizardViewSet,
+        run.run_id,
+        request=fabricate_request(session=session),
     )
+    driver.prefill(
+        {
+            "count": {"count": "2"},
+            "item-0": {"name": "Ada"},
+            "item-1": {"name": "Grace"},
+        }
+    )
+    session.save()
 
     done_response = run.get(follow=True)
     assert done_response.status_code == HTTPStatus.OK
