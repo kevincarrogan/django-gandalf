@@ -335,6 +335,31 @@ The sentinel matters: "no walk in progress" is `_NO_WALK`, not `None`, because `
 
 ---
 
+## One form builder, four readers
+
+`RuntimeStep.form` does not construct a form. It drives the step's own
+`FormView` through that view's public composition API — `get_form_class()`,
+`get_form_kwargs()`, `get_initial()`, `get_prefix()` — from a request built
+out of `bound_wizard.request`, which is the *current* request.
+`RunDriver._unbound_form` reaches for the same door when it builds a schema.
+
+Four things therefore come from one place:
+
+| Reader | Gets there via |
+|---|---|
+| the step page | ordinary `FormView` dispatch |
+| the check-your-answers page | `SummaryRow.form` → `RuntimeStep.form` |
+| `form_json_schema()`, and so `RunDriver.describe()` | `_view_for` → `get_form()` |
+| an agent, which is told what `describe()` says | the same schema |
+
+The consequence worth knowing: a `FormView` that overrides `get_form()` to
+change a form per request — re-labelling a field, narrowing a queryset,
+swapping a widget — changes all four together, and cannot change one
+without the others. That is usually what you want, and it is the reason an
+application can adapt how a step *reads* without the library growing a
+setting for it. It is also why such an override must be cheap: the summary
+page runs it once per answered step.
+
 ## Step URL routing
 
 Steps are addressed by URL — there is no unrouted mode. `StepNameRouter` (`gandalf/wizard.py`, the `step_router_class` slot) maps the `gandalf_step` URL kwarg to a step-context lookup and reverses a step declaration back into a URL segment (`name` context by default; subclass to route on another key). The viewset validates at request time that the configured router can reverse every declared step, raising `ImproperlyConfigured` for unnamed steps.
