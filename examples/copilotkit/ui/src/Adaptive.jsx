@@ -1,5 +1,10 @@
 import { HttpAgent } from "@ag-ui/client";
-import { CopilotChat, CopilotKit, useAgent } from "@copilotkit/react-core/v2";
+import {
+  CopilotChat,
+  CopilotKit,
+  useAgent,
+  useCopilotKit,
+} from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import React, { useState } from "react";
 
@@ -48,12 +53,19 @@ const OPENERS = [
 ];
 
 function Openers({ agent }) {
+  const { copilotkit } = useCopilotKit();
   const [sent, setSent] = useState(false);
 
+  // Through `copilotkit.runAgent` rather than `agent.runAgent()`, which is
+  // the difference between this working and not. The raw agent posts what
+  // it holds; the core is what attaches the frontend tools registered on
+  // the page — so calling the agent directly sends `tools: []`, the model
+  // never learns it can draw a form, and it describes one in prose
+  // instead. Which looks exactly like the model deciding not to.
   const send = async (said) => {
     setSent(true);
     agent.addMessage({ id: crypto.randomUUID(), role: "user", content: said });
-    await agent.runAgent();
+    await copilotkit.runAgent({ agent });
   };
 
   return (

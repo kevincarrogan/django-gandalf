@@ -122,3 +122,34 @@ test("the dev server is still proxying Django", async ({ request }) => {
   const wizard = await request.get("/quote/", { maxRedirects: 0 });
   expect(wizard.status(), "GET /quote/").toBe(302);
 });
+
+// The regression this exists for: an opener sent the message by calling
+// `agent.runAgent()` on the agent itself, which posts `tools: []`. The
+// frontend tools a page registers are attached by the *core*, so the model
+// was never told it could draw a form and described one in prose instead —
+// which is indistinguishable from it deciding not to draw one, and reads as
+// the model being unhelpful rather than the page being wrong.
+//
+// The canned `test` model calls every tool it is offered, so this runs in
+// CI without a key: if the tool reaches the model, a form comes back, and
+// if a form comes back it has to render as controls somebody can use.
+test("the adaptive quote's openers reach the model with its tools", async ({ page }) => {
+  let sentTools = null;
+  await page.route("**/adaptive-agent/", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    sentTools = (body.tools ?? []).map((tool) => tool.name);
+    await route.continue();
+  });
+
+  await page.goto("/#adaptive");
+  await page.getByRole("button", { name: /never bought insurance/ }).click();
+
+  // The form is the proof. Waiting on it rather than on the request means
+  // a tool that arrives and fails to render still fails this.
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible({
+    timeout: 30_000,
+  });
+  expect(sentTools, "frontend tools on the run input").toContain(
+    "collect_with_a_form",
+  );
+});
