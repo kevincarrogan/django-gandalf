@@ -46,7 +46,8 @@ graph TB
 
 - **`gandalf/driver.py`** — the headless driver, and the substance of this
   work. Django-only, strictly typed, part of the library. `RunDriver`
-  binds a viewset's wizard to a fabricated request, and exposes
+  binds a viewset's wizard to a `WizardContext` — the run's environment,
+  which needs no browser and fabricates none — and exposes
   `describe()` (current step name, a JSON Schema for its form, answers so
   far, the last submission's errors), `submit()`, `answers()`, and
   `finish()`. `form_json_schema()` renders a Django form as a JSON Schema
@@ -92,8 +93,10 @@ to convert in between. Anything that has to serialise them asks instead:
 `answers(json_safe=True)`, or `describe(json_safe=True)` to convert a whole
 description without reading the answers twice. Runs are addressed by
 `run_id`:
-`RunDriver.resume(ViewSet, run_id, request=...)` continues one, sharing
-storage through the request's session (or any `WizardStorage`).
+`RunDriver.resume(ViewSet, run_id, actor=...)` continues one, scoping it
+to whoever it is for; pass `session=` instead to share a session-backed
+storage with a browser, or a whole `context=` when you have one. No
+request is involved, and none is fabricated.
 
 The toolset is runnable end to end:
 

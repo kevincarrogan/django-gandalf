@@ -47,7 +47,6 @@ from gandalf.contrib.agent.prompt import build_instructions
 from gandalf.driver import (
     RunComplete,
     RunDriver,
-    fabricate_request,
     outline_steps,
 )
 from gandalf.runtime import StepNotFound
@@ -69,7 +68,7 @@ def accepts_documents(viewset_class: type[WizardViewSet]) -> bool:
     might reasonably reword into the thing that decides whether an agent
     gets a tool.
     """
-    outline = RunDriver.outline_for(viewset_class, request=fabricate_request())
+    outline = RunDriver.outline_for(viewset_class)
     return any(
         prop.get("format") == "binary"
         for entry in outline_steps(outline)
@@ -100,7 +99,7 @@ def build_toolset(
             )
         # Resumed per call rather than cached: a run lives in storage, not
         # in this process, which is the whole point of the handover.
-        return RunDriver.resume(viewset_class, run_id, request=ctx.deps.request)
+        return RunDriver.resume(viewset_class, run_id, context=ctx.deps.context)
 
     def _sync(
         ctx: RunContext[WizardDeps],
@@ -133,7 +132,7 @@ def build_toolset(
         """Start a fresh wizard run and describe its current step: the
         step's name, a JSON Schema for the answers it wants, everything
         answered so far, and whether the run is complete."""
-        driver = RunDriver.begin(viewset_class, request=ctx.deps.request)
+        driver = RunDriver.begin(viewset_class, context=ctx.deps.context)
         return _sync(ctx, driver)
 
     @toolset.tool
@@ -146,7 +145,7 @@ def build_toolset(
         run does not resume anything; it leaves whatever was already
         answered behind, and the person will be the one who notices."""
         try:
-            driver = RunDriver.resume(viewset_class, run_id, request=ctx.deps.request)
+            driver = RunDriver.resume(viewset_class, run_id, context=ctx.deps.context)
         except RunNotFound:
             raise ModelRetry(
                 f"There is no run with the id {run_id!r}. Check the id "
@@ -176,7 +175,7 @@ def build_toolset(
         Schema, every fork with all of its possible routes, and markers
         where the tree grows from an answer. Answerable before anything
         has been started, so call it first to plan the conversation."""
-        outline = RunDriver.outline_for(viewset_class, request=ctx.deps.request)
+        outline = RunDriver.outline_for(viewset_class, context=ctx.deps.context)
         ctx.deps.state.outline = outline
         if ctx.deps.state.run_id is None:
             # Describing a wizard needs no run, and starting one to answer

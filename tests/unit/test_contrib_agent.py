@@ -35,7 +35,7 @@ from gandalf.contrib.agent import (  # noqa: E402
     profile_for,
 )
 from gandalf.contrib.agent.prompt import DOCUMENTS, PROCEDURE, REGISTER  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 from gandalf.viewsets import WizardViewSet  # noqa: E402
 from gandalf.wizard import Wizard  # noqa: E402
 
@@ -88,9 +88,7 @@ class _Ctx:
 
 
 def _ctx(**kwargs: Any) -> _Ctx:
-    return _Ctx(
-        deps=WizardDeps(state=WizardState(), request=fabricate_request(), **kwargs)
-    )
+    return _Ctx(deps=WizardDeps(state=WizardState(), **kwargs))
 
 
 @pytest.fixture
@@ -215,9 +213,9 @@ def test_accepts_documents_is_derived_from_the_wizard():
 def test_accepts_documents_reads_the_format_and_not_the_prose():
     """The description is written for whoever reads it and may be
     reworded; the `format` is what a decision should turn on."""
-    from gandalf.driver import RunDriver, fabricate_request, outline_steps
+    from gandalf.driver import RunDriver, outline_steps
 
-    outline = RunDriver.outline_for(_PhotoViewSet, request=fabricate_request())
+    outline = RunDriver.outline_for(_PhotoViewSet)
     photo = next(
         prop
         for entry in outline_steps(outline)
@@ -702,7 +700,7 @@ def test_a_change_made_outside_the_agent_is_seen_when_it_looks_again():
     # Their turn, through the same door a browser uses: a different
     # driver, on the same run, recorded as theirs.
     theirs = RunDriver.resume(
-        _SignupViewSet, ctx.deps.state.run_id, request=ctx.deps.request
+        _SignupViewSet, ctx.deps.state.run_id, context=ctx.deps.context
     )
     theirs.submit({"name": "Grace"}, step="name", metadata={})
 
@@ -734,7 +732,7 @@ def test_a_run_can_be_resumed_by_its_id():
     run_id = ctx.deps.state.run_id
 
     # A new turn whose state did not survive: same session, no run id.
-    later = _Ctx(deps=WizardDeps(state=WizardState(), request=ctx.deps.request))
+    later = _Ctx(deps=WizardDeps(state=WizardState(), context=ctx.deps.context))
 
     resumed = tools["resume_run"](later, run_id).return_value
 

@@ -33,10 +33,10 @@ from django.core.validators import (
     RegexValidator,
 )
 from django.forms import BaseForm
-from django.http import HttpRequest, HttpResponseBase
-from django.test import RequestFactory
+from django.http import HttpResponseBase
 
 from gandalf import tree
+from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.file_storage import FileRef
 from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, StepNotFound, Walk
@@ -59,7 +59,6 @@ __all__ = [
     "Placement",
     "StepDescription",
     "SubmitResult",
-    "fabricate_request",
     "field_json_schema",
     "form_json_schema",
     "outline_steps",
@@ -85,29 +84,22 @@ class ConfirmationRequired(Exception):
     run — see `RunDriver.may_finish`."""
 
 
-class _MemorySession(dict):  # type: ignore[type-arg]
-    """The dict-with-a-`modified`-flag shape `SessionStorage` needs; what a
-    fabricated request carries instead of a browser-backed session."""
+def _context(
+    context: WizardContext | None,
+    actor: Any,
+    session: WizardSession | None,
+    url_kwargs: dict[str, Any],
+) -> WizardContext:
+    """The environment a driver runs against.
 
-    modified = False
-
-
-def fabricate_request(*, user: Any = None, session: Any = None) -> HttpRequest:
-    """A request good enough to drive a wizard with — no middleware, no
-    browser, no response cycle.
-
-    Step validation dispatches synthetic requests copied from this one, so
-    it needs only a method, a path, and a session-shaped object. Pass
-    `session` to share storage between drivers (or with a real session);
-    pass `user` when a step's view reads `request.user`.
+    Given one, it is used as it stands. Otherwise one is built from what
+    the caller named: `actor` for a durable storage to scope runs by,
+    `session` to share a session-backed one with another driver or with a
+    browser.
     """
-    request = RequestFactory().get("/agent/")
-    if session is None:
-        session = _MemorySession()
-    request.session = session
-    if user is not None:
-        request.user = user
-    return request
+    if context is not None:
+        return context
+    return WizardContext(actor=actor, session=session, url_kwargs=url_kwargs)
 
 
 @dataclass(frozen=True)
@@ -250,16 +242,21 @@ class RunDriver:
         cls,
         viewset_class: type[WizardViewSet],
         *,
-        request: HttpRequest | None = None,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
         may_finish: bool | None = None,
         **url_kwargs: Any,
     ) -> RunDriver:
-        """A driver over a fresh run of `viewset_class`'s wizard."""
-        if request is None:
-            request = fabricate_request()
-        view = viewset_class()
-        view.setup(request, **url_kwargs)
-        bound_wizard = viewset_class.begin(request, **url_kwargs)
+        """A driver over a fresh run of `viewset_class`'s wizard.
+
+        `actor` is whoever the run is for, which a durable storage scopes
+        by; `session` shares a session-backed one with another driver or
+        with a browser. Pass a whole `context` instead when you have one.
+        """
+        view, bound_wizard = viewset_class.begin_for(
+            _context(context, actor, session, url_kwargs)
+        )
         return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
 
     @classmethod
@@ -268,18 +265,18 @@ class RunDriver:
         viewset_class: type[WizardViewSet],
         run_id: str,
         *,
-        request: HttpRequest | None = None,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
         may_finish: bool | None = None,
         **url_kwargs: Any,
     ) -> RunDriver:
         """A driver over an existing run. Raises `RunNotFound` for a run the
-        request's storage does not hold — pass the `session` the run lives
-        in via `fabricate_request(session=...)`, or use a durable storage."""
-        if request is None:
-            request = fabricate_request()
-        view = viewset_class()
-        view.setup(request, **url_kwargs)
-        bound_wizard = viewset_class.inspect(request, run_id, **url_kwargs)
+        storage does not hold — pass the `session` the run lives in, or the
+        `actor` a durable storage scopes it to."""
+        view, bound_wizard = viewset_class.inspect_for(
+            _context(context, actor, session, url_kwargs), run_id
+        )
         return cls(view, bound_wizard, url_kwargs, may_finish=may_finish)
 
     @property
@@ -761,7 +758,9 @@ class RunDriver:
         cls,
         viewset_class: type[WizardViewSet],
         *,
-        request: HttpRequest | None = None,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
         **url_kwargs: Any,
     ) -> list[dict[str, Any]]:
         """The shape of `viewset_class`'s wizard, without starting a run.
@@ -771,10 +770,10 @@ class RunDriver:
         created, so nothing is left behind by asking — which matters to a
         caller describing several wizards to choose between them.
         """
-        if request is None:
-            request = fabricate_request()
-        bound_wizard = viewset_class.resolve(request, **url_kwargs)
-        driver = cls(viewset_class(), bound_wizard, url_kwargs)
+        view, bound_wizard = viewset_class.resolve_for(
+            _context(context, actor, session, url_kwargs)
+        )
+        driver = cls(view, bound_wizard, url_kwargs)
         return driver._with_schemas(bound_wizard.wizard.outline())
 
     def _with_schemas(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:

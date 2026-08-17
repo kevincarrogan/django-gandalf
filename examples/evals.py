@@ -45,13 +45,14 @@ from pydantic_evals.evaluators import (  # noqa: E402
 )
 
 from examples.copilotkit.agent import build_agent, resolve_model  # noqa: E402
+from gandalf.context import WizardContext  # noqa: E402
 from gandalf.contrib.agent import WizardDeps, WizardState  # noqa: E402
 from examples.copilotkit.transcripts import record, summarise  # noqa: E402
 from examples.copilotkit.views import context_instructions  # noqa: E402
 from examples.copilotkit.wizards import HybridQuoteViewSet  # noqa: E402
 from examples.costs import dollars  # noqa: E402
 from examples.scenarios import SCENARIOS  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 
 
 @dataclass
@@ -80,7 +81,7 @@ def fill(scenario) -> Filled:
     started = time.monotonic()
     model = resolve_model()
     agent = build_agent(HybridQuoteViewSet, model)
-    deps = WizardDeps(state=WizardState(), request=fabricate_request(user=_customer()))
+    deps = WizardDeps(state=WizardState(), context=WizardContext(actor=_customer()))
     items = [
         Context(description=description, value=json.dumps(value, default=str))
         for description, value in scenario.context
@@ -97,7 +98,7 @@ def fill(scenario) -> Filled:
         # unattended marker, and that difference is what the wizard's
         # policy reads.
         editor = RunDriver.resume(
-            HybridQuoteViewSet, deps.state.run_id, request=deps.request
+            HybridQuoteViewSet, deps.state.run_id, context=deps.context
         )
         for step, answers in scenario.edit.items():
             editor.submit(answers, step=step, metadata={})
@@ -159,7 +160,7 @@ def fill(scenario) -> Filled:
     # took the id away is asking whether it found its way back, and reading
     # whatever run it ended on would score a fresh empty one as a pass.
     if started_as:
-        driver = RunDriver.resume(HybridQuoteViewSet, started_as, request=deps.request)
+        driver = RunDriver.resume(HybridQuoteViewSet, started_as, context=deps.context)
         answers, step = driver.answers(), driver.describe().step
     return Filled(
         summary=summarise(json.loads(to_json(result.all_messages()))),

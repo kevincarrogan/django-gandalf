@@ -11,7 +11,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.driver import RunDriver, fabricate_request
+from gandalf.driver import RunDriver
 from gandalf.testing import (
     WizardTestDriver,
     seed_run,
@@ -761,7 +761,7 @@ def cross_branch_run(client, wizard_driver):
     driver = RunDriver.resume(
         CrossBranchWizardViewSet,
         run.run_id,
-        request=fabricate_request(session=session),
+        session=session,
     )
     driver.submit({"account_type": "business"}, metadata={})
     driver.submit({"business_name": "Acme"}, metadata={})
@@ -983,7 +983,7 @@ def test_dynamic_wizard_regenerates_tree_from_current_stored_state(
     driver = RunDriver.resume(
         DynamicWizardViewSet,
         run.run_id,
-        request=fabricate_request(session=session),
+        session=session,
     )
     driver.prefill(
         {

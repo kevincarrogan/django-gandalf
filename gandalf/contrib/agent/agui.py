@@ -22,7 +22,7 @@ from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.ag_ui import AGUIAdapter
 
 from gandalf.contrib.agent.deps import WizardDeps, WizardState, attachments_from
-from gandalf.driver import fabricate_request
+from gandalf.context import WizardContext
 
 
 def endpoint_for(
@@ -65,7 +65,7 @@ def endpoint_for(
         # get the bytes, without either passing through the other.
         deps = WizardDeps(
             state=WizardState(),
-            request=fabricate_request(user=user),
+            context=WizardContext(actor=user),
             attachments=attachments_from(run_input.messages),
         )
         return StreamingHttpResponse(

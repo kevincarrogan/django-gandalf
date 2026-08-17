@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from django.test import override_settings
 
 from benchmarks.instrumentation import COUNTER, RequestLog
-from gandalf.driver import RunDriver, fabricate_request
+from gandalf.context import WizardContext
+from gandalf.driver import RunDriver
 
 
 @dataclass
@@ -50,12 +51,12 @@ def run_driven(benchmark):
     records = []
     answers = dict(benchmark.payloads)
     with override_settings(ROOT_URLCONF=_urlconf(benchmark.viewset_class)):
-        request = fabricate_request()
+        context = WizardContext()
 
         _timed(
             records,
             "outline",
-            lambda: RunDriver.outline_for(benchmark.viewset_class, request=request),
+            lambda: RunDriver.outline_for(benchmark.viewset_class, context=context),
         )
         driver = _timed(
             records,
@@ -63,7 +64,7 @@ def run_driven(benchmark):
             # The whole fill is measured, `done()` included, so this driver
             # is one that may conclude a run.
             lambda: RunDriver.begin(
-                benchmark.viewset_class, request=request, may_finish=True
+                benchmark.viewset_class, context=context, may_finish=True
             ),
         )
         _timed(records, "check", lambda: driver.check(answers))

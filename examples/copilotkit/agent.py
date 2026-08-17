@@ -149,7 +149,7 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
             # Whatever is wrong with a call made against no run, the tool
             # says it better than a policy can.
             return None
-        driver = RunDriver.resume(self.viewset_class, run_id, request=ctx.deps.request)
+        driver = RunDriver.resume(self.viewset_class, run_id, context=ctx.deps.context)
         placement = driver.placements().get(step)
         if placement is None or placement.metadata.get("unattended"):
             return None

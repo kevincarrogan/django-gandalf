@@ -22,12 +22,12 @@ from django.core.validators import (
 from django.http import HttpResponse
 from django.test import override_settings
 
+from gandalf.context import WizardContext
 from gandalf.driver import (
     ConfirmationRequired,
     RunDriver,
     RunComplete,
     RunIncomplete,
-    fabricate_request,
     field_json_schema,
     form_json_schema,
     outline_steps,
@@ -518,22 +518,38 @@ def _escaping_viewset(form_class):
     return _EscapingViewSet
 
 
-def test_fabricate_request_carries_a_session():
-    request = fabricate_request()
+def test_a_context_with_no_request_still_has_somewhere_to_keep_a_run():
+    context = WizardContext()
 
-    assert request.method == "GET"
-    request.session["probe"] = True
-    assert request.session["probe"] is True
+    context.session["probe"] = True
+
+    assert context.session["probe"] is True
+    # Nothing is pretending to be a browser: a predicate reaching for one
+    # finds nothing rather than a plausible fake.
+    assert context.request is None
 
 
-def test_fabricate_request_accepts_a_shared_session_and_user():
+def test_a_context_takes_the_session_and_actor_it_is_given():
     session = {"existing": True}
     user = object()
 
-    request = fabricate_request(user=user, session=session)
+    context = WizardContext(actor=user, session=session)
 
-    assert request.session is session
+    assert context.session is session
+    assert context.actor is user
+
+
+def test_a_driven_context_hands_a_step_view_a_usable_request():
+    """The one place a request is still built. It carries the session and
+    the actor, because a step's view is entitled to read either."""
+    user = object()
+    context = WizardContext(actor=user)
+
+    request = context.http_request()
+
+    assert request.session is context.session
     assert request.user is user
+    assert request.method == "GET"
 
 
 def test_agent_driver_begins_a_run_and_describes_the_first_step():
@@ -1089,15 +1105,15 @@ def test_an_unfinished_run_is_refused_before_permission_is_considered():
 
 
 def test_agent_driver_finish_fires_done_and_retires_the_run():
-    request = fabricate_request()
-    driver = RunDriver.begin(_SignupViewSet, request=request, may_finish=True)
+    context = WizardContext()
+    driver = RunDriver.begin(_SignupViewSet, context=context, may_finish=True)
     driver.submit({"name": "Ada"})
     driver.submit({"email": "ada@example.com"})
 
     response = driver.finish()
 
     assert response.content == b"agent done"
-    assert request.session["gandalf_runs"][driver.run_id] == {"completed": True}
+    assert context.session["gandalf_runs"][driver.run_id] == {"completed": True}
 
 
 def test_agent_driver_finish_before_completion_refuses():
@@ -1109,11 +1125,11 @@ def test_agent_driver_finish_before_completion_refuses():
 
 
 def test_agent_driver_resume_continues_an_existing_run():
-    request = fabricate_request()
-    started = RunDriver.begin(_SignupViewSet, request=request)
+    context = WizardContext()
+    started = RunDriver.begin(_SignupViewSet, context=context)
     started.submit({"name": "Ada"})
 
-    resumed = RunDriver.resume(_SignupViewSet, started.run_id, request=request)
+    resumed = RunDriver.resume(_SignupViewSet, started.run_id, context=context)
 
     description = resumed.describe()
     assert description.step == "second"
@@ -1213,14 +1229,14 @@ def test_agent_driver_persists_an_advancing_escape():
 
 
 def test_agent_driver_obliterates_when_a_step_says_so():
-    request = fabricate_request()
-    driver = RunDriver.begin(_escaping_viewset(_ObliteratingForm), request=request)
+    context = WizardContext()
+    driver = RunDriver.begin(_escaping_viewset(_ObliteratingForm), context=context)
 
     result = driver.submit({"cancel": "on"})
 
     assert result.status == "escaped"
     assert result.escape == "obliterate"
-    assert driver.run_id not in request.session["gandalf_runs"]
+    assert driver.run_id not in context.session["gandalf_runs"]
 
 
 def test_agent_driver_rejects_a_bare_escape():
@@ -1625,15 +1641,15 @@ def test_check_cannot_judge_a_step_whose_form_needs_missing_answers():
 def test_check_notes_an_escape_without_acting_on_it():
     """A dry run must never park, advance or obliterate a run — it is a
     question, not a submission."""
-    request = fabricate_request()
-    driver = RunDriver.begin(_escaping_viewset(_ObliteratingForm), request=request)
+    context = WizardContext()
+    driver = RunDriver.begin(_escaping_viewset(_ObliteratingForm), context=context)
 
     result = driver.check({"escaping": {"cancel": "on"}})
 
     assert "escaping" in result.unchecked
     assert "obliterate" in result.unchecked["escaping"]
     # The run is still there, and still where it was.
-    assert driver.run_id in request.session["gandalf_runs"]
+    assert driver.run_id in context.session["gandalf_runs"]
     assert driver.describe().step == "escaping"
 
 
@@ -1653,14 +1669,14 @@ def test_a_wizard_can_be_outlined_without_starting_a_run():
     """The constraint this removes: asking what a journey looks like is a
     question about the wizard, and used to require minting a run to ask
     it. Nothing is left behind by asking."""
-    request = fabricate_request()
+    context = WizardContext()
 
-    outline = RunDriver.outline_for(_SignupViewSet, request=request)
+    outline = RunDriver.outline_for(_SignupViewSet, context=context)
 
     assert [entry["step"] for entry in outline] == ["first", "second"]
     assert set(outline[0]["schema"]["properties"]) == {"name"}
     # No run was created to answer the question.
-    assert request.session.get("gandalf_runs", {}) == {}
+    assert context.session.get("gandalf_runs", {}) == {}
 
 
 def test_outlining_a_run_and_outlining_the_wizard_agree():

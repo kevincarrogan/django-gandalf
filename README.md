@@ -251,15 +251,15 @@ for what such a view must provide and what it sees when it reads run state.
 
 `.branch()` forks the flow on a prior answer. Each arm is a sub-`Wizard` (or
 `None` for "nothing extra here"); a `condition(predicate, arm)` pairs a
-`predicate(request)` with the arm it selects. Selection is **first-match-wins**,
+`predicate(context)` with the arm it selects. Selection is **first-match-wins**,
 falling back to `default`.
 
 ```python
 from gandalf.wizard import Wizard, condition
 
 
-def is_business_account(request):
-    account_step = request.wizard.path.find_step(name="account_type")
+def is_business_account(context):
+    account_step = context.run.path.find_step(name="account_type")
     return account_step.form.cleaned_data["account_type"] == "business"
 
 
@@ -385,8 +385,8 @@ a count the user just typed. `.expand()` grows the tree during the walk from a
 builder you provide:
 
 ```python
-def build_item_steps(request):
-    count = int(request.wizard.path.find_step(name="count").form.cleaned_data["count"])
+def build_item_steps(context):
+    count = int(context.run.path.find_step(name="count").form.cleaned_data["count"])
     steps = Wizard()
     for index in range(count):
         steps = steps.step(ItemForm, name=f"item-{index}")

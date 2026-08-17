@@ -39,7 +39,7 @@ import anthropic  # noqa: E402
 
 from examples.copilotkit.agent import resolve_model  # noqa: E402
 from examples.copilotkit.wizards import HybridQuoteViewSet  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 
 #: Dollars per million tokens, list price. Deliberately not the introductory
 #: rate that is live as this is written — a number that quietly becomes an
@@ -93,7 +93,7 @@ def weigh(viewset_class, model):
             messages=[{"role": "user", "content": json.dumps(payload, default=str)}],
         ).input_tokens
 
-    outline = RunDriver.outline_for(viewset_class, request=fabricate_request())
+    outline = RunDriver.outline_for(viewset_class)
     weights = [(_label(entry), count(entry)) for entry in outline]
     return count(outline), weights, list(_steps(outline))
 

@@ -13,7 +13,7 @@ from http import HTTPStatus
 
 import pytest
 
-from gandalf.driver import RunDriver, fabricate_request
+from gandalf.driver import RunDriver
 from tests.testapp.counting import counting_walks
 from tests.testapp.views import WalkCountingWizardViewSet
 
@@ -87,7 +87,7 @@ def driven_run():
     No HTTP here — a driver skips it deliberately — so these numbers are the
     cost of reading a run rather than of serving a request.
     """
-    driver = RunDriver.begin(WalkCountingWizardViewSet, request=fabricate_request())
+    driver = RunDriver.begin(WalkCountingWizardViewSet)
     driver.submit({"name": "Ada"})
     driver.submit({"email": "ada@example.com"})
     return driver

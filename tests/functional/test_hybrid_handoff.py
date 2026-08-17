@@ -33,8 +33,9 @@ from examples.copilotkit.wizards import (  # noqa: E402
     HybridLicenceViewSet,
     HybridQuoteViewSet,
 )
+from gandalf.context import WizardContext
 from gandalf.contrib.agent import Attachment, WizardDeps, WizardState  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 from tests.testapp.models import WizardRun  # noqa: E402
 
 PROFILE_ANSWERS = {
@@ -72,9 +73,7 @@ def customer(db):
 def filled_run(hybrid, customer):
     """What the agent leaves behind: a run filled from the profile, parked
     on the check-your-answers step."""
-    driver = RunDriver.begin(
-        HybridQuoteViewSet, request=fabricate_request(user=customer)
-    )
+    driver = RunDriver.begin(HybridQuoteViewSet, actor=customer)
     result = driver.prefill(PROFILE_ANSWERS)
     assert result.next_step == "confirm"
     return driver
@@ -172,9 +171,7 @@ def test_control_passes_back_and_forth_between_the_agent_and_the_form(
     )
 
     # 2. They hand over: the agent resumes the run they began.
-    agent = RunDriver.resume(
-        HybridQuoteViewSet, run_id, request=fabricate_request(user=customer)
-    )
+    agent = RunDriver.resume(HybridQuoteViewSet, run_id, actor=customer)
     assert agent.describe().step == "registration"
     assert agent.answers()["company"]["name"] == "Analytical Engines Ltd"
 
@@ -300,7 +297,7 @@ def _agent_turn(customer, calls, viewset_class=HybridQuoteViewSet, attachments=N
     agent = build_agent(viewset_class, "test")
     deps = WizardDeps(
         state=WizardState(),
-        request=fabricate_request(user=customer),
+        context=WizardContext(actor=customer),
         attachments=attachments,
     )
     with agent.override(model=_scripted_model(calls)):
@@ -318,9 +315,7 @@ def committed_customer(transactional_db):
 def their_run(hybrid, committed_customer):
     """A run carrying one answer the person made themselves — which is what
     `metadata={}` says: a browser records nothing about a placement."""
-    driver = RunDriver.begin(
-        HybridQuoteViewSet, request=fabricate_request(user=committed_customer)
-    )
+    driver = RunDriver.begin(HybridQuoteViewSet, actor=committed_customer)
     driver.submit(COMPANY, metadata={})
     return driver
 
@@ -350,9 +345,7 @@ def test_the_agent_cannot_overwrite_an_answer_the_person_made(
 def test_the_agent_may_still_correct_its_own_earlier_answer(hybrid, committed_customer):
     """The case the rule must not catch: recovering from an answer it got
     wrong means replacing one of its own, and every retry loop needs it."""
-    driver = RunDriver.begin(
-        HybridQuoteViewSet, request=fabricate_request(user=committed_customer)
-    )
+    driver = RunDriver.begin(HybridQuoteViewSet, actor=committed_customer)
     driver.submit(COMPANY)
 
     _agent_turn(
@@ -377,9 +370,7 @@ def test_the_agent_cannot_put_a_document_over_the_one_the_person_gave(
     metadata beside it, so an unguarded attach would relabel their answer as
     the agent's and open every later edit to it.
     """
-    driver = RunDriver.begin(
-        HybridLicenceViewSet, request=fabricate_request(user=committed_customer)
-    )
+    driver = RunDriver.begin(HybridLicenceViewSet, actor=committed_customer)
     driver.submit(
         {},
         files={"scan": SimpleUploadedFile("theirs.png", b"theirs", "image/png")},

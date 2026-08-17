@@ -14,7 +14,7 @@ real one, for money.
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from examples.licence import LicenceCheckViewSet
-from gandalf.driver import RunDriver, fabricate_request
+from gandalf.driver import RunDriver
 
 _SCAN = b"pretend-image-bytes"
 _DETAILS = {
@@ -26,7 +26,7 @@ _DETAILS = {
 
 
 def _driver():
-    return RunDriver.begin(LicenceCheckViewSet, request=fabricate_request())
+    return RunDriver.begin(LicenceCheckViewSet)
 
 
 def test_an_agent_places_a_photograph_and_reads_it_back(isolated_media_root):

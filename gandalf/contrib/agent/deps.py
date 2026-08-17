@@ -8,8 +8,8 @@ reason.
 non-optional `state` field with the client, so every tool that moves the
 run can leave the page re-rendered behind it.
 
-`request` is what the run is driven *as*. A wizard's storage is scoped by
-it — a durable backend reads `request.user` — so the runs an agent
+`context` is what the run is driven *in*. A wizard's storage is scoped
+by it — a durable backend reads `context.actor` — so the runs an agent
 creates belong to the person it is working for rather than to nobody.
 
 `attachments` are the files already in the conversation, held here rather
@@ -27,10 +27,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ag_ui.core import BinaryInputContent, EventType, StateSnapshotEvent
-from django.http import HttpRequest
 from pydantic import BaseModel
 
-from gandalf.driver import fabricate_request
+from gandalf.context import WizardContext
 
 
 class WizardState(BaseModel):
@@ -114,12 +113,12 @@ def _as_attachment(part: Any, index: int) -> Attachment | None:
 
 @dataclass
 class WizardDeps:
-    """Shared state, plus the request the run is driven as.
+    """Shared state, plus the environment the run is driven in.
 
     A dataclass with a non-optional `state` field is what pydantic-ai's
-    AG-UI adapter needs to sync state with the client. The request rides
+    AG-UI adapter needs to sync state with the client. The context rides
     along because the wizard's storage is scoped by it — the demo's
-    durable backend reads `request.user`, so the runs an agent creates
+    durable backend reads `context.actor`, so the runs an agent creates
     belong to the person it is working for.
 
     `attachments` is what the person shared in the chat this turn, held
@@ -127,7 +126,7 @@ class WizardDeps:
     """
 
     state: WizardState
-    request: HttpRequest = field(default_factory=fabricate_request)
+    context: WizardContext = field(default_factory=WizardContext)
     attachments: dict[str, Attachment] = field(default_factory=dict)
 
 

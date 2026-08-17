@@ -9,7 +9,7 @@ what it says they do.
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from gandalf.driver import ConfirmationRequired, RunDriver, fabricate_request
+from gandalf.driver import ConfirmationRequired, RunDriver
 from tests.testapp.readme_examples import (
     BranchingWizardViewSet,
     SignupWizardViewSet,
@@ -149,7 +149,7 @@ def test_a_driver_reads_a_run_whose_file_step_was_answered(
     driver = RunDriver.resume(
         FileUploadingWizardViewSet,
         run.run_id,
-        request=fabricate_request(session=client.session),
+        session=client.session,
     )
 
     placement = driver.placements()["photo"]
@@ -178,7 +178,7 @@ def test_a_driver_can_open_the_file_a_person_uploaded(
     driver = RunDriver.resume(
         FileUploadingWizardViewSet,
         run.run_id,
-        request=fabricate_request(session=client.session),
+        session=client.session,
     )
 
     opened = driver.open_file(driver.placements()["photo"].files["photo"])

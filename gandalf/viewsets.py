@@ -47,6 +47,54 @@ class WizardViewSet(View):
         ]
 
     @classmethod
+    def for_context(cls, context: WizardContext) -> tuple[WizardViewSet, BoundWizard]:
+        """This viewset and a `BoundWizard` on it, for an environment.
+
+        The four lines every entry point below starts with, and the door a
+        caller with no request comes through: `gandalf.driver` builds a
+        context and asks for the pair, rather than manufacturing a browser
+        request so that the request-shaped door will open.
+
+        The view is set up with the browser's own request where there is
+        one — not a copy, because a view reading `FILES` or `POST` must see
+        what was actually uploaded rather than a copy whose input stream
+        has already been read to the end.
+        """
+        view = cls()
+        view.setup(context.request or context.http_request(), **context.url_kwargs)
+        return view, view._make_bound_wizard(context)
+
+    @classmethod
+    def begin_for(cls, context: WizardContext) -> tuple[WizardViewSet, BoundWizard]:
+        """`begin()` for a caller that also needs the view — mint the run,
+        then resolve. The order is the point, which is why this exists
+        rather than being spelled out again by everyone who needs it."""
+        view, bound_wizard = cls.for_context(context)
+        bound_wizard.initialise()
+        view._resolve_wizard(bound_wizard)
+        return view, bound_wizard
+
+    @classmethod
+    def inspect_for(
+        cls, context: WizardContext, run_id: str
+    ) -> tuple[WizardViewSet, BoundWizard]:
+        """`inspect()` for a caller that also needs the view — retrieve the
+        run, then resolve, because a dynamic `get_wizard()` is entitled to
+        read the run's state to decide its shape."""
+        view, bound_wizard = cls.for_context(context)
+        bound_wizard.retrieve(run_id)
+        view._resolve_wizard(bound_wizard)
+        return view, bound_wizard
+
+    @classmethod
+    def resolve_for(cls, context: WizardContext) -> tuple[WizardViewSet, BoundWizard]:
+        """`resolve()` for a caller that also needs the view — no run is
+        created, so there is nothing to retrieve before resolving."""
+        view, bound_wizard = cls.for_context(context)
+        view._resolve_wizard(bound_wizard)
+        return view, bound_wizard
+
+    @classmethod
     def begin(cls, request: HttpRequest, **url_kwargs: Any) -> BoundWizard:
         """A fresh run of this wizard, returned rather than redirected to.
 
@@ -58,12 +106,7 @@ class WizardViewSet(View):
         `url_kwargs` are mount-prefix context (e.g. a tenant slug),
         forwarded into URL reversing via `get_url_kwargs()`.
         """
-        view = cls()
-        view.setup(request, **url_kwargs)
-        bound_wizard = view._make_bound_wizard(request)
-        bound_wizard.initialise()
-        view._resolve_wizard(bound_wizard)
-        return bound_wizard
+        return cls.begin_for(WizardContext.from_request(request, **url_kwargs))[1]
 
     @classmethod
     def inspect(
@@ -87,12 +130,9 @@ class WizardViewSet(View):
         answered as finished — so check `is_complete` before running it,
         exactly as a dispatch does.
         """
-        view = cls()
-        view.setup(request, **url_kwargs)
-        bound_wizard = view._make_bound_wizard(request)
-        bound_wizard.retrieve(run_id)
-        view._resolve_wizard(bound_wizard)
-        return bound_wizard
+        return cls.inspect_for(
+            WizardContext.from_request(request, **url_kwargs), run_id
+        )[1]
 
     @classmethod
     def reopen(
@@ -110,9 +150,9 @@ class WizardViewSet(View):
         supplied. Raises `InvalidStash` — before any run is created — when
         the payload is malformed or its label does not match.
         """
-        view = cls()
-        view.setup(request, **url_kwargs)
-        bound_wizard = view._make_bound_wizard(request)
+        view, bound_wizard = cls.for_context(
+            WizardContext.from_request(request, **url_kwargs)
+        )
         bound_wizard.resurrect(payload, expected_label=expected_label)
         view._resolve_wizard(bound_wizard)
         return bound_wizard
@@ -162,11 +202,7 @@ class WizardViewSet(View):
         begin, the only honest answer before one exists. `run_id` is
         unset: this is for describing a wizard, not running one.
         """
-        view = cls()
-        view.setup(request, **url_kwargs)
-        bound_wizard = view._make_bound_wizard(request)
-        view._resolve_wizard(bound_wizard)
-        return bound_wizard
+        return cls.resolve_for(WizardContext.from_request(request, **url_kwargs))[1]
 
     def get_wizard(self, bound_wizard: BoundWizard) -> Wizard | ConfiguredWizard:
         """Per-request hook returning the Wizard to use for this dispatch.
@@ -200,10 +236,13 @@ class WizardViewSet(View):
 
         raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
 
-    def _make_bound_wizard(self, request: HttpRequest) -> BoundWizard:
-        context = WizardContext.from_request(request, **self.get_url_kwargs())
-        storage = self.storage_class(context)
-        return BoundWizard(context, storage)
+    def context_for(self, request: HttpRequest) -> WizardContext:
+        """The environment this request implies, carrying the mount kwargs
+        every reverse of this wizard's URLs needs."""
+        return WizardContext.from_request(request, **self.get_url_kwargs())
+
+    def _make_bound_wizard(self, context: WizardContext) -> BoundWizard:
+        return BoundWizard(context, self.storage_class(context))
 
     def _resolve_wizard(self, bound_wizard: BoundWizard) -> BoundWizard:
         wizard = self._configured_wizard(self.get_wizard(bound_wizard))
@@ -301,7 +340,7 @@ class WizardViewSet(View):
         run_id: str | None = None,
         **kwargs: Any,
     ) -> HttpResponseBase:
-        bound_wizard = self._make_bound_wizard(request)
+        bound_wizard = self._make_bound_wizard(self.context_for(request))
         if run_id is None:
             bound_wizard.initialise()
             self._resolve_wizard(bound_wizard)
@@ -326,7 +365,7 @@ class WizardViewSet(View):
     def post(
         self, request: HttpRequest, *args: Any, run_id: str, **kwargs: Any
     ) -> HttpResponseBase:
-        bound_wizard = self._make_bound_wizard(request)
+        bound_wizard = self._make_bound_wizard(self.context_for(request))
         unavailable = self._retrieve_run(bound_wizard, run_id)
         if unavailable is not None:
             return unavailable

@@ -52,7 +52,7 @@ from examples.copilotkit.wizards import (  # noqa: E402
     HybridLicenceViewSet,
 )
 from examples.costs import dollars  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 
 PROMPT = "Here is a photo of my driving licence. Please fill in the check for me."
 
@@ -77,7 +77,6 @@ def read_licence(path: Path, model: str, viewset_class):
     agent = build_agent(viewset_class, model)
     deps = WizardDeps(
         state=WizardState(),
-        request=fabricate_request(),
         # The same bytes reach the model and the tools by different roads:
         # the model is shown the picture, the tools are given a handle to
         # it. Over HTTP the endpoint does this from the incoming message;

@@ -15,7 +15,7 @@ pytest.importorskip("ag_ui")
 
 from examples.copilotkit.agent import build_agent  # noqa: E402
 from examples.identity import IdentityCheckViewSet  # noqa: E402
-from gandalf.driver import RunDriver, fabricate_request  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
 
 
 def _agent_tools(agent):
@@ -39,7 +39,7 @@ def test_a_wizard_with_no_file_step_still_reads_and_fills(isolated_media_root):
     agent = build_agent(IdentityCheckViewSet, "test")
     assert "attach_document" not in _agent_tools(agent)
 
-    driver = RunDriver.begin(IdentityCheckViewSet, request=fabricate_request())
+    driver = RunDriver.begin(IdentityCheckViewSet)
     result = driver.prefill(
         {
             "name": {"first_name": "Ada", "surname": "Carrogan"},
