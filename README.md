@@ -1754,8 +1754,25 @@ may be changed governs an uploaded document with no special case for it.
 
 A `FileField` is described as `{"type": "string", "format": "binary"}` — the
 JSON Schema way of saying *this is a file*. Branch on the `format` if you
-need to know; the description beside it says the same thing in words, and
-words get reworded.
+need to know; the note beside it says the same thing in words, and words get
+reworded.
+
+Those two kinds of words are kept apart. `description` is the field's own
+`help_text` and nothing else — the wizard author's sentence, quoted, and
+absent where they wrote none. `x-note` is whatever this module had to add:
+the choice legend, a warning that a file cannot travel in a submission, an
+admission that a field kind is not mapped. Only the first was written for
+the person answering, so that is the one to put in front of them:
+
+```python
+forms.FileField(label="Photo of your licence", help_text="The front of the card.")
+
+{"type": "string", "format": "binary",
+ "title": "Photo of your licence",
+ "description": "The front of the card.",
+ "x-note": "This field takes an uploaded file. A file cannot be sent as part
+            of a submission — supply it alongside one, keyed by this field name."}
+```
 
 > **Source:** the snippets above are driven against the README's own wizards in
 > [`test_driver_journeys.py`](tests/functional/test_driver_journeys.py).

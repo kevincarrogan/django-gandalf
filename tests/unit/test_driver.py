@@ -209,7 +209,7 @@ def test_choice_field_enumerates_values_and_explains_labels():
 
     assert schema["type"] == "string"
     assert schema["enum"] == ["personal", "business"]
-    assert schema["description"] == "Choices: personal (Personal), business (Business)."
+    assert schema["x-note"] == "Choices: personal (Personal), business (Business)."
 
 
 def test_a_required_choice_field_does_not_offer_its_empty_choice():
@@ -221,7 +221,7 @@ def test_a_required_choice_field_does_not_offer_its_empty_choice():
     schema = field_json_schema(field)
 
     assert schema["enum"] == ["a"]
-    assert schema["description"] == "Choices: a (Alpha)."
+    assert schema["x-note"] == "Choices: a (Alpha)."
 
 
 def test_an_optional_choice_field_keeps_its_empty_choice():
@@ -245,7 +245,7 @@ def test_multiple_choice_field_maps_to_an_array_of_choices():
 
     assert schema["type"] == "array"
     assert schema["items"] == {"type": "string", "enum": ["cheese", "olives", "basil"]}
-    assert schema["description"] == (
+    assert schema["x-note"] == (
         "Choices: cheese (Cheese), olives (Olives), basil (Basil)."
     )
 
@@ -305,12 +305,27 @@ def test_label_and_help_text_map_to_title_and_description():
     assert schema["description"] == "As it appears on the card."
 
 
-def test_help_text_and_choice_legend_share_the_description():
+def test_the_authors_words_and_the_librarys_stay_apart():
+    """`description` is what the wizard's author wrote and nothing else.
+
+    They were joined into one sentence, which left no way to tell a step's
+    own guidance from a remark this module generated — and only one of the
+    two is ever a candidate for being shown to a person.
+    """
     field = forms.ChoiceField(choices=[("a", "Alpha")], help_text="Pick your tier.")
 
     schema = field_json_schema(field)
 
-    assert schema["description"] == "Pick your tier. Choices: a (Alpha)."
+    assert schema["description"] == "Pick your tier."
+    assert schema["x-note"] == "Choices: a (Alpha)."
+
+
+def test_a_field_with_no_help_text_has_no_description():
+    """An author who said nothing is not quoted as having said something."""
+    schema = field_json_schema(forms.ChoiceField(choices=[("a", "Alpha")]))
+
+    assert "description" not in schema
+    assert schema["x-note"] == "Choices: a (Alpha)."
 
 
 def test_unsupported_field_falls_back_to_string_with_a_note():
@@ -318,8 +333,8 @@ def test_unsupported_field_falls_back_to_string_with_a_note():
 
     assert schema["type"] == "string"
     assert schema["title"] == "When"
-    assert "SplitDateTimeField" in schema["description"]
-    assert "not supported" in schema["description"]
+    assert "SplitDateTimeField" in schema["x-note"]
+    assert "not supported" in schema["x-note"]
 
 
 def test_a_file_field_is_marked_binary():
@@ -346,9 +361,9 @@ def test_a_file_field_also_says_in_words_where_the_file_goes():
     """
     schema = field_json_schema(forms.FileField(label="Photo"))
 
-    assert "uploaded file" in schema["description"]
-    assert "cannot be sent" in schema["description"]
-    assert "not supported" not in schema["description"]
+    assert "uploaded file" in schema["x-note"]
+    assert "cannot be sent" in schema["x-note"]
+    assert "not supported" not in schema["x-note"]
 
 
 def test_an_image_field_is_described_as_a_file_too():
@@ -357,19 +372,19 @@ def test_an_image_field_is_described_as_a_file_too():
     schema = field_json_schema(forms.ImageField())
 
     assert schema["format"] == "binary"
-    assert "uploaded file" in schema["description"]
+    assert "uploaded file" in schema["x-note"]
 
 
-def test_a_file_fields_own_help_text_survives_the_note():
-    """The note is appended to what the field says about itself, not
-    substituted for it — the help text is where a wizard explains which
-    document it wants."""
+def test_a_file_fields_own_help_text_is_not_crowded_out_by_the_note():
+    """The note sits beside what the field says about itself rather than
+    being joined to it — the help text is where a wizard explains which
+    document it wants, and that sentence is the author's."""
     field = forms.FileField(help_text="The front of the card.")
 
-    description = field_json_schema(field)["description"]
+    schema = field_json_schema(field)
 
-    assert description.startswith("The front of the card.")
-    assert "uploaded file" in description
+    assert schema["description"] == "The front of the card."
+    assert "uploaded file" in schema["x-note"]
 
 
 # --- The driver --------------------------------------------------------------

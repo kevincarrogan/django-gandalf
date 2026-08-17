@@ -921,19 +921,20 @@ def field_json_schema(field: forms.Field) -> dict[str, Any]:
         schema["pattern"] = pattern
     if field.label is not None:
         schema["title"] = str(field.label)
-    notes = []
+    # The author's words and this module's stay apart. Joined into one
+    # sentence there was no telling a step's own guidance from a remark
+    # generated here, and only one of the two is ever the author's to change
+    # — or anybody else's to say differently.
     if field.help_text:
-        notes.append(str(field.help_text))
+        schema["description"] = str(field.help_text)
     if note is not None:
-        notes.append(note)
-    if notes:
-        schema["description"] = " ".join(notes)
+        schema["x-note"] = note
     return schema
 
 
 def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
     """The type-shaped half of a field's schema, plus an optional note
-    destined for the property's description."""
+    destined for the property's `x-note`."""
     # `ModelMultipleChoiceField` subclasses `ModelChoiceField` rather than
     # `MultipleChoiceField`, so it would otherwise fall through to the
     # single-choice branch below and be described as a string. It takes a
