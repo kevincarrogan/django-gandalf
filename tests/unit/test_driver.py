@@ -965,7 +965,9 @@ def test_a_driver_opens_a_file_stored_against_the_run():
 
     A driver hands its caller the reference because that is what state
     holds and what serialises; this is how the caller gets from the
-    reference to what was actually uploaded.
+    reference to what was actually uploaded. The bytes are fetched where
+    they are read rather than where the file is opened, so the read
+    belongs inside the life of the storage holding them.
     """
     driver = RunDriver.begin(_SignupViewSet)
 
@@ -977,8 +979,8 @@ def test_a_driver_opens_a_file_stored_against_the_run():
 
             opened = driver.open_file(ref)
 
-    assert opened.read() == b"hello"
-    assert opened.name == "proof.txt"
+            assert opened.read() == b"hello"
+            assert opened.name == "proof.txt"
 
 
 # --- Step metadata -----------------------------------------------------

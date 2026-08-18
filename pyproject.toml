@@ -136,9 +136,18 @@ source = ["gandalf"]
 # ASGI can only honestly be covered by a real request, which is this
 # suite's job. The package `__init__` is here too now that it carries the
 # lazy-import hook that keeps a profile free of the extra.
+# gandalf/file_storage.py is here for driver.py's reason. `StoredUpload`
+# is a file object, and the branches that decide what to do with a handle
+# nothing has fetched yet — rewinding it, closing it — are not reachable
+# over HTTP: Django closes `request.FILES` only on a real request, and a
+# real request carries live uploads rather than stored ones. The unit
+# suite measures them (to 100%); this suite proves the parts a request
+# does reach — that replaying an answered step fetches nothing, and that a
+# validator or a `done()` that reads the bytes still gets them.
 omit = [
   "gandalf/pytest_plugin.py",
   "gandalf/driver.py",
+  "gandalf/file_storage.py",
   "gandalf/contrib/agent/__init__.py",
   "gandalf/contrib/agent/deps.py",
   "gandalf/contrib/agent/profile.py",

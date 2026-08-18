@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
-from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from django.core.files.uploadedfile import UploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import (
     BaseValidator,
@@ -38,7 +38,7 @@ from django.http import HttpResponseBase
 from gandalf import tree
 from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
-from gandalf.file_storage import FileRef
+from gandalf.file_storage import FileRef, StoredUpload
 from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, StepNotFound, Walk
 from gandalf.summary import _flatten_choices
 from gandalf.types import FileRefs, Metadata, Submission
@@ -349,7 +349,7 @@ class RunDriver:
             metadata = _json_safe(metadata)
         return Placement(answers=answers, files=files, metadata=metadata)
 
-    def open_file(self, ref: FileRef) -> InMemoryUploadedFile:
+    def open_file(self, ref: FileRef) -> StoredUpload:
         """Open a file stored with a placement, as the bytes it holds.
 
         Takes the reference rather than a step and field name, because the

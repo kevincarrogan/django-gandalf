@@ -3,6 +3,7 @@ import os
 import re
 
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 import pytest
@@ -1302,6 +1303,91 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, '<input type="text" name="name"')
+
+
+def test_file_uploading_wizard_replay_never_reads_the_stored_upload(
+    wizard_driver, isolated_media_root, monkeypatch
+):
+    """Issue #97: the walk re-proves every answered step on every request,
+    and a step with an upload re-proved it by pulling the whole blob off
+    the backend. A `FileField` asks for the name and the size, both of
+    which the stored ref already carries, so the bytes stay where they
+    are — a run's requests cost the same whether its uploads are a
+    kilobyte or a hundred megabytes."""
+    run = wizard_driver("file-uploading-wizard").start()
+    run.post_step(
+        "photo",
+        {"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+        follow=True,
+    )
+    reads = []
+    unwatched_open = FileSystemStorage._open
+
+    def watched_open(self, name, mode="rb"):
+        reads.append(name)
+        return unwatched_open(self, name, mode)
+
+    monkeypatch.setattr(FileSystemStorage, "_open", watched_open)
+
+    response = run.get(follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, '<input type="text" name="name"')
+    assert reads == []
+
+
+def test_sniffed_file_wizard_replay_reads_the_upload_a_validator_asks_for(
+    wizard_driver, isolated_media_root
+):
+    """The other half of issue #97: the bytes are not fetched on replay,
+    but a step that validates by reading them still gets them. The photo
+    step is re-proved on this request from storage, and its `clean_photo`
+    reads the content and rewinds it for the next reader."""
+    run = wizard_driver("sniffed-file-wizard").start()
+
+    response = run.post_step(
+        "photo",
+        {"photo": SimpleUploadedFile("avatar.png", b"PNGbinary")},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, '<input type="text" name="name"')
+
+
+def test_sniffed_file_wizard_rejects_an_upload_whose_bytes_are_wrong(
+    wizard_driver, isolated_media_root
+):
+    run = wizard_driver("sniffed-file-wizard").start()
+
+    response = run.post_step(
+        "photo",
+        {"photo": SimpleUploadedFile("avatar.png", b"JPEGbinary")},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, "That is not a PNG.")
+    assertContains(response, '<input type="file" name="photo"')
+
+
+def test_sniffed_file_wizard_done_reads_the_stored_bytes_back(
+    wizard_driver, isolated_media_root
+):
+    """A completion page that reads the upload rather than its name, and
+    closes it after — the file it is handed is a live handle on the
+    backend, not a copy taken when the run was replayed."""
+    run = wizard_driver("sniffed-file-wizard").start()
+    run.post_step(
+        "photo",
+        {"photo": SimpleUploadedFile("avatar.png", b"PNGbinary")},
+        follow=True,
+    )
+
+    response = run.post_step("first", {"name": "Ada"}, follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"completed PNGbinary"
 
 
 def test_file_done_wizard_completion_page_can_read_the_uploaded_file(

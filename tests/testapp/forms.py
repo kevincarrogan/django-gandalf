@@ -127,6 +127,23 @@ class ProfilePhotoForm(forms.Form):
     photo = forms.FileField()
 
 
+class SniffedPhotoForm(forms.Form):
+    """A file step whose validation reads the upload rather than trusting
+    its name — the shape `ImageField` and MIME sniffing take, and the one
+    that has to keep working now that a replayed upload fetches its bytes
+    only when something reaches for them."""
+
+    photo = forms.FileField()
+
+    def clean_photo(self):
+        photo = self.cleaned_data["photo"]
+        if not photo.read().startswith(b"PNG"):
+            raise forms.ValidationError("That is not a PNG.")
+        # Rewind for whatever reads it next, exactly as `ImageField` does.
+        photo.open()
+        return photo
+
+
 class OptionalPhotoForm(forms.Form):
     label = forms.CharField()
     photo = forms.FileField(required=False)

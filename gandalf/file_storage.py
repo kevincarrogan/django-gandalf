@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from io import BytesIO
-from typing import TypedDict
+from typing import IO, Any, TypedDict, cast
 
 from django.core.files.storage import Storage, default_storage
-from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from django.core.files.uploadedfile import UploadedFile
 
 
 class FileRef(TypedDict):
@@ -22,6 +21,66 @@ class FileRef(TypedDict):
     charset: str | None
 
 
+class StoredUpload(UploadedFile):
+    """A stored upload handed back as a file, without the bytes attached.
+
+    Everything a replayed form usually asks of an upload — `name`, `size`,
+    `content_type`, `charset` — the ref already knows, so this answers
+    those from the ref and goes to the backend only when something reaches
+    for the content. That matters because the walk re-proves every
+    answered step on every request: a run with three uploads would
+    otherwise read all three off the backend to re-derive facts it had
+    written down, and the cost of a request would scale with the size of
+    the files rather than with the length of the run.
+
+    A validator that does read the bytes (`ImageField`, a MIME sniff) or a
+    `form_valid()` that hands the file on to storage still gets them, at
+    the moment it asks. So does anything reading it a second time: `open()`
+    rewinds a live handle and drops a closed one, so the next read fetches
+    it again rather than raising at a spent file.
+    """
+
+    def __init__(self, backend: Storage, ref: FileRef) -> None:
+        self.backend = backend
+        self.ref = ref
+        self._file: IO[Any] | None = None
+        super().__init__(
+            file=None,
+            name=ref["name"],
+            content_type=ref["content_type"],
+            size=ref["size"],
+            charset=ref["charset"],
+        )
+
+    @property
+    def file(self) -> IO[Any]:
+        if self._file is None:
+            # A Django `File` is the byte-reading protocol this attribute
+            # is for; it is `IO`-shaped without being an `IO` by name.
+            opened = self.backend.open(self.ref["tmp_name"], "rb")
+            self._file = cast("IO[Any]", opened)
+        return self._file
+
+    @file.setter
+    def file(self, value: IO[Any] | None) -> None:
+        # `File.__init__` assigns through here with the `None` passed
+        # above; the setter is what stops that assignment shadowing the
+        # property and taking the laziness with it.
+        self._file = value
+
+    def open(self, mode: str | None = None, *args: Any, **kwargs: Any) -> StoredUpload:
+        if self._file is not None:
+            if self._file.closed:
+                self._file = None
+            else:
+                self._file.seek(0)
+        return self
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.close()
+
+
 class WizardFileStorage:
     """File-backed sibling of `SessionStorage` for wizard uploads.
 
@@ -32,10 +91,11 @@ class WizardFileStorage:
     structure, not in the storage path.
 
     A "ref" is a dict of `{tmp_name, name, content_type, size, charset}`
-    capturing both the storage key and enough metadata to reconstitute an
-    `InMemoryUploadedFile` with the same shape as the original upload — so
-    form validators that inspect `content_type` (image checks, MIME
-    sniffing) see the same value on replay as on first POST.
+    capturing both the storage key and enough metadata to reconstitute a
+    file of the same shape as the original upload — so form validators
+    that inspect `content_type` (image checks, MIME sniffing) see the same
+    value on replay as on first POST, without the bytes being read to tell
+    them.
     """
 
     prefix = "gandalf"
@@ -65,18 +125,14 @@ class WizardFileStorage:
             "charset": uploaded_file.charset,
         }
 
-    def open(self, ref: FileRef) -> InMemoryUploadedFile:
-        with self.backend.open(ref["tmp_name"], "rb") as stored:
-            content = stored.read()
-        buffer = BytesIO(content)
-        return InMemoryUploadedFile(
-            file=buffer,
-            field_name=None,
-            name=ref["name"],
-            content_type=ref["content_type"],
-            size=ref["size"],
-            charset=ref["charset"],
-        )
+    def open(self, ref: FileRef) -> StoredUpload:
+        """The stored upload as a file, fetched only if it is read.
+
+        See `StoredUpload`: the ref carries the metadata, so replaying an
+        answered step costs nothing on the backend unless the form's own
+        validation reaches for the content.
+        """
+        return StoredUpload(self.backend, ref)
 
     def delete(self, ref: FileRef) -> None:
         self.backend.delete(ref["tmp_name"])

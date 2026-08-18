@@ -26,6 +26,23 @@ class _OverwritingStorage(FileSystemStorage):
         return super()._save(name, content)
 
 
+class _CountingStorage(FileSystemStorage):
+    """A backend that reports when it was actually asked for bytes.
+
+    Every read of a stored blob goes through `Storage.open`, so recording
+    the names it is called with is the difference between "the walk knows
+    a file is there" and "the walk pulled it off disk".
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.opened = []
+
+    def _open(self, name, mode="rb"):
+        self.opened.append(name)
+        return super()._open(name, mode)
+
+
 @pytest.fixture
 def file_storage():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -37,6 +54,12 @@ def file_storage():
 def overwriting_file_storage():
     with tempfile.TemporaryDirectory() as tmpdir:
         yield WizardFileStorage(backend=_OverwritingStorage(location=tmpdir))
+
+
+@pytest.fixture
+def counting_file_storage():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield WizardFileStorage(backend=_CountingStorage(location=tmpdir))
 
 
 def test_wizard_file_storage_save_returns_ref_with_metadata(file_storage):
@@ -130,6 +153,92 @@ def test_wizard_file_storage_delete_run_does_not_touch_other_runs(file_storage):
 
 def test_wizard_file_storage_delete_run_tolerates_missing_prefix(file_storage):
     file_storage.delete_run("never-existed")
+
+
+def test_wizard_file_storage_open_reads_nothing_until_the_bytes_are_asked_for(
+    counting_file_storage,
+):
+    """Issue #97: the walk reopens every stored upload of every answered
+    step on every request, and a plain `FileField` only ever looks at the
+    name and the size. Reading the blob to answer that is a large amount
+    of memory spent on a question the ref already answers."""
+    ref = counting_file_storage.save(
+        "run-1", SimpleUploadedFile("ada.txt", b"hello", content_type="text/plain")
+    )
+
+    reopened = counting_file_storage.open(ref)
+
+    assert reopened.name == "ada.txt"
+    assert reopened.size == 5
+    assert reopened.content_type == "text/plain"
+    assert bool(reopened) is True
+    assert counting_file_storage.backend.opened == []
+
+
+def test_wizard_file_storage_open_reads_the_backend_once_the_bytes_are_wanted(
+    counting_file_storage,
+):
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+
+    content = counting_file_storage.open(ref).read()
+
+    assert content == b"hello"
+    assert counting_file_storage.backend.opened == [ref["tmp_name"]]
+
+
+def test_wizard_file_storage_open_yields_its_bytes_in_chunks(counting_file_storage):
+    """What `form_valid()` does with the file it was handed: hand it on to
+    a storage backend, which saves it a chunk at a time rather than whole."""
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+
+    chunks = b"".join(counting_file_storage.open(ref).chunks())
+
+    assert chunks == b"hello"
+
+
+def test_wizard_file_storage_open_closes_a_file_it_never_read_for_free(
+    counting_file_storage,
+):
+    """Django closes `request.FILES` when the request ends. An upload the
+    replay never read must not be fetched off the backend just to shut."""
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+
+    counting_file_storage.open(ref).close()
+
+    assert counting_file_storage.backend.opened == []
+
+
+def test_wizard_file_storage_rewinding_an_unread_file_fetches_nothing(
+    counting_file_storage,
+):
+    """`File.open()` means "start from the beginning", and a file nothing
+    has read is already there — so the rewind is not what pulls it off the
+    backend either."""
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+
+    rewound = counting_file_storage.open(ref).open()
+
+    assert counting_file_storage.backend.opened == []
+    assert rewound.read() == b"hello"
+
+
+def test_wizard_file_storage_open_reads_again_after_being_closed(
+    counting_file_storage,
+):
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+    reopened = counting_file_storage.open(ref)
+    assert reopened.read() == b"hello"
+    reopened.close()
+
+    assert reopened.open().read() == b"hello"
+
+
+def test_wizard_file_storage_open_rereads_from_the_start(counting_file_storage):
+    ref = counting_file_storage.save("run-1", SimpleUploadedFile("ada.txt", b"hello"))
+    reopened = counting_file_storage.open(ref)
+    assert reopened.read() == b"hello"
+
+    assert reopened.open().read() == b"hello"
 
 
 def test_wizard_file_storage_defaults_to_django_default_storage():

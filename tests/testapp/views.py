@@ -51,6 +51,7 @@ from .forms import (
     ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
+    SniffedPhotoForm,
     SummaryDisplayForm,
     SummaryFieldsForm,
     ToppingsForm,
@@ -848,6 +849,25 @@ class FileUploadingWizardViewSet(WizardViewSet):
         photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"completed {filename}")
+
+
+class SniffedFileWizardViewSet(WizardViewSet):
+    description = (
+        "Upload wizard whose first step validates by reading the file, not by "
+        "reading its name; done() reads the stored bytes back and echoes them."
+    )
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = (
+        Wizard().step(SniffedPhotoForm, name="photo").step(FirstStepForm, name="first")
+    )
+
+    url_name = "sniffed-file-wizard"
+
+    def done(self, bound_wizard):
+        photo_step = bound_wizard.path.find_step(name="photo")
+        with photo_step.form.cleaned_data["photo"] as photo:
+            contents = photo.read()
+        return HttpResponse(b"completed " + contents)
 
 
 class FileDoneWizardViewSet(WizardViewSet):

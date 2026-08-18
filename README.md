@@ -647,8 +647,12 @@ class FileUploadWizardViewSet(WizardViewSet):
 
 On replay, Gandalf reopens each stored file and re-injects it into
 `request.FILES` before re-validating the step, so validators that inspect the
-upload see the same value they saw originally. Editing respects keep-vs-replace
-per field. The run's files are cleaned up automatically once `done()`'s
+upload see the same value they saw originally. The bytes stay on the backend
+until something asks for them: a plain `FileField` only reads the name and the
+size, both of which the ref already carries, so a run's requests cost the same
+whether its uploads are a kilobyte or a hundred megabytes. A validator that
+does read the content — `ImageField`, a MIME sniff — still gets it, fetched at
+the moment it asks. Editing respects keep-vs-replace per field. The run's files are cleaned up automatically once `done()`'s
 response has been rendered — so a `done()` that hands back a
 `TemplateResponse` can still read the finished run back in the template,
 iterating `wizard.path` and touching a file step's `.form` to reopen its
@@ -1749,7 +1753,13 @@ which is the check a form's own `clean()` cannot make:
 ```python
 placement = driver.placements()["licence"]
 document = driver.open_file(placement.files["scan"])   # -> UploadedFile
+contents = document.read()
 ```
+
+Opening is free; the read is what goes to the backend. A caller that must not
+pull a large file into memory can look at `ref["size"]` and decline, and one
+that does read has to do it while the run still holds the file — the bytes are
+fetched where they are read, not where the file is opened.
 
 And a driver can place one, exactly as a multipart POST would:
 
