@@ -23,6 +23,8 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel  # noqa: E4
 
 from gandalf.contrib.agent import build_agent  # noqa: E402
 from gandalf.contrib.agent.agui import endpoint_for  # noqa: E402
+from gandalf.driver import RunDriver  # noqa: E402
+from gandalf.testing import stored_runs  # noqa: E402
 from tests.testapp.views import WalkCountingWizardViewSet  # noqa: E402
 
 
@@ -36,6 +38,22 @@ def _model(reply="Started."):
             yield {0: DeltaToolCall(name="start_run", json_args="{}")}
         else:
             yield reply
+
+    return FunctionModel(stream_function=stream)
+
+
+def _resuming_model(run_id):
+    """A model that picks up the run it is told about, and nothing else."""
+
+    async def stream(messages, info):
+        if not any(part.part_kind == "tool-return" for part in messages[-1].parts):
+            yield {
+                0: DeltaToolCall(
+                    name="resume_run", json_args=json.dumps({"run_id": run_id})
+                )
+            }
+        else:
+            yield "Picked it up."
 
     return FunctionModel(stream_function=stream)
 
@@ -96,6 +114,45 @@ def test_the_run_the_agent_started_is_a_real_one(agui_client):
     assert snapshots
     assert snapshots[-1]["snapshot"]["run_id"]
     assert snapshots[-1]["snapshot"]["step"] == "first"
+
+
+def test_the_run_the_agent_started_is_in_the_browsers_own_session(agui_client):
+    """The shipped storage is session-backed, so a chat that could not
+    reach the browser's session could only ever fill a run nobody would
+    open. The endpoint hands the agent the session the request arrived on
+    — and, because the response streams, the run is written back as the
+    tool makes it rather than left for a middleware that has already run."""
+    asyncio.run(_post(agui_client))
+
+    runs = stored_runs(agui_client)
+
+    assert len(runs) == 1
+
+
+def test_the_agent_picks_up_a_run_the_person_started(agui_client):
+    """The other direction, and the handover the design is for: somebody
+    fills a step in the form, then asks the chat to carry on with it."""
+    # Reading `.session` off the client creates one and cookies it, which
+    # is the browser this test is standing in for.
+    driver = RunDriver.begin(WalkCountingWizardViewSet, session=agui_client.session)
+    driver.submit({"name": "Ada"})
+
+    view = endpoint_for(
+        build_agent(WalkCountingWizardViewSet, _resuming_model(driver.run_id))
+    )
+    with override_settings(ROOT_URLCONF=_urlconf(view)):
+        _, body = asyncio.run(_post(agui_client))
+
+    snapshot = [
+        json.loads(line[len("data: ") :])
+        for line in body.splitlines()
+        if line.startswith("data: ") and "STATE_SNAPSHOT" in line
+    ][-1]["snapshot"]
+    assert snapshot["run_id"] == driver.run_id
+    assert snapshot["answers"]["first"] == {"name": "Ada"}
+    # Not a copy of one: the agent is walking the run itself, so where it
+    # leaves the run is where the person finds it.
+    assert snapshot["step"] == "second"
 
 
 def test_page_context_can_be_turned_into_run_instructions():

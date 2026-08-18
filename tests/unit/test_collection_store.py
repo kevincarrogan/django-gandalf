@@ -8,6 +8,9 @@ item exists from the moment it is added, which is what lets a half-finished one
 still have a row.
 """
 
+from django.contrib.sessions.backends.cache import SessionStore
+
+from gandalf.context import WizardContext
 from gandalf.storage import SessionCollectionStore
 
 
@@ -21,8 +24,30 @@ class _Request:
         if session:
             self.session.update(session)
 
+    def session_changed(self):
+        # `WizardContext` marks the session and then writes it back when
+        # nothing else will. A dict has nowhere to write it back to, so
+        # what a storage's caller sees of the call is the mark.
+        self.session.modified = True
+
 
 _PAYLOAD = {"version": 1, "label": "guests", "state": [{"step": {"name": "Ada"}}]}
+
+
+def test_an_item_added_with_no_response_coming_still_reaches_the_store():
+    """The registry is session-scoped even where the runs are not, so this
+    is what an agent adding an item depends on: with no request behind the
+    context there is no middleware to save the session later, and an item
+    written into an unsaved one is an item nobody can list."""
+    session = SessionStore()
+    session.create()
+    store = SessionCollectionStore(WizardContext(session=session))
+
+    store.add_item("guests", "a")
+
+    reopened = SessionStore(session_key=session.session_key)
+    listed = SessionCollectionStore(WizardContext(session=reopened))
+    assert listed.item_ids("guests") == ["a"]
 
 
 # --- the item registry -----------------------------------------------------

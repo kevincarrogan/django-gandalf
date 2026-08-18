@@ -21,6 +21,12 @@ class _Request:
         if session:
             self.session.update(session)
 
+    def session_changed(self):
+        # `WizardContext` marks the session and then writes it back when
+        # nothing else will. A dict has nowhere to write it back to, so
+        # what a storage's caller sees of the call is the mark.
+        self.session.modified = True
+
 
 _PAYLOAD = {"version": 1, "label": "contact", "state": [{"step": {"name": "Ada"}}]}
 

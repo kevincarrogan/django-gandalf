@@ -96,7 +96,9 @@ description without reading the answers twice. Runs are addressed by
 `RunDriver.resume(ViewSet, run_id, actor=...)` continues one, scoping it
 to whoever it is for; pass `session=` instead to share a session-backed
 storage with a browser, or a whole `context=` when you have one. No
-request is involved, and none is fabricated.
+request is involved, and none is fabricated — so a session given this way
+is saved as the walk changes it, rather than by the middleware that is not
+coming (*Sessions and the streamed response*).
 
 The toolset is runnable end to end:
 
@@ -205,6 +207,10 @@ Two things follow:
   session, so the run the agent filled is the run the browser opens, and
   the owner scoping (`retrieve_run` raising `RunNotFound` for someone
   else's run) is the authorisation.
+- With the shipped `SessionStorage` the run is in the session, and the
+  AG-UI endpoint hands the agent the session the chat request arrived on
+  — the same trust as running it as `request.user`. See *Sessions and the
+  streamed response* below for the one setting that has to hold.
 - The handover is just a URL: `bound_wizard.entry_url("confirm")` is the
   wizard's own step URL. Nothing is exported, copied, or re-validated
   specially — the person's first page load walks the same answers the
@@ -216,6 +222,40 @@ brings them back to the summary. `examples/copilotkit/` is this
 end-to-end (chat → filled run → review → edit → quote), and
 `tests/functional/test_hybrid_handoff.py` proves it with no model and no
 browser.
+
+## Sessions and the streamed response
+
+An agent driving the shipped `SessionStorage` works on the browser's own
+session, which is what makes a run it starts a run the person can open.
+That needs a **server-side session backend** — `SESSION_ENGINE` set to
+`db`, `cache`, `cached_db` or `file`. With `signed_cookies` the agent can
+read the session and cannot write to it.
+
+The reason is the streaming response rather than anything about agents.
+`SessionMiddleware` saves the session as the response goes past, and for
+a `StreamingHttpResponse` that moment is when the view *returns* — before
+the first event, let alone the first tool call. So a run created while
+the stream is running has missed the only save the request had, whatever
+the backend. `WizardContext.persist()` is the answer: a context holding a
+session with no request behind it writes each change back as it is made,
+which a server-side store can do and a cookie cannot, its store being a
+response header that has already gone.
+
+That covers the driven path generally, not just this endpoint. A
+management command or a test given somebody's session by
+`RunDriver.begin(ViewSet, session=...)` has no response either, and now
+saves as it goes for the same reason. On the HTTP path nothing changes —
+the request is there, the middleware is coming, and `persist()` returns
+without doing anything.
+
+One wrinkle is handled in the endpoint rather than the context: a visitor
+whose very first act is to open the chat has no session key yet, and a key
+reaches the browser on a `Set-Cookie` header that goes out with those same
+early headers. The endpoint creates the key before it starts streaming, so
+what the tools write is written somewhere the next request can ask for.
+
+Storage that scopes runs by `actor` — `ModelStorage` in the demo — sidesteps
+all of this, which is the other reason to reach for it.
 
 ## Validation errors
 

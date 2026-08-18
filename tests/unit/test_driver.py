@@ -19,6 +19,7 @@ from django.core.validators import (
     MinValueValidator,
     RegexValidator,
 )
+from django.contrib.sessions.backends.cache import SessionStore
 from django.http import HttpResponse
 from django.test import override_settings
 
@@ -35,7 +36,7 @@ from gandalf.driver import (
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.form_views import StepFormView
 from gandalf.runtime import StepNotFound
-from gandalf.storage import RunNotFound
+from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard, condition, on_field
 from tests.testapp.forms import (
@@ -537,6 +538,61 @@ def test_a_context_takes_the_session_and_actor_it_is_given():
 
     assert context.session is session
     assert context.actor is user
+
+
+class _RecordingSession(dict):
+    """A session that counts the times it was asked to write itself back."""
+
+    modified = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.saves = 0
+
+    def save(self):
+        self.saves += 1
+
+
+def test_a_context_with_no_request_writes_the_session_back_itself():
+    """Nobody else is going to. `SessionMiddleware` saves a session as a
+    response goes past, and the callers that build a context by hand have
+    no response — or, for the AG-UI endpoint, one that went out before the
+    first tool wrote anything into the run."""
+    session = _RecordingSession()
+    context = WizardContext(session=session)
+
+    context.session_changed()
+
+    assert session.modified is True
+    assert session.saves == 1
+
+
+def test_a_context_from_a_request_leaves_the_saving_to_the_middleware(rf):
+    """The other half, and the reason absence of a request is the signal:
+    on the HTTP path the middleware is still to come, and saving per write
+    would turn one save per submission into several."""
+    request = rf.get("/wizard/")
+    request.session = _RecordingSession()
+    context = WizardContext.from_request(request)
+
+    context.session_changed()
+
+    assert request.session.modified is True
+    assert request.session.saves == 0
+
+
+def test_a_driven_run_lands_in_the_session_store_it_was_given():
+    """End to end through a real Django session backend: a run driven with
+    somebody's session is one their next request can find. Before this, the
+    answers sat in an unsaved store and went out with the process."""
+    session = SessionStore()
+    session.create()
+
+    driver = RunDriver.begin(_SignupViewSet, session=session)
+    driver.submit({"name": "Ada"})
+
+    reopened = SessionStore(session_key=session.session_key)
+    assert driver.run_id in reopened[SessionStorage.SESSION_KEY]
 
 
 def test_a_driven_context_hands_a_step_view_a_usable_request():

@@ -1623,7 +1623,7 @@ class StashingWizardViewSet(WizardViewSet):
     url_name = "stashing-wizard"
 
     def done(self, bound_wizard):
-        SessionStashStore(self.request).put(
+        SessionStashStore(bound_wizard.context).put(
             "contact", bound_wizard.stash(label="contact")
         )
         first = bound_wizard.path.find_step(name="first")
@@ -1652,7 +1652,7 @@ class RequiredPhotoStashingWizardViewSet(WizardViewSet):
     url_name = "required-photo-stashing-wizard"
 
     def done(self, bound_wizard):
-        SessionStashStore(self.request).put(
+        SessionStashStore(bound_wizard.context).put(
             "required-photo", bound_wizard.stash(label="required-photo")
         )
         return HttpResponse(b"stashed with photo")
@@ -1664,7 +1664,7 @@ def _resurrect_stash(request, viewset_class, key):
     The stash is read, not popped: re-opening it for another edit keeps
     working, and re-completing the wizard overwrites it with the new
     answers."""
-    stashes = SessionStashStore(request)
+    stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get(key)
         url = viewset_class.resurrect(request, payload, expected_label=key)
@@ -1714,13 +1714,13 @@ class BranchingStashingWizardViewSet(WizardViewSet):
     url_name = "branching-stashing-wizard"
 
     def done(self, bound_wizard):
-        SessionStashStore(self.request).put("sections", bound_wizard.stash())
+        SessionStashStore(bound_wizard.context).put("sections", bound_wizard.stash())
         return HttpResponse(b"stashed sections")
 
 
 def resurrect_sections_stash(request):
     """Consume the sections stash and reopen it at the count step."""
-    stashes = SessionStashStore(request)
+    stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.pop("sections")
         url = BranchingStashingWizardViewSet.resurrect(request, payload, step="count")
@@ -1731,11 +1731,12 @@ def resurrect_sections_stash(request):
 
 def stashed_section_keys(request):
     """The bigger-collection page's view of which sections are stashed."""
-    return HttpResponse(",".join(SessionStashStore(request).keys()))
+    stashes = SessionStashStore(WizardContext.from_request(request))
+    return HttpResponse(",".join(stashes.keys()))
 
 
 def discard_sections_stash(request):
-    SessionStashStore(request).delete("sections")
+    SessionStashStore(WizardContext.from_request(request)).delete("sections")
     return HttpResponse(b"discarded")
 
 

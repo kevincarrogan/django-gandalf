@@ -37,14 +37,14 @@ class SessionStorage:
         run_id = str(uuid.uuid4())
         gandalf_runs = self.context.session.setdefault(self.SESSION_KEY, {})
         gandalf_runs[run_id] = {}
-        self.context.session.modified = True
+        self.context.session_changed()
         return run_id
 
     def retrieve_run(self, run_id: str) -> str:
         """Return the run id as given, raising `RunNotFound` when this
         session holds no such run."""
         self.get_run_data(run_id)
-        self.context.session.modified = True
+        self.context.session_changed()
         return run_id
 
     def get_run_data(self, run_id: str) -> RunData:
@@ -60,14 +60,14 @@ class SessionStorage:
     def set_state(self, run_id: str, state: State) -> None:
         run_data = self.get_run_data(run_id)
         run_data["state"] = state
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def delete_run(self, run_id: str) -> None:
         """Forget the run entirely. Idempotent: deleting an unknown run is
         not an error, so callers need not check first."""
         gandalf_runs = self._runs()
         gandalf_runs.pop(str(run_id), None)
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def complete_run(self, run_id: str) -> None:
         """Replace the run's answers with a completion tombstone.
@@ -83,7 +83,7 @@ class SessionStorage:
         gandalf_runs.pop(run_id, None)
         gandalf_runs[run_id] = {"completed": True}
         self._prune_completed(gandalf_runs)
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def is_run_complete(self, run_id: str) -> bool:
         run_data = self._runs().get(str(run_id))
@@ -122,7 +122,7 @@ class SessionStashStore:
         """Store `payload` under `key`, replacing any existing stash."""
         stashes = self.context.session.setdefault(self.SESSION_KEY, {})
         stashes[key] = payload
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def get(self, key: str) -> Stash:
         """Return the stash under `key`, raising `StashNotFound` without one."""
@@ -136,14 +136,14 @@ class SessionStashStore:
         without one."""
         payload = self.get(key)
         del self._stashes()[key]
-        self.context.session.modified = True
+        self.context.session_changed()
         return payload
 
     def delete(self, key: str) -> None:
         """Forget the stash under `key`. Idempotent: deleting an unknown key
         is not an error, so callers need not check first."""
         self._stashes().pop(key, None)
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def keys(self) -> list[str]:
         """The stored stash keys, in insertion order."""
@@ -186,14 +186,14 @@ class SessionSectionStore:
         run already recorded for it."""
         runs = self.context.session.setdefault(self.RUNS_SESSION_KEY, {})
         runs[key] = str(run_id)
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def clear_run(self, key: str) -> None:
         """Forget where this section was being answered. Idempotent: clearing
         a section with no run is not an error, so callers need not check
         first."""
         self._runs().pop(key, None)
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def get_stash(self, key: str) -> Stash:
         """The finished section's stash, raising `StashNotFound` without
@@ -285,7 +285,7 @@ class SessionCollectionStore(SessionSectionStore):
         if self.has_item(key, item_id):
             return
         self._collection(key)["items"].append({"id": item_id, "title": None})
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def remove_item(self, key: str, item_id: str) -> None:
         """Forget an item and the title cached for it, keeping the order of
@@ -293,7 +293,7 @@ class SessionCollectionStore(SessionSectionStore):
         callers need not check first."""
         record = self._collection(key)
         record["items"] = [item for item in record["items"] if item["id"] != item_id]
-        self.context.session.modified = True
+        self.context.session_changed()
 
     def get_item_title(self, key: str, item_id: str) -> str | None:
         """The title cached at this item's last completion, or None for one
@@ -310,7 +310,7 @@ class SessionCollectionStore(SessionSectionStore):
         for item in self._collection(key)["items"]:
             if item["id"] == item_id:
                 item["title"] = title
-                self.context.session.modified = True
+                self.context.session_changed()
                 return
 
     def is_declared_done(self, key: str) -> bool:
@@ -324,4 +324,4 @@ class SessionCollectionStore(SessionSectionStore):
     def set_declared_done(self, key: str, declared_done: bool) -> None:
         """Record or withdraw the user's answer to *add another*."""
         self._collection(key)["declared_done"] = declared_done
-        self.context.session.modified = True
+        self.context.session_changed()

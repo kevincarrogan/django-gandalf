@@ -16,6 +16,7 @@ from django import forms
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from gandalf.collections import CollectionView, ItemSectionMixin
+from gandalf.context import WizardContext
 from gandalf.form_views import StepFormView
 from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, StashNotFound
@@ -277,14 +278,14 @@ class ContactSectionWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         # Keep the finished answers so this section can be re-opened later.
-        SessionStashStore(self.request).put(
+        SessionStashStore(bound_wizard.context).put(
             "contact", bound_wizard.stash(label="contact")
         )
         return HttpResponse("Contact details saved.")
 
 
 def reopen_contact(request):
-    stashes = SessionStashStore(request)
+    stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get("contact")
         url = ContactSectionWizardViewSet.resurrect(

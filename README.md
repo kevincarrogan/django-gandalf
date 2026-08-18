@@ -990,7 +990,11 @@ class CheckoutWizardViewSet(WizardViewSet):
 ```
 
 **Storage** is session-backed. Gandalf ships `SessionStorage`, which keeps plain
-JSON in `request.session` (Django's session backend handles persistence). It is
+JSON in the session behind the walk's `WizardContext` — the browser's own when a
+browser is driving, and whichever one an agent or a command was handed otherwise.
+It records a write with `context.session_changed()`: that marks the session for
+`SessionMiddleware`, and saves it there and then when there is no request for the
+middleware to answer. It is
 the one touch point set on the viewset rather than via `.configure(...)`, because
 it must exist *before* the wizard does — a dynamic `get_wizard()` reads stored
 state to shape itself:
@@ -1071,6 +1075,7 @@ and `done()` fires again for the new run when they finish.
 from django.http import HttpResponse
 from django.shortcuts import redirect
 
+from gandalf.context import WizardContext
 from gandalf.storage import SessionStashStore, StashNotFound
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import InvalidStash, Wizard
@@ -1087,14 +1092,17 @@ class ContactSectionWizardViewSet(WizardViewSet):
 
     def done(self, bound_wizard):
         # Keep the finished answers so this section can be re-opened later.
-        SessionStashStore(self.request).put(
+        # A session store is given the walk's environment, which `done()`
+        # is holding: `bound_wizard.context`. Outside a walk, build one
+        # from the request with `WizardContext.from_request(request)`.
+        SessionStashStore(bound_wizard.context).put(
             "contact", bound_wizard.stash(label="contact")
         )
         return HttpResponse("Contact details saved.")
 
 
 def reopen_contact(request):
-    stashes = SessionStashStore(request)
+    stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get("contact")
         url = ContactSectionWizardViewSet.resurrect(

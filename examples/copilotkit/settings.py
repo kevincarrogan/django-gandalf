@@ -2,7 +2,7 @@
 
 The test app's settings plus the three things a demo needs — a file-backed
 database (the agent's runs have to outlive the request that made them),
-this package's templates and URLconf, and signed-cookie sessions so the
+this package's templates and URLconf, and database-backed sessions so the
 browser stays logged in as the demo user across a restart.
 """
 
@@ -33,7 +33,14 @@ DATABASES = {
 
 ROOT_URLCONF = "examples.copilotkit.urls"
 
-SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+# Signed cookies would do for staying logged in, and cannot do for the
+# agent. The AG-UI response streams, so `SessionMiddleware` has already
+# been and gone by the time a tool writes anything, and a cookie session
+# has nowhere else to be written — anything the agent put in the shipped
+# `SessionStorage` would vanish with the response. A server-side backend
+# is saved as it goes (`WizardContext.persist`), and the file-backed
+# database above outlives a restart just as a cookie did.
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",

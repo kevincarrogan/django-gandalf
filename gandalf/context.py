@@ -213,6 +213,51 @@ class WizardContext:
             self._session = session
         return session
 
+    def session_changed(self) -> None:
+        """Say the session changed — the one call a session-backed storage
+        makes after a write.
+
+        Marking it is what a browser request needs; `SessionMiddleware`
+        saves the session on the way out. `persist()` is for the callers
+        that have no way out, and is a no-op for the ones that do.
+        """
+        self.session.modified = True
+        self.persist()
+
+    def persist(self) -> None:
+        """Write the session back now, because nothing later will.
+
+        A session normally reaches its store through `SessionMiddleware`,
+        which saves it as the response goes past. A context with no request
+        behind it never reaches that moment, and there are two such
+        callers. A driven run — a management command, a test, an agent
+        tool — handed a real session by `session=` has no response at all
+        for the middleware to save against. And the AG-UI
+        endpoint's response is a *stream*: the middleware ran when the view
+        returned the `StreamingHttpResponse`, before the first tool wrote
+        anything, so every run an agent starts would be gone by the time
+        the browser asked for it.
+
+        Absence of a request is what says so, rather than a flag somebody
+        has to remember: a request is the thing that implies a response
+        coming back to carry the session home. On the HTTP path this
+        returns immediately, which is the point — saving on every write
+        would turn one save per form submission into three.
+
+        A cookie-backed session cannot be written back this way at all: its
+        store *is* a response header, and that header has gone. `save()` is
+        still the backend's call to answer, and the run stays readable for
+        the rest of this walk — it simply will not be there on the next
+        request. Agent-written runs need a server-side session backend.
+        """
+        if self.request is not None:
+            return
+        # Duck-typed, like the protocol itself: Django's stores save, the
+        # in-memory `Session` above has nowhere to save to.
+        save = getattr(self.session, "save", None)
+        if save is not None:
+            save()
+
     def http_request(self) -> HttpRequest:
         """A request to dispatch a step's `FormView` with.
 
