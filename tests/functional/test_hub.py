@@ -146,6 +146,32 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
     assert stored_section_run(client, "contact") is None
 
 
+def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client):
+    """A stash is the one thing that carries answers out of the session they
+    were given to, and a hub's lives on past the run. New answers never carry
+    a token — the viewset drops it as the POST is read — but a run already in
+    flight when that landed does, so the way out is swept too."""
+    client.get(_door("contact"), follow=True)
+    run_id = stored_section_run(client, "contact")
+    seed_run(
+        client,
+        run_id,
+        {"state": [{"step": {"name": "Ada", "csrfmiddlewaretoken": "sekrit"}}]},
+    )
+
+    for step, data in [("email", {"email": "ada@example.com"}), ("review", {})]:
+        client.post(
+            reverse(
+                "readme-hub-contact-step",
+                kwargs={"run_id": run_id, "gandalf_step": step},
+            ),
+            data,
+            follow=True,
+        )
+
+    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Ada"}}
+
+
 def test_sections_progress_independently_of_each_other(client):
     _complete_contact(client)
     client.get(_door("address"), follow=True)

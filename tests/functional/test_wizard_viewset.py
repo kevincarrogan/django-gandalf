@@ -147,6 +147,25 @@ def test_linear_wizard_replaces_invalid_submission_on_next_post(wizard_driver):
     ]
 
 
+def test_the_csrf_token_a_browser_posts_is_not_stored_as_an_answer(wizard_driver):
+    """Every form a browser submits carries `csrfmiddlewaretoken`, and it
+    answers nothing. Stored, it rides into `stash()` and out to wherever the
+    application keeps one — so a session's CSRF secret, which is what the
+    token unmasks to, ends up in a durable store nobody meant to put it in.
+    The middleware has already checked it long before the viewset reads the
+    POST, so dropping it here costs the protection nothing.
+    """
+    run = wizard_driver("linear-wizard").start()
+
+    run.post_step(
+        "first", {"name": "Ada", "csrfmiddlewaretoken": "sekrit"}, follow=True
+    )
+
+    assert run.state == [
+        {"step": {"name": "Ada"}},
+    ]
+
+
 def test_wizard_preserves_valid_previous_submission_when_posting_next_step(
     routed_run,
 ):

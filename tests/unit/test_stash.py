@@ -78,6 +78,21 @@ def test_stash_strips_file_refs_but_keeps_the_step_data(request_factory):
     assert payload["state"] == [{"step": {"caption": "Me"}}]
 
 
+def test_stash_drops_a_csrf_token_an_earlier_version_stored(request_factory):
+    """New submissions never carry one — the viewset drops it as the POST is
+    read. A run that was already in flight when that landed still holds one,
+    and a stash is the one thing that carries state out of the session it was
+    issued for, so it is swept here too."""
+    bound = _bound(
+        request_factory(),
+        [{"step": {"first_name": "Ada", "csrfmiddlewaretoken": "sekrit"}}],
+    )
+
+    payload = bound.stash()
+
+    assert payload["state"] == [{"step": {"first_name": "Ada"}}]
+
+
 def test_stash_keeps_what_was_recorded_about_a_placement(request_factory):
     """File refs go because the bytes do not outlive the run. Metadata is
     not a pointer to anything — it describes the answer beside it, and the

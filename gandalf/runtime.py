@@ -53,6 +53,17 @@ Claim: TypeAlias = "Context | tree.Step"
 logger = logging.getLogger(__name__)
 
 
+#: Django's CSRF form field, dropped from every submission on the way in.
+#: `{% csrf_token %}` puts it in each step's form, so a browser posts one
+#: with every answer, and it answers nothing: `CsrfViewMiddleware` has
+#: already checked it by the time a viewset reads the POST, and a replayed
+#: submission is dispatched through a synthetic request no middleware sees.
+#: Stored, it would be the session's CSRF secret sitting in state — and
+#: `stash()` carries state out of the session that issued it, to wherever
+#: the application keeps one.
+CSRF_FIELD = "csrfmiddlewaretoken"
+
+
 def submission_from_post(post: QueryDict) -> Submission:
     """Flatten a POST `QueryDict` into the stored submission shape.
 
@@ -61,10 +72,13 @@ def submission_from_post(post: QueryDict) -> Submission:
     with; every other key stores its single value. A stored submission is
     always rebuilt into a `QueryDict` before it reaches a widget, so a
     multi-valued field still reads a list back even when only one value was
-    submitted.
+    submitted. The CSRF token is dropped rather than stored — see
+    `CSRF_FIELD`.
     """
     return {
-        key: values[0] if len(values) == 1 else values for key, values in post.lists()
+        key: values[0] if len(values) == 1 else values
+        for key, values in post.lists()
+        if key != CSRF_FIELD
     }
 
 
@@ -99,8 +113,22 @@ class InvalidStash(ValueError):
     unsupported version, or a label that does not match the expected one."""
 
 
-def _strip_file_refs(entries):
-    """Return `entries` with every `files` key dropped, at any depth.
+def _without_csrf(submission):
+    """A stored submission with any CSRF token dropped.
+
+    Nothing writes one any more — `submission_from_post` drops it as the POST
+    is read — so this is for state an earlier version stored, still in flight
+    when that landed. Swept on the way into a stash because that is the one
+    thing that carries answers out of the session they were given to.
+    """
+    if not submission or CSRF_FIELD not in submission:
+        return submission
+    return {key: value for key, value in submission.items() if key != CSRF_FIELD}
+
+
+def _stripped_for_stash(entries):
+    """Return `entries` ready to leave the run: no `files` key at any depth,
+    and no CSRF token on any answer.
 
     A stash outlives the run, but the uploaded bytes do not — completion
     deletes them — so a payload must not carry refs to files that no longer
@@ -117,17 +145,17 @@ def _strip_file_refs(entries):
             if isinstance(arms, dict):
                 entry = {
                     "branch": {
-                        arm_id: _strip_file_refs(arm_entries)
+                        arm_id: _stripped_for_stash(arm_entries)
                         for arm_id, arm_entries in arms.items()
                     }
                 }
             else:
-                entry = {"branch": _strip_file_refs(arms)}
+                entry = {"branch": _stripped_for_stash(arms)}
         elif "expand" in entry:
-            entry = {"expand": _strip_file_refs(entry["expand"])}
+            entry = {"expand": _stripped_for_stash(entry["expand"])}
         else:
             metadata = entry.get("meta")
-            entry = {"step": entry.get("step")}
+            entry = {"step": _without_csrf(entry.get("step"))}
             if metadata:
                 entry["meta"] = metadata
         stripped.append(entry)
@@ -646,7 +674,7 @@ class BoundWizard:
         """
         payload = {
             "version": STASH_VERSION,
-            "state": _strip_file_refs(self.get_state()),
+            "state": _stripped_for_stash(self.get_state()),
         }
         if label is not None:
             payload["label"] = label
