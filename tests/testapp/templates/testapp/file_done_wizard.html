@@ -1,0 +1,18 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/file_done_wizard.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h2>All done</h2>
+        {% comment %}
+            The README's re-entrant pattern: read the finished run back
+            through the same steps that collected it. Touching a file step's
+            form here reopens its upload, which only works if the run's files
+            outlive the response being rendered.
+        {% endcomment %}
+        {% for step in wizard.path %}
+            <p>{{ step.form.cleaned_data.photo.name }}</p>
+        {% endfor %}
+    </div>
+{% endblock %}

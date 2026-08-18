@@ -14,6 +14,7 @@ from gandalf.viewsets import WizardViewSet
 from http import HTTPStatus
 
 from django.http import HttpResponse
+from django.template.response import TemplateResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
@@ -847,6 +848,25 @@ class FileUploadingWizardViewSet(WizardViewSet):
         photo_step = bound_wizard.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"completed {filename}")
+
+
+class FileDoneWizardViewSet(WizardViewSet):
+    description = (
+        "Upload wizard whose done() returns a TemplateResponse that reads the "
+        "finished run back — the summary page renders the file step's form, "
+        "which reopens the stored upload at render time rather than in done()."
+    )
+    template_name = "testapp/file_upload_wizard.html"
+    wizard = Wizard().step(ProfilePhotoForm, name="photo")
+
+    url_name = "file-done-wizard"
+
+    def done(self, bound_wizard):
+        return TemplateResponse(
+            self.request,
+            "testapp/file_done_wizard.html",
+            {"wizard": bound_wizard},
+        )
 
 
 class DynamicListPayloadWizardViewSet(WizardViewSet):

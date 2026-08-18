@@ -134,10 +134,10 @@ def _strip_file_refs(entries):
     return stripped
 
 
-# Sentinel for "no walk is in progress". Distinct from `None`, which is a
-# *valid* partial head: the prefix before the very first step is empty, and
-# reading the run from there must yield an empty path rather than starting a
-# nested walk.
+# Sentinel for "no tree is pinned" — no walk in progress, and no finished
+# run being held open. Distinct from `None`, which is a *valid* head: the
+# prefix before the very first step is empty, and reading the run from there
+# must yield an empty path rather than starting a nested walk.
 _NO_WALK = object()
 
 
@@ -587,6 +587,7 @@ class BoundWizard:
         self.run_id: str = None  # type: ignore[assignment]
         self.urls: WizardViewSet | None = None
         self._partial_runtime_head: Any = _NO_WALK
+        self._finished_runtime_head: Any = _NO_WALK
         self._render_context: tuple[Cursor, tree.Step] | None = None
         self._dispatcher: StepDispatcher | None = None
         self._file_storage: WizardFileStorage | None = None
@@ -689,6 +690,27 @@ class BoundWizard:
         self.cleanup_files()
         self.storage.delete_run(self.run_id)
 
+    def keep_readable(self) -> None:
+        """Pin this run's tree, so reading it survives `complete()`.
+
+        `done()` may hand back a `TemplateResponse`, which Django renders
+        after the view has returned — by which point the run it describes
+        has been tombstoned and its answers discarded. A completion page
+        reading the finished run back (the README's re-entrant pattern)
+        would find nothing there.
+
+        Pinning the tree keeps the run readable for as long as anything
+        holds this `BoundWizard`, which is what lets `WizardViewSet.finish`
+        tombstone immediately rather than waiting on a render: a template
+        that raises must not leave a run that can fire `done()` again.
+
+        The walk this costs is the run's last. It is taken after `done()`
+        has returned so that `done()` still sees a live run, and a `done()`
+        that writes state is still walking storage rather than a snapshot
+        of it.
+        """
+        self._finished_runtime_head = self.cursor().state
+
     def complete(self) -> None:
         """Tombstone this run: its answers are discarded and it is marked
         finished, so `done()` can never fire for it again."""
@@ -704,8 +726,10 @@ class BoundWizard:
     def runtime_tree(self) -> RuntimeNode | None:
         """The runtime tree behind the sealed cursor walk: validated up to
         the cursor, carried verbatim past it, with unreached branch regions
-        opaque. On a complete run this is the full tree. Reuses the render
-        context's walk when the viewset recorded one; otherwise walks once.
+        opaque. On a complete run this is the full tree. Reuses a tree
+        already pinned — by a walk in progress, or by `keep_readable()` on a
+        finished run — then the render context's walk when the viewset
+        recorded one; otherwise walks once.
 
         While a walk is in progress this is the prefix validated so far (see
         `walking()`), because that is the only tree that exists yet — which
@@ -714,6 +738,8 @@ class BoundWizard:
         """
         if self._partial_runtime_head is not _NO_WALK:
             return cast("RuntimeNode | None", self._partial_runtime_head)
+        if self._finished_runtime_head is not _NO_WALK:
+            return cast("RuntimeNode | None", self._finished_runtime_head)
         if self._render_context is not None:
             return self._render_context[0].state
         return self.cursor().state

@@ -5,6 +5,7 @@ from typing import Any, cast
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpRequest, HttpResponseBase
 from django.shortcuts import redirect
+from django.template.response import SimpleTemplateResponse
 from django.urls import URLPattern, path, reverse
 from django.views import View
 
@@ -592,9 +593,36 @@ class WizardViewSet(View):
         This is also the programmatic completion for a caller driving the
         run outside a dispatch — reach a cursor whose `node` is None, then
         call this rather than re-spelling the done/cleanup/complete order.
+
+        A `TemplateResponse` from `done()` is still unrendered here: Django
+        renders it later, in the response middleware. So a completion page
+        that reads the run back — iterating `wizard.path`, touching a file
+        step's `.form` — does its reading after this method has returned,
+        and both halves of retiring the run have to allow for that. The
+        tree is pinned (`keep_readable()`) before the answers are
+        discarded, and the files are swept once the response has rendered
+        rather than the moment `done()` returns.
+
+        The tombstone is not deferred with them. A completion template that
+        raises would otherwise leave a run whose `done()` has committed its
+        side effects and which a refresh can fire again.
+
+        The sweep is the render's to trigger, so a programmatic caller that
+        drops an unrendered `TemplateResponse` leaves the run's uploads
+        behind. That response is unusable in that state — reading its
+        `.content` raises — so a caller doing it has already discarded what
+        it asked for; anything driving a run headlessly wants a rendered or
+        plain response from `done()` regardless.
         """
         response = self.done(bound_wizard)
-        bound_wizard.cleanup_files()
+        bound_wizard.keep_readable()
+        if isinstance(response, SimpleTemplateResponse):
+            # Fires immediately if the response is already rendered.
+            response.add_post_render_callback(
+                lambda _rendered: bound_wizard.cleanup_files()
+            )
+        else:
+            bound_wizard.cleanup_files()
         bound_wizard.complete()
         return response
 

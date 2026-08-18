@@ -4,8 +4,11 @@ from http import HTTPStatus
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.template import engines
+from django.template.response import SimpleTemplateResponse
 from django.test import override_settings
 
+from gandalf.file_storage import WizardFileStorage
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
@@ -855,6 +858,61 @@ def test_wizard_viewset_finish_fires_done_and_retires_the_run(rf):
 
     assert response.content == b"done"
     assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
+
+
+def test_wizard_viewset_finish_keeps_a_deferred_response_readable_until_it_renders(
+    rf,
+):
+    """Issue #39: a `TemplateResponse` from `done()` renders after `finish()`
+    has returned, so a completion page reading the finished run back — the
+    README's re-entrant pattern — walks it and opens its uploads at that
+    point. Both have to outlive `finish()`. The tombstone does not wait with
+    them: a completion template that raises must not leave a run whose
+    `done()` can fire a second time."""
+
+    class DeferredDoneViewSet(WizardViewSet):
+        wizard = Wizard().step(ProfilePhotoForm, name="photo")
+        template_name = "testapp/linear_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+        def get_step_url(self, run_id, step_segment):
+            return f"/wizard/{run_id}/{step_segment}/"
+
+        def done(self, bound_wizard):
+            return SimpleTemplateResponse(
+                engines["django"].from_string(
+                    "{% for step in wizard.path %}"
+                    "{{ step.form.cleaned_data.photo.name }}"
+                    "{% endfor %}"
+                ),
+                {"wizard": bound_wizard},
+            )
+
+    request = rf.get("/wizard/existing-run/")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with override_settings(MEDIA_ROOT=tmpdir):
+            file_storage = WizardFileStorage()
+            ref = file_storage.save(
+                "existing-run", SimpleUploadedFile("portrait.jpg", b"binary")
+            )
+            request.session = _routed_session([{"step": {}, "files": {"photo": ref}}])
+            view = DeferredDoneViewSet()
+            view.setup(request)
+            bound_wizard = DeferredDoneViewSet.inspect(request, "existing-run")
+
+            response = view.finish(bound_wizard)
+
+            # Retired already, but not yet swept: the response has not rendered.
+            assert bound_wizard.is_complete
+            assert file_storage.backend.exists(ref["tmp_name"])
+
+            response.render()
+
+            assert response.content == b"portrait.jpg"
+            assert not file_storage.backend.exists(ref["tmp_name"])
 
 
 def test_wizard_viewset_finish_with_a_raising_done_leaves_the_run_resumable(rf):

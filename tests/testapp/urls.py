@@ -149,6 +149,7 @@ urlpatterns = [
     path("section-editing-wizard/", include(views.SectionEditingWizardViewSet.urls())),
     path("wizardless-wizard/", include(views.WizardlessWizardViewSet.urls())),
     path("file-editing-wizard/", include(views.FileEditingWizardViewSet.urls())),
+    path("file-done-wizard/", include(views.FileDoneWizardViewSet.urls())),
     path(
         "empty-branch-arm-context-finder-wizard/",
         include(views.EmptyBranchArmContextFinderViewSet.urls()),

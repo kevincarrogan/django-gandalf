@@ -1285,6 +1285,27 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
     assertContains(response, '<input type="text" name="name"')
 
 
+def test_file_done_wizard_completion_page_can_read_the_uploaded_file(
+    wizard_driver, isolated_media_root
+):
+    """Issue #39: `done()` may hand back a `TemplateResponse`, which Django
+    renders after the view returns. A completion page reading the run back
+    reopens the step's upload at that point, so cleaning the run's files up
+    the moment `done()` returned took them out from under the render."""
+    run = wizard_driver("file-done-wizard").start()
+
+    response = run.post_step(
+        "photo",
+        {"photo": SimpleUploadedFile("avatar.jpg", b"binary")},
+        follow=True,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/file_done_wizard.html")
+    assertContains(response, "avatar.jpg")
+    assert uploads_stored_for(isolated_media_root, run.run_id) == []
+
+
 def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     wizard_driver, isolated_media_root
 ):

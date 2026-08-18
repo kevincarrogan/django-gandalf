@@ -648,7 +648,11 @@ class FileUploadWizardViewSet(WizardViewSet):
 On replay, Gandalf reopens each stored file and re-injects it into
 `request.FILES` before re-validating the step, so validators that inspect the
 upload see the same value they saw originally. Editing respects keep-vs-replace
-per field. After `done()` returns, the run's files are cleaned up automatically.
+per field. The run's files are cleaned up automatically once `done()`'s
+response has been rendered — so a `done()` that hands back a
+`TemplateResponse` can still read the finished run back in the template,
+iterating `wizard.path` and touching a file step's `.form` to reopen its
+upload, even though Django renders that response after the view has returned.
 
 The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere (S3, a per-tenant location) by subclassing

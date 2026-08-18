@@ -234,6 +234,7 @@ GROUPS = (
         (
             Example("file-uploading-wizard"),
             Example("file-editing-wizard"),
+            Example("file-done-wizard"),
         ),
     ),
     Group(
