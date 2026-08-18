@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from io import BytesIO
 from typing import TypedDict
 
@@ -25,9 +26,10 @@ class WizardFileStorage:
     """File-backed sibling of `SessionStorage` for wizard uploads.
 
     Wraps a Django `Storage` (defaulting to `default_storage`) and scopes
-    all keys under a per-run prefix. The class is step-agnostic: callers
-    (the runtime) embed file refs in the cursor's state entry, so the
-    step↔file binding lives in state structure, not in the storage path.
+    all keys under a per-run prefix, one unique key per stored upload. The
+    class is step-agnostic: callers (the runtime) embed file refs in the
+    cursor's state entry, so the step↔file binding lives in state
+    structure, not in the storage path.
 
     A "ref" is a dict of `{tmp_name, name, content_type, size, charset}`
     capturing both the storage key and enough metadata to reconstitute an
@@ -42,7 +44,18 @@ class WizardFileStorage:
         self.backend = backend or default_storage
 
     def save(self, run_id: str, uploaded_file: UploadedFile) -> FileRef:
-        target = f"{self.prefix}/{run_id}/{uploaded_file.name}"
+        """Store one upload under this run, on a key nothing else can hold.
+
+        The key carries a uuid segment because the filename cannot be
+        trusted to separate two uploads: a user who re-uploads `cv.pdf`
+        when editing a step would otherwise be handed the key the first
+        `cv.pdf` already has. `FileSystemStorage` suffixes a collision
+        away, but an overwriting backend (django-storages' `S3Boto3Storage`
+        defaults to `file_overwrite=True`) hands back the same key for
+        both, and deleting either ref then takes the other's blob with it.
+        The original filename stays in the ref's `name` for display.
+        """
+        target = f"{self.prefix}/{run_id}/{uuid.uuid4()}-{uploaded_file.name}"
         tmp_name = self.backend.save(target, uploaded_file)
         return {
             "tmp_name": tmp_name,

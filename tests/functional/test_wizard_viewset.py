@@ -1,4 +1,6 @@
 from http import HTTPStatus
+import os
+import re
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1204,6 +1206,28 @@ def test_section_editing_wizard_uses_custom_step_router_for_post(wizard_driver):
     assert run.state[0]["step"] == {"account_type": "business"}
 
 
+_STORED_UPLOAD = re.compile(
+    r"^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}-(?P<name>.+)$"
+)
+
+
+def uploads_stored_for(media_root, run_id):
+    """The uploads still held for a run, under the names the user gave them.
+
+    Every key carries a uuid segment so that two uploads of one filename
+    cannot share one (#36); these tests are about which uploads survive an
+    edit, not about the segment, and the pattern fails loudly if a key ever
+    arrives without one.
+    """
+    run_dir = os.path.join(media_root, "gandalf", run_id)
+    names = []
+    for key in os.listdir(run_dir):
+        match = _STORED_UPLOAD.match(key)
+        assert match is not None, f"stored upload {key!r} carries no uuid segment"
+        names.append(match["name"])
+    return sorted(names)
+
+
 def test_file_uploading_wizard_persists_upload_and_advances(
     wizard_driver, isolated_media_root
 ):
@@ -1220,13 +1244,11 @@ def test_file_uploading_wizard_persists_upload_and_advances(
     assert response.status_code == HTTPStatus.OK
     assertContains(response, '<input type="text" name="name"')
     [photo_entry] = run.state
-    assert photo_entry["files"]["photo"]["tmp_name"] == (
-        f"gandalf/{run.run_id}/avatar.jpg"
-    )
+    tmp_name = photo_entry["files"]["photo"]["tmp_name"]
+    assert tmp_name.startswith(f"gandalf/{run.run_id}/")
+    assert tmp_name.endswith("-avatar.jpg")
     assert photo_entry["files"]["photo"]["name"] == "avatar.jpg"
-    assert os.path.exists(
-        os.path.join(isolated_media_root, "gandalf", run.run_id, "avatar.jpg")
-    )
+    assert os.path.exists(os.path.join(isolated_media_root, tmp_name))
 
 
 def test_file_uploading_wizard_done_cleans_up_files(wizard_driver, isolated_media_root):
@@ -1266,8 +1288,6 @@ def test_file_uploading_wizard_replay_after_upload_re_renders_next_step(
 def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1288,16 +1308,12 @@ def test_file_editing_wizard_edit_replaces_photo_and_deletes_old(
     )
 
     assert response.status_code == HTTPStatus.OK
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    files = sorted(os.listdir(run_dir))
-    assert files == ["second.jpg"]
+    assert uploads_stored_for(isolated_media_root, run.run_id) == ["second.jpg"]
 
 
 def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step("photo", {"label": "No photo yet"}, follow=True)
 
@@ -1311,15 +1327,12 @@ def test_file_editing_wizard_edit_adds_photo_to_step_without_one(
     )
 
     assert response.status_code == HTTPStatus.OK
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["later.jpg"]
+    assert uploads_stored_for(isolated_media_root, run.run_id) == ["later.jpg"]
 
 
 def test_file_editing_wizard_edit_changing_label_keeps_photo(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1335,8 +1348,7 @@ def test_file_editing_wizard_edit_changing_label_keeps_photo(
     assert response.status_code == HTTPStatus.OK
     state = run.state
     assert state[0]["step"]["label"] == "Renamed"
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["first.jpg"]
+    assert uploads_stored_for(isolated_media_root, run.run_id) == ["first.jpg"]
 
 
 def test_file_editing_wizard_edit_get_renders_existing_photo(
@@ -1362,8 +1374,6 @@ def test_file_editing_wizard_edit_get_renders_existing_photo(
 def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     wizard_driver, isolated_media_root
 ):
-    import os
-
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
         "photo",
@@ -1390,8 +1400,7 @@ def test_file_editing_wizard_edit_with_invalid_submission_keeps_state_and_files(
     assert response.context["form"].errors == {"label": ["This field is required."]}
     # The rejected submission is what is stored now, so its upload is the live
     # one and the superseded file is collected rather than left orphaned.
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["rejected.jpg"]
+    assert uploads_stored_for(isolated_media_root, run.run_id) == ["rejected.jpg"]
 
 
 def test_file_editing_wizard_rejected_upload_survives_the_correction(
@@ -1402,7 +1411,6 @@ def test_file_editing_wizard_rejected_upload_survives_the_correction(
     silently kept the *old* photo while the user believed the new one had been
     saved. A rejected submission is now kept whole, upload included, so the
     correction keeps the photo that came with it."""
-    import os
 
     run = wizard_driver("file-editing-wizard").start()
     run.post_step(
@@ -1429,8 +1437,7 @@ def test_file_editing_wizard_rejected_upload_survives_the_correction(
     state = run.state
     assert state[0]["step"]["label"] == "Fixed"
     assert state[0]["files"]["photo"]["name"] == "second.jpg"
-    run_dir = os.path.join(isolated_media_root, "gandalf", run.run_id)
-    assert sorted(os.listdir(run_dir)) == ["second.jpg"]
+    assert uploads_stored_for(isolated_media_root, run.run_id) == ["second.jpg"]
 
 
 def test_file_editing_wizard_unknown_step_url_redirects(
