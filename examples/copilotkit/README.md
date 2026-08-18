@@ -413,5 +413,14 @@ Prototype wiring, on purpose. Everyone is signed in as the same demo user
 (`middleware.py`) because a demo has no sign-up; the storage scoping is
 real, the identity is a stand-in. The chat endpoint is CSRF-exempt
 because it posts JSON from a script — the wizard's own form pages keep
-full CSRF protection. And the browser talks to the agent directly, which
-is CopilotKit's documented dev-only mode.
+full CSRF protection, and the endpoint checks the method, the content type
+and the origin in the token's place. It is still unauthenticated and
+unthrottled, which is a demo's choice and not one to copy. And the browser
+talks to the agent directly, which is CopilotKit's documented dev-only
+mode.
+
+The page context the chat sends (`useAgentContext`, turned into
+instructions by `run_instructions` in `views.py`) is *the browser's*, so a
+real deployment must not let it carry anything the server is meant to have
+established — resolve that from `request.user` inside `instructions`
+instead.

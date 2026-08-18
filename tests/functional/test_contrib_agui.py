@@ -176,7 +176,87 @@ def test_page_context_can_be_turned_into_run_instructions():
 
 def test_the_endpoint_is_exempt_from_csrf():
     """A chat posts JSON from a script, so it carries no form token — the
-    wizard's own pages, which do, keep full protection."""
+    wizard's own pages, which do, keep full protection. What stands in for
+    the token is checked below: the origin, the content type, and the
+    method."""
     view = endpoint_for(build_agent(WalkCountingWizardViewSet, _model()))
 
     assert view.csrf_exempt is True
+
+
+async def _post_raw(client, **extra):
+    """A POST that may be refused, so the body is never streamed — reading
+    `streaming_content` off a plain response raises."""
+    return await client.post(
+        "/agent/", data=_payload(), content_type="application/json", **extra
+    )
+
+
+def test_a_cross_origin_post_is_refused(agui_client):
+    """The exemption turns off Django's own origin check, and this endpoint
+    is worth attacking: its tools answer, edit and read the run belonging to
+    whoever's cookie the browser attached. `SameSite=Lax` is the only thing
+    standing in the way otherwise, and a project that relaxes it — SSO, an
+    embedded widget — would never know it had.
+    """
+    response = asyncio.run(
+        _post_raw(agui_client, headers={"origin": "https://evil.example"})
+    )
+
+    assert response.status_code == 403
+
+
+def test_a_same_origin_post_is_served(agui_client):
+    """The other half of the check: a browser on the site's own origin sends
+    an `Origin` header too, and must be served."""
+    response = asyncio.run(
+        _post_raw(agui_client, headers={"origin": "http://testserver"})
+    )
+
+    assert response.status_code == 200
+
+
+def test_an_origin_the_project_trusts_is_served(agui_client):
+    """The way out for a chat served from somewhere else — a separate front
+    end, a dev server proxying in. The endpoint reads the setting the rest of
+    the site already answers to rather than inventing one of its own, so a
+    deployment says this once and everything believes it."""
+    with override_settings(CSRF_TRUSTED_ORIGINS=["https://chat.example.com"]):
+        response = asyncio.run(
+            _post_raw(agui_client, headers={"origin": "https://chat.example.com"})
+        )
+
+    assert response.status_code == 200
+
+
+def test_a_post_that_does_not_claim_json_is_refused(agui_client):
+    """An HTML form can only post three content types and JSON is not among
+    them, so requiring it is what makes a cross-site POST need a preflight —
+    which nothing here answers. It is the check that holds when a permissive
+    CORS policy has undone the origin one."""
+    response = asyncio.run(
+        agui_client.post("/agent/", data=_payload(), content_type="text/plain")
+    )
+
+    assert response.status_code == 415
+
+
+def test_a_get_is_refused(agui_client):
+    """One POST in, a stream of events out — nothing else is a request to
+    this endpoint."""
+    response = asyncio.run(agui_client.get("/agent/"))
+
+    assert response.status_code == 405
+
+
+def test_a_refused_post_is_turned_away_before_a_session_is_minted(agui_client):
+    """The guards come first or they cost what they were meant to save: the
+    endpoint creates a session for anyone who asks — that is what makes an
+    anonymous visitor's run addressable — so refusing afterwards would leave
+    a session record behind for every rejected request."""
+    response = asyncio.run(
+        _post_raw(agui_client, headers={"origin": "https://evil.example"})
+    )
+
+    assert response.status_code == 403
+    assert "sessionid" not in response.cookies
