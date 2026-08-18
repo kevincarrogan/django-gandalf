@@ -12,17 +12,84 @@ The response streams, so this must be served over ASGI.
 from __future__ import annotations
 
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Any, cast
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user
-from django.http import HttpRequest, HttpResponseBase, StreamingHttpResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBase,
+    HttpResponseForbidden,
+    HttpResponseNotAllowed,
+    StreamingHttpResponse,
+)
+from django.middleware.csrf import CsrfViewMiddleware
 from pydantic_ai import Agent
 from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.ag_ui import AGUIAdapter
 
 from gandalf.contrib.agent.deps import WizardDeps, WizardState, attachments_from
 from gandalf.context import WizardContext, WizardSession
+
+
+#: What an AG-UI request carries, and what this endpoint insists on.
+#:
+#: Not a formality. An HTML form can only post three content types and JSON
+#: is not among them, so requiring it is what makes a cross-site POST need a
+#: CORS preflight — which nothing here answers. That is the check still
+#: standing when the origin one has been undone by a permissive CORS policy,
+#: which is a thing projects install and rarely narrow.
+JSON_CONTENT_TYPE = "application/json"
+
+
+def _origin_allowed(request: HttpRequest) -> bool:
+    """Whether this request's `Origin` is one the project already trusts.
+
+    Absent, there is nothing to check: a cross-site POST from a browser
+    always carries one, so a request without it is a server, a script or a
+    test — none of which have a victim's cookie to ride on.
+
+    Present, the answer is Django's own, read off `CSRF_TRUSTED_ORIGINS` and
+    the request's host, so this endpoint trusts exactly what the rest of the
+    site trusts and a project has one place to say so. The middleware is
+    built per call rather than held: its allow-lists are cached on the
+    instance, and a held one would not notice `override_settings`.
+
+    `_origin_verified` is private to Django. It is used anyway because the
+    alternative is reimplementing wildcard origin matching here, which is a
+    worse thing to get wrong; the Django matrix in CI is the tripwire if it
+    is ever renamed, and the failure would be loud rather than permissive.
+    """
+    if "HTTP_ORIGIN" not in request.META:
+        return True
+    middleware = CsrfViewMiddleware(lambda _request: HttpResponse())
+    # Private to Django, so django-stubs does not declare it either.
+    return bool(cast(Any, middleware)._origin_verified(request))
+
+
+def _refusal(request: HttpRequest) -> HttpResponseBase | None:
+    """What stands in for the CSRF token this endpoint waives, or None when
+    the request may go ahead.
+
+    The exemption is real — a chat posts JSON from a script and carries no
+    form token — but it turns off Django's origin check along with the token
+    check, and this endpoint is worth attacking: its tools answer, edit and
+    read the run belonging to whoever's cookie the browser attached. So the
+    origin check is put back by hand, the content type is made to be one no
+    HTML form can send, and everything that is not a POST is turned away.
+
+    Checked before anything else the view does, because the view's first act
+    is to mint a session for whoever asked.
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    if request.content_type != JSON_CONTENT_TYPE:
+        return HttpResponse(status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+    if not _origin_allowed(request):
+        return HttpResponseForbidden("Origin not allowed.")
+    return None
 
 
 def _ensure_addressable(session: Any) -> None:
@@ -74,9 +141,33 @@ def endpoint_for(
     gone by the time a tool answers a step — reads work, writes do not
     survive the request. Storage that scopes by `actor` rather than by
     session is unaffected either way.
+
+    **What this view does not do is decide who may talk to it.** It answers
+    any POST that clears the checks in `_refusal` — the right method, a JSON
+    content type, an origin the project trusts — and those say a request is
+    not forged, not that it is welcome. There is no authentication and no
+    rate limiting here, and a chat endpoint spends money on every call, so a
+    deployment that mounts this bare is offering a model to anyone who finds
+    the URL. Wrap it in whatever the rest of the site uses:
+
+        from django.contrib.auth.decorators import login_required
+        from django.urls import path
+
+        from gandalf.contrib.agent.agui import endpoint_for
+
+        urlpatterns = [path("agent/", login_required(endpoint_for(agent)))]
+
+    A visitor with no account is a deliberate choice rather than the
+    default — the demo makes it, which is why the session is given a key
+    before the stream starts.
     """
 
     async def view(request: HttpRequest) -> HttpResponseBase:
+        # Before anything else, and before a session is minted: see
+        # `_refusal`. A request that fails these costs one dict lookup.
+        refusal = _refusal(request)
+        if refusal is not None:
+            return refusal
         # Resolve the user before streaming: the driver runs the wizard as
         # this person, and lazy user resolution is not safe to touch from
         # the event loop.
@@ -137,6 +228,7 @@ def endpoint_for(
     # Set rather than decorated: `csrf_exempt` wraps the view in a *sync*
     # function, which would leave this coroutine unawaited. A chat posts
     # JSON from a script, so it carries no form token — the wizard's own
-    # pages, which do, keep full CSRF protection.
+    # pages, which do, keep full CSRF protection. What the exemption gives
+    # up beyond the token is put back in `_refusal`, which runs first.
     view.csrf_exempt = True  # type: ignore[attr-defined]
     return view

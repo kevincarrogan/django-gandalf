@@ -1845,6 +1845,27 @@ To serve it over HTTP, `gandalf.contrib.agent.agui.endpoint_for(agent)`
 returns a Django view that speaks AG-UI. One process, one origin, one
 database: the run the agent fills is the run the browser opens.
 
+A chat posts JSON from a script and carries no form token, so the view is
+CSRF-exempt — your wizard's own pages, which post forms, keep full CSRF
+protection. What the exemption gives up is put back by hand: the view
+answers only a POST, only with a JSON content type (which no HTML form can
+send, so a cross-site POST needs a preflight nothing answers), and only
+from an origin `CSRF_TRUSTED_ORIGINS` and your own host already allow.
+
+**It does not decide who may talk to it.** Those checks say a request is
+not forged, not that it is welcome — there is no authentication and no rate
+limiting, and every call spends model tokens. Mount it behind whatever the
+rest of the site uses:
+
+```python
+from django.contrib.auth.decorators import login_required
+from django.urls import path
+
+from gandalf.contrib.agent.agui import endpoint_for
+
+urlpatterns = [path("agent/", login_required(endpoint_for(agent)))]
+```
+
 ## Testing your wizards
 
 Driving a multi-step wizard with the raw Django test client means chasing the
