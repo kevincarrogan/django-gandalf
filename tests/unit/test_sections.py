@@ -334,7 +334,7 @@ def test_a_section_that_keys_itself_per_request_stashes_under_that_key(rf):
 
     view.done(bound_wizard)
 
-    assert SessionSectionStore(request).keys() == ["guests:7"]
+    assert SessionSectionStore(context).keys() == ["guests:7"]
 
 
 def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf):
@@ -492,7 +492,7 @@ def test_a_section_can_name_the_step_a_reopened_stash_lands_on(rf):
 
     url = page.enter(page.get_section("contact"))
 
-    run_id = SessionSectionStore(request).get_run("contact")
+    run_id = SessionSectionStore(WizardContext.from_request(request)).get_run("contact")
     assert url == f"/contact/{run_id}/second/"
 
 
@@ -531,7 +531,7 @@ def test_stash_unusable_can_be_overridden_to_start_over(rf):
 
     url = page.enter(page.get_section("contact"))
 
-    run_id = SessionSectionStore(request).get_run("contact")
+    run_id = SessionSectionStore(WizardContext.from_request(request)).get_run("contact")
     assert url == f"/contact/{run_id}/first/"
 
 
@@ -557,7 +557,7 @@ def test_finishing_a_section_stashes_its_answers_and_clears_its_run(rf):
 
     view.done(bound_wizard)
 
-    store = SessionSectionStore(request)
+    store = SessionSectionStore(context)
     assert store.get_stash("contact") == {
         "version": STASH_VERSION,
         "label": "contact",
@@ -592,7 +592,7 @@ def test_a_section_done_that_raises_leaves_the_section_resumable(rf):
     with pytest.raises(RuntimeError):
         view.done(bound_wizard)
 
-    assert SessionSectionStore(request).get_run("contact") == "run-1"
+    assert SessionSectionStore(context).get_run("contact") == "run-1"
 
 
 def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_section_done(
@@ -658,7 +658,7 @@ def test_bookkeeping_recorded_at_completion_can_still_read_the_runs_answers(rf):
 
     assert seen == [[{"step": {"name": "Ada"}}]]
     assert bound_wizard.is_complete
-    assert SessionStorage(request).get_state("run-1") == []
+    assert SessionStorage(bound_wizard.context).get_state("run-1") == []
 
 
 def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
@@ -680,7 +680,7 @@ def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
 
     view.done(bound_wizard)
 
-    assert SessionSectionStore(request).get_stash("contact")["label"] == "contact-v2"
+    assert SessionSectionStore(context).get_stash("contact")["label"] == "contact-v2"
 
 
 def test_a_section_without_a_key_is_misconfigured(rf):

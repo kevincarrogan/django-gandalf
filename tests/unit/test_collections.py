@@ -21,6 +21,7 @@ from gandalf.collections import (
     ItemNotFound,
     ItemSectionMixin,
 )
+from gandalf.context import WizardContext
 from gandalf.storage import SessionCollectionStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
@@ -408,7 +409,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
 
     view.done(_ItemViewSet.inspect(request, "run-1", item="7"))
 
-    store = SessionCollectionStore(request)
+    store = SessionCollectionStore(WizardContext.from_request(request))
     assert store.get_item_title("guests", "7") == "Ada"
     assert store.get_stash("guests:7")["label"] == "guests"
 
@@ -605,7 +606,8 @@ def test_the_page_route_registers_an_item_and_redirects_into_its_wizard(rf):
 
     response = GuestCollectionView.as_view()(request)
 
-    (item_id,) = SessionCollectionStore(request).item_ids("guests")
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    (item_id,) = store.item_ids("guests")
     assert response.status_code == 302
     assert response["Location"].startswith(f"/party-guest/{item_id}/")
 
@@ -629,7 +631,8 @@ def test_answering_no_records_it_and_moves_the_user_on(rf):
     response = GuestCollectionView.as_view()(request)
 
     assert response["Location"] == "/party/"
-    assert SessionCollectionStore(request).is_declared_done("guests") is True
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert store.is_declared_done("guests") is True
 
 
 def test_the_item_route_enters_the_item_it_names(rf):
@@ -658,7 +661,8 @@ def test_the_remove_route_asks_before_it_destroys_anything(rf):
     assert response.status_code == 200
     assert response.template_name == ["testapp/collection_remove.html"]
     assert response.context_data["row"].title == "Ada"
-    assert SessionCollectionStore(request).item_ids("guests") == [ITEM_A]
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert store.item_ids("guests") == [ITEM_A]
 
 
 def test_posting_to_the_remove_route_destroys_the_item(rf):
@@ -672,7 +676,8 @@ def test_posting_to_the_remove_route_destroys_the_item(rf):
     response = GuestCollectionView.as_view()(request, item=ITEM_A)
 
     assert response["Location"] == "/party-guests/"
-    assert SessionCollectionStore(request).item_ids("guests") == []
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert store.item_ids("guests") == []
 
 
 def test_removing_an_item_reclaims_whatever_its_run_was_holding(rf):

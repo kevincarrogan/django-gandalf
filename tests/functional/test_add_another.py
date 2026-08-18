@@ -751,7 +751,8 @@ def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, 
         request.session = session
         _Fixed.as_view()(request)
 
-    assert SessionCollectionStore(request).item_ids("guests") == [ITEM]
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert store.item_ids("guests") == [ITEM]
 
 
 def test_an_item_a_collection_lists_but_never_registered_is_named_by_position(
