@@ -18,7 +18,14 @@ class _Session(dict):
     modified = False
 
 
-class _Request:
+class _Context:
+    """As much of a `WizardContext` as a session-backed storage reads.
+
+    A storage is built from the walk's environment rather than from a
+    request: it reads the session through the context, and says when it
+    has changed one.
+    """
+
     def __init__(self, session=None):
         self.session = _Session()
         if session:
@@ -54,23 +61,23 @@ def test_an_item_added_with_no_response_coming_still_reaches_the_store():
 
 
 def test_a_collection_that_was_never_started_lists_no_items():
-    assert SessionCollectionStore(_Request()).item_ids("guests") == []
+    assert SessionCollectionStore(_Context()).item_ids("guests") == []
 
 
 def test_items_are_listed_in_the_order_the_user_added_them():
-    request = _Request()
-    store = SessionCollectionStore(request)
+    context = _Context()
+    store = SessionCollectionStore(context)
 
     store.add_item("guests", "a")
     store.add_item("guests", "b")
 
     assert store.item_ids("guests") == ["a", "b"]
-    assert request.session.modified is True
+    assert context.session.modified is True
 
 
 def test_adding_an_item_already_listed_does_not_list_it_twice():
     """The hub's uniqueness rule holds by construction rather than by check."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
 
     store.add_item("guests", "a")
@@ -81,7 +88,7 @@ def test_adding_an_item_already_listed_does_not_list_it_twice():
 def test_removing_an_item_keeps_the_order_of_the_rest():
     """The whole reason identity is opaque: nothing renumbers, so a live URL
     for the item after the hole still names the same item."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     for item_id in ("a", "b", "c"):
         store.add_item("guests", item_id)
 
@@ -91,7 +98,7 @@ def test_removing_an_item_keeps_the_order_of_the_rest():
 
 
 def test_removing_an_item_that_was_never_listed_is_not_an_error():
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
 
     store.remove_item("guests", "nope")
@@ -100,7 +107,7 @@ def test_removing_an_item_that_was_never_listed_is_not_an_error():
 
 
 def test_has_item_answers_without_an_exception_to_catch():
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
 
     assert store.has_item("guests", "a") is True
@@ -108,7 +115,7 @@ def test_has_item_answers_without_an_exception_to_catch():
 
 
 def test_collections_keep_their_own_registries():
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
 
     store.add_item("guests", "a")
     store.add_item("courses", "b")
@@ -121,7 +128,7 @@ def test_collections_keep_their_own_registries():
 
 
 def test_an_item_that_has_never_finished_has_no_title():
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
 
     assert store.get_item_title("guests", "a") is None
@@ -130,8 +137,8 @@ def test_an_item_that_has_never_finished_has_no_title():
 def test_a_title_is_cached_per_item_and_read_back_as_a_string():
     """What keeps a collection of thirty items costing thirty dict lookups
     rather than thirty walks."""
-    request = _Request()
-    store = SessionCollectionStore(request)
+    context = _Context()
+    store = SessionCollectionStore(context)
     store.add_item("guests", "a")
     store.add_item("guests", "b")
 
@@ -139,12 +146,12 @@ def test_a_title_is_cached_per_item_and_read_back_as_a_string():
 
     assert store.get_item_title("guests", "a") == "Ada Lovelace"
     assert store.get_item_title("guests", "b") is None
-    assert request.session.modified is True
+    assert context.session.modified is True
 
 
 def test_a_title_lands_on_the_item_it_names_and_no_other():
     """The registry is a list, so titling walks past the items before it."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
     store.add_item("guests", "b")
 
@@ -156,7 +163,7 @@ def test_a_title_lands_on_the_item_it_names_and_no_other():
 
 def test_a_title_can_be_cleared_for_an_item_whose_answers_were_discarded():
     """Otherwise the row shows a name for an item with nothing behind it."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
     store.set_item_title("guests", "a", "Ada Lovelace")
 
@@ -166,7 +173,7 @@ def test_a_title_can_be_cleared_for_an_item_whose_answers_were_discarded():
 
 
 def test_titling_an_item_the_registry_does_not_list_is_not_an_error():
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
 
     store.set_item_title("guests", "gone", "Ada Lovelace")
 
@@ -175,7 +182,7 @@ def test_titling_an_item_the_registry_does_not_list_is_not_an_error():
 
 def test_removing_an_item_takes_its_title_with_it():
     """Titles ride inside the item entry, so removal cannot orphan one."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
     store.set_item_title("guests", "a", "Ada Lovelace")
 
@@ -189,19 +196,19 @@ def test_removing_an_item_takes_its_title_with_it():
 
 
 def test_a_collection_starts_out_with_the_user_having_declared_nothing():
-    assert SessionCollectionStore(_Request()).is_declared_done("guests") is False
+    assert SessionCollectionStore(_Context()).is_declared_done("guests") is False
 
 
 def test_the_users_answer_to_add_another_round_trips():
     """Not "are all the items finished" — a different question with a
     different answer."""
-    request = _Request()
-    store = SessionCollectionStore(request)
+    context = _Context()
+    store = SessionCollectionStore(context)
 
     store.set_declared_done("guests", True)
 
     assert store.is_declared_done("guests") is True
-    assert request.session.modified is True
+    assert context.session.modified is True
 
     store.set_declared_done("guests", False)
 
@@ -214,7 +221,7 @@ def test_the_users_answer_to_add_another_round_trips():
 def test_a_collections_items_and_a_hubs_sections_share_one_key_space():
     """An item's run and stash live under an ordinary section key the view
     composes, so the nine inherited methods are untouched."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
 
     store.set_run("guests", "run-1")
     store.set_run("guests:a", "run-2")
@@ -230,7 +237,7 @@ def test_the_registry_is_not_derivable_from_the_stash_keys():
     """`keys()` reports what has finished; the registry reports what exists.
     A half-finished item is in one and not the other, which is exactly why
     the registry has to be written down."""
-    store = SessionCollectionStore(_Request())
+    store = SessionCollectionStore(_Context())
     store.add_item("guests", "a")
     store.add_item("guests", "b")
     store.put_stash("guests:a", _PAYLOAD)
