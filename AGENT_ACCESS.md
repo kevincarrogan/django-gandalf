@@ -119,6 +119,17 @@ answers so far, and any validation errors. Branching and expansion need no
 tool-level support at all; the walk decides where the run is and the tools
 report it.
 
+One tool is conditional: `attach_document` exists only for a wizard that
+has somewhere to put a file. That is derived rather than declared —
+`accepts_documents()` asks the outline whether any step describes a field
+as `{"type": "string", "format": "binary"}`, which is how a JSON Schema
+says "this is a file" — because a flag beside the wizard could only ever
+agree with the tree or be quietly wrong. The tool takes an attachment the
+person shared in the conversation and places the file itself, rather than
+letting the model describe it in words. Underneath, the driver's own
+vocabulary is `submit(files=...)` to place an upload and `open_file()` to
+read one back, both over the `FileRef` a placement stores.
+
 There is deliberately no tool that concludes a run — see *the agent never
 confirms* in the demo's README.
 
@@ -322,30 +333,44 @@ it; the wizard run is unaffected either way.
 ## Packaging: what ships, and why
 
 The decision, now that the spike has settled: **the driver ships in
-`django-gandalf` itself; the pydantic-ai layer does not ship at all.**
+`django-gandalf` itself; the pydantic-ai layer ships too, behind an
+extra.**
 
 **`gandalf/driver.py` is in the package.** It imports nothing beyond Django
 and gandalf, so it adds no dependency, no setting, no migration and no
 import-time cost to anyone who never touches it — a module nobody imports
 is never executed. That makes it exactly as optional as `sections.py`
-(hub and spoke, 594 lines) or `summary.py`, both of which most users never
+(hub and spoke) or `summary.py`, both of which most users never
 reach for. It is also not really an AI feature: with the LLM removed the
 surface reads *begin, describe, submit, answers, outline, prefill, check,
 finish*, which is a data import, a management command or a test as much as
 it is an agent.
 
-**The pydantic-ai toolset stays an example.** Three reasons. It would drag
-a third-party package into the mypy and coverage gates. It tracks a
-dependency that broke most of its own API within a year — this work hit
-that churn directly. And it is the layer every user will fork anyway, for
-their own tool names, prompts, auth and error handling; shipping thin glue
-that everyone customises buys a support burden rather than value. It is
-checked in, tested and documented under `examples/`, which is where a
-recipe belongs.
+**The pydantic-ai layer is in `gandalf/contrib/agent/`, behind the
+`[agent]` extra.** It began as a spike under `examples/`, on the argument
+that a recipe everyone forks belongs where recipes go. The argument did
+not survive contact: the layer people wanted was not a recipe to copy but
+a toolset to install, and a copy under `examples/` is a second
+implementation that drifts against the first. So it moved, and the spike
+was deleted rather than kept.
 
-**No extras table is needed**, because nothing shipped requires a
-third-party package. The standing rule holds: pydantic-ai never becomes a
-runtime dependency of `django-gandalf`.
+What moving cost was paid rather than avoided. It does drag a third-party
+package into the gates — so `just typecheck` runs with `--extra agent`
+(mypy cannot check what it cannot resolve) and its toolset, prompt and
+profile are measured to 100% by `just coverage-unit`, with the AG-UI
+endpoint covered by the functional suite instead, since an endpoint that
+streams over ASGI can only honestly be covered by a real request. It does
+track a dependency that broke most of its own API within a year — this
+work hit that churn directly, which is an argument for a version bound
+(`pydantic-ai-slim[ag-ui]~=2.30`) rather than for exile. And it stays the
+layer a user may well fork for their own tool names, prompts, auth and
+error handling; what makes that cheap is that it is thin and *names no
+model provider*, not that it lives somewhere else.
+
+**The standing rule holds: pydantic-ai never becomes a runtime dependency
+of `django-gandalf`.** An optional extra is not a runtime dependency — the
+core installs Django and nothing else, and a test walks the package to
+prove nothing outside `contrib/` imports pydantic-ai.
 
 ### Why not a separate package
 
@@ -383,6 +408,3 @@ non-user is zero, since the module costs them nothing either way.
   `DeferredToolRequests` + `message_history` resume) let an agent pause
   mid-wizard for a person to answer a step, with the run itself already
   safe in gandalf storage.
-- **File steps.** `FileField` schemas currently degrade to a noted string;
-  driving uploads programmatically needs a file-reference vocabulary on
-  the driver.
