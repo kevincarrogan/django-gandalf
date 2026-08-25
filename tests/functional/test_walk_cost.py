@@ -68,7 +68,9 @@ def test_completing_one_step_costs_two_walks(run_at_third_step):
 
     Two walks because PRG is genuinely two requests, and each validates the
     answers before it exactly once. That is the invariant worth holding on
-    to: a form's `clean()` runs once per completed step per HTTP request.
+    to: the walk runs a form's `clean()` once per completed step per HTTP
+    request. Reading an answer back costs one more — see
+    `test_a_summary_render_validates_each_answer_twice`.
     """
     with counting_walks() as counts:
         run_at_third_step.post_step("third", {"preferred_name": "Ada"}, follow=True)
@@ -106,6 +108,24 @@ def test_reading_the_answers_walks_once(driven_run):
     assert counts.validations == 2
 
 
+def test_every_read_walks_again(driven_run):
+    """Reads are not memoised across accesses, and nothing outside a render
+    holds a tree for them to reuse.
+
+    This is the shape that turns a linear cost quadratic inside a single
+    request: `k` fresh reads of a `k`-answer run cost `k²` validations. A
+    `done()` or a completion page that looks each step up separately pays
+    it, which is why the advice is to hold the steps you iterate rather
+    than re-reading `path` per answer.
+    """
+    with counting_walks() as counts:
+        driven_run.answers()
+        driven_run.answers()
+
+    assert counts.walks == 2
+    assert counts.validations == 2 + 2
+
+
 def test_describing_the_run_walks_once(driven_run):
     """One walk, because one question is being asked.
 
@@ -119,6 +139,58 @@ def test_describing_the_run_walks_once(driven_run):
 
     assert counts.walks == 1
     assert counts.validations == 2
+
+
+# --- a check-your-answers page ----------------------------------------------
+
+
+@pytest.fixture
+def run_at_summary(wizard_driver):
+    """The summary wizard's business arm, answered up to its summary step."""
+    run = wizard_driver("summary-wizard").start()
+    run.post_steps(
+        [
+            ("account_type", {"account_type": "business"}),
+            ("business_name", {"business_name": "Acme Ltd"}),
+            (
+                "preferences",
+                {
+                    "contact_method": "post",
+                    "toppings": ["cheese", "basil"],
+                    "marketing": "on",
+                    "starts_on": "2025-10-12",
+                    "note": "Leave with a neighbour",
+                },
+            ),
+        ]
+    )
+    return run
+
+
+def test_a_summary_render_validates_each_answer_twice(run_at_summary):
+    """The one page where the walk's count is not the whole bill.
+
+    Proving an answer and displaying it are separate passes over the same
+    form: the walk re-dispatches each stored answer to prove it still
+    stands, and then `SummaryMixin` reads `RuntimeStep.form` per row to get
+    `cleaned_data` for the display text. Both run `clean()`, so a
+    check-your-answers page costs two validations per answered step where
+    an ordinary step page costs one.
+
+    The extra rebuild on top of the three rows is the branch predicate,
+    which reads an answer of its own to pick the arm — a route's own reads
+    are charged the same way, summary or not.
+    """
+    with counting_walks() as counts:
+        response = run_at_summary.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assert len(response.context["summary"]) == 3
+    assert counts.walks == 1
+    # Proving: one per answered step.
+    assert counts.validations == 3
+    # Displaying: one per row, plus the branch predicate's own read.
+    assert counts.form_rebuilds == 3 + 1
 
 
 # --- a hub of sections ------------------------------------------------------

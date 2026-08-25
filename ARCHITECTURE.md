@@ -224,9 +224,16 @@ A POST therefore walks the tree **once**, and the follow-up GET walks once more 
 
 The invariant that follows is worth holding on to while debugging:
 
-> A form's `clean()` runs **once per completed step per HTTP request**.
+> The walk runs a form's `clean()` **once per completed step per HTTP request** — and each step whose answers the request *reads back* costs one more.
 
 So with `k` answers already stored a POST costs `k+1` validations — the `k` replays plus one live dispatch of the answer just submitted — and the follow-up GET costs `k+1` again, because it is a separate request that has to re-derive position from stored state. Completing an `N`-step run therefore costs `N²` validations in total. `tests/functional/test_walk_cost.py` asserts these counts exactly, and `benchmarks/` (`just bench`) measures them across shapes and sizes.
+
+The second clause is the price of reading. Proving an answer and *displaying* it are separate passes over the same form: the walk dispatches the step's view to prove it, while `RuntimeStep.form` reconstructs a form and validates it to hand back `cleaned_data`. A check-your-answers page therefore costs **two validations per answered step** — one to prove, one to display — and a branch predicate that dereferences an earlier answer costs one for the step it reads, on every request that resolves that arm.
+
+Two shapes to keep in mind when reading answers back:
+
+- **Within a render**, `path` reuses the cursor the viewset recorded, so a fresh access re-walks nothing — but `PathFlattener` rebuilds the step nodes, and a rebuilt node has lost the memoised form. Re-reading `wizard.path` per field therefore costs another validation per step per read. Hold the steps you are iterating.
+- **Outside a render** — `done()`, a completion page, a driver reading a run — there is no recorded cursor to reuse, so *every* `path` access walks. Looking each of `k` steps up separately costs `k²` validations in that one request, where iterating once costs `k`.
 
 A **dynamic** `get_wizard()` is the one case that needs a second walk. It derives the tree from stored state, so the answer just written can imply steps that did not exist when the request began; judging completion against the pre-write tree would fire `done()` mid-run. `_refreshed_cursor` re-resolves the wizard and only walks again when that hands back a different object, so a static wizard never pays for it.
 

@@ -777,7 +777,14 @@ class BoundWizard:
         """The resolved route as a `Path` — the answered steps in walk order.
         Built from the runtime tree, so anything running inside a walk sees
         the validated prefix so far and `path.find_step(...)` reads prior
-        answers."""
+        answers.
+
+        Each access rebuilds the step nodes, so a node read from one access
+        shares no memoised `.form` with the next: re-reading this per answer
+        costs a validation per answer. Outside a render there is no recorded
+        cursor to reuse either, so every access walks. Read it once and hold
+        the steps you iterate.
+        """
         return Path(PathFlattener().transform(self.runtime_tree))
 
     @contextmanager

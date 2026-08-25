@@ -2018,20 +2018,35 @@ an AI agent submitting steps as data instead of clicking the forms — see
 Gandalf re-proves stored submissions rather than trusting a recorded position.
 The rule is small enough to keep in your head:
 
-> A form's `clean()` runs **once per completed step per HTTP request.**
-
-That holds however many times the request *reads* an answer: `RuntimeStep.form`
-is built once per step per request, so a summary page listing every field of
-every step costs one reconstruction per step, not one per field. (`path` builds
-fresh step nodes on each access, so iterate the steps you hold rather than
-re-reading `wizard.path` per field.)
+> The walk runs a form's `clean()` **once per completed step per HTTP
+> request** — and each step whose answers the request *reads back* costs one
+> more.
 
 So with `k` answers stored, a request costs `k` replays, and a POST costs one
 more for the answer being submitted; completing an `N`-step run costs `N²`
-validations end to end, spread over `2N` requests. **The number that matters is
-not `N`, it is how many of your steps are expensive** — each completed step is
-validated once per request whether the user is on step 5 or step 29, so `N²`
-only bites when *most* steps do real work in `clean()`.
+validations end to end, spread over `2N` requests.
+
+Reading answers back is the second clause. Proving an answer and displaying it
+are separate passes over the same form — the walk dispatches the step's view to
+prove it, `RuntimeStep.form` reconstructs one to hand back `cleaned_data` — so a
+check-your-answers page costs **two validations per answered step**, one to
+prove and one to display. A branch predicate that dereferences an earlier answer
+is charged the same way, on every request that resolves its arm.
+
+Within one read, the form is built once per step however many fields you render
+from it — a summary listing every field of every step costs one reconstruction
+per step, not one per field. What does add up is reading *again*: `path` builds
+fresh step nodes on each access and a fresh node has lost that memo, so iterate
+the steps you hold rather than re-reading `wizard.path` per field. Outside a
+render — in `done()`, a completion page, or a driver reading a run — there is no
+recorded cursor to reuse either, so every `path` access walks: looking each of
+`k` steps up separately costs `k²` validations in that one request, where
+iterating once costs `k`.
+
+**The number that matters is not `N`, it is how many of your steps are
+expensive** — each completed step is validated once per request whether the user
+is on step 5 or step 29, so `N²` only bites when *most* steps do real work in
+`clean()`.
 
 Measured on a 2023 laptop with `just bench`, for a linear wizard:
 
