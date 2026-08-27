@@ -22,6 +22,7 @@ from gandalf.collections import (
     ItemSectionMixin,
 )
 from gandalf.context import WizardContext
+from gandalf.sections import Hub
 from gandalf.storage import SessionCollectionStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
@@ -81,6 +82,7 @@ def collection(rf):
 #: has to be able to reverse its own links.
 ITEM_A = "11111111-1111-1111-1111-111111111111"
 ITEM_B = "22222222-2222-2222-2222-222222222222"
+ITEM_C = "33333333-3333-3333-3333-333333333333"
 
 
 def _seed(items=(), declared_done=False, key="guests"):
@@ -190,6 +192,56 @@ def test_an_empty_collection_says_so(collection):
     assert result.is_empty is True
     assert result.count == 0
     assert result.is_not_started is True
+
+
+def test_the_collection_counts_its_items_the_way_a_hub_counts_its_sections(
+    collection,
+):
+    """ "2 of 3 guests finished" is the page's own heading, and deriving it in
+    the template means the loop the `Hub` counts exist to remove."""
+    page = collection(
+        _seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace"), (ITEM_C, None)])
+        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
+    )
+
+    result = page.get_collection()
+
+    assert isinstance(result, Hub)
+    assert (result.count, result.completed, result.remaining) == (3, 2, 1)
+    assert result.blocked == 0
+
+
+def test_an_item_the_user_cannot_start_yet_is_counted_as_blocked(rf):
+    """The hook is the hub's, and a collection inherits it — so the counts
+    have to answer for it too."""
+
+    class _Locked(_Collection):
+        def section_blocked(self, section):
+            return section.key.endswith(ITEM_B)
+
+    request = rf.get("/party-guests/")
+    request.session = _Session(
+        _seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")])
+        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
+    )
+
+    result = _Locked(request).get_collection()
+
+    assert (result.count, result.completed, result.blocked) == (2, 1, 1)
+    assert result.remaining == 1
+
+
+def test_the_collection_says_how_many_items_it_needs(collection):
+    """A page that asks for at least one has to be able to say so, and
+    `min_items` lived only on the view."""
+
+    class _AtLeastTwo(_Collection):
+        min_items = 2
+
+    request = collection().request
+
+    assert _AtLeastTwo(request).get_collection().min_items == 2
+    assert collection().get_collection().min_items == 0
 
 
 # --- what an item is called -------------------------------------------------
@@ -707,11 +759,14 @@ def test_the_remove_route_asks_before_it_destroys_anything(rf):
 
 
 def test_posting_to_the_remove_route_destroys_the_item(rf):
-    request = _view_request(
-        rf,
-        "post",
-        path=f"/party-guests/{ITEM_A}/remove/",
-        session=_seed(items=[(ITEM_A, "Ada")]),
+    request = _resolved(
+        _view_request(
+            rf,
+            "post",
+            path=f"/party-guests/{ITEM_A}/remove/",
+            session=_seed(items=[(ITEM_A, "Ada")]),
+        ),
+        "party-guests-remove",
     )
 
     response = GuestCollectionView.as_view()(request, item=ITEM_A)
@@ -724,15 +779,18 @@ def test_posting_to_the_remove_route_destroys_the_item(rf):
 def test_removing_an_item_reclaims_whatever_its_run_was_holding(rf):
     """The run is obliterated — state and uploaded bytes — before the
     pointers to it go."""
-    request = _view_request(
-        rf,
-        "post",
-        path=f"/party-guests/{ITEM_A}/remove/",
-        session=_seed(items=[(ITEM_A, None)])
-        | {
-            "gandalf_section_runs": {f"guests:{ITEM_A}": "run-1"},
-            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
-        },
+    request = _resolved(
+        _view_request(
+            rf,
+            "post",
+            path=f"/party-guests/{ITEM_A}/remove/",
+            session=_seed(items=[(ITEM_A, None)])
+            | {
+                "gandalf_section_runs": {f"guests:{ITEM_A}": "run-1"},
+                "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+            },
+        ),
+        "party-guests-remove",
     )
 
     GuestCollectionView.as_view()(request, item=ITEM_A)
@@ -740,14 +798,48 @@ def test_removing_an_item_reclaims_whatever_its_run_was_holding(rf):
     assert "run-1" not in request.session["gandalf_runs"]
 
 
-@pytest.mark.parametrize("method", ["get", "post"])
-def test_a_route_naming_an_unlisted_item_is_sent_back_to_the_page(rf, method):
-    request = _view_request(rf, method, path=f"/party-guests/{ITEM_B}/")
+def test_a_door_naming_an_unlisted_item_is_sent_back_to_the_page(rf):
+    request = _resolved(
+        _view_request(rf, path=f"/party-guests/{ITEM_B}/"), "party-guests-item"
+    )
 
     response = GuestCollectionView.as_view()(request, item=ITEM_B)
 
     assert response.status_code == 302
     assert response["Location"] == "/party-guests/"
+
+
+def test_removing_an_unlisted_item_is_sent_back_to_the_page(rf):
+    request = _resolved(
+        _view_request(rf, "post", path=f"/party-guests/{ITEM_B}/remove/"),
+        "party-guests-remove",
+    )
+
+    response = GuestCollectionView.as_view()(request, item=ITEM_B)
+
+    assert response.status_code == 302
+    assert response["Location"] == "/party-guests/"
+
+
+def test_posting_to_an_items_door_removes_nothing(rf):
+    """The door and the remove route both carry an item id, and only one of
+    them destroys anything (#101). A form posting to the URL a row links to
+    used to take the item with it."""
+    request = _resolved(
+        _view_request(
+            rf,
+            "post",
+            path=f"/party-guests/{ITEM_A}/",
+            session=_seed(items=[(ITEM_A, "Ada")]),
+        ),
+        "party-guests-item",
+    )
+
+    response = GuestCollectionView.as_view()(request, item=ITEM_A)
+
+    assert response.status_code == 405
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert store.item_ids("guests") == [ITEM_A]
 
 
 def test_a_collection_publishes_a_page_an_item_and_a_remove_pattern():

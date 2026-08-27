@@ -41,7 +41,12 @@ from typing import Any, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
-from django.http import HttpRequest, HttpResponse, HttpResponseBase
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBase,
+    HttpResponseNotAllowed,
+)
 from django.shortcuts import redirect
 from django.urls import URLPattern, path, reverse
 from django.utils.text import capfirst
@@ -53,6 +58,7 @@ from gandalf.sections import (
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
+    Hub,
     HubMixin,
     Section,
     SectionMixin,
@@ -132,36 +138,33 @@ class CollectionRow(SectionRow):
 
 
 @dataclass(frozen=True)
-class Collection:
+class Collection(Hub):
     """The collection as a whole: its items, and how far the whole thing has
-    got. What the page's heading and a parent hub's row both read."""
+    got. What the page's heading and a parent hub's row both read.
 
+    A `Hub`, because that is what a collection is. The rows, the status and
+    the counts — `count`, `completed`, `remaining`, `blocked` — are the hub's
+    own and mean here exactly what they mean there, so "you have added 3
+    guests, 2 of them finished" costs no loop in the template and cannot drift
+    from what a task list would say about the same rows.
+
+    What it adds is what a hub has no notion of: where the page is (`key`,
+    `url`), whether the user has said there are no more to add, and how many
+    there have to be before that answer can finish the page. `min_items` is
+    here rather than left on the view because a page that asks for at least
+    one has to be able to *say* so, and the alternative is a template reaching
+    back through the view for a class attribute.
+    """
+
+    rows: tuple[CollectionRow, ...]
     key: str
     url: str
-    rows: tuple[CollectionRow, ...]
-    status: str
-    status_label: StrOrPromise
     declared_done: bool
-
-    @property
-    def count(self) -> int:
-        return len(self.rows)
+    min_items: int
 
     @property
     def is_empty(self) -> bool:
         return not self.rows
-
-    @property
-    def is_not_started(self) -> bool:
-        return self.status == NOT_STARTED
-
-    @property
-    def is_incomplete(self) -> bool:
-        return self.status == INCOMPLETE
-
-    @property
-    def is_complete(self) -> bool:
-        return self.status == COMPLETE
 
 
 class ItemSectionMixin(SectionMixin):
@@ -486,6 +489,7 @@ class CollectionMixin(HubMixin):
             status=status,
             status_label=self.get_status_label(status),
             declared_done=store.is_declared_done(key),
+            min_items=self.min_items,
         )
 
     def build_collection_row(
@@ -818,6 +822,14 @@ class CollectionView(CollectionMixin, TemplateView):
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponseBase:
         item_id = self._item_id()
         if item_id is not None:
+            # Which route, not merely which id. Two patterns carry an item and
+            # only one of them destroys anything, so branching on the id alone
+            # made a POST to the *door* remove the item it was meant to open —
+            # a form posting to the URL its own row links to, and nothing to
+            # say the answer had gone. `get_template_names()` already tells the
+            # two apart; the verb has to agree with it.
+            if not self._is_remove():
+                return HttpResponseNotAllowed(["GET"])
             try:
                 self.get_item(item_id)
             except ItemNotFound:

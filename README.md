@@ -1692,6 +1692,7 @@ POST answers *add another*), `<url_name>-item` (the door into one item) and
   <h1>You have not added any guests</h1>
 {% else %}
   <h1>You have added {{ collection.count }} guest{{ collection.count|pluralize }}</h1>
+  <p>You have completed {{ collection.completed }} of {{ collection.count }}.</p>
   <ul>
     {% for row in collection.rows %}
       <li>
@@ -1717,6 +1718,19 @@ The view reads one POST field, so two submit buttons carry the answer and the
 question needs no widget of its own. `AddAnotherForm` still validates it —
 render it as a radio instead if your service asks the question that way, and
 `form_class` swaps it for something else entirely.
+
+**A `collection` is a `Hub`.** The rows, the status and the counts —
+`count`, `completed`, `remaining`, `blocked` — are the hub's own and mean here
+exactly what they mean on a task list, so "you have added 3 guests, 2 of them
+finished" costs no loop in the template and cannot drift from what a parent hub
+would say about the same rows. What a collection adds is what a hub has no
+notion of: `collection.key` and `collection.url`, `collection.is_empty`,
+`collection.declared_done` — whether the user has said there are no more — and
+`collection.min_items`, so a page that asks for at least one can say so.
+
+The page's own status is still derived its own way, from that declared answer
+rather than from the counts, which is why a collection page publishes only
+`collection` and no `hub` beside it: one page, one status.
 
 ### Identity is opaque, so removing renumbers nothing
 
@@ -1766,6 +1780,14 @@ three guests minus one is still "and no more".
 | **Read** | One `Section` per registered id; the hub's own status derivation and row building, unchanged |
 | **Change** | The door resumes a live run or re-opens a stash. A re-opened item has every answer valid, so the next submission walks to the end and re-saves — and re-caches the title, so a rename shows on the page |
 | **Remove** | Run obliterated → run cleared → stash deleted → title cleared → `item_removed()` → registry entry last, so a hook that raises leaves the item still listed and still removable |
+
+Each verb has one route. The door (`<url_name>-item`) opens an item and is
+**GET only** — it answers a POST with `405`, because the route that destroys an
+item is `<url_name>-remove` and only that one may. The two are told apart by
+which pattern the request resolved through, not by whether it carries an id,
+which is the same question `get_template_names()` asks to pick the confirmation
+page: display and dispatch agree, or a form posting to the URL its own row
+links to takes the item with it.
 
 Every link the page hands out is a step URL by construction, exactly as a hub's
 is, and for the same reason: a run whose every stored answer validates

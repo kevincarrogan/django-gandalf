@@ -13,6 +13,9 @@
             </p>
         {% else %}
             <h1>You have added {{ collection.count }} guest{{ collection.count|pluralize }}</h1>
+            <p class="lede">
+                You have completed {{ collection.completed }} of {{ collection.count }} guest{{ collection.count|pluralize }}.
+            </p>
             <ul class="task-list">
                 {% for row in collection.rows %}
                     <li class="task-list__item">

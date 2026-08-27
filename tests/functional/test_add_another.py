@@ -19,7 +19,7 @@ from http import HTTPStatus
 
 import pytest
 from django.core.exceptions import ImproperlyConfigured
-from django.urls import reverse
+from django.urls import resolve, reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.collections import COMPLETE, INCOMPLETE, NOT_STARTED, CollectionView
@@ -310,13 +310,24 @@ def test_removing_the_last_item_empties_the_page(client):
     assertContains(response, "You have not added any guests")
 
 
-@pytest.mark.parametrize("method", ["get", "post"])
-def test_an_item_this_collection_does_not_list_is_sent_back_to_the_page(client, method):
+def test_an_item_this_collection_does_not_list_is_sent_back_to_the_page(client):
     unknown = "11111111-1111-1111-1111-111111111111"
 
-    response = getattr(client, method)(_door(unknown))
+    assertRedirects(client.get(_door(unknown)), PAGE)
 
-    assertRedirects(response, PAGE)
+
+def test_posting_to_an_items_door_is_refused_and_removes_nothing(client):
+    """The door opens an item; the remove route destroys one. Both carry an
+    id, and the view used to branch on the id alone — so a POST to the URL a
+    row links to took the item with it (#101)."""
+    _complete(client, "Ada")
+    (item_id,) = stored_collection_items(client, "guests")
+
+    response = client.post(_door(item_id))
+
+    assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
+    assert stored_collection_items(client, "guests") == [item_id]
+    assert _titles(client.get(PAGE)) == ["Ada"]
 
 
 def test_removing_an_item_this_collection_does_not_list_is_sent_back(client):
@@ -635,9 +646,15 @@ def test_a_listed_item_whose_run_the_storage_forgot_returns_to_the_page(client):
 def _dispatch(rf, client, view, path=PAGE, method="get", data=None, **kwargs):
     """Dispatch a hand-built collection against the client's session, so a
     test can arrange state through the real flow and then point a
-    misconfigured collection at it."""
+    misconfigured collection at it.
+
+    Resolved through the real URLconf, because the view reads `resolver_match`
+    to tell its three routes apart and a request that never went through a
+    resolver answers for none of them.
+    """
     request = getattr(rf, method)(path, data=data or {})
     request.session = client.session
+    request.resolver_match = resolve(path)
     return view.as_view()(request, **kwargs)
 
 
@@ -843,6 +860,20 @@ def test_a_collection_reports_its_own_shape_to_a_template(client):
         False,
         True,
     )
+
+
+def test_a_collection_page_counts_its_items_without_a_loop_in_the_template(client):
+    """The `Hub` counts, on the object that already was one. A page saying
+    "2 of 3 finished" derived it by looping the rows until now."""
+    _complete(client, "Ada")
+    _complete(client, "Grace")
+    _add(client)
+
+    collection = client.get(PAGE).context["collection"]
+
+    assert (collection.count, collection.completed, collection.remaining) == (3, 2, 1)
+    assert collection.blocked == 0
+    assertContains(client.get(PAGE), "You have completed 2 of 3 guests")
 
 
 def test_a_driver_fills_one_item_of_a_collection():
