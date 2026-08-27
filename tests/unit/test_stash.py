@@ -377,3 +377,58 @@ def test_a_tampered_answer_parks_the_cursor_with_an_errored_render(
 
     assert cursor.node.context["name"] == "second"
     assert cursor.response is not None
+
+
+def test_stash_carries_the_runs_metadata_but_not_an_empty_bag(request_factory):
+    bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
+
+    # A run that recorded nothing says nothing, rather than shipping an
+    # empty envelope key for every stash ever taken.
+    assert "meta" not in bound.stash()
+
+    bound.metadata["record_id"] = "abc"
+
+    # And one that did: unlike the file refs, this rides. A ref names bytes
+    # completion deletes; a record id names something that outlives the run.
+    assert bound.stash()["meta"] == {"run": {"record_id": "abc"}}
+
+
+def test_resurrecting_restores_what_the_stashed_run_had_recorded(request_factory):
+    bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
+    bound.metadata["record_id"] = "abc"
+    payload = bound.stash()
+
+    fresh = _bound(request_factory(), [])
+    fresh.resurrect(payload)
+
+    # Which is why `run_started()` must not fire for a resurrected run: the
+    # record it would open is already there.
+    assert dict(fresh.metadata) == {"record_id": "abc"}
+
+
+def test_resurrecting_a_payload_that_recorded_nothing_leaves_an_empty_bag(
+    request_factory,
+):
+    bound = _bound(request_factory(), [])
+
+    bound.resurrect({"version": STASH_VERSION, "state": []})
+
+    assert dict(bound.metadata) == {}
+
+
+def test_resurrecting_one_payload_twice_gives_two_independent_bags(request_factory):
+    bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
+    bound.metadata["record_id"] = "abc"
+    payload = bound.stash()
+
+    first = _bound(request_factory(), [])
+    first.resurrect(payload)
+    second = _bound(request_factory(), [])
+    second.resurrect(payload)
+
+    first.metadata["record_id"] = "changed"
+
+    # The payload is deep copied on the way in, so editing one resurrected
+    # run cannot reach through it into the other.
+    assert second.metadata["record_id"] == "abc"
+    assert payload["meta"] == {"run": {"record_id": "abc"}}

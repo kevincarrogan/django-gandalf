@@ -995,6 +995,24 @@ def test_a_placement_carries_metadata_that_can_be_read_back():
     assert driver.placements()["first"].metadata == {"placed_by": "person"}
 
 
+def test_the_driver_reads_and_writes_the_runs_own_metadata():
+    """The other metadata, and a different question.
+
+    A placement's says who put *this answer* here. The run's says what the
+    run did outside itself — so a driver picking up a run somebody else
+    started can see the record that run created, and one starting a run
+    sees what `run_started()` put there."""
+    driver = RunDriver.begin(_SignupViewSet)
+
+    driver.metadata["reviewed_by"] = "ops"
+    driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
+
+    # A placement rewrites the state list whole and does not touch the bag,
+    # which is the point of keeping them apart.
+    assert dict(driver.metadata) == {"reviewed_by": "ops"}
+    assert driver.placements()["first"].metadata == {"placed_by": "person"}
+
+
 def test_the_driver_marks_its_own_placements_unattended():
     """It knows it is not a person, so it says so without being asked."""
     driver = RunDriver.begin(_SignupViewSet)

@@ -72,12 +72,17 @@ def test_a_completed_run_still_names_the_record_it_opened(client):
     )
 
     # `done()` read it out of the bag, not out of the answers.
-    assert response.content == b"completed record-1"
+    assert response.content == b"completed record-1 recording 1"
     # And the tombstone kept it: the answers are gone, the record is not.
     run_data = stored_runs(client)[run_id]
     assert run_data["completed"] is True
     assert "state" not in run_data
-    assert run_data["meta"] == {"run": {"record_id": "record-1"}}
+    assert run_data["meta"] == {
+        "run": {"record_id": "record-1"},
+        # Rewritten by the walk `keep_readable()` takes after `done()`, which
+        # is why a step's own metadata writes have to be idempotent.
+        "steps": {"second": {"drafted": True}},
+    }
 
 
 def test_re_answering_a_step_does_not_open_a_second_record(client):
@@ -115,6 +120,7 @@ def test_a_driver_can_record_what_it_did_for_the_run_to_read():
     # Still there after two placements, which rewrite the state list whole.
     assert dict(driver.metadata) == {
         "record_id": "record-1",
+        "pending": True,
         "reviewed_by": "ops",
     }
 
@@ -127,7 +133,7 @@ def test_a_stash_carries_the_record_and_reopening_does_not_open_another(rf):
     driver.submit({"name": "Ada"})
     payload = driver.bound_wizard.stash()
 
-    assert payload["meta"] == {"run": {"record_id": "record-1"}}
+    assert payload["meta"]["run"] == {"record_id": "record-1", "pending": True}
 
     reopened = RunMetadataWizardViewSet.reopen(request, payload)
 

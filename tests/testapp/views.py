@@ -144,10 +144,17 @@ class RecordReadingStepView(StepFormView):
     """
 
     form_class = SecondStepForm
-    template_name = "testapp/linear_wizard.html"
+    template_name = "testapp/run_metadata_wizard.html"
 
     def get_initial(self):
-        SEEN_RECORDS.append(self.request.wizard.metadata.get("record_id"))
+        metadata = self.request.wizard.metadata
+        SEEN_RECORDS.append(metadata.get("record_id"))
+        # A note in this step's own bag, so the run-level record id and a
+        # step's own cannot tread on each other. Written on every dispatch,
+        # which is every walk — including the one `keep_readable()` takes
+        # after `done()` has returned. A step that writes metadata must
+        # therefore be idempotent about it, exactly as its `clean()` is.
+        metadata.for_step("second")["drafted"] = True
         return super().get_initial()
 
 
@@ -160,12 +167,12 @@ class RunMetadataWizardViewSet(WizardViewSet):
         "Two-step wizard that opens a record when the run starts, remembers "
         "it in the run's metadata, and reads it back at every later step."
     )
-    template_name = "testapp/linear_wizard.html"
+    template_name = "testapp/run_metadata_wizard.html"
     wizard = (
         Wizard()
         .step(FirstStepForm, name="first")
         .step(RecordReadingStepView, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+        .configure(template_name="testapp/run_metadata_wizard.html")
     )
 
     url_name = "run-metadata-wizard"
@@ -173,10 +180,19 @@ class RunMetadataWizardViewSet(WizardViewSet):
     def run_started(self, bound_wizard):
         record_id = f"record-{len(OPENED_RECORDS) + 1}"
         OPENED_RECORDS.append(record_id)
-        bound_wizard.metadata["record_id"] = record_id
+        metadata = bound_wizard.metadata
+        metadata["record_id"] = record_id
+        metadata["pending"] = True
 
     def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.metadata['record_id']}")
+        metadata = bound_wizard.metadata
+        # Set once when the run opened its record, and cleared once here.
+        # Nothing replays either, which is what makes a plain delete safe —
+        # unlike the step's note above.
+        del metadata["pending"]
+        return HttpResponse(
+            f"completed {metadata['record_id']} recording {len(metadata)}"
+        )
 
 
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):

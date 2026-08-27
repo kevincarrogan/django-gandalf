@@ -1,0 +1,19 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/run_metadata_wizard.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.wizard.back_url %}
+            <p><a href="{{ request.wizard.back_url }}">Back</a></p>
+        {% endif %}
+        {# What the run has recorded about itself so far — nothing to do with #}
+        {# the answers, and readable from a template like any other mapping. #}
+        <p class="meta">Recorded so far: {{ request.wizard.metadata }}</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}

@@ -1152,13 +1152,22 @@ bag is stored beside the state, through its own storage seam, and survives:
 | **completion** | `complete_run` discards the answers and keeps the bag, so a completion page can still name what was created |
 | **a stash round trip** | the bag rides in the payload, unlike file refs — a ref names bytes that completion deletes, a record id names something that outlives the run |
 
-Two sharp edges. Values must be JSON-safe, like everything else a run
-stores. And only *assignment* writes through, so mutating a nested value in
+Three sharp edges. Values must be JSON-safe, like everything else a run
+stores. Only *assignment* writes through, so mutating a nested value in
 place is lost — assign the whole value back:
 
 ```python
 wizard.metadata["refs"] = {**wizard.metadata["refs"], "invoice": invoice.pk}
 ```
+
+And **a write from a step view runs on every walk**, because the step is
+re-dispatched every time the run is replayed — including the walk
+`keep_readable()` takes *after* `done()` has returned. So a step that writes
+metadata must be idempotent about it, exactly as its `clean()` must be, and
+a key a step keeps rewriting cannot be deleted from `done()` — it will be
+back before the run is tombstoned. That is precisely why the thing you only
+want to do once belongs in `run_started()`, which is walked past rather than
+re-run.
 
 ### Not the same as a placement's metadata
 
