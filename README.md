@@ -1153,11 +1153,32 @@ bag is stored beside the state, through its own storage seam, and survives:
 | **a stash round trip** | the bag rides in the payload, unlike file refs — a ref names bytes that completion deletes, a record id names something that outlives the run |
 
 Three sharp edges. Values must be JSON-safe, like everything else a run
-stores. Only *assignment* writes through, so mutating a nested value in
-place is lost — assign the whole value back:
+stores. Only *assignment* writes through: a read hands back a deep copy, so
+mutating a nested value in place changes that copy and nothing else. Assign
+the whole value back instead:
 
 ```python
 wizard.metadata["refs"] = {**wizard.metadata["refs"], "invoice": invoice.pk}
+```
+
+That refusal is deliberate and uniform. Left alone it would depend on the
+backend — a session hands back its live dict, so the mutation lands but
+nothing marks the session and `SessionMiddleware` never saves it, while a
+durable store re-reads the row and the change is gone at once. Working in
+development and losing data in production is the worst of the three
+outcomes, so it is refused everywhere.
+
+There is no `modified` flag to set, as there is on Django's session, and
+there cannot be: that flag exists to flush a per-request cache, and this bag
+deliberately holds none — every read and every write goes to storage, which
+is what lets a write survive a walk that never persists.
+
+When several keys change together, `update()` puts them in with **one**
+write rather than one per key (which is one round trip per key on a durable
+backend):
+
+```python
+wizard.metadata.update(claim_id=claim.pk, pending=True)
 ```
 
 And **a write from a step view runs on every walk**, because the step is

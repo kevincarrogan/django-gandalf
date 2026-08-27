@@ -99,16 +99,53 @@ def test_deleting_a_key_writes_through(storage, metadata):
     assert storage.get_run_metadata(storage.run_id) == {"run": {}}
 
 
-def test_mutating_a_nested_value_in_place_does_not_write_through(metadata):
+def test_mutating_a_nested_value_in_place_changes_nothing(storage, metadata):
     metadata["refs"] = {"first": 1}
 
-    # The documented sharp edge: `_bucket()` hands back what storage
-    # holds, and for a session that is the live dict — but for any storage
-    # that deserialises (a JSON column, a cache) it is a copy, so this is
-    # not something to rely on either way. Assign the whole value back.
+    metadata["refs"]["second"] = 2
+
+    # A read hands back a deep copy, so this is refused on every backend
+    # rather than landing in a session's live dict (where nothing marks the
+    # session, so the middleware never saves it) and vanishing outright on
+    # a durable store. Same answer in development and in production.
+    assert metadata["refs"] == {"first": 1}
+    assert storage.get_run_metadata(storage.run_id) == {"run": {"refs": {"first": 1}}}
+
+
+def test_assigning_the_whole_value_back_is_how_a_nested_change_lands(metadata):
+    metadata["refs"] = {"first": 1}
+
     metadata["refs"] = {**metadata["refs"], "second": 2}
 
     assert metadata["refs"] == {"first": 1, "second": 2}
+
+
+def test_update_sets_every_key_in_a_single_write(storage, metadata):
+    calls = []
+    inner = storage.set_run_metadata
+    storage.set_run_metadata = lambda run_id, meta: (
+        calls.append(run_id),
+        inner(run_id, meta),
+    )[1]
+
+    metadata.update({"a": 1}, b=2)
+
+    # `MutableMapping` would loop over `__setitem__` — one full
+    # read-modify-write of the envelope per key, which is one round trip
+    # per key on a durable backend.
+    assert len(calls) == 1
+    assert dict(metadata) == {"a": 1, "b": 2}
+
+
+def test_update_reaches_a_step_bag_like_any_other_write(metadata):
+    metadata.update(record_id="abc")
+    metadata.for_step("billing").update(charged=True, reference="ref-1")
+
+    assert dict(metadata) == {"record_id": "abc"}
+    assert dict(metadata.for_step("billing")) == {
+        "charged": True,
+        "reference": "ref-1",
+    }
 
 
 def test_the_bag_reads_as_a_dict(metadata):

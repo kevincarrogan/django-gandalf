@@ -213,9 +213,11 @@ class RunMetadata(MutableMapping[str, Any]):
     walk — it is simply a bag nothing else reads.
 
     Two things to know. Values must be JSON-safe, like everything else a
-    run stores; and only *assignment* writes through, so mutating a nested
-    value in place (`metadata["a"]["b"] = 1`) changes a copy and is lost.
-    Assign the whole value back.
+    run stores; and only *assignment* writes through — a read hands back a
+    deep copy, so mutating a nested value in place (`metadata["a"]["b"] = 1`)
+    changes that copy and nothing else, on every backend. Assign the whole
+    value back, and use `update()` when several keys change together so
+    they cost one write rather than one each.
     """
 
     def __init__(
@@ -261,10 +263,29 @@ class RunMetadata(MutableMapping[str, Any]):
         self._storage.set_run_metadata(self._run_id, envelope)
 
     def __getitem__(self, key: str) -> Any:
-        return self._bucket()[key]
+        # Deep copied on the way out, so a caller that mutates what it reads
+        # cannot reach through into storage. Without this the behaviour
+        # depends on the backend: a session hands back the live dict (the
+        # mutation lands, but nothing marks the session, so the middleware
+        # never saves it), while a durable store re-reads the row and the
+        # mutation is gone at once. Refusing it everywhere beats working in
+        # development and losing data in production.
+        return deepcopy(self._bucket()[key])
 
     def __setitem__(self, key: str, value: Any) -> None:
         self._write(lambda bucket: bucket.__setitem__(key, value))
+
+    def update(self, other: Any = (), /, **kwargs: Any) -> None:
+        """Set several keys in one write.
+
+        `MutableMapping` would do this by looping over `__setitem__`, which
+        is a full read-modify-write of the envelope per key — three keys is
+        three `SELECT`s and three `UPDATE`s on a durable backend. Related
+        facts usually arrive together (`run_started()` recording what it
+        opened and that it is pending), so they go in together.
+        """
+        changes = dict(other, **kwargs)
+        self._write(lambda bucket: bucket.update(changes))
 
     def __delitem__(self, key: str) -> None:
         self._write(lambda bucket: bucket.__delitem__(key))

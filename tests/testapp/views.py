@@ -180,9 +180,8 @@ class RunMetadataWizardViewSet(WizardViewSet):
     def run_started(self, bound_wizard):
         record_id = f"record-{len(OPENED_RECORDS) + 1}"
         OPENED_RECORDS.append(record_id)
-        metadata = bound_wizard.metadata
-        metadata["record_id"] = record_id
-        metadata["pending"] = True
+        # Two facts about the same moment, so one write rather than two.
+        bound_wizard.metadata.update(record_id=record_id, pending=True)
 
     def done(self, bound_wizard):
         metadata = bound_wizard.metadata
