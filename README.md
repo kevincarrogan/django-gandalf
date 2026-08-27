@@ -1455,6 +1455,17 @@ mixin: it stashes the finished answers under `section_key`, which is the only
 thing that can tell the hub the section is finished. A subclass that replaced
 it would leave the section reading as not started forever.
 
+The two strings a section repeats back to its hub — `section_key` and
+`hub_url_name` — are checked against the hub's own declaration when it renders,
+because each holds only for as long as both sides stay typed the same. A key
+the section never stashes under means the hub reads a stash nothing writes, so
+the section completes and still renders as not started; a `hub_url_name` naming
+some other page means finishing works and quietly deposits the user somewhere
+that does not list the section they just finished. Both checks are lenient
+about `None`: a section that overrides `get_hub_url()` declares no
+`hub_url_name` to drift from, and a hub that leaves `url_name` unset is mounted
+under a name only its URLconf knows.
+
 ### What each status means
 
 | Status | Comes from |

@@ -513,6 +513,23 @@ def test_a_section_key_that_drifts_from_its_viewsets_own_key_is_misconfigured(
         _dispatch(rf, client, view)
 
 
+def test_a_section_that_returns_to_another_hub_is_misconfigured(rf, client):
+    """The section finishes, and deposits the user on a page that does not
+    list it."""
+
+    class _Elsewhere(ContactSectionViewSet):
+        hub_url_name = "readme-party-hub"
+
+    view = _hub_view(
+        url_name="readme-hub",
+        section_url_name="readme-hub-section",
+        sections=[Section("contact", _Elsewhere)],
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="Mispointed"):
+        _dispatch(rf, client, view)
+
+
 def test_a_hub_without_a_url_name_cannot_publish_urls():
     from gandalf.sections import HubView
 

@@ -327,12 +327,22 @@ class HubMixin(_HubMixinBase):
         return self._sections_cache
 
     def _validate_sections(self, sections: list[Section]) -> list[Section]:
-        """A key has to name exactly one section, and has to be the key that
-        section's own wizard stashes under.
+        """A key has to name exactly one section, has to be the key that
+        section's own wizard stashes under, and that wizard has to return to
+        this hub.
 
-        Drift between the two is the quiet failure: the hub reads a stash key
-        the section never writes, so the section completes and still renders
-        as not started, forever.
+        Drift is the quiet failure in all three. A key the section never
+        stashes under means the hub reads a stash nothing writes, so the
+        section completes and still renders as not started, forever. A
+        `hub_url_name` naming some other page means finishing works and simply
+        deposits the user somewhere that does not list the section they just
+        finished — the pair only ever holds because both sides were typed the
+        same, so it is checked rather than trusted.
+
+        Both viewset checks are lenient about `None`: a section doing its own
+        bookkeeping declares neither, and a hub that leaves `url_name` unset
+        is mounted under a name only its URLconf knows, so there is nothing to
+        compare against.
         """
         keys = [section.key for section in sections]
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
@@ -371,6 +381,24 @@ class HubMixin(_HubMixinBase):
                 "the hub reads a stash the section never writes and the "
                 f"section can never complete. Mismatched: {names}."
             )
+        if self.url_name is not None:
+            mispointed = [
+                section
+                for section in sections
+                if getattr(section.viewset, "hub_url_name", None)
+                not in (None, self.url_name)
+            ]
+            if mispointed:
+                names = ", ".join(
+                    f"{section.key} (its viewset returns to "
+                    f"{getattr(section.viewset, 'hub_url_name')!r})"
+                    for section in mispointed
+                )
+                raise ImproperlyConfigured(
+                    "A hub section's viewset must return to the hub that "
+                    "lists it, or finishing the section deposits the user on "
+                    f"a page that does not list it. Mispointed: {names}."
+                )
         return list(sections)
 
     def get_section(self, key: str) -> Section:

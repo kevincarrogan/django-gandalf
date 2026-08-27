@@ -309,6 +309,67 @@ def test_a_section_viewset_that_does_its_own_bookkeeping_is_not_key_checked(rf):
     assert _Mixed(request).get_section_rows()[0].status == NOT_STARTED
 
 
+def test_a_section_that_returns_to_another_hub_is_rejected(rf):
+    """Finishing would work and simply deposit the user on a page that does
+    not list the section they just finished."""
+
+    class _Elsewhere(_SectionViewSet):
+        hub_url_name = "some-other-hub"
+
+    class _Named(_Hub):
+        url_name = "hub"
+        sections = [Section("contact", _Elsewhere)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    with pytest.raises(ImproperlyConfigured, match="Mispointed"):
+        _Named(request).get_section_rows()
+
+
+def test_a_section_that_returns_to_the_hub_listing_it_is_accepted(rf):
+    class _Named(_Hub):
+        url_name = "hub"
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    assert _Named(request).get_section_rows()[0].status == NOT_STARTED
+
+
+def test_a_hub_that_names_no_url_of_its_own_checks_no_return(rf):
+    """`url_name` is optional — such a hub is mounted under a name only its
+    URLconf knows, so there is nothing to compare a section against."""
+
+    class _Elsewhere(_SectionViewSet):
+        hub_url_name = "some-other-hub"
+
+    class _Anonymous(_Hub):
+        sections = [Section("contact", _Elsewhere)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    assert _Anonymous(request).get_section_rows()[0].status == NOT_STARTED
+
+
+def test_a_section_viewset_that_does_its_own_bookkeeping_is_not_return_checked(rf):
+    """Only a `SectionMixin` declares a `hub_url_name` to drift from."""
+
+    class _Plain(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/linear_wizard.html"
+
+    class _Named(_Hub):
+        url_name = "hub"
+        sections = [Section("anything", _Plain)]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    assert _Named(request).get_section_rows()[0].status == NOT_STARTED
+
+
 def test_a_section_that_keys_itself_per_request_stashes_under_that_key(rf):
     """A dynamic section's key is only knowable once a request has named the
     item it belongs to, so it comes from the URL rather than the class."""
