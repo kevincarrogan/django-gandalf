@@ -407,7 +407,7 @@ def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
     response = client.get(hub_url)
 
     assert response.status_code == HTTPStatus.OK
-    assert [(row.title, row.status) for row in response.context["sections"]] == [
+    assert [(row.title, row.status) for row in response.context["hub"].rows] == [
         ("Contact details", "not-started"),
         ("Address", "not-started"),
     ]
@@ -499,8 +499,8 @@ def test_a_collection_adds_changes_and_removes_items(client):
         client.post(page, {"add_another": "no"}), reverse("readme-party-hub")
     )
     hub = client.get(reverse("readme-party-hub"))
-    assert [(row.title, row.status) for row in hub.context["sections"]] == [
+    assert [(row.title, row.status) for row in hub.context["hub"].rows] == [
         ("Venue", "not-started"),
         ("Guests", "complete"),
     ]
-    assert hub.context["sections"][1].url == page
+    assert hub.context["hub"].rows[1].url == page

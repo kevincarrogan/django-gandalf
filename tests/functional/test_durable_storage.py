@@ -109,7 +109,7 @@ def test_the_hub_reads_every_status_off_model_storage(logged_in):
 
 
 def _status(client):
-    (row,) = client.get(HUB_URL).context["sections"]
+    (row,) = client.get(HUB_URL).context["hub"].rows
     return row.status
 
 
@@ -127,7 +127,7 @@ def test_a_half_answered_section_survives_the_session_being_lost(logged_in, user
     logged_in.force_login(user)
 
     response = logged_in.get(HUB_URL)
-    assert response.context["sections"][0].status == INCOMPLETE
+    assert response.context["hub"].rows[0].status == INCOMPLETE
     assertRedirects(logged_in.get(DOOR_URL), _step_url(run.pk, "second"))
 
 
@@ -168,7 +168,7 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
     # Not this session's run, so the wizard answers exactly as it would for a
     # run that never existed: back to the start.
     assertRedirects(response, "/durable-section/", fetch_redirect_response=False)
-    assert client.get(HUB_URL).context["sections"][0].status == NOT_STARTED
+    assert client.get(HUB_URL).context["hub"].rows[0].status == NOT_STARTED
 
 
 # --- the storage protocol's own contracts ------------------------------------

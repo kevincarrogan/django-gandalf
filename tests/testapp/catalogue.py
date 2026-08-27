@@ -348,6 +348,13 @@ GROUPS = (
             Example("counting-hub", note="Start here."),
             Example("counting-hub-section-wizard"),
             Example("other-counting-hub-section-wizard"),
+            Example(
+                "gated-hub",
+                note="The second row waits on the first: Cannot start yet, "
+                "and the door turns you away until it unlocks.",
+            ),
+            Example("gated-first"),
+            Example("gated-second"),
         ),
     ),
     Group(
@@ -368,6 +375,11 @@ GROUPS = (
                 "minimum-guests",
                 note='Needs at least one item, so answering "no" while empty '
                 "still reads as Incomplete.",
+            ),
+            Example(
+                "locked-guests",
+                note="Every item locked, so the item door declines rather "
+                "than handing back a URL it never built.",
             ),
             Example(
                 "advancing-guests",

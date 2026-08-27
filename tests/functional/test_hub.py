@@ -17,7 +17,7 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.context import WizardContext
-from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED, Section
+from gandalf.sections import BLOCKED, COMPLETE, INCOMPLETE, NOT_STARTED, Section
 from gandalf.testing import (
     seed_run,
     seed_section_run,
@@ -37,7 +37,7 @@ def _door(section):
 
 
 def _statuses(response):
-    return {row.key: row.status for row in response.context["sections"]}
+    return {row.key: row.status for row in response.context["hub"].rows}
 
 
 def _complete_contact(client):
@@ -52,6 +52,23 @@ def _complete_contact(client):
         client.post(
             reverse(
                 "readme-hub-contact-step",
+                kwargs={"run_id": run_id, "gandalf_step": step},
+            ),
+            data,
+            follow=True,
+        )
+    return run_id
+
+
+def _complete_address(client):
+    """Drive the address section to its end, leaving a stash behind."""
+    client.get(_door("address"), follow=True)
+    run_id = stored_section_run(client, "address")
+    answers = {"line_one": "1 Main St", "postcode": "CB1 1AA"}
+    for step, data in [("address", answers), ("review", {})]:
+        client.post(
+            reverse(
+                "readme-hub-address-step",
                 kwargs={"run_id": run_id, "gandalf_step": step},
             ),
             data,
@@ -106,6 +123,85 @@ def test_a_finished_section_reads_as_complete(client):
 
     assert _statuses(response) == {"contact": COMPLETE, "address": NOT_STARTED}
     assertContains(response, 'class="tag tag--complete">Complete</strong>')
+
+
+# --- a section the user cannot start yet ------------------------------------
+
+
+GATED_URL = "/gated-hub/"
+
+
+def _gated_statuses(client):
+    return {row.key: row.status for row in client.get(GATED_URL).context["hub"].rows}
+
+
+def _complete_gated_first(client):
+    client.get("/gated-hub/first/", follow=True)
+    run_id = stored_section_run(client, "first")
+    client.post(
+        reverse("gated-first-step", kwargs={"run_id": run_id, "gandalf_step": "first"}),
+        {"name": "Ada"},
+        follow=True,
+    )
+
+
+def test_a_section_waiting_on_another_renders_as_cannot_start_yet(client):
+    response = client.get(GATED_URL)
+
+    assert _gated_statuses(client) == {"first": NOT_STARTED, "second": BLOCKED}
+    assertContains(response, 'class="tag tag--blocked">Cannot start yet</strong>')
+
+    hub = response.context["hub"]
+    assert (hub.blocked, hub.remaining) == (1, 2)
+    assert hub.is_not_started
+
+
+def test_a_locked_sections_door_sends_the_user_back_to_the_task_list(client):
+    """The row rendered a link. A stale link or a typed URL reaches the door
+    regardless, and it must not start the run."""
+    response = client.get("/gated-hub/second/")
+
+    assertRedirects(response, GATED_URL)
+    assert stored_section_run(client, "second") is None
+
+
+def test_a_section_unlocks_once_its_prerequisite_is_finished(client):
+    _complete_gated_first(client)
+
+    assert _gated_statuses(client) == {"first": COMPLETE, "second": NOT_STARTED}
+
+    response = client.get("/gated-hub/second/", follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assert stored_section_run(client, "second") is not None
+
+
+def test_a_fresh_hub_reports_the_whole_page_as_not_started(client):
+    hub = client.get(HUB_URL).context["hub"]
+
+    assert (hub.count, hub.completed, hub.remaining) == (2, 0, 2)
+    assert hub.is_not_started
+
+
+def test_one_finished_section_makes_the_whole_page_incomplete(client):
+    _complete_contact(client)
+
+    hub = client.get(HUB_URL).context["hub"]
+
+    assert (hub.count, hub.completed, hub.remaining) == (2, 1, 1)
+    assert hub.is_incomplete
+    assertContains(client.get(HUB_URL), "You have completed 1 of 2 sections.")
+
+
+def test_a_hub_is_complete_only_once_every_section_is(client):
+    _complete_contact(client)
+    _complete_address(client)
+
+    hub = client.get(HUB_URL).context["hub"]
+
+    assert (hub.completed, hub.remaining) == (2, 0)
+    assert hub.is_complete
+    assert str(hub.status_label) == "Complete"
 
 
 def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
@@ -428,7 +524,7 @@ def test_a_hub_forwards_its_mount_prefix_into_every_url_it_builds(client):
     response = client.get("/org/acme/hub/")
 
     assert response.status_code == HTTPStatus.OK
-    (row,) = response.context["sections"]
+    (row,) = response.context["hub"].rows
     assert row.url == "/org/acme/hub/details/"
 
 
@@ -452,7 +548,7 @@ def test_a_row_reports_its_status_as_a_boolean_per_state(client):
     )
     _complete_contact(client)
 
-    rows = {row.key: row for row in client.get(HUB_URL).context["sections"]}
+    rows = {row.key: row for row in client.get(HUB_URL).context["hub"].rows}
 
     assert (rows["contact"].is_complete, rows["contact"].is_incomplete) == (True, False)
     assert rows["address"].is_incomplete
@@ -635,7 +731,7 @@ def test_a_row_that_is_not_a_wizard_links_past_the_door_and_answers_for_itself(
 
     response = _dispatch(rf, client, view)
 
-    (row,) = response.context_data["sections"]
+    (row,) = response.context_data["hub"].rows
     assert (row.title, row.status, row.url) == ("Elsewhere", COMPLETE, HUB_URL)
 
 
@@ -714,7 +810,7 @@ def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
 def test_a_section_without_a_title_is_named_from_its_key(client):
     response = client.get(reverse("scenario-hub"))
 
-    titles = {row.key: row.title for row in response.context["sections"]}
+    titles = {row.key: row.title for row in response.context["hub"].rows}
     assert titles == {"plain": "Plain", "advancing": "Advancing"}
 
 

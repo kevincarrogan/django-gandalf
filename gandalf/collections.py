@@ -348,6 +348,12 @@ class CollectionMixin(HubMixin):
     """
 
     section_store_class = SessionCollectionStore
+    #: A collection page answers "how far has the whole thing got" with its
+    #: `Collection`, whose completeness is the user's declared answer to *add
+    #: another* rather than anything the rows can tell you. Publishing a `Hub`
+    #: beside it would put a second, differently-derived status on the same
+    #: page, so the hub's own context object is suppressed.
+    hub_context_name: str | None = None
     item_viewset: type[WizardViewSet] | None = None
     collection_key: str | None = None
     item_url_kwarg = "item"
@@ -454,12 +460,13 @@ class CollectionMixin(HubMixin):
 
     # --- the page ----------------------------------------------------------
 
-    def get_section_rows(self) -> list[SectionRow]:
+    def build_section_rows(self) -> list[SectionRow]:
         """The hub's own row builder, one `CollectionRow` per item.
 
-        A collection's rows *are* its sections' rows, so `sections` and
+        A collection's rows *are* its sections' rows, so `hub.rows` and
         `collection.rows` name one list and a template written for a hub reads
-        a collection unchanged.
+        a collection unchanged. `HubMixin.get_section_rows()` caches what this
+        returns, so wrapping them in a `Collection` costs no second build.
         """
         store = self.get_collection_store()
         return [
@@ -800,9 +807,13 @@ class CollectionView(CollectionMixin, TemplateView):
             return self.item_unavailable(item_id)
         if self._is_remove():
             return self.render_to_response(self.get_context_data(row=self.row(item_id)))
-        # Entering yields a step URL by construction; the item's own viewset
-        # is the reverser, so there is always one.
-        return redirect(cast(str, self.enter(section)))
+        # Entering yields a step URL for any item this collection lists —
+        # every one has a viewset, so the only arm that declines is a
+        # `section_blocked()` an app has overridden to gate its items.
+        url = self.enter(section)
+        if url is None:
+            return self.item_unavailable(item_id)
+        return redirect(url)
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponseBase:
         item_id = self._item_id()
@@ -816,7 +827,14 @@ class CollectionView(CollectionMixin, TemplateView):
         if not form.is_valid():
             return self.render_to_response(self.get_context_data(form=form))
         if form.wants_another:
-            return redirect(cast(str, self.add_item()))
+            # `add_item()` registers before it enters, so a gated collection
+            # leaves the user a listed, removable, not-started row and the
+            # page it was pressed from — the same bargain the docstring there
+            # strikes with an entry that raises.
+            url = self.add_item()
+            if url is None:
+                return redirect(self.get_collection_url())
+            return redirect(url)
         return self.declare_done()
 
     def row(self, item_id: str) -> CollectionRow:

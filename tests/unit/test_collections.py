@@ -27,7 +27,11 @@ from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 from tests.testapp.forms import GuestForm
-from tests.testapp.views import GuestCollectionView, GuestItemViewSet
+from tests.testapp.views import (
+    GuestCollectionView,
+    GuestItemViewSet,
+    LockedGuestCollectionView,
+)
 
 
 class _Session(dict):
@@ -79,10 +83,10 @@ ITEM_A = "11111111-1111-1111-1111-111111111111"
 ITEM_B = "22222222-2222-2222-2222-222222222222"
 
 
-def _seed(items=(), declared_done=False):
+def _seed(items=(), declared_done=False, key="guests"):
     return {
         "gandalf_collections": {
-            "guests": {
+            key: {
                 "items": [{"id": i, "title": t} for i, t in items],
                 "declared_done": declared_done,
             }
@@ -234,9 +238,18 @@ def test_a_collections_rows_are_also_its_sections_rows(collection):
 
     context = page.get_context_data()
 
-    assert context["sections"] == list(context["collection"].rows)
-    assert isinstance(context["sections"][0], CollectionRow)
+    assert list(page.get_section_rows()) == list(context["collection"].rows)
+    assert isinstance(context["collection"].rows[0], CollectionRow)
     assert isinstance(context["form"], AddAnotherForm)
+
+
+def test_a_collection_page_publishes_no_hub_beside_its_collection(collection):
+    """Two statuses derived two ways would be on the one page: a collection is
+    complete when the user says there are no more, which no count of rows can
+    tell you."""
+    page = collection(_seed(items=[(ITEM_A, "Ada")]))
+
+    assert "hub" not in page.get_context_data()
 
 
 # --- the actions ------------------------------------------------------------
@@ -644,6 +657,34 @@ def test_the_item_route_enters_the_item_it_names(rf):
 
     assert response.status_code == 302
     assert response["Location"].startswith(f"/party-guest/{ITEM_A}/")
+
+
+def test_the_item_route_declines_an_item_the_collection_has_locked(rf):
+    """An app may gate its items too. The door then has nothing to hand back,
+    and sends the user to the page rather than redirecting to `None`."""
+    request = _view_request(
+        rf,
+        path=f"/locked-guests/{ITEM_A}/",
+        session=_seed(items=[(ITEM_A, "Ada")], key="locked-guests"),
+    )
+
+    response = LockedGuestCollectionView.as_view()(request, item=ITEM_A)
+
+    assert response["Location"] == "/locked-guests/"
+
+
+def test_adding_to_a_locked_collection_still_registers_the_item(rf):
+    """`add_item()` writes the durable fact before it enters, so the user is
+    left with a listed, removable row and the page they pressed Add on."""
+    request = _view_request(
+        rf, "post", path="/locked-guests/", data={"add_another": "yes"}
+    )
+
+    response = LockedGuestCollectionView.as_view()(request)
+
+    store = SessionCollectionStore(WizardContext.from_request(request))
+    assert response["Location"] == "/locked-guests/"
+    assert len(store.item_ids("locked-guests")) == 1
 
 
 def test_the_remove_route_asks_before_it_destroys_anything(rf):

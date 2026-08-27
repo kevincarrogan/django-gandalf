@@ -172,6 +172,25 @@ def test_the_door_resumes_a_half_finished_item_where_it_left_off(client):
     assert response["Location"].rstrip("/").rsplit("/", 1)[-1] == "review"
 
 
+def test_a_locked_items_door_sends_the_user_back_to_the_collection_page(client):
+    """An app may gate its items too. The door then has nothing to hand back,
+    and must say so rather than redirect to `None`."""
+    seed_collection_item(client, "locked-guests", ITEM)
+
+    response = client.get(reverse("locked-guests-item", kwargs={"item": ITEM}))
+
+    assertRedirects(response, "/locked-guests/")
+
+
+def test_adding_to_a_locked_collection_leaves_the_row_and_the_page(client):
+    """`add_item()` registers before it enters, so the item exists even though
+    the door declined — a listed, removable, not-started row."""
+    response = client.post("/locked-guests/", {"add_another": "yes"})
+
+    assertRedirects(response, "/locked-guests/")
+    assert len(stored_collection_items(client, "locked-guests")) == 1
+
+
 def test_the_door_reopens_a_finished_item_with_its_answers_in_place(client):
     _complete(client, "Ada")
     (item_id,) = stored_collection_items(client, "guests")
@@ -384,7 +403,7 @@ def test_a_task_list_links_straight_at_a_collection_page(client):
     door — there is no run for the door to walk."""
     response = client.get("/party/")
 
-    rows = {row.key: row for row in response.context["sections"]}
+    rows = {row.key: row for row in response.context["hub"].rows}
     assert rows["guests"].url == PAGE
     assert rows["venue"].url == reverse(
         "party-hub-section", kwargs={"section": "venue"}
@@ -397,7 +416,7 @@ def test_a_task_list_reports_the_collections_own_status(client):
 
     response = client.get("/party/")
 
-    rows = {row.key: row.status for row in response.context["sections"]}
+    rows = {row.key: row.status for row in response.context["hub"].rows}
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 

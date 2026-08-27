@@ -11,9 +11,11 @@ from django.core.exceptions import ImproperlyConfigured
 from gandalf.context import WizardContext
 from gandalf.runtime import STASH_VERSION
 from gandalf.sections import (
+    BLOCKED,
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
+    Hub,
     HubMixin,
     Section,
     SectionMixin,
@@ -88,8 +90,50 @@ def hub(rf):
     return build
 
 
-def _stash(state):
-    return {"version": STASH_VERSION, "label": "contact", "state": state}
+def _stash(state, label="contact"):
+    return {"version": STASH_VERSION, "label": label, "state": state}
+
+
+class _AddressSectionViewSet(_SectionViewSet):
+    section_key = "address"
+
+
+class _PairHub(_Hub):
+    """Two sections, so the counts have something to count."""
+
+    sections = [
+        Section("contact", _SectionViewSet, title="Contact details"),
+        Section("address", _AddressSectionViewSet, title="Address"),
+    ]
+
+
+@pytest.fixture
+def pair_hub(rf):
+    def build(session=None):
+        request = rf.get("/hub/")
+        request.session = _Session(session or {})
+        return _PairHub(request)
+
+    return build
+
+
+class _GatedHub(_PairHub):
+    """Address waits on contact — the shape of every task list that unlocks."""
+
+    def section_blocked(self, section):
+        return section.key == "address" and not SessionSectionStore(
+            self.request
+        ).has_stash("contact")
+
+
+@pytest.fixture
+def gated_hub(rf):
+    def build(session=None):
+        request = rf.get("/hub/")
+        request.session = _Session(session or {})
+        return _GatedHub(request)
+
+    return build
 
 
 # --- Section ---------------------------------------------------------------
@@ -248,7 +292,221 @@ def test_a_section_without_a_title_is_named_from_its_key(rf):
 def test_the_rows_land_in_the_template_context(hub):
     context = hub().get_context_data()
 
-    assert [row.key for row in context["sections"]] == ["contact"]
+    assert [row.key for row in context["hub"].rows] == ["contact"]
+
+
+# --- a section the user cannot start yet ------------------------------------
+
+
+def test_a_section_waiting_on_another_cannot_start_yet(gated_hub):
+    contact, address = gated_hub().get_section_rows()
+
+    assert contact.status == NOT_STARTED
+    assert address.status == BLOCKED
+    assert address.is_blocked
+
+
+def test_a_section_unblocks_once_its_prerequisite_is_answered(gated_hub):
+    page = gated_hub(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+
+    contact, address = page.get_section_rows()
+
+    assert (contact.status, address.status) == (COMPLETE, NOT_STARTED)
+    assert not address.is_blocked
+
+
+def test_being_blocked_outranks_a_section_already_finished(gated_hub):
+    """The prerequisite was withdrawn after the section was answered. The row
+    reports what the user can do, not what they once did — a **Complete** row
+    over a link the door refuses is the worse of the two lies."""
+    page = gated_hub(
+        {"gandalf_stashes": {"address": _stash([{"step": {"x": 1}}], label="address")}}
+    )
+
+    _, address = page.get_section_rows()
+
+    assert address.status == BLOCKED
+
+
+def test_a_blocked_section_is_labelled_cannot_start_yet(gated_hub):
+    _, address = gated_hub().get_section_rows()
+
+    assert str(address.status_label) == "Cannot start yet"
+
+
+def test_a_blocked_section_is_refused_at_the_door(gated_hub):
+    """The row rendered a link the user may not follow, and a stale link or a
+    typed URL reaches the door regardless."""
+    page = gated_hub()
+
+    assert page.enter(page.get_section("address")) is None
+    assert SessionSectionStore(page.request).get_run("address") is None
+
+
+def test_a_section_reporting_blocked_under_its_own_steam_is_refused_too(rf):
+    """`Section.status` answers for itself, so the door asks the status rather
+    than the hook — otherwise the two could disagree."""
+
+    class _Gated(_Hub):
+        sections = [
+            Section(
+                "contact",
+                _SectionViewSet,
+                title="Contact details",
+                status=lambda request: BLOCKED,
+            )
+        ]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+    page = _Gated(request)
+
+    assert page.get_section_rows()[0].status == BLOCKED
+    assert page.enter(page.get_section("contact")) is None
+
+
+def test_an_unblocked_section_still_enters(gated_hub):
+    page = gated_hub(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+
+    assert page.enter(page.get_section("address")) is not None
+
+
+# --- the hub as a whole ----------------------------------------------------
+
+
+def test_a_hub_counts_how_many_of_its_sections_are_complete(pair_hub):
+    """The task list heading, without the view counting rows by hand."""
+    page = pair_hub(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+
+    hub = page.get_hub()
+
+    assert hub.count == 2
+    assert hub.completed == 1
+    assert hub.remaining == 1
+
+
+def test_a_hub_with_every_section_complete_is_complete(pair_hub):
+    page = pair_hub(
+        {
+            "gandalf_stashes": {
+                "contact": _stash([{"step": {"name": "Ada"}}]),
+                "address": _stash([{"step": {"name": "Ada"}}], label="address"),
+            }
+        }
+    )
+
+    hub = page.get_hub()
+
+    assert hub.status == COMPLETE
+    assert hub.is_complete
+    assert hub.remaining == 0
+
+
+def test_a_hub_nobody_has_touched_has_not_started(pair_hub):
+    hub = pair_hub().get_hub()
+
+    assert hub.status == NOT_STARTED
+    assert hub.is_not_started
+    assert hub.completed == 0
+
+
+def test_a_hub_with_one_section_under_way_is_incomplete(pair_hub):
+    page = pair_hub(
+        {
+            "gandalf_section_runs": {"contact": "run-1"},
+            "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
+        }
+    )
+
+    hub = page.get_hub()
+
+    assert hub.status == INCOMPLETE
+    assert hub.is_incomplete
+
+
+def test_a_hub_listing_nothing_has_not_started(rf):
+    """`all()` over an empty list is true, and "complete" would be a lie: no
+    section has begun because there is no section."""
+
+    class _Empty(_Hub):
+        sections = []
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+
+    assert _Empty(request).get_hub().status == NOT_STARTED
+
+
+def test_a_fresh_hub_whose_later_section_is_locked_has_still_not_started(gated_hub):
+    """A locked section is not progress. Counting it as one would open every
+    task list on **Incomplete** before the user had answered anything."""
+    hub = gated_hub().get_hub()
+
+    assert hub.status == NOT_STARTED
+    assert hub.blocked == 1
+    assert hub.remaining == 2
+
+
+def test_a_hub_cannot_be_complete_while_a_section_is_locked(rf):
+    """Which is why a section that will never unlock belongs out of
+    `get_sections()` rather than locked forever inside it."""
+
+    class _Locked(_PairHub):
+        def section_blocked(self, section):
+            return section.key == "address"
+
+    request = rf.get("/hub/")
+    request.session = _Session(
+        {"gandalf_stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
+    )
+
+    hub = _Locked(request).get_hub()
+
+    assert hub.status == INCOMPLETE
+    assert (hub.completed, hub.blocked, hub.remaining) == (1, 1, 1)
+
+
+def test_a_hubs_status_carries_its_own_label(pair_hub):
+    assert str(pair_hub().get_hub().status_label) == "Not started"
+
+
+def test_the_hub_lands_in_the_template_context(hub):
+    context = hub().get_context_data()
+
+    assert isinstance(context["hub"], Hub)
+
+
+def test_a_hub_publishing_no_context_name_publishes_nothing(hub):
+    page = hub()
+    page.hub_context_name = None
+
+    assert page.get_context_data() == {}
+
+
+def test_the_rows_are_built_once_per_request(hub):
+    """Asking twice is what the counts used to cost. A row is two storage
+    reads and a `reverse()`, and a whole `Collection` for a section that is
+    one."""
+    page = hub()
+    builds = []
+
+    def build_section_rows():
+        builds.append(1)
+        return HubMixin.build_section_rows(page)
+
+    page.build_section_rows = build_section_rows
+
+    page.get_context_data()
+    page.get_section_rows()
+    page.get_hub()
+
+    assert len(builds) == 1
 
 
 # --- declaration vetting ---------------------------------------------------
@@ -956,7 +1214,7 @@ def test_the_hub_page_renders_the_section_rows(rf):
     response = _profile_hub(rf, "/readme/hub/")
 
     assert response.status_code == 200
-    assert [row.key for row in response.context_data["sections"]] == [
+    assert [row.key for row in response.context_data["hub"].rows] == [
         "contact",
         "address",
     ]

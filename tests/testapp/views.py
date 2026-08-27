@@ -2108,6 +2108,21 @@ class CountingHubView(HubView):
         Section("counting", CountingSectionViewSet, title="Counting"),
         Section("other", OtherCountingSectionViewSet, title="Other"),
     ]
+    builds = 0
+
+    def build_section_rows(self):
+        self.builds += 1
+        return super().build_section_rows()
+
+    def get_context_data(self, **kwargs):
+        """An app wanting something the `Hub` does not offer asks for the rows
+        again — which is the pattern that used to cost a second build."""
+        context = super().get_context_data(**kwargs)
+        context["first_unfinished"] = next(
+            (row for row in self.get_section_rows() if not row.is_complete), None
+        )
+        context["builds"] = self.builds
+        return context
 
 
 # --- Storage that outlives a session -----------------------------------------
@@ -2170,6 +2185,40 @@ class GuestCollectionView(CollectionView):
     continue_url_name = "party-hub"
 
 
+class GatedFirstSectionViewSet(SectionMixin, WizardViewSet):
+    description = "The section a gated task list unlocks the next one with."
+    url_name = "gated-first"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "first"
+    hub_url_name = "gated-hub"
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+
+class GatedSecondSectionViewSet(GatedFirstSectionViewSet):
+    description = "The section a gated task list keeps locked until then."
+    url_name = "gated-second"
+    section_key = "second"
+
+
+class GatedHubView(HubView):
+    """A task list whose second row waits on its first — the shape of every
+    "Cannot start yet"."""
+
+    description = "Task list whose second section unlocks when the first ends."
+    template_name = "testapp/hub.html"
+    url_name = "gated-hub"
+    section_url_name = "gated-hub-section"
+    sections = [
+        Section("first", GatedFirstSectionViewSet, title="First"),
+        Section("second", GatedSecondSectionViewSet, title="Second"),
+    ]
+
+    def section_blocked(self, section):
+        return section.key == "second" and not self.get_section_store().has_stash(
+            "first"
+        )
+
+
 class PartyVenueSectionViewSet(SectionMixin, WizardViewSet):
     description = "A plain section beside a collection on the same task list."
     url_name = "party-venue"
@@ -2190,6 +2239,25 @@ class PartyHubView(HubView):
         Section("venue", PartyVenueSectionViewSet, title="Venue"),
         GuestCollectionView.as_section("guests", title="Guests"),
     ]
+
+
+class LockedGuestItemViewSet(GuestItemViewSet):
+    url_name = "locked-guest"
+    collection_key = "locked-guests"
+    collection_url_name = "locked-guests"
+
+
+class LockedGuestCollectionView(GuestCollectionView):
+    """An app may gate its items too, and then the item door has to decline
+    rather than hand back a URL it never built."""
+
+    description = "A collection whose items are all locked."
+    url_name = "locked-guests"
+    collection_key = "locked-guests"
+    item_viewset = LockedGuestItemViewSet
+
+    def section_blocked(self, section):
+        return True
 
 
 class MinimumGuestItemViewSet(GuestItemViewSet):

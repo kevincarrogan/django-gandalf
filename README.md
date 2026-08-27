@@ -1381,7 +1381,8 @@ re-opened, and a page up front says how far each has got.
 `gandalf.sections` is that page. Declare the sections, mix `SectionMixin` into
 each section's viewset, and the hub renders a row per section carrying its
 title, its status — **Not started**, **Incomplete** or **Complete** — and one
-URL that does the right thing whichever state it is in.
+URL that does the right thing whichever state it is in. The rows arrive
+wrapped in a `hub`, which says how far the page has got as a whole.
 
 ```python
 from gandalf.form_views import StepFormView
@@ -1442,13 +1443,24 @@ urlpatterns = [
 ```
 
 ```django
-{% for row in sections %}
+<p>You have completed {{ hub.completed }} of {{ hub.count }} sections.</p>
+
+{% for row in hub.rows %}
   <li>
     <a href="{{ row.url }}">{{ row.title }}</a>
     <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
   </li>
 {% endfor %}
+
+{% if hub.is_complete %}<button type="submit">Submit application</button>{% endif %}
 ```
+
+`hub.count`, `hub.completed` and `hub.remaining` are the task list heading;
+`hub.status` is the same three values a row carries, derived for the set —
+**Complete** when every row is, **Not started** when none has been touched,
+**Incomplete** in between — so the button that submits the whole thing reads
+one flag rather than counting rows in the view. The rows behind them are built
+once per request, so asking is free.
 
 **Sections override `section_done()`, never `done()`.** `done()` belongs to the
 mixin: it stashes the finished answers under `section_key`, which is the only
@@ -1470,6 +1482,7 @@ under a name only its URLconf knows.
 
 | Status | Comes from |
 | --- | --- |
+| **Cannot start yet** | `section_blocked()` — the section is waiting on an answer given somewhere else |
 | **Complete** | A stash under the section's key — the section ran to its own end and `done()` fired |
 | **Incomplete** | A recorded run holding at least one submission |
 | **Not started** | Everything else, including a section opened and left unanswered, and one whose run has expired |
@@ -1479,6 +1492,51 @@ a hub of six sections costs six dict lookups rather than a form `clean()` per
 answered step per row. Whether the stored answers still *validate* is not
 asked — it would not change the row, since an answer that no longer validates
 leaves the section in progress just as surely as one that does.
+
+### Sections that unlock
+
+Most task lists are not a flat set. A section becomes available because of
+what another one said, and until then the row should say **Cannot start yet**
+rather than offer a link. Override `section_blocked()`:
+
+```python
+class ApplicationHubView(HubView):
+    ...
+
+    def section_blocked(self, section):
+        if section.key == "employment":
+            return not self.request.user.profile.is_employed
+        return False
+```
+
+That one hook does both halves. The row renders `BLOCKED` with the label
+**Cannot start yet**, and `enter()` refuses it — a stale link or a hand-typed
+URL lands back on the task list instead of starting the run. This is the one
+place display and dispatch have to agree, so the door asks for the *status*
+rather than the hook, and a `Section.status` reporting `BLOCKED` under its own
+steam is guarded too.
+
+A hook rather than a `requires=["contact"]` on the declaration, because
+availability turns on *answers*, not on which sections are finished:
+"employment history, but only if you said you are employed" is the common case
+and no graph of section keys expresses it.
+
+**Read your own models there, not the other section's stash.** A stash's state
+is positional against a tree whose shape may depend on a branch predicate
+nobody has evaluated. `section_done()` is where the answers become yours —
+that is what it is for — and `section_blocked()` is where you read back what
+you saved.
+
+Two consequences worth knowing. Being blocked **outranks** a stash, so a
+section whose prerequisite was withdrawn after it was answered reports what
+the user can do rather than what they once did — a **Complete** row over a
+link the door refuses is the worse of the two lies. And a blocked section
+keeps the whole hub off `COMPLETE`, which is why a section that will never
+unlock belongs out of `get_sections()` rather than locked forever inside it.
+
+`section_blocked()` runs once per row when the page renders and once more at
+the door, so keep it cheap or cache it on the view — a hub row's promise is
+storage reads and no walk, and this runs inside it.
 
 ### Every link is a step URL, never a bare run URL
 
@@ -1528,8 +1586,11 @@ Each hands back a `BoundWizard`, so `cursor()`, `path`, `step_url()` and
 ### Customising
 
 Every decision is a hook. `get_sections()` chooses the sections per request,
-`get_section_status()` decides how far one has got, `get_section_title()` names
-it, `get_status_label()` reworks the wording, and `resume_section()` /
+`get_section_status()` decides how far one has got, `section_blocked()` decides
+whether it is open to the user yet, `get_hub_status()` decides how far they
+have got between them — override it where an optional section should not hold
+the whole page back — `get_section_title()` names it,
+`get_status_label()` reworks the wording, and `resume_section()` /
 `reopen_section()` / `start_section()` each own one way into a run.
 `stash_unusable()` handles a payload whose `label` no longer matches — it
 re-raises by default, because silently starting over looks to the user exactly

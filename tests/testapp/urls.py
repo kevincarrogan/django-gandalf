@@ -305,10 +305,15 @@ urlpatterns = [
     # mounted at "party-guests/<uuid:item>/" would occupy the exact path of
     # the collection's own door for that item. Either way, whichever
     # `include()` comes first silently wins.
+    path("gated-hub/", include(views.GatedHubView.urls())),
+    path("gated-first/", include(views.GatedFirstSectionViewSet.urls())),
+    path("gated-second/", include(views.GatedSecondSectionViewSet.urls())),
     path("party/", include(views.PartyHubView.urls())),
     path("party-venue/", include(views.PartyVenueSectionViewSet.urls())),
     path("party-guests/", include(views.GuestCollectionView.urls())),
     path("party-guest/<uuid:item>/", include(views.GuestItemViewSet.urls())),
+    path("locked-guests/", include(views.LockedGuestCollectionView.urls())),
+    path("locked-guest/<uuid:item>/", include(views.LockedGuestItemViewSet.urls())),
     path("minimum-guests/", include(views.MinimumGuestCollectionView.urls())),
     path("minimum-guest/<uuid:item>/", include(views.MinimumGuestItemViewSet.urls())),
     path("drifted-guests/", include(views.DriftedGuestCollectionView.urls())),

@@ -2,9 +2,10 @@
 
 A hub asks the same three questions of every section — what is it called, how
 far has it got, and where does its link go — so `HubMixin` answers them once.
-Mix it into the page's view and the template gets a `sections` list: one
-`SectionRow` per declared section, carrying its title, its status, and one URL
-that does the right thing whichever of the three states it is in.
+Mix it into the page's view and the template gets a `hub`: one `SectionRow`
+per declared section, carrying its title, its status, and one URL that does
+the right thing whichever of the three states it is in, wrapped in a `Hub`
+that says how far the whole page has got.
 
 A section is *complete* when it ran to its own end and `done()` stashed the
 answers. That is the only definition the hub has, and it is deliberately the
@@ -13,8 +14,10 @@ Finding out where a half-finished run actually is does cost a walk, so it
 happens once, on the way in, for the one section the user clicked.
 
 Every decision is a hook: `get_sections()` chooses the sections,
-`get_section_status()` decides how far one has got, `get_section_title()` names
-it, `get_section_url()` says where its link goes, and `resume_section()` /
+`get_section_status()` decides how far one has got, `section_blocked()` decides
+whether it is open to the user yet, `get_hub_status()` decides how far they
+have got between them, `get_section_title()` names it,
+`get_section_url()` says where its link goes, and `resume_section()` /
 `reopen_section()` / `start_section()` each own one way into a run. The
 defaults suit a plain task list; override what your domain needs.
 """
@@ -53,9 +56,11 @@ else:
 
 
 __all__ = [
+    "BLOCKED",
     "COMPLETE",
     "INCOMPLETE",
     "NOT_STARTED",
+    "Hub",
     "HubMixin",
     "HubView",
     "Section",
@@ -71,6 +76,10 @@ __all__ = [
 NOT_STARTED = "not-started"
 INCOMPLETE = "incomplete"
 COMPLETE = "complete"
+# Named for the state rather than the wording, unlike its three siblings,
+# because the wording is a label's job and `is_cannot_start` is no name for a
+# property. The default label is the task list's own: "Cannot start yet".
+BLOCKED = "blocked"
 
 
 class SectionNotFound(LookupError):
@@ -150,6 +159,63 @@ class SectionRow:
     def key(self) -> str:
         """The section's key."""
         return self.section.key
+
+    @property
+    def is_not_started(self) -> bool:
+        return self.status == NOT_STARTED
+
+    @property
+    def is_incomplete(self) -> bool:
+        return self.status == INCOMPLETE
+
+    @property
+    def is_complete(self) -> bool:
+        return self.status == COMPLETE
+
+    @property
+    def is_blocked(self) -> bool:
+        """Whether the user cannot start this section yet. A blocked row's
+        link is refused at the door, so it is the one status where the row and
+        the door have to agree."""
+        return self.status == BLOCKED
+
+
+@dataclass(frozen=True)
+class Hub:
+    """The hub as a whole: its rows, and how far the whole page has got. What
+    a task list's heading and its final submit button both read.
+
+    The counts are the reason this exists. "You have completed 2 of 5
+    sections" is the task list pattern, and deriving it in the view means
+    asking for the rows a second time — a second pair of storage reads per
+    section, and a whole second `Collection` for any section that is one.
+    `rows` is built once and counted here.
+    """
+
+    rows: tuple[SectionRow, ...]
+    status: str
+    status_label: StrOrPromise
+
+    @property
+    def count(self) -> int:
+        """How many sections the hub lists."""
+        return len(self.rows)
+
+    @property
+    def completed(self) -> int:
+        """How many of them have run to their own end."""
+        return sum(1 for row in self.rows if row.is_complete)
+
+    @property
+    def remaining(self) -> int:
+        """How many have not — a section the user cannot start yet included,
+        since it is still work the journey is waiting on."""
+        return self.count - self.completed
+
+    @property
+    def blocked(self) -> int:
+        """How many are waiting on an answer given elsewhere."""
+        return sum(1 for row in self.rows if row.is_blocked)
 
     @property
     def is_not_started(self) -> bool:
@@ -287,15 +353,19 @@ class SectionMixin(_SectionMixinBase):
 
 
 class HubMixin(_HubMixinBase):
-    """Adds `sections` — one `SectionRow` per declared section — to a view's
-    template context, and owns the door each row links to.
+    """Adds `hub` — one `SectionRow` per declared section, and the counts and
+    status of the set — to a view's template context, and owns the door each
+    row links to.
 
     Mix into the page listing the sections, or use `HubView`, which is this
     over a `TemplateView` with the two URL patterns already published.
     """
 
     sections: list[Section] | None = None
-    sections_context_name = "sections"
+    #: Where the `Hub` lands in the template context. `None` publishes
+    #: nothing, for a page that answers "how far has the whole thing got" with
+    #: an object of its own — which is what a collection does.
+    hub_context_name: str | None = "hub"
     section_store_class = SessionSectionStore
     section_url_name: str | None = None
     section_url_kwarg = "section"
@@ -423,7 +493,51 @@ class HubMixin(_HubMixinBase):
 
     # --- the page ----------------------------------------------------------
 
+    def get_hub(self) -> Hub:
+        """The whole page: its rows, and how far they have got between them."""
+        rows = tuple(self.get_section_rows())
+        status = self.get_hub_status(rows)
+        return Hub(
+            rows=rows,
+            status=status,
+            status_label=self.get_status_label(status),
+        )
+
+    def get_hub_status(self, rows: tuple[SectionRow, ...]) -> str:
+        """How far the hub has got as a whole — every row complete, every row
+        untouched, or anything in between.
+
+        A hub listing nothing has not started: there is no section to have
+        begun. A section the user cannot start yet does not make the page
+        *incomplete* either — a fresh task list whose later sections are
+        locked has still not been begun — but it does keep the page off
+        `COMPLETE` for as long as it is locked, which is why a section that
+        will never unlock belongs out of `get_sections()` rather than in it.
+
+        Override for a domain where some sections do not count towards the
+        whole — an optional one, or one another answer made moot.
+        """
+        if rows and all(row.is_complete for row in rows):
+            return COMPLETE
+        if all(row.is_not_started or row.is_blocked for row in rows):
+            return NOT_STARTED
+        return INCOMPLETE
+
     def get_section_rows(self) -> list[SectionRow]:
+        """One row per declared section, built once per request.
+
+        Both halves of the page ask for them — the `Hub` counting them, and a
+        collection wrapping the same list in a `Collection` — and a row is
+        cheap but not free: two storage reads and a `reverse()` each, and a
+        whole `Collection` build for a section that is one. Cached on the view
+        instance Django builds per request, exactly as `_vetted_sections()`
+        is. Override `build_section_rows()` to change what is built.
+        """
+        if not hasattr(self, "_section_rows_cache"):
+            self._section_rows_cache = self.build_section_rows()
+        return self._section_rows_cache
+
+    def build_section_rows(self) -> list[SectionRow]:
         store = self.get_section_store()
         return [
             self.build_section_row(section, store)
@@ -465,14 +579,50 @@ class HubMixin(_HubMixinBase):
         A section carrying its own `status` answers for itself and none of
         this runs, which is the only way a row can report something no stash
         key can express.
+
+        `BLOCKED` outranks the storage reads below it, so a section whose
+        prerequisite was withdrawn reports what the user can do rather than
+        what they once did. That is the honest reading when the door is about
+        to refuse them: a row saying **Complete** over a link that turns the
+        user away is worse than one saying they cannot start yet.
         """
         if section.status is not None:
             return section.status(self.request)
+        if self.section_blocked(section):
+            return BLOCKED
         if store.has_stash(section.key):
             return COMPLETE
         if self.get_section_state(section, store):
             return INCOMPLETE
         return NOT_STARTED
+
+    def section_blocked(self, section: Section) -> bool:
+        """Whether this section is not open to the user yet, because it is
+        waiting on an answer given somewhere else.
+
+        `False` for everything by default. Override to gate a section on what
+        another one said:
+
+            def section_blocked(self, section):
+                if section.key == "employment":
+                    return not employment_declared(self.request.user)
+                return False
+
+        A hook rather than a `requires=["contact"]` on the declaration,
+        because availability turns on *answers*, not on which sections are
+        finished: "employment history, but only if you said you are employed"
+        is the common case and no graph of section keys expresses it.
+
+        Read your own models here, not the other section's stash. A stash's
+        state is positional against a tree whose shape may depend on a branch
+        predicate nobody has evaluated; `section_done()` is where the answers
+        become yours, and this is where you read what you saved.
+
+        Called once per row when the page renders, and once more at the door,
+        so keep it cheap or cache it on the view — the hub's promise is that a
+        row costs storage reads and no walk, and this runs inside it.
+        """
+        return False
 
     def get_section_state(self, section: Section, store: SessionSectionStore) -> State:
         """The stored state of the section's recorded run — an empty list when
@@ -510,6 +660,7 @@ class HubMixin(_HubMixinBase):
             NOT_STARTED: gettext("Not started"),
             INCOMPLETE: gettext("Incomplete"),
             COMPLETE: gettext("Complete"),
+            BLOCKED: gettext("Cannot start yet"),
         }[status]
 
     def get_section_url(self, section: Section) -> str:
@@ -566,7 +717,8 @@ class HubMixin(_HubMixinBase):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context[self.sections_context_name] = self.get_section_rows()
+        if self.hub_context_name is not None:
+            context[self.hub_context_name] = self.get_hub()
         return context
 
     # --- the door ----------------------------------------------------------
@@ -582,10 +734,20 @@ class HubMixin(_HubMixinBase):
         A section that is not a wizard has no run to enter, and its row links
         past the door anyway — so arriving here at all is a hand-typed or
         stale URL, and it is refused rather than guessed at.
+
+        A section the user cannot start yet is refused the same way. This is
+        the one place display and dispatch have to agree: the row rendered a
+        link the user is not allowed to follow, and a stale link or a typed
+        URL would otherwise start the run regardless. The status is asked for
+        rather than the hook, so a `Section.status` that reports `BLOCKED`
+        under its own steam is guarded too — two storage reads, against a walk
+        this saves entirely.
         """
         if section.viewset is None:
             return None
         store = self.get_section_store()
+        if self.get_section_status(section, store) == BLOCKED:
+            return None
         # Resume before reopen. Reversed, a completed section under edit
         # would resurrect a second run on every click and the user's
         # in-flight edits would become unreachable.
@@ -662,9 +824,15 @@ class HubMixin(_HubMixinBase):
         raise error
 
     def section_unavailable(self, key: str) -> HttpResponse:
-        """Response for a key this hub declares no section for — a stale
-        link, a renamed section. The default sends the user back to the hub
-        itself; override to raise `Http404`."""
+        """Response for a section this hub will not open — a key it declares
+        nothing for (a stale link, a renamed section), or one the user cannot
+        start yet.
+
+        The default sends the user back to the hub itself, which is the right
+        landing for both: the page they came from says why, either by not
+        listing the section or by rendering it **Cannot start yet**. Override
+        to raise `Http404`.
+        """
         return redirect(self.get_hub_url())
 
 
@@ -717,7 +885,8 @@ class HubView(HubMixin, TemplateView):
             return self.section_unavailable(key)
         url = self.enter(section)
         if url is None:
-            # Nothing to walk — a section that is not a wizard, or a
-            # `stash_unusable()` that declined to name a destination.
+            # Nowhere to send them — a section that is not a wizard, one the
+            # user cannot start yet, or a `stash_unusable()` that declined to
+            # name a destination.
             return self.section_unavailable(key)
         return redirect(url)

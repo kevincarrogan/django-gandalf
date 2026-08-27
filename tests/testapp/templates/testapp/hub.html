@@ -11,8 +11,11 @@
             section from here — its own URL would start a run this hub is not
             tracking.
         </p>
+        <p class="lede">
+            You have completed {{ hub.completed }} of {{ hub.count }} section{{ hub.count|pluralize }}.
+        </p>
         <ul class="task-list">
-            {% for row in sections %}
+            {% for row in hub.rows %}
                 <li class="task-list__item">
                     <a href="{{ row.url }}">{{ row.title }}</a>
                     <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
