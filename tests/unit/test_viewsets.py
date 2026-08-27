@@ -9,6 +9,7 @@ from django.template.response import SimpleTemplateResponse
 from django.test import override_settings
 
 from gandalf.file_storage import WizardFileStorage
+from gandalf.storage import SessionStorage
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
@@ -1455,3 +1456,78 @@ def test_wizard_viewset_resolve_binds_the_wizard_without_starting_a_run(rf):
         "review",
     ]
     assert request.session.get("gandalf_runs", {}) == {}
+
+
+def test_run_started_is_handed_a_run_with_an_id_and_a_resolved_wizard(rf):
+    seen = {}
+
+    class StartedViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+        def run_started(self, bound_wizard):
+            # Both halves matter: without the id there is nowhere to write
+            # metadata, and without the wizard a dynamic `get_wizard()`
+            # could not have been consulted yet.
+            seen["run_id"] = bound_wizard.run_id
+            seen["wizard"] = bound_wizard.wizard
+            bound_wizard.metadata["opened"] = True
+
+    request = rf.get("/wizard/")
+    request.session = _Session()
+
+    response = StartedViewSet.as_view()(request)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert seen["run_id"] is not None
+    assert isinstance(seen["wizard"], ConfiguredWizard)
+    runs = request.session[SessionStorage.SESSION_KEY]
+    assert runs[seen["run_id"]]["meta"] == {"run": {"opened": True}}
+
+
+def test_run_started_that_raises_leaves_no_run_the_caller_can_use(rf):
+    class RefusingViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+        def run_started(self, bound_wizard):
+            raise RuntimeError("the record could not be opened")
+
+    request = rf.get("/wizard/")
+    request.session = _Session()
+
+    # Unlike an observer, this may raise, and a raise propagates: a run
+    # that cannot set its record up refuses to start rather than starting
+    # one that lies about having done so.
+    with pytest.raises(RuntimeError, match="the record could not be opened"):
+        RefusingViewSet.as_view()(request)
+
+
+def test_run_started_does_not_fire_for_a_run_that_already_exists(rf):
+    started = []
+
+    class CountingViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/single_step_wizard.html"
+
+        def get_wizard_url(self, run_id):
+            return f"/wizard/{run_id}/"
+
+        def get_step_url(self, run_id, step_segment):
+            return f"/wizard/{run_id}/{step_segment}/"
+
+        def run_started(self, bound_wizard):
+            started.append(bound_wizard.run_id)
+
+    request = rf.get("/wizard/abc/")
+    request.session = _Session(gandalf_runs={"abc": {}})
+
+    CountingViewSet.as_view()(request, run_id="abc")
+
+    assert started == []

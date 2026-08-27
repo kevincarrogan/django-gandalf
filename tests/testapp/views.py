@@ -129,6 +129,56 @@ class RunUnavailableWizardViewSet(WizardViewSet):
         return HttpResponse(f"unavailable: {reason}", status=HTTPStatus.GONE)
 
 
+#: Every record `RunMetadataWizardViewSet` has opened, in order. A list
+#: rather than a counter so a test can see a *second* one appear when one
+#: should not have.
+OPENED_RECORDS: list[str] = []
+
+
+class RecordReadingStepView(StepFormView):
+    """A step that reads the run's metadata every time it is dispatched.
+
+    Which is every request, not every answer — the walk re-proves this step
+    on each later page. Recording what it saw is how a test proves the bag
+    is still there on a walk that persists nothing.
+    """
+
+    form_class = SecondStepForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_initial(self):
+        SEEN_RECORDS.append(self.request.wizard.metadata.get("record_id"))
+        return super().get_initial()
+
+
+#: What `RecordReadingStepView` saw, per dispatch.
+SEEN_RECORDS: list[object] = []
+
+
+class RunMetadataWizardViewSet(WizardViewSet):
+    description = (
+        "Two-step wizard that opens a record when the run starts, remembers "
+        "it in the run's metadata, and reads it back at every later step."
+    )
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(RecordReadingStepView, name="second")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    url_name = "run-metadata-wizard"
+
+    def run_started(self, bound_wizard):
+        record_id = f"record-{len(OPENED_RECORDS) + 1}"
+        OPENED_RECORDS.append(record_id)
+        bound_wizard.metadata["record_id"] = record_id
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.metadata['record_id']}")
+
+
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
     description = "Single-step wizard with no done() override (falls back to default)."
     template_name = "testapp/single_step_wizard.html"

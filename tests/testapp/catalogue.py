@@ -207,6 +207,12 @@ GROUPS = (
             Example("path-aware-walked-past-wizard"),
             Example("empty-path-first-step-wizard"),
             Example("programmatic-lookup-wizard"),
+            Example(
+                "run-metadata-wizard",
+                note="run_started() opens a record and remembers it in the "
+                "run's metadata; the second step reads it back on every "
+                "request, and done() names it.",
+            ),
         ),
     ),
     Group(

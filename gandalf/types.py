@@ -45,6 +45,10 @@ FileRefs: TypeAlias = dict[str, FileRef]
 #: beside the answer rather than inside it. A step's `context` is the
 #: declaration and is the same for every run; this belongs to one answer in
 #: one run. JSON-safe values only — it is stored with the state.
+#:
+#: Also the shape of a run's own metadata — the bag `BoundWizard.metadata`
+#: reads and writes, which is stored *beside* the state rather than in it.
+#: See `RunMetadata` in `gandalf.runtime` for why those are different homes.
 Metadata: TypeAlias = dict[str, Any]
 
 #: One positional slot in a state list: `{"step": <submission or None>}`,
@@ -118,6 +122,10 @@ class WizardStorage(Protocol):
     def get_state(self, run_id: str) -> State: ...
 
     def set_state(self, run_id: str, state: State) -> None: ...
+
+    def get_run_metadata(self, run_id: str) -> Metadata: ...
+
+    def set_run_metadata(self, run_id: str, metadata: Metadata) -> None: ...
 
     def delete_run(self, run_id: str) -> None: ...
 

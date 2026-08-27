@@ -39,7 +39,14 @@ from gandalf import tree
 from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.file_storage import FileRef, StoredUpload
-from gandalf.runtime import BoundWizard, Cursor, RuntimeStep, StepNotFound, Walk
+from gandalf.runtime import (
+    BoundWizard,
+    Cursor,
+    RunMetadata,
+    RuntimeStep,
+    StepNotFound,
+    Walk,
+)
 from gandalf.summary import _flatten_choices
 from gandalf.types import FileRefs, Metadata, Submission
 from gandalf.viewsets import WizardViewSet
@@ -348,6 +355,21 @@ class RunDriver:
             answers = _json_safe({**answers, **files})
             metadata = _json_safe(metadata)
         return Placement(answers=answers, files=files, metadata=metadata)
+
+    @property
+    def metadata(self) -> RunMetadata:
+        """This run's metadata bag — what the run did outside itself.
+
+        The same bag a step view or `done()` reads, so a driver picking up a
+        run somebody else started sees the record that run created, and one
+        that starts a run sees whatever `run_started()` put there. Read and
+        written as a dict; see `RunMetadata`.
+
+        Not `placements()`. That carries what each *placement* claimed about
+        itself — `{"unattended": True}` and the like — which is a fact about
+        an answer. This is a fact about the run.
+        """
+        return self.bound_wizard.metadata
 
     def open_file(self, ref: FileRef) -> StoredUpload:
         """Open a file stored with a placement, as the bytes it holds.

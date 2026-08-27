@@ -4,7 +4,14 @@ import uuid
 from typing import cast
 
 from gandalf.context import WizardContext
-from gandalf.types import CollectionData, CollectionItem, RunData, Stash, State
+from gandalf.types import (
+    CollectionData,
+    CollectionItem,
+    Metadata,
+    RunData,
+    Stash,
+    State,
+)
 
 
 class RunNotFound(LookupError):
@@ -62,6 +69,28 @@ class SessionStorage:
         run_data["state"] = state
         self.context.session_changed()
 
+    def get_run_metadata(self, run_id: str) -> Metadata:
+        """The run's metadata bag, kept beside its state rather than in it.
+
+        Readable on a tombstoned run too — `complete_run` discards the
+        answers and keeps this — so a completion page can still say which
+        record the run created.
+        """
+        run_data = self.get_run_data(run_id)
+        return cast(Metadata, run_data.get("meta", {}))
+
+    def set_run_metadata(self, run_id: str, metadata: Metadata) -> None:
+        """Store the run's metadata bag, now.
+
+        Written through on every change rather than at the end of a walk,
+        because a walk may never persist: a GET replays stored answers
+        without storing anything, and a `Park` declines to write at all.
+        See `RunMetadata` for what that buys.
+        """
+        run_data = self.get_run_data(run_id)
+        run_data["meta"] = metadata
+        self.context.session_changed()
+
     def delete_run(self, run_id: str) -> None:
         """Forget the run entirely. Idempotent: deleting an unknown run is
         not an error, so callers need not check first."""
@@ -75,13 +104,23 @@ class SessionStorage:
         The run stays addressable so a revisit is answerable — "this one is
         finished" rather than "no such run" — but its state is gone, so a
         completed run can neither be edited nor keep growing the session.
+        Its metadata bag survives, because that describes what the run did
+        elsewhere and not what anyone answered.
         Re-inserting the entry orders the mapping by completion, which is
         what lets pruning drop the oldest. Idempotent.
         """
         gandalf_runs = self._runs()
         run_id = str(run_id)
-        gandalf_runs.pop(run_id, None)
-        gandalf_runs[run_id] = {"completed": True}
+        previous = gandalf_runs.pop(run_id, None) or {}
+        tombstone: RunData = {"completed": True}
+        # The answers go; the metadata stays. It is the run's record of what
+        # it did *outside* itself — the invoice it raised, the case it
+        # opened — and that outlives the answers by definition. Small enough
+        # to keep in a tombstone the way answers never were.
+        metadata = previous.get("meta")
+        if metadata:
+            tombstone["meta"] = metadata
+        gandalf_runs[run_id] = tombstone
         self._prune_completed(gandalf_runs)
         self.context.session_changed()
 

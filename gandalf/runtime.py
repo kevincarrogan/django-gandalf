@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
@@ -160,6 +160,123 @@ def _stripped_for_stash(entries):
                 entry["meta"] = metadata
         stripped.append(entry)
     return stripped
+
+
+#: The two buckets a run's metadata bag is kept in: the run's own keys, and
+#: one sub-bag per step name. Two rather than one so a step-scoped key can
+#: never collide with a run-scoped one, and so `for_step` can hand back a
+#: mapping rather than a naming convention.
+RUN_BUCKET = "run"
+STEP_BUCKET = "steps"
+
+
+class RunMetadata(MutableMapping[str, Any]):
+    """A run's own record of what it did outside itself, written through to
+    storage the moment it changes.
+
+    This is the answer to a question the state list cannot hold: *the thing
+    this run created somewhere else*. A step raises an invoice, opens a
+    case, calls an API — and the identifier that comes back is not an
+    answer to anything. Nobody typed it, no form validates it, and it must
+    not be re-derived.
+
+    Why it is not in the state list, which already carries a `meta` key per
+    step. Three reasons, and any one of them is fatal:
+
+    * **A walk persists nothing.** `walk()` builds a tree and hands it back;
+      only the caller decides to `persist()`, and a GET never does. Every
+      request replays every stored answer through its real `FormView` —
+      `form_valid()` included — so a record id written into state during a
+      GET is thrown away, and the next GET raises a second invoice.
+    * **State is positional and rewritten wholesale.** `StateSerializer`
+      reduces the runtime tree back into the list on every persist, so a
+      mid-walk write survives only if the walk that made it is the walk
+      that persists.
+    * **A placement replaces what the last one recorded.** That is right for
+      "who answered this, and how" (see `Placement.metadata`) and wrong for
+      "which invoice this run raised" — re-answering the step would drop it.
+
+    So this is stored beside the state, through its own storage seam, and
+    every write goes to storage immediately. It survives a walk that never
+    persists, a `Park`, completion (`complete_run` keeps it and discards
+    the answers), and a `stash()`/`resurrect()` round trip.
+
+    Read and write it as a dict, from anywhere holding the run — a step
+    view, `done()`, a driver::
+
+        wizard.metadata["invoice_id"] = raise_invoice(...)
+        wizard.metadata.for_step("billing")["charged"] = True
+
+    `for_step` addresses a sub-bag by step name, always from the root, so
+    two steps cannot tread on each other and neither can tread on the run.
+    A name that no step has is not an error here — checking would cost a
+    walk — it is simply a bag nothing else reads.
+
+    Two things to know. Values must be JSON-safe, like everything else a
+    run stores; and only *assignment* writes through, so mutating a nested
+    value in place (`metadata["a"]["b"] = 1`) changes a copy and is lost.
+    Assign the whole value back.
+    """
+
+    def __init__(
+        self,
+        storage: WizardStorage,
+        run_id: str,
+        path: tuple[str, ...] = (RUN_BUCKET,),
+    ) -> None:
+        self._storage = storage
+        self._run_id = run_id
+        self._path = path
+
+    def for_step(self, name: str) -> RunMetadata:
+        """This run's metadata for the step `name` names.
+
+        Addressed from the root whichever bag it is called on, so
+        `metadata.for_step(a).for_step(b)` is `metadata.for_step(b)` rather
+        than a nesting nobody asked for.
+        """
+        return type(self)(self._storage, self._run_id, (STEP_BUCKET, name))
+
+    def _bucket(self) -> Metadata:
+        bucket = self._storage.get_run_metadata(self._run_id) or {}
+        for key in self._path:
+            bucket = bucket.get(key) or {}
+        return bucket
+
+    def _write(self, mutate: Any) -> None:
+        """Apply `mutate` to this bag and store the whole envelope.
+
+        Read-modify-write, and deliberately not memoised: two handles on one
+        run are the normal case — a step view's and the viewset's — and a
+        cache would let one of them go stale mid-request.
+        """
+        envelope = self._storage.get_run_metadata(self._run_id) or {}
+        node = envelope
+        for key in self._path[:-1]:
+            node = node.setdefault(key, {})
+        bucket = node.setdefault(self._path[-1], {})
+        # Mutating before the write means a `KeyError` from `__delitem__`
+        # leaves storage untouched rather than half-written.
+        mutate(bucket)
+        self._storage.set_run_metadata(self._run_id, envelope)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._bucket()[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._write(lambda bucket: bucket.__setitem__(key, value))
+
+    def __delitem__(self, key: str) -> None:
+        self._write(lambda bucket: bucket.__delitem__(key))
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._bucket())
+
+    def __len__(self) -> int:
+        return len(self._bucket())
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._bucket()!r})"
 
 
 # Sentinel for "no tree is pinned" — no walk in progress, and no finished
@@ -661,6 +778,16 @@ class BoundWizard:
     def get_state(self) -> State:
         return self.storage.get_state(self.run_id)
 
+    @property
+    def metadata(self) -> RunMetadata:
+        """This run's metadata bag — what it did outside itself.
+
+        Built fresh per access, like `path`, and holding nothing: the bag
+        reads and writes storage directly, so a handle taken at the top of a
+        request still sees a write made further down it. See `RunMetadata`.
+        """
+        return RunMetadata(self.storage, self.run_id)
+
     def stash(self, label: str | None = None) -> Stash:
         """A caller-owned, JSON-safe payload of this run's answers.
 
@@ -676,6 +803,13 @@ class BoundWizard:
             "version": STASH_VERSION,
             "state": _stripped_for_stash(self.get_state()),
         }
+        # Unlike the file refs, the metadata rides. A ref names bytes that
+        # completion deletes; a record id names something that outlives the
+        # run entirely — and a section re-opened from its stash that had
+        # forgotten it would raise a second invoice on the way back in.
+        metadata = self.storage.get_run_metadata(self.run_id)
+        if metadata:
+            payload["meta"] = metadata
         if label is not None:
             payload["label"] = label
         return payload
@@ -687,7 +821,8 @@ class BoundWizard:
         run always exists before its wizard is bound. The state is deep
         copied so repeated resurrections of one payload yield fully
         independent runs, and the payload is vetted first, so a refusal
-        leaves no run behind. Every answer is still re-proved by the walk on
+        leaves no run behind. The metadata bag comes back with the answers,
+        so a run resumed this way still knows what the last one created. Every answer is still re-proved by the walk on
         every request; resurrecting trusts the payload no further than a
         live session's own stored state.
         """
@@ -705,6 +840,9 @@ class BoundWizard:
             )
         self.initialise()
         self.storage.set_state(self.run_id, deepcopy(payload["state"]))
+        metadata = payload.get("meta")
+        if metadata:
+            self.storage.set_run_metadata(self.run_id, deepcopy(metadata))
         return self.run_id
 
     def obliterate(self) -> None:

@@ -4,10 +4,10 @@ Gandalf ships `SessionStorage` and nothing else, because a durable backend
 means models, migrations and a retention policy, and those belong to the
 project rather than to the library. What the library owes you instead is a
 seam small enough to swap, and this module is the proof: `BoundWizard` calls
-exactly the nine methods below, and nothing in the runtime, the walker or the
-viewset reaches past them.
+exactly the eleven methods below, and nothing in the runtime, the walker or
+the viewset reaches past them.
 
-Three contracts are easy to miss and matter more than the rest:
+Four contracts are easy to miss and matter more than the rest:
 
 * `retrieve_run` raises `RunNotFound` for a run this owner cannot serve. That
   is the whole authorisation model — scoping the queryset by owner is what
@@ -15,6 +15,10 @@ Three contracts are easy to miss and matter more than the rest:
 * `complete_run` is idempotent, discards the state, and leaves the run
   *addressable*, so a revisit is answerable as finished rather than unknown.
 * `get_state` returns `[]` for a completed run.
+* `set_run_metadata` writes *now*, not at the end of a walk. It is the one
+  seam a run uses to remember what it did elsewhere, and it is called from
+  places that never persist state — `run_started()`, a GET that only
+  replays. A backend that batched it would lose the record it names.
 
 A durable hub needs **both** stores swapped: `storage_class` on every section
 viewset, and `section_store_class` on the hub and on each `SectionMixin`. A
@@ -66,8 +70,8 @@ class ModelStorage:
     def get_run_data(self, run_id):
         run = self._get(run_id)
         if run.completed:
-            return {"completed": True}
-        return {"state": run.state}
+            return {"completed": True, "meta": run.meta}
+        return {"state": run.state, "meta": run.meta}
 
     def get_state(self, run_id):
         return self.get_run_data(run_id).get("state", [])
@@ -77,10 +81,21 @@ class ModelStorage:
         run.state = state
         run.save(update_fields=["state", "updated_at"])
 
+    def get_run_metadata(self, run_id):
+        return self._get(run_id).meta
+
+    def set_run_metadata(self, run_id, metadata):
+        run = self._get(run_id)
+        run.meta = metadata
+        run.save(update_fields=["meta", "updated_at"])
+
     def delete_run(self, run_id):
         self._runs().filter(pk=run_id).delete()
 
     def complete_run(self, run_id):
+        # State goes, metadata stays — the same tombstone `SessionStorage`
+        # leaves. The run's record of what it created elsewhere is the one
+        # thing a completion page can still honestly show.
         self._runs().filter(pk=run_id).update(completed=True, state=[])
 
     def is_run_complete(self, run_id):

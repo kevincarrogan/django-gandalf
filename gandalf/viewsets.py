@@ -71,8 +71,7 @@ class WizardViewSet(View):
         then resolve. The order is the point, which is why this exists
         rather than being spelled out again by everyone who needs it."""
         view, bound_wizard = cls.for_context(context)
-        bound_wizard.initialise()
-        view._resolve_wizard(bound_wizard)
+        view._begin(bound_wizard)
         return view, bound_wizard
 
     @classmethod
@@ -204,6 +203,65 @@ class WizardViewSet(View):
         unset: this is for describing a wizard, not running one.
         """
         return cls.resolve_for(WizardContext.from_request(request, **url_kwargs))[1]
+
+    def _begin(self, bound_wizard: BoundWizard) -> None:
+        """Mint the run, resolve the wizard against it, then say it started.
+
+        The single door a fresh run comes through — `begin_for()` and the
+        bare start URL both call this, rather than spelling the order out
+        twice and leaving one of them to drift. The order is the point:
+        `run_started()` is handed a run that has an id and a resolved
+        wizard, so it can read `bound_wizard.wizard` and write
+        `bound_wizard.metadata`.
+        """
+        bound_wizard.initialise()
+        self._resolve_wizard(bound_wizard)
+        self.run_started(bound_wizard)
+
+    def run_started(self, bound_wizard: BoundWizard) -> None:
+        """A fresh run of this wizard was just created. Does nothing by
+        default.
+
+        The counterpart to `done()`, and the only hook that fires **exactly
+        once per run** without you having to arrange it. A run is minted
+        once, so this is called once — unlike a step view, which is
+        re-dispatched on every later request as the walk re-proves stored
+        answers, and unlike `done()`, which is the end rather than the
+        start.
+
+        That is what makes it the place to set something up outside the
+        wizard and remember it in `bound_wizard.metadata`::
+
+            class ClaimWizardViewSet(WizardViewSet):
+                def run_started(self, bound_wizard):
+                    claim = Claim.objects.create(customer=bound_wizard.context.actor)
+                    bound_wizard.metadata["claim_id"] = claim.pk
+
+                def done(self, bound_wizard):
+                    claim = Claim.objects.get(pk=bound_wizard.metadata["claim_id"])
+                    ...
+
+        Every later request reads `bound_wizard.metadata["claim_id"]` back —
+        from a step view, a branch predicate, `done()`, or a driver — and
+        the bag survives completion, so a completion page can still name
+        what was created.
+
+        **`reopen()` does not fire this**, and neither does `inspect()`. A
+        run seeded from a stash is a continuation, not a start: its metadata
+        comes back with its answers, so the claim it created is already
+        there. Firing here would open a second one every time a hub section
+        is re-entered.
+
+        The cost worth knowing: the bare start URL mints a run and redirects,
+        so this fires for a drive-by visit that answers nothing. If that is
+        too expensive to do speculatively, do it on first answer instead —
+        from the first step's `form_valid()`, guarded on the metadata bag.
+
+        Unlike an observer, this may raise, and a raise propagates to
+        whoever asked for the run: a `run_started()` that cannot set its
+        record up refuses to start the run rather than starting one that
+        lies about having done so.
+        """
 
     def get_wizard(self, bound_wizard: BoundWizard) -> Wizard | ConfiguredWizard:
         """Per-request hook returning the Wizard to use for this dispatch.
@@ -343,8 +401,7 @@ class WizardViewSet(View):
     ) -> HttpResponseBase:
         bound_wizard = self._make_bound_wizard(self.context_for(request))
         if run_id is None:
-            bound_wizard.initialise()
-            self._resolve_wizard(bound_wizard)
+            self._begin(bound_wizard)
             return redirect(self.get_wizard_url(bound_wizard.run_id))
 
         unavailable = self._retrieve_run(bound_wizard, run_id)

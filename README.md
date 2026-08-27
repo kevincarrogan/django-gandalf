@@ -981,6 +981,10 @@ or POST) is answered by `run_unavailable()` without reaching the wizard. So a
 stale tab cannot finalize twice, and a refreshed completion page cannot re-charge
 a card. Put side effects in `done()` and they happen once, full stop.
 
+For a side effect at the *other* end — something set up once when the run
+begins, and remembered for the rest of it — see
+[What a run did elsewhere](#what-a-run-did-elsewhere).
+
 The marker is written *after* `done()` returns, so a `done()` that raises leaves
 the run intact and resumable.
 
@@ -1021,19 +1025,21 @@ A journey the user comes back to over days needs somewhere better than a
 session. Gandalf ships no durable backend — that would mean models, migrations
 and a retention policy, and the only dependency here is Django — so
 `storage_class` is the seam, and it is small enough to swap. `BoundWizard`
-calls exactly these nine things and nothing in the runtime, the walker or the
-viewset reaches past them:
+calls exactly these eleven things and nothing in the runtime, the walker or
+the viewset reaches past them:
 
 | Method | Contract |
 | --- | --- |
 | `__init__(request)` | The request is passed in, so a backend can scope by `request.user` or a tenant |
 | `initialise_run()` | Create a run, return its id |
 | `retrieve_run(run_id)` | Return the id, or raise `RunNotFound`. **This is the whole authorisation model** — scoping the queryset by owner is what stops one user resuming another's run |
-| `get_run_data(run_id)` | `{"state": [...]}`, or `{"completed": True}` for a finished run |
+| `get_run_data(run_id)` | `{"state": [...], "meta": {...}}`, or `{"completed": True, "meta": {...}}` for a finished run |
 | `get_state(run_id)` | The state list; `[]` for a completed run |
 | `set_state(run_id, state)` | Store the list verbatim |
+| `get_run_metadata(run_id)` | The run's metadata bag; `{}` for a run that recorded nothing. Readable on a completed run |
+| `set_run_metadata(run_id, metadata)` | Store the bag verbatim, **now**. See [What a run did elsewhere](#what-a-run-did-elsewhere) — this is called from places that never persist state, so a backend that batched it would lose the record it names |
 | `delete_run(run_id)` | Forget it entirely. Idempotent |
-| `complete_run(run_id)` | Discard the state and mark it finished, leaving the run *addressable* so a revisit answers "done" rather than "no such run". Idempotent |
+| `complete_run(run_id)` | Discard the state and mark it finished, *keeping the metadata*, and leaving the run *addressable* so a revisit answers "done" rather than "no such run". Idempotent |
 | `is_run_complete(run_id)` | Whether it has been tombstoned |
 
 A [worked `ModelStorage`](tests/testapp/durable.py) lives in the test app,
@@ -1061,6 +1067,111 @@ settles that too; `ModelCollectionStore` in
 Note that `gandalf.testing`'s peek-and-seed helpers read the session stores
 directly, so they do not apply to a custom backend — assert against your own
 models instead.
+
+---
+
+## What a run did elsewhere
+
+A wizard's state is answers, and every answer is re-proved from scratch on
+every request. That leaves nowhere to keep the other kind of fact a run
+accumulates: **the record it opened somewhere else.** A case number, an
+invoice id, the reference an API handed back. Nobody typed it, no form
+validates it, and doing it twice is the bug.
+
+Two things make that possible, and they are the bookends of `done()`.
+
+### `run_started()`: the once-per-run hook
+
+`run_started(self, bound_wizard)` fires when a fresh run of this wizard is
+created, and does nothing by default. It is the only hook that runs **exactly
+once per run** without you having to arrange it — a run is minted once, so it
+is called once:
+
+```python
+class ClaimWizardViewSet(WizardViewSet):
+    template_name = "claims/step.html"
+    wizard = Wizard().step(IncidentForm, name="incident").step(...)
+
+    def run_started(self, bound_wizard):
+        claim = Claim.objects.create(customer=bound_wizard.context.actor)
+        bound_wizard.metadata["claim_id"] = claim.pk
+
+    def done(self, bound_wizard):
+        claim = Claim.objects.get(pk=bound_wizard.metadata["claim_id"])
+        claim.submit(bound_wizard.path.find_step(name="incident").form.cleaned_data)
+        return redirect("claim-submitted", pk=claim.pk)
+```
+
+It is handed a run that already has an id and a resolved wizard, so it can
+read `bound_wizard.wizard` and write `bound_wizard.metadata`. Both doors a
+fresh run comes through call it — the start URL and `begin()`/`RunDriver`.
+
+**`reopen()` and `resurrect()` do not fire it**, and neither does
+`inspect()`. A run seeded from a stash is a continuation, not a start: its
+metadata comes back with its answers (below), so the claim it created is
+already there. Firing would open a second one every time a hub section is
+re-entered.
+
+Unlike an [observer](#watching-a-run), it may raise, and a raise propagates
+to whoever asked for the run — a `run_started()` that cannot set its record
+up refuses to start the run rather than starting one that lies about having
+done so. The cost worth knowing is the other side of that: the bare start URL
+mints a run and redirects, so this fires for a drive-by visit that answers
+nothing. If that is too expensive to do speculatively, do it on first answer
+instead — from the first step's `form_valid()`, guarded on the metadata bag.
+
+### `bound_wizard.metadata`: what it remembers
+
+A dict, readable and writable from anywhere holding the run — a step view,
+a branch predicate, `done()`, a driver:
+
+```python
+class BillingStepView(StepFormView):
+    def get_initial(self):
+        claim_id = self.request.wizard.metadata["claim_id"]
+        ...
+```
+
+`metadata.for_step("billing")` addresses a sub-bag per step name, so two
+steps cannot tread on each other and neither can tread on the run's own
+keys. A name no step has is not an error — checking would cost a walk.
+
+**Every write goes straight to storage**, and that is the whole point rather
+than an implementation note. A walk persists nothing: `walk()` builds a tree
+and hands it back, and only the caller decides to `persist()`. A GET never
+does, yet a GET still replays every stored answer through its real
+`FormView` — `form_valid()` included. So a record id written into *state*
+during a GET is thrown away, and the next GET raises a second invoice. The
+bag is stored beside the state, through its own storage seam, and survives:
+
+| | |
+| --- | --- |
+| a walk that never persists | the write already reached storage |
+| a `Park` | same — nothing was waiting on the walk |
+| re-answering a step | state is rewritten wholesale; the bag is not touched |
+| **completion** | `complete_run` discards the answers and keeps the bag, so a completion page can still name what was created |
+| **a stash round trip** | the bag rides in the payload, unlike file refs — a ref names bytes that completion deletes, a record id names something that outlives the run |
+
+Two sharp edges. Values must be JSON-safe, like everything else a run
+stores. And only *assignment* writes through, so mutating a nested value in
+place is lost — assign the whole value back:
+
+```python
+wizard.metadata["refs"] = {**wizard.metadata["refs"], "invoice": invoice.pk}
+```
+
+### Not the same as a placement's metadata
+
+[Driving a wizard from Python](#answering-for-somebody-else) has a
+`metadata` too, and it answers a different question. `driver.submit(...,
+metadata={"placed_by": "person"})` records a fact about **one answer** —
+who placed it and how — which lives in the state list beside that answer and
+is *replaced* by the next placement at that step. `bound_wizard.metadata`
+records a fact about **the run**, lives beside the state, and no placement
+touches it. Whose answer is this: `placements()`. What did this run create:
+`metadata`.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/run-metadata-wizard/
 
 ---
 
@@ -1137,6 +1248,13 @@ What resurrection promises:
 - **Every answer is re-proved.** Resurrection replays the walk, so a payload is
   trusted no further than a live session's own state — a mangled answer parks
   the run on that step with its errors rather than completing silently.
+- **What the run did elsewhere comes back with it.** The
+  [metadata bag](#what-a-run-did-elsewhere) rides in the payload, so a
+  re-opened section still knows which record it created and does not open a
+  second one. `run_started()` deliberately does not fire for a resurrected
+  run, for the same reason. File refs, by contrast, are stripped: the bytes
+  are deleted at completion, so a payload must not carry refs to files that
+  no longer exist.
 - **A step URL, never the bare run URL.** A stashed run's answers all validate,
   so `resurrect()` lands the user on a step (pass `step="..."` to choose which;
   default is the cursor, or the first step when complete). See
@@ -1635,10 +1753,14 @@ def submission(self, step, accepted, metadata):
         statsd.increment("wizard.unattended")
 ```
 
-There is no "run started" event, because a run exists before its wizard is
-resolved — that ordering is what lets a dynamic `get_wizard()` read stored
-state to decide its own shape. Count first submissions, or record creation
-where you mint it.
+There is no "run started" event *here*, because a run exists before its
+wizard is resolved — that ordering is what lets a dynamic `get_wizard()` read
+stored state to decide its own shape, and an observer is configured on the
+wizard, so at the moment a run is created there is none to have one. The
+viewset has no such problem: it exists before the run is minted, which is
+where [`run_started()`](#what-a-run-did-elsewhere) lives. Use that for a
+side effect and this for a count — an observer must not raise, and
+`run_started()` may.
 
 ---
 
@@ -1743,6 +1865,18 @@ Without the metadata there is no way to write that rule at all — a driver
 cannot tell the answer it placed from the one a person changed, and correcting
 its own earlier answer is something it must keep being allowed to do, since
 that is how it recovers from a rejected one.
+
+**A placement's metadata is not the run's.** `driver.metadata` is the same
+[run-level bag](#what-a-run-did-elsewhere) a step view and `done()` read, so
+a driver picking up a run somebody else started sees the record that run
+created, and one that starts a run sees what `run_started()` put there. The
+two answer different questions: *whose is this answer* is `placements()`,
+*what did this run create* is `metadata`.
+
+```python
+driver.metadata["claim_id"]                  # what the run opened
+driver.metadata["reviewed_by"] = "ops"       # written through, now
+```
 
 **Files go both ways.** A run whose file step was answered through a browser
 reads back as an ordinary placement — `placements()` carries the stored

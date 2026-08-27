@@ -27,6 +27,10 @@ class WizardRun(models.Model):
     # addressable so a revisit answers "this one is done" rather than "no
     # such run" — the same tombstone `SessionStorage` leaves behind.
     completed = models.BooleanField(default=False)
+    # What the run did outside itself — the record it created, the call it
+    # made. Kept when `completed` is set and the state is cleared, because
+    # it describes something that outlives the answers.
+    meta = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

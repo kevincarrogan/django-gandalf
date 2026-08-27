@@ -390,3 +390,48 @@ def test_session_stash_store_keys_lists_stored_stashes_in_order():
 
 def test_session_stash_store_keys_is_empty_without_stashes():
     assert SessionStashStore(_Context()).keys() == []
+
+
+def test_run_metadata_starts_empty_and_round_trips():
+    context = _Context()
+    storage = SessionStorage(context)
+    run_id = storage.initialise_run()
+
+    assert storage.get_run_metadata(run_id) == {}
+
+    storage.set_run_metadata(run_id, {"run": {"record_id": "abc"}})
+
+    assert storage.get_run_metadata(run_id) == {"run": {"record_id": "abc"}}
+    assert context.session.modified is True
+
+
+def test_run_metadata_is_unknown_for_a_run_this_session_does_not_hold():
+    storage = SessionStorage(_Context())
+
+    with pytest.raises(RunNotFound):
+        storage.get_run_metadata(str(uuid.uuid4()))
+
+
+def test_completing_a_run_keeps_its_metadata_and_drops_its_answers():
+    storage = SessionStorage(_Context())
+    run_id = storage.initialise_run()
+    storage.set_state(run_id, [{"step": {"name": "Ada"}}])
+    storage.set_run_metadata(run_id, {"run": {"record_id": "abc"}})
+
+    storage.complete_run(run_id)
+
+    # The answers were somebody's name and address; the record id names
+    # something the run created that outlives them both.
+    assert storage.get_state(run_id) == []
+    assert storage.get_run_metadata(run_id) == {"run": {"record_id": "abc"}}
+    assert storage.is_run_complete(run_id) is True
+
+
+def test_completing_a_run_that_recorded_nothing_leaves_a_bare_tombstone():
+    context = _Context()
+    storage = SessionStorage(context)
+    run_id = storage.initialise_run()
+
+    storage.complete_run(run_id)
+
+    assert context.session[SessionStorage.SESSION_KEY][run_id] == {"completed": True}

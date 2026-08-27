@@ -82,6 +82,10 @@ urlpatterns = [
         "wizard-done-run-data/",
         include(views.SingleStepWizardDoneRunDataViewSet.urls()),
     ),
+    path(
+        "run-metadata-wizard/",
+        include(views.RunMetadataWizardViewSet.urls()),
+    ),
     path("linear-wizard/", include(views.LinearWizardViewSet.urls())),
     path("done-linear-wizard/", include(views.DoneLinearWizardViewSet.urls())),
     path("multi-value-wizard/", include(views.MultiValueWizardViewSet.urls())),
