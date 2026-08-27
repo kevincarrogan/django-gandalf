@@ -27,19 +27,21 @@ from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.collections import CollectionView, ItemSectionMixin
 from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
-from gandalf.summary import SummaryMixin
+from gandalf.summary import Group, Hide, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
 from .durable import ModelCollectionStore, ModelSectionStore, ModelStorage
 from .forms import (
     AccountKindForm,
+    AddressForm,
     ConfirmForm,
     GuestForm,
     AccountTypeForm,
     BareEscapeForm,
     BusinessDetailsForm,
     CancelSignupForm,
+    DeliveryChoiceForm,
     EmailLookupForm,
     EscapingPhotoForm,
     FirstStepForm,
@@ -1931,6 +1933,72 @@ class SummaryDisplayWizardViewSet(WizardViewSet):
         Wizard()
         .step(SummaryDisplayForm, name="delivery")
         .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+class GroupedSummaryStepView(SummaryMixin, StepFormView):
+    """A check-your-answers step that shapes a row declaratively: the four
+    fields of an address read as one line, and the token that looked it up
+    reads as nothing at all."""
+
+    form_class = ConfirmForm
+    template_name = "testapp/summary_wizard.html"
+    summary_fields = {
+        "address": [
+            Group("line_1", "line_2", "town", "postcode", separator=", "),
+            Hide("lookup_token"),
+        ],
+    }
+
+
+class GroupedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary whose address step reads as one line: four fields grouped, "
+        "the lookup token hidden, declared on the summary view."
+    )
+    url_name = "grouped-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(AddressForm, name="address", label="Address")
+        .step(GroupedSummaryStepView, name="summary")
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+    def done(self, bound_wizard):
+        return HttpResponse(f"completed {bound_wizard.run_id}")
+
+
+def build_delivery_address(context):
+    """One address step, or none. The expansion decides whether to ask, so
+    "address" is a name the declaration itself never mentions."""
+    delivery = context.run.path.find_step(name="delivery")
+    if delivery.form.cleaned_data["delivery"] == "collect":
+        return Wizard()
+    return Wizard().step(AddressForm, name="address", label="Address")
+
+
+class ExpandedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary over a wizard that grows mid-walk: the address step exists "
+        "only for a home delivery, so the shaping keyed on its name cannot be "
+        "checked against the declaration."
+    )
+    url_name = "expanded-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(DeliveryChoiceForm, name="delivery", label="Delivery")
+        .expand(build_delivery_address)
+        .step(GroupedSummaryStepView, name="summary")
     )
 
     def done(self, bound_wizard):

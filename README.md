@@ -504,6 +504,7 @@ class SummaryWizardViewSet(WizardViewSet):
         Wizard()
         .step(NameForm, name="name", label="Your name")
         .step(DeliveryForm, name="delivery", label="Delivery")
+        .step(AddressForm, name="address", label="Address")
         .step(ReviewStepView, name="review")
     )
 ```
@@ -515,7 +516,7 @@ class SummaryWizardViewSet(WizardViewSet):
     <dt>{{ row.label }}</dt>
     <dd>
       {% for field in row.fields %}
-        <span>{{ field.label }}: {{ field.value }}</span>
+        <span>{% if field.label %}{{ field.label }}: {% endif %}{{ field.value }}</span>
       {% endfor %}
       <a href="{{ row.url }}">Change {{ row.label }}</a>
     </dd>
@@ -537,8 +538,8 @@ The rows come from `request.wizard.path`, so they are the answers on the run's
 resolved route, in walk order, with the selected branch arm inlined — never the
 step doing the summarising, and never an answer left behind in a dormant arm.
 Each row carries `label`, `fields`, `url`, `name`, the `step` it came from, and
-its `form`; each field carries `label`, `value`, `name`, and the `bound_field`
-the value came from.
+its `form`; each field carries `label`, `value`, `parts`, `name`, and the
+`bound_field` the value came from.
 
 **Values are display text, not stored data.** A choice shows its label, a
 boolean shows Yes/No, dates and times take the active locale's format, an
@@ -546,13 +547,62 @@ upload shows its filename, a multi-valued answer is comma-joined, and an
 unanswered optional field is blank rather than "None". Anything else is its
 `str()`.
 
-**Every decision is a hook.** Override on the view, deferring to `super()` for
-the cases you do not special-case:
+### Shaping a row
+
+One field per answer suits most steps and not all of them: an address is five
+answers and one line. Say so declaratively on the summary view, keyed by step
+name — `Group` shows several of a step's fields as one answer, `Hide` shows
+none of them:
+
+```python
+from gandalf.summary import Group, Hide, SummaryMixin
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "checkout/review.html"
+    summary_fields = {
+        "address": [
+            Group("line_1", "line_2", "town", "postcode"),
+            Hide("uprn"),
+        ],
+    }
+```
+
+Fields no spec names keep a line of their own, so a step this mapping does not
+mention is left exactly as it was. A group takes the place of the first of its
+fields, so the row still reads in form order, and the pieces are joined in the
+order the group names them — an address reads street, town, postcode whatever
+order the form asks in. Empty answers drop out, so a blank second line does not
+leave `", ,"` in the middle of an address, and `separator=` changes what the
+rest are joined with.
+
+A group's `label=` is optional because a step whose every field is grouped is
+already named by its row; without one the field's `label` is `None` and the
+row's heading speaks for it — which is what the `{% if field.label %}` guard
+above is for.
+
+`field.parts` is what `field.value` was joined from — one per answered field for
+a group, the field's own text otherwise — for a template that wants an address
+as lines rather than as a comma run-on.
+
+A key naming a step the wizard does not declare raises `ImproperlyConfigured`,
+because a renamed step would otherwise take its shaping with it and go quietly
+back to one line per field. The check is against what the wizard *declares*, so
+a key naming a step on the arm not taken is fine; a wizard that grows mid-walk
+with [`.expand()`](#expand-grow-the-wizard-from-a-prior-answer) has no declared set to
+check against and is left alone.
+
+### Every decision is a hook
+
+Override on the view, deferring to `super()` for the cases you do not
+special-case:
 
 | Hook | Decides |
 | --- | --- |
 | `get_summary_steps()` | which steps get a row (default: every answered step) |
 | `get_summary_label(step)` | a row's heading — the step's `label` context, else its name made readable |
+| `get_field_specs(step)` | a step's `Group` / `Hide` specs (default: `summary_fields` by step name) |
 | `include_summary_field(step, bound_field)` | whether a field earns a line |
 | `format_value(bound_field, value)` | how one answer reads |
 | `summary_context_name` | the context variable's name (default `summary`) |

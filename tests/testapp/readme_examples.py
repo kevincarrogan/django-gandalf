@@ -20,7 +20,7 @@ from gandalf.context import WizardContext
 from gandalf.form_views import StepFormView
 from gandalf.sections import HubView, Section, SectionMixin
 from gandalf.storage import SessionStashStore, StashNotFound
-from gandalf.summary import SummaryMixin
+from gandalf.summary import Group, Hide, SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import InvalidStash, MergeCleanedData, Wizard, condition
 
@@ -309,19 +309,38 @@ class DeliveryForm(forms.Form):
     )
 
 
+class DeliveryAddressForm(forms.Form):
+    line_1 = forms.CharField(label="Address line 1")
+    line_2 = forms.CharField(label="Address line 2", required=False)
+    town = forms.CharField(label="Town or city")
+    postcode = forms.CharField(label="Postcode")
+    # What the address lookup returned, not what the person typed.
+    uprn = forms.CharField(widget=forms.HiddenInput, required=False)
+
+
 class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
+    summary_fields = {
+        "address": [
+            Group("line_1", "line_2", "town", "postcode"),
+            Hide("uprn"),
+        ],
+    }
 
 
 class SummaryWizardViewSet(WizardViewSet):
-    description = "Summary: a check-your-answers step with a change link per answer."
+    description = (
+        "Summary: a check-your-answers step with a change link per answer, "
+        "and an address read back as one line."
+    )
     url_name = "readme-summary"
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
         .step(NameForm, name="name", label="Your name")
         .step(DeliveryForm, name="delivery", label="Delivery")
+        .step(DeliveryAddressForm, name="address", label="Address")
         .step(ReviewStepView, name="review")
     )
 

@@ -17,7 +17,7 @@
                 <dt>{{ row.label }}</dt>
                 <dd>
                     {% for field in row.fields %}
-                        <span>{{ field.label }}: {{ field.value }}</span>
+                        <span>{% if field.label %}{{ field.label }}: {% endif %}{{ field.value }}</span>
                     {% endfor %}
                     <a href="{{ row.url }}">Change {{ row.label }}</a>
                 </dd>

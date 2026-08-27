@@ -277,6 +277,8 @@ GROUPS = (
             Example("summary-wizard"),
             Example("custom-summary-wizard"),
             Example("summary-display-wizard"),
+            Example("grouped-summary-wizard"),
+            Example("expanded-summary-wizard"),
         ),
     ),
     Group(

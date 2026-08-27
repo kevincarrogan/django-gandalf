@@ -115,6 +115,29 @@ class SummaryDisplayForm(forms.Form):
     note = forms.CharField(label="Note", required=False)
 
 
+class DeliveryChoiceForm(forms.Form):
+    """Whether there is an address to ask for at all."""
+
+    delivery = forms.ChoiceField(
+        label="Delivery",
+        choices=[
+            ("home", "To my address"),
+            ("collect", "Collect in store"),
+        ],
+    )
+
+
+class AddressForm(forms.Form):
+    """An address: several answers that belong on one line of a summary,
+    plus the lookup token that found them, which belongs on none."""
+
+    line_1 = forms.CharField(label="Address line 1")
+    line_2 = forms.CharField(label="Address line 2", required=False)
+    town = forms.CharField(label="Town or city")
+    postcode = forms.CharField(label="Postcode")
+    lookup_token = forms.CharField(label="Lookup token", required=False)
+
+
 class ItemCountForm(forms.Form):
     count = forms.IntegerField(min_value=1, max_value=5)
 

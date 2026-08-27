@@ -23,6 +23,15 @@ from pytest_django.asserts import (
 from gandalf.testing import stored_stash
 
 
+ADDRESS = {
+    "line_1": "12 High Street",
+    "line_2": "",
+    "town": "Ely",
+    "postcode": "CB7 4AA",
+    "uprn": "10009312345",
+}
+
+
 # --- Every start URL reverses (the "Try it live" links resolve) -------------
 
 
@@ -276,6 +285,7 @@ def test_summary_wizard_lists_every_answer_with_a_change_link(wizard_driver):
         [
             ("name", {"name": "Ada"}),
             ("delivery", {"method": "express", "leave_with_neighbour": "on"}),
+            ("address", ADDRESS),
         ]
     )
 
@@ -286,12 +296,34 @@ def test_summary_wizard_lists_every_answer_with_a_change_link(wizard_driver):
     assert [(row.label, row.url) for row in rows] == [
         ("Your name", run.step_url("name")),
         ("Delivery", run.step_url("delivery")),
+        ("Address", run.step_url("address")),
     ]
     # The stored answers, as display text rather than raw values.
     assert [field.value for field in rows[1].fields] == ["Express", "Yes"]
     assertContains(
         response, f'<a href="{run.step_url("name")}">Change Your name</a>', html=True
     )
+
+
+def test_summary_page_reads_an_address_back_as_one_line(wizard_driver):
+    # README "Shaping a row" snippet: four fields grouped, the lookup's own
+    # answer hidden, and the row still labelled by the step.
+    run = wizard_driver("readme-summary").start()
+    run.post_steps(
+        [
+            ("name", {"name": "Ada"}),
+            ("delivery", {"method": "express", "leave_with_neighbour": "on"}),
+            ("address", ADDRESS),
+        ]
+    )
+
+    response = run.get_step("review")
+
+    address = response.context["summary"][2]
+    assert [(field.label, field.value) for field in address.fields] == [
+        (None, "12 High Street, Ely, CB7 4AA"),
+    ]
+    assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 
 # --- Dormant memory: flipping a branch and back -----------------------------

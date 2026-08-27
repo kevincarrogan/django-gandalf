@@ -9,6 +9,7 @@ many times the page reads it.
 from http import HTTPStatus
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_django.asserts import (
     assertContains,
@@ -17,6 +18,8 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
+from gandalf.summary import Group
+from tests.testapp import views
 from tests.testapp.counting import counting_walks
 
 
@@ -239,3 +242,125 @@ def test_a_revisited_summary_step_does_not_list_itself(client, business_run):
     assert labels == ["Account type", "Business name", "Preferences"]
     assertContains(response, "Change Preferences")
     assertNotContains(response, "Change Summary")
+
+
+ADDRESS = {
+    "line_1": "12 High Street",
+    "line_2": "",
+    "town": "Ely",
+    "postcode": "CB7 4AA",
+    "lookup_token": "tok-9",
+}
+
+
+@pytest.fixture
+def address_run(wizard_driver):
+    """A run whose address is answered, parked on the summary step."""
+    run = wizard_driver("grouped-summary-wizard").start()
+    run.post_steps(
+        [
+            ("who", {"name": "Ada"}),
+            ("address", ADDRESS),
+        ]
+    )
+    return run
+
+
+def test_a_grouped_step_renders_as_one_line(address_run):
+    """Four fields and a hidden token, declared on the summary view, reach
+    the page as a single labelled answer under the step's own heading."""
+    response = address_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary_wizard.html")
+    rows = response.context["summary"]
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        (None, "12 High Street, Ely, CB7 4AA"),
+    ]
+    assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
+
+
+def test_a_grouped_step_still_links_to_the_step_that_changes_it(address_run):
+    response = address_run.get_step("summary")
+
+    assertContains(
+        response,
+        f'<a href="{address_run.step_url("address")}">Change Address</a>',
+        html=True,
+    )
+
+
+def test_a_grouped_row_costs_no_extra_form_rebuild(address_run):
+    """Grouping reads the same single form the row was already built from."""
+    with counting_walks() as counts:
+        response = address_run.get_step("summary")
+
+    rows = response.context["summary"]
+    assert [len(row.fields) for row in rows] == [1, 1]
+    assert counts.form_rebuilds == len(rows)
+
+
+def test_a_step_grown_mid_walk_is_shaped_by_name_like_any_other(wizard_driver):
+    """An expansion's steps do not exist until the walk reaches them, so the
+    declaration is not the whole set of names — and a key naming one of them
+    has to be taken on trust rather than refused."""
+    run = wizard_driver("expanded-summary-wizard").start()
+    run.post_steps([("delivery", {"delivery": "home"}), ("address", ADDRESS)])
+
+    response = run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    rows = response.context["summary"]
+    assert [(row.name, row.fields[0].value) for row in rows] == [
+        ("delivery", "To my address"),
+        ("address", "12 High Street, Ely, CB7 4AA"),
+    ]
+
+
+def test_a_key_that_names_no_step_is_refused(monkeypatch, address_run):
+    """A renamed step would otherwise take its shaping with it and go quietly
+    back to one line per field, in production."""
+    monkeypatch.setattr(
+        views.GroupedSummaryStepView,
+        "summary_fields",
+        {"postal_address": [Group("town", "postcode")]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="postal_address"):
+        address_run.get_step("summary")
+
+
+def test_a_field_named_by_two_specs_is_refused(monkeypatch, address_run):
+    monkeypatch.setattr(
+        views.GroupedSummaryStepView,
+        "summary_fields",
+        {"address": [Group("line_1", "town"), Group("town", "postcode")]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="town"):
+        address_run.get_step("summary")
+
+
+def test_a_group_survives_a_step_that_asks_for_less(monkeypatch, address_run):
+    """A dynamic `get_form_class()` need not offer every field a group names."""
+    monkeypatch.setattr(
+        views.GroupedSummaryStepView,
+        "summary_fields",
+        {"address": [Group("town", "county", "postcode")]},
+    )
+
+    rows = address_run.get_step("summary").context["summary"]
+
+    assert rows[1].fields[2].value == "Ely, CB7 4AA"
+
+
+def test_a_group_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
+    monkeypatch.setattr(
+        views.GroupedSummaryStepView,
+        "include_summary_field",
+        lambda self, step, bound_field: bound_field.name != "town",
+    )
+
+    rows = address_run.get_step("summary").context["summary"]
+
+    assert rows[1].fields[0].value == "12 High Street, CB7 4AA"

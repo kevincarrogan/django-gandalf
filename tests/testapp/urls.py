@@ -249,6 +249,14 @@ urlpatterns = [
         "summary-display-wizard/",
         include(views.SummaryDisplayWizardViewSet.urls()),
     ),
+    path(
+        "grouped-summary-wizard/",
+        include(views.GroupedSummaryWizardViewSet.urls()),
+    ),
+    path(
+        "expanded-summary-wizard/",
+        include(views.ExpandedSummaryWizardViewSet.urls()),
+    ),
     path("escaped/", views.EscapeLandingView.as_view(), name="escape-landing"),
     path("escape-park-wizard/", include(views.EscapeParkWizardViewSet.urls())),
     path("escape-advance-wizard/", include(views.EscapeAdvanceWizardViewSet.urls())),
