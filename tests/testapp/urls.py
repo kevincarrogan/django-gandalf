@@ -56,6 +56,35 @@ urlpatterns = [
         readme_examples.reopen_contact,
         name="readme-stash-reopen",
     ),
+    # A journey: the setup wizard mints an id, and the hub and every section
+    # are mounted under it as siblings — the hub's "<slug:section>/" door
+    # would swallow a section mounted beneath it. "new" is listed before the
+    # journey pattern so it is never read as an id.
+    path("readme/apply/new/", include(readme_examples.ApplicationStartViewSet.urls())),
+    path(
+        "readme/apply/<slug:journey>/",
+        include(readme_examples.ApplicationHubView.urls()),
+    ),
+    path(
+        "readme/apply-setup/<slug:journey>/",
+        include(readme_examples.SetupSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-contact/<slug:journey>/",
+        include(readme_examples.ApplyContactSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-employment/<slug:journey>/",
+        include(readme_examples.EmploymentSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-employer/<slug:journey>/",
+        include(readme_examples.EmployerSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-references/<slug:journey>/",
+        include(readme_examples.ReferencesSectionViewSet.urls()),
+    ),
     path(
         "path-aware-walked-past-wizard/",
         include(views.PathAwareWalkedPastWizardViewSet.urls()),
@@ -306,6 +335,15 @@ urlpatterns = [
     # the collection's own door for that item. Either way, whichever
     # `include()` comes first silently wins.
     path("gated-hub/", include(views.GatedHubView.urls())),
+    # A hub under a journey segment, its sections beside it under the same.
+    path("submit/<slug:journey>/", include(views.SubmitHubView.urls())),
+    path(
+        "submit-first/<slug:journey>/", include(views.SubmitFirstSectionViewSet.urls())
+    ),
+    path(
+        "submit-second/<slug:journey>/",
+        include(views.SubmitSecondSectionViewSet.urls()),
+    ),
     path("gated-first/", include(views.GatedFirstSectionViewSet.urls())),
     path("gated-second/", include(views.GatedSecondSectionViewSet.urls())),
     path("party/", include(views.PartyHubView.urls())),

@@ -23,8 +23,17 @@ defaults suit a plain task list; override what your domain needs.
 Whether a section is open to the user yet is the one question the section
 answers rather than the hub: `SectionMixin.blocked()` on its own viewset, so
 the rule lives with the wizard it gates instead of as an arm of a hub method
-with a key in scope. `section_blocked()` remains for what one section cannot
-answer alone.
+with a key in scope. `hidden()` is its sibling for a section that should not
+be listed at all yet. `section_blocked()` and `section_hidden()` remain for
+what one section cannot answer alone.
+
+The sections add up to a *journey* — the application, the claim, the profile
+— and everything a hub keeps is scoped to one: `SessionSectionStore` is built
+with the journey's identity, which a hub reads off a URL kwarg or declares.
+`store.data` is the journey's record of what its sections decided, written at
+`section_done()` and read by `blocked()` and `hidden()` without a walk. And a
+journey has its own completion: `submit()` runs `journey_done()` once the
+hub is complete, then tombstones the journey so a revisit reads as submitted.
 """
 
 from __future__ import annotations
@@ -34,7 +43,13 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
-from django.http import HttpRequest, HttpResponse, HttpResponseBase
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBase,
+    HttpResponseNotAllowed,
+)
 from django.shortcuts import redirect
 from django.urls import URLPattern, path, reverse
 from django.utils.text import capfirst
@@ -44,7 +59,7 @@ from django.views.generic import TemplateView
 from gandalf.context import WizardContext
 from gandalf.runtime import BoundWizard, InvalidStash
 from gandalf.storage import RunNotFound, SessionSectionStore, StashNotFound
-from gandalf.types import State, StrOrPromise
+from gandalf.types import SectionStore, State, StrOrPromise
 from gandalf.viewsets import WizardViewSet
 
 
@@ -136,8 +151,10 @@ class Section:
     #: for it to do, so the row addresses it directly.
     url_name: str | None = None
     #: What decides this section's status when the hub cannot. Called with the
-    #: request. Excluded from comparison for the same reason as `url_kwargs`.
-    status: Callable[[HttpRequest], str] | None = dataclass_field(
+    #: request and the URL kwargs the hub would hand the section's own view —
+    #: its journey, its mount prefix — so the answer is scoped as the hub is.
+    #: Excluded from comparison for the same reason as `url_kwargs`.
+    status: Callable[[HttpRequest, dict[str, Any]], str] | None = dataclass_field(
         default=None, compare=False
     )
 
@@ -265,6 +282,13 @@ class SectionMixin(_SectionMixinBase):
     section_label: str | None = None
     section_store_class = SessionSectionStore
     hub_url_name: str | None = None
+    #: Which journey this section belongs to. Read off the URL when the
+    #: wizard is mounted under a `<journey>` segment (`journey_url_kwarg`),
+    #: otherwise this fixed one — a hub that lists one journey per session,
+    #: which is what a profile task list is. Has to agree with the hub's, and
+    #: the hub checks that it does.
+    journey: str = "default"
+    journey_url_kwarg = "journey"
     #: Whether this section's key is only knowable per request — one wizard
     #: mounted per item of a collection, keyed off a URL kwarg. Such a section
     #: overrides `get_section_key()` and declares no `section_key`, so the
@@ -272,20 +296,31 @@ class SectionMixin(_SectionMixinBase):
     dynamic_section_key: bool = False
 
     @classmethod
-    def blocked(cls, request: HttpRequest, section: Section) -> bool:
-        """Whether this section is not open to the user yet, because it is
-        waiting on an answer given somewhere else.
+    def blocked(
+        cls, request: HttpRequest, section: Section, store: SectionStore
+    ) -> bool:
+        """Whether this section is visible but not open to the user yet — the
+        row reads **Cannot start yet**, and the door refuses it.
 
-        `False` for everything by default. Override to gate the section on
-        what your own models say:
+        `False` for everything by default. Two rules cover nearly every task
+        list, and both are one read of the journey's store:
 
-            class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
-                section_key = "employment"
+            class EmploymentHistorySectionViewSet(SectionMixin, WizardViewSet):
+                section_key = "employment_history"
 
-                # Only for applicants who told us they are employed.
+                # Unlocks once the Employment section has been finished.
                 @classmethod
-                def blocked(cls, request, section):
-                    return not request.user.profile.is_employed
+                def blocked(cls, request, section, store):
+                    return not store.has_stash("employment")
+
+            class ReferencesSectionViewSet(SectionMixin, WizardViewSet):
+                section_key = "references"
+
+                # Unlocks once the applicant has said they are employed —
+                # a fact the Employment section wrote at section_done().
+                @classmethod
+                def blocked(cls, request, section, store):
+                    return store.data.get("employment_status") != "employed"
 
         Answered by the section rather than asked about it, so the rule lives
         with the wizard it gates: it has a name, a docstring, a subclass, and
@@ -299,15 +334,16 @@ class SectionMixin(_SectionMixinBase):
         instance yet, and the point of the question is that there must not be
         a run.
 
-        Not a `requires=["contact"]` on the hub's declaration, because
-        availability turns on *answers*, not on which sections are finished:
-        "employment history, but only if you said you are employed" is the
-        common case and no graph of section keys expresses it.
+        Read `store.data` and `store.has_stash()` here, never a stash's
+        *state*. A stash is positional against a tree whose shape may depend
+        on a branch predicate nobody has evaluated, so reading an answer out
+        of one costs a walk; `section_done()` is where a section pays that
+        once and writes what it decided into `store.data`, and this is where
+        the rest of the journey reads it back for free.
 
-        Read your own models here, not the other section's stash. A stash's
-        state is positional against a tree whose shape may depend on a branch
-        predicate nobody has evaluated; `section_done()` is where the answers
-        become yours, and this is where you read what you saved.
+        The sibling question — should this section be listed at all yet — is
+        `hidden()`. A locked row is still work the journey is waiting on and
+        keeps the hub off `COMPLETE`; a hidden one does not exist.
 
         `section` is the row being asked about — what one viewset mounted per
         item of a collection needs to tell its items apart, and what a plain
@@ -316,6 +352,36 @@ class SectionMixin(_SectionMixinBase):
         Called once per row when the page renders, and once more at the door,
         so keep it cheap — the hub's promise is that a row costs storage reads
         and no walk, and this runs inside it.
+        """
+        return False
+
+    @classmethod
+    def hidden(
+        cls, request: HttpRequest, section: Section, store: SectionStore
+    ) -> bool:
+        """Whether this section should not be listed yet — because an answer
+        given elsewhere has not made it relevant, or has made it moot.
+
+        `False` for everything by default. Override with the same kind of
+        rule `blocked()` takes, read from the same store:
+
+            class PartnerSectionViewSet(SectionMixin, WizardViewSet):
+                section_key = "partner"
+
+                # Only exists for an applicant who said they have one.
+                @classmethod
+                def hidden(cls, request, section, store):
+                    return not store.data.get("has_partner", False)
+
+        A hidden section is gone from the hub for this request: not in its
+        rows, not in its counts, and its door refuses a stale link exactly as
+        it refuses a key the hub never declared. That is the difference from
+        `blocked()`, which keeps the row and locks it. Use this for a section
+        that may never apply; use `blocked()` for one that will, once the
+        user has done something else first.
+
+        Asked once per declared section per request, before the rows are
+        built, so it costs what `blocked()` costs and no more.
         """
         return False
 
@@ -343,13 +409,44 @@ class SectionMixin(_SectionMixinBase):
             return self.get_section_key()
         return self.section_label
 
-    def get_section_store(self) -> SessionSectionStore:
-        return self.section_store_class(WizardContext.from_request(self.request))
+    def get_journey(self) -> str:
+        """Which journey this request is answering a section of: the URL's
+        `journey_url_kwarg` when the wizard is mounted under one, otherwise
+        the declared `journey`."""
+        return str(self.kwargs.get(self.journey_url_kwarg, self.journey))
+
+    def get_section_store(self) -> SectionStore:
+        return self.section_store_class(
+            WizardContext.from_request(self.request), self.get_journey()
+        )
+
+    def dispatch(
+        self, request: HttpRequest, *args: Any, **kwargs: Any
+    ) -> HttpResponseBase:
+        """Refuse every request once the journey has been submitted.
+
+        The hub's own routes refuse a completed journey too, but they are not
+        the only way in: a bookmarked step URL addresses this section
+        directly, and a section re-opened after submission would stash into
+        a tombstone. One store read per request buys the guarantee that a
+        submitted journey can never be answered again.
+        """
+        if self.get_section_store().is_complete():
+            return self.journey_completed()
+        return super().dispatch(request, *args, **kwargs)
+
+    def journey_completed(self) -> HttpResponseBase:
+        """Response for a request that reaches this section after its journey
+        was submitted. The default sends the user back to the hub, whose own
+        `journey_completed()` says what a submitted journey looks like;
+        override to raise `Http404`."""
+        return redirect(self.get_hub_url())
 
     def get_hub_url(self) -> str:
         """Where a finished section sends the user back to. Forwards this
-        wizard's own mount-prefix kwargs, which is right when hub and section
-        share a mount; override when they do not."""
+        wizard's own mount-prefix kwargs — the journey among them — which is
+        right when hub and section share a mount; override when they do
+        not."""
         if self.hub_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -378,7 +475,7 @@ class SectionMixin(_SectionMixinBase):
         return response
 
     def section_recorded(
-        self, bound_wizard: BoundWizard, store: SessionSectionStore, key: str
+        self, bound_wizard: BoundWizard, store: SectionStore, key: str
     ) -> None:
         """Bookkeeping to record alongside the stash, inside the window where
         the run's answers are still readable.
@@ -401,7 +498,20 @@ class SectionMixin(_SectionMixinBase):
         """What this section does when it finishes, beyond being recorded.
         Returns the response the user sees; the default sends them back to the
         hub, which is where a task list expects a finished task to deposit
-        them."""
+        them.
+
+        This is where the answers become the journey's. The run is still
+        readable here and torn down after, so anything another section's
+        `blocked()` or `hidden()` needs to know is read off the path now and
+        written to `store.data`, once:
+
+            def section_done(self, bound_wizard):
+                step = bound_wizard.path.find_step(name="status")
+                self.get_section_store().data["employment_status"] = (
+                    step.form.cleaned_data["status"]
+                )
+                return super().section_done(bound_wizard)
+        """
         return redirect(self.get_hub_url())
 
 
@@ -423,6 +533,15 @@ class HubMixin(_HubMixinBase):
     section_url_name: str | None = None
     section_url_kwarg = "section"
     url_name: str | None = None
+    #: Which journey this hub is the task list of. Read off the URL when the
+    #: hub is mounted under a `<journey>` segment — `path("apply/<journey>/",
+    #: include(ApplicationHubView.urls()))` — so two applications in two tabs
+    #: are two URLs and two records in one session. Otherwise this fixed one:
+    #: one journey per session, which is what a profile task list is. Every
+    #: section's viewset declares the same pair, and `_validate_sections()`
+    #: refuses one that does not.
+    journey: str = "default"
+    journey_url_kwarg = "journey"
 
     # --- the sections this hub lists ---------------------------------------
 
@@ -439,14 +558,29 @@ class HubMixin(_HubMixinBase):
         return list(self.sections)
 
     def _vetted_sections(self) -> list[Section]:
-        """`get_sections()`, checked once per request.
+        """`get_sections()`, checked once per request, minus the sections
+        hidden for it.
 
         Both halves of the hub ask for the sections — the rows and the door —
         and the checks are properties of the declaration, not of either use,
-        so they run once on the view instance Django builds per request.
+        so they run once on the view instance Django builds per request. The
+        whole declaration is checked before any of it is hidden: drift is a
+        property of what was declared, and a mistake should not pass because
+        an answer happened to hide the section carrying it.
+
+        Hiding here, rather than in the rows, is what makes a hidden section
+        *gone*: not in `Hub.rows`, not in its counts, and unknown to the
+        door, so a stale link to it is refused as a key the hub never
+        declared.
         """
         if not hasattr(self, "_sections_cache"):
-            self._sections_cache = self._validate_sections(self.get_sections())
+            sections = self._validate_sections(self.get_sections())
+            store = self.get_section_store()
+            self._sections_cache = [
+                section
+                for section in sections
+                if not self.section_hidden(section, store)
+            ]
         return self._sections_cache
 
     def _validate_sections(self, sections: list[Section]) -> list[Section]:
@@ -522,6 +656,32 @@ class HubMixin(_HubMixinBase):
                     "lists it, or finishing the section deposits the user on "
                     f"a page that does not list it. Mispointed: {names}."
                 )
+        # A section on a different journey from its hub stashes into a record
+        # the hub never reads — the same quiet failure as a drifted key, one
+        # level up. Only a `SectionMixin` declares a journey to drift from.
+        astray = [
+            section
+            for section in sections
+            if hasattr(section.viewset, "journey")
+            and (
+                getattr(section.viewset, "journey") != self.journey
+                or getattr(section.viewset, "journey_url_kwarg")
+                != self.journey_url_kwarg
+            )
+        ]
+        if astray:
+            names = ", ".join(
+                f"{section.key} (its viewset declares journey="
+                f"{getattr(section.viewset, 'journey')!r}, journey_url_kwarg="
+                f"{getattr(section.viewset, 'journey_url_kwarg')!r})"
+                for section in astray
+            )
+            raise ImproperlyConfigured(
+                "A hub section's viewset must be on the same journey as its "
+                f"hub (journey={self.journey!r}, journey_url_kwarg="
+                f"{self.journey_url_kwarg!r}), or it finishes into a record "
+                f"the hub never reads. Astray: {names}."
+            )
         return list(sections)
 
     def get_section(self, key: str) -> Section:
@@ -532,8 +692,32 @@ class HubMixin(_HubMixinBase):
                 return section
         raise SectionNotFound(key)
 
-    def get_section_store(self) -> SessionSectionStore:
-        return self.section_store_class(WizardContext.from_request(self.request))
+    def get_journey(self) -> str:
+        """Which journey this request is the task list of: the URL's
+        `journey_url_kwarg` when the hub is mounted under one, otherwise the
+        declared `journey`."""
+        url_kwargs = getattr(self, "kwargs", None) or {}
+        return str(url_kwargs.get(self.journey_url_kwarg, self.journey))
+
+    def get_journey_url_kwargs(self) -> dict[str, Any]:
+        """The journey segment this request came in through, as URL kwargs —
+        empty for a hub mounted under none. What every section's own view is
+        handed, so a section mounted under the same segment reads the same
+        journey."""
+        url_kwargs = getattr(self, "kwargs", None) or {}
+        if self.journey_url_kwarg in url_kwargs:
+            return {self.journey_url_kwarg: url_kwargs[self.journey_url_kwarg]}
+        return {}
+
+    def section_url_kwargs(self, section: Section) -> dict[str, Any]:
+        """The URL kwargs a section's own view is run with: the journey this
+        hub is on, under the section's declared `url_kwargs`."""
+        return {**self.get_journey_url_kwargs(), **section.url_kwargs}
+
+    def get_section_store(self) -> SectionStore:
+        return self.section_store_class(
+            WizardContext.from_request(self.request), self.get_journey()
+        )
 
     def section_viewset(self, section: Section) -> type[WizardViewSet]:
         """The wizard behind a section, for the four places that run one.
@@ -565,7 +749,7 @@ class HubMixin(_HubMixinBase):
         *incomplete* either — a fresh task list whose later sections are
         locked has still not been begun — but it does keep the page off
         `COMPLETE` for as long as it is locked, which is why a section that
-        will never unlock belongs out of `get_sections()` rather than in it.
+        will never unlock is one for `hidden()` rather than `blocked()`.
 
         Override for a domain where some sections do not count towards the
         whole — an optional one, or one another answer made moot.
@@ -597,9 +781,7 @@ class HubMixin(_HubMixinBase):
             for section in self._vetted_sections()
         ]
 
-    def build_section_row(
-        self, section: Section, store: SessionSectionStore
-    ) -> SectionRow:
+    def build_section_row(self, section: Section, store: SectionStore) -> SectionRow:
         status = self.get_section_status(section, store)
         return SectionRow(
             section=section,
@@ -609,7 +791,7 @@ class HubMixin(_HubMixinBase):
             url=self.get_section_url(section),
         )
 
-    def get_section_status(self, section: Section, store: SessionSectionStore) -> str:
+    def get_section_status(self, section: Section, store: SectionStore) -> str:
         """How far a section has got: `COMPLETE`, `INCOMPLETE`, or
         `NOT_STARTED`.
 
@@ -640,8 +822,8 @@ class HubMixin(_HubMixinBase):
         user away is worse than one saying they cannot start yet.
         """
         if section.status is not None:
-            return section.status(self.request)
-        if self.section_blocked(section):
+            return section.status(self.request, self.section_url_kwargs(section))
+        if self.section_blocked(section, store):
             return BLOCKED
         if store.has_stash(section.key):
             return COMPLETE
@@ -649,8 +831,8 @@ class HubMixin(_HubMixinBase):
             return INCOMPLETE
         return NOT_STARTED
 
-    def section_blocked(self, section: Section) -> bool:
-        """Whether this section is not open to the user yet.
+    def section_blocked(self, section: Section, store: SectionStore) -> bool:
+        """Whether this section is visible but not open to the user yet.
 
         Asks the section itself — `SectionMixin.blocked()` on its own viewset
         — because that is where a rule about one section belongs, and a hub
@@ -664,9 +846,21 @@ class HubMixin(_HubMixinBase):
         own `status` — which may be `BLOCKED` — and the door asks for that.
         """
         blocked = getattr(section.viewset, "blocked", None)
-        return blocked is not None and blocked(self.request, section)
+        return blocked is not None and blocked(self.request, section, store)
 
-    def get_section_state(self, section: Section, store: SessionSectionStore) -> State:
+    def section_hidden(self, section: Section, store: SectionStore) -> bool:
+        """Whether this section should not be listed for this request.
+
+        The exact mirror of `section_blocked()`: asks `SectionMixin.hidden()`
+        on the section's own viewset, and is the hub's hook for what one
+        section cannot answer alone — a collection hiding every item at once.
+        A section with no viewset is never hidden from here; a hub that wants
+        to hide one leaves it out of `get_sections()`.
+        """
+        hidden = getattr(section.viewset, "hidden", None)
+        return hidden is not None and hidden(self.request, section, store)
+
+    def get_section_state(self, section: Section, store: SectionStore) -> State:
         """The stored state of the section's recorded run — an empty list when
         it has none, or one the storage no longer holds.
 
@@ -808,7 +1002,7 @@ class HubMixin(_HubMixinBase):
         return started.entry_url()
 
     def resume_section(
-        self, section: Section, store: SessionSectionStore
+        self, section: Section, store: SectionStore
     ) -> BoundWizard | None:
         """The section's live run, or None when it has none.
 
@@ -825,7 +1019,7 @@ class HubMixin(_HubMixinBase):
             return None
         try:
             bound_wizard = self.section_viewset(section).inspect(
-                self.request, run_id, **section.url_kwargs
+                self.request, run_id, **self.section_url_kwargs(section)
             )
         except RunNotFound:
             return None
@@ -834,7 +1028,7 @@ class HubMixin(_HubMixinBase):
         return bound_wizard
 
     def reopen_section(
-        self, section: Section, store: SessionSectionStore
+        self, section: Section, store: SectionStore
     ) -> BoundWizard | None:
         """A fresh run seeded from the section's stash, or None with nothing
         stashed. The stash is read, never popped: re-opening keeps working,
@@ -847,12 +1041,14 @@ class HubMixin(_HubMixinBase):
             self.request,
             payload,
             expected_label=section.stash_label,
-            **section.url_kwargs,
+            **self.section_url_kwargs(section),
         )
 
     def start_section(self, section: Section) -> BoundWizard:
         """A brand-new run for a section with nothing behind it."""
-        return self.section_viewset(section).begin(self.request, **section.url_kwargs)
+        return self.section_viewset(section).begin(
+            self.request, **self.section_url_kwargs(section)
+        )
 
     def stash_unusable(self, section: Section, error: InvalidStash) -> str | None:
         """What to do with a stash that cannot seed a run — a payload whose
@@ -876,6 +1072,87 @@ class HubMixin(_HubMixinBase):
         to raise `Http404`.
         """
         return redirect(self.get_hub_url())
+
+    # --- the journey -------------------------------------------------------
+
+    def dispatch(
+        self, request: HttpRequest, *args: Any, **kwargs: Any
+    ) -> HttpResponseBase:
+        """Answer every request for a submitted journey with
+        `journey_completed()` — the page and the door alike. A tombstone has
+        no runs and no stashes, so rendering it as a task list would show
+        every section as not started over a journey that is finished."""
+        store = self.get_section_store()
+        if store.is_complete():
+            return self.journey_completed(store)
+        return super().dispatch(request, *args, **kwargs)
+
+    def submit(self) -> HttpResponseBase:
+        """Finish the whole journey, once every section has.
+
+        The counterpart of `SectionMixin.done()` one level up, with the same
+        ordering: the application's work first, the bookkeeping after. If
+        the hub is not complete the submit is refused (`hub_incomplete()`),
+        so a stale button or a hand-made POST cannot submit half a journey.
+        Otherwise `journey_done()` does what submitting *means* — files the
+        application, raises the claim — and only once it has returned is the
+        journey tombstoned, so a `journey_done()` that raises leaves every
+        section resumable rather than a journey that is neither submitted
+        nor editable.
+
+        `journey_done()` runs inside the window where the stashes are still
+        readable, exactly as `section_done()` runs before the run is torn
+        down. Anything it needs to keep for the done page goes in
+        `store.data`, which the tombstone keeps.
+        """
+        hub = self.get_hub()
+        if not hub.is_complete:
+            return self.hub_incomplete(hub)
+        store = self.get_section_store()
+        response = self.journey_done(hub, store)
+        store.complete()
+        return response
+
+    def journey_done(self, hub: Hub, store: SectionStore) -> HttpResponseBase:
+        """What submitting this journey does, and the response the user sees
+        after. There is no default: a journey with nothing to do when it is
+        submitted is a hub with no reason to have a submit.
+
+            def journey_done(self, hub, store):
+                application = file_application(
+                    self.request.user,
+                    contact=store.get_stash("contact"),
+                    employment=store.get_stash("employment"),
+                )
+                store.data["application_ref"] = application.reference
+                return redirect("apply-done", journey=self.get_journey())
+        """
+        name = self.__class__.__name__
+        raise ImproperlyConfigured(
+            f"{name} has nothing to do when its journey is submitted. Override "
+            f"{name}.journey_done() to do the work and return the response."
+        )
+
+    def hub_incomplete(self, hub: Hub) -> HttpResponseBase:
+        """Response for a submit that arrived before every section was
+        complete. The default sends the user back to the hub, which shows
+        them what is left; override to render the page with an error."""
+        return redirect(self.get_hub_url())
+
+    def journey_completed(self, store: SectionStore) -> HttpResponseBase:
+        """Response for a request that reaches this hub after its journey
+        was submitted.
+
+        `Http404` by default, because the library cannot know what a
+        submitted journey looks like. Override to render a done page from
+        what the tombstone kept:
+
+            def journey_completed(self, store):
+                return render(self.request, "apply/done.html", {
+                    "reference": store.data["application_ref"],
+                })
+        """
+        raise Http404(f"Journey {self.get_journey()!r} has been submitted.")
 
 
 class HubView(HubMixin, TemplateView):
@@ -916,6 +1193,13 @@ class HubView(HubMixin, TemplateView):
                 name=f"{cls.url_name}-section",
             ),
         ]
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponseBase:
+        """A POST to the page submits the journey. The door is GET-only: the
+        route that opens a section never destroys or finishes anything."""
+        if kwargs.get(self.section_url_kwarg) is not None:
+            return HttpResponseNotAllowed(["GET"])
+        return self.submit()
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         key = kwargs.get(self.section_url_kwarg)

@@ -20,7 +20,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.testing import stored_stash
+from gandalf.testing import stored_section_stash, stored_stash
 
 
 ADDRESS = {
@@ -432,7 +432,9 @@ def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Complete")
-    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Ada"}}
+    assert stored_section_stash(client, "contact")["state"][0] == {
+        "step": {"name": "Ada"}
+    }
 
 
 def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_driver):

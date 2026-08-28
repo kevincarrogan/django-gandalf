@@ -1,0 +1,14 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/journey_done.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h1>Application submitted</h1>
+        <p class="lede">Your reference is <strong>{{ reference }}</strong>.</p>
+        <p class="lede">
+            The journey's answers are gone from the session; its data — this
+            reference — is what the tombstone kept.
+        </p>
+    </div>
+{% endblock %}

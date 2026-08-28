@@ -12,14 +12,16 @@ The forms are ordinary ``django.forms.Form`` classes; the templates are the
 plain form templates already bundled with the test app.
 """
 
+import uuid
+
 from django import forms
 from django.http import HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from gandalf.collections import CollectionView, ItemSectionMixin
 from gandalf.context import WizardContext
 from gandalf.form_views import StepFormView
 from gandalf.sections import HubView, Section, SectionMixin
-from gandalf.storage import SessionStashStore, StashNotFound
+from gandalf.storage import SessionSectionStore, SessionStashStore, StashNotFound
 from gandalf.summary import Group, Hide, SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import InvalidStash, MergeCleanedData, Wizard, condition
@@ -475,3 +477,170 @@ class PartyHubView(HubView):
         # and answers for its own status.
         GuestCollectionView.as_section("guests", title="Guests"),
     ]
+
+
+# --- Journeys: a task list scoped to one application ------------------------
+
+
+class ApplicantTypeForm(forms.Form):
+    applicant_type = forms.ChoiceField(
+        label="Applying as",
+        choices=[("individual", "An individual"), ("business", "A business")],
+    )
+
+
+class EmploymentStatusForm(forms.Form):
+    status = forms.ChoiceField(
+        label="Employment status",
+        choices=[
+            ("employed", "Employed"),
+            ("self_employed", "Self-employed"),
+            ("unemployed", "Not working"),
+        ],
+    )
+
+
+class EmployerForm(forms.Form):
+    employer = forms.CharField(label="Employer")
+
+
+class ReferenceForm(forms.Form):
+    referee = forms.CharField(label="Referee")
+
+
+def record_applicant_type(store, bound_wizard):
+    """Read the one answer the rest of the journey turns on, once, and write
+    it where every other section can read it without a walk."""
+    step = bound_wizard.path.find_step(name="type")
+    store.data["applicant_type"] = step.form.cleaned_data["applicant_type"]
+
+
+class ApplicationStartViewSet(WizardViewSet):
+    """The first wizard. There is no journey yet, so `done()` mints one,
+    stashes these answers as its first section, and sends the user to the
+    hub under the new id."""
+
+    description = "Journeys: the setup wizard that mints an application."
+    url_name = "readme-apply-start"
+    template_name = "testapp/linear_wizard.html"
+    wizard = Wizard().step(ApplicantTypeForm, name="type", label="Applicant")
+
+    def done(self, bound_wizard):
+        journey = uuid.uuid4().hex
+        store = SessionSectionStore(self.context_for(self.request), journey)
+        store.put_stash("setup", bound_wizard.stash(label="setup"))
+        record_applicant_type(store, bound_wizard)
+        return redirect("readme-apply-hub", journey=journey)
+
+
+class SetupSectionViewSet(SectionMixin, WizardViewSet):
+    """The same wizard, once a journey exists: re-openable from the hub like
+    any other section, and re-recording its answer when it is re-saved."""
+
+    description = "Journeys: the setup answers, re-openable from the hub."
+    url_name = "readme-apply-setup"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "setup"
+    hub_url_name = "readme-apply-hub"
+    wizard = ApplicationStartViewSet.wizard
+
+    def section_done(self, bound_wizard):
+        record_applicant_type(self.get_section_store(), bound_wizard)
+        return super().section_done(bound_wizard)
+
+
+class ApplyContactSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Journeys: a plain section of the application."
+    url_name = "readme-apply-contact"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "contact"
+    hub_url_name = "readme-apply-hub"
+    wizard = (
+        Wizard()
+        .step(NameForm, name="name", label="Your name")
+        .step(EmailForm, name="email", label="Email")
+    )
+
+
+class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
+    """Decides whether the Employer section exists. The answer is read off
+    the path here — the one moment the run is readable and a walk has
+    already been paid — and written to the journey's data."""
+
+    description = "Journeys: the section whose answer reveals another."
+    url_name = "readme-apply-employment"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "employment"
+    hub_url_name = "readme-apply-hub"
+    wizard = Wizard().step(EmploymentStatusForm, name="status", label="Employment")
+
+    def section_done(self, bound_wizard):
+        step = bound_wizard.path.find_step(name="status")
+        self.get_section_store().data["employment_status"] = step.form.cleaned_data[
+            "status"
+        ]
+        return super().section_done(bound_wizard)
+
+
+class EmployerSectionViewSet(SectionMixin, WizardViewSet):
+    """Hidden until the applicant says they are employed: not listed, not
+    counted, and its door refuses a stale link."""
+
+    description = "Journeys: a section that only exists for the employed."
+    url_name = "readme-apply-employer"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "employer"
+    hub_url_name = "readme-apply-hub"
+    wizard = Wizard().step(EmployerForm, name="employer", label="Employer")
+
+    @classmethod
+    def hidden(cls, request, section, store):
+        return store.data.get("employment_status") != "employed"
+
+
+class ReferencesSectionViewSet(SectionMixin, WizardViewSet):
+    """Listed from the start but locked until Contact details are finished:
+    the row reads *Cannot start yet* and the door refuses it."""
+
+    description = "Journeys: a section that unlocks when another is finished."
+    url_name = "readme-apply-references"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "references"
+    hub_url_name = "readme-apply-hub"
+    wizard = Wizard().step(ReferenceForm, name="referee", label="Referee")
+
+    @classmethod
+    def blocked(cls, request, section, store):
+        return not store.has_stash("contact")
+
+
+class ApplicationHubView(HubView):
+    """Mounted under `apply/<journey>/`, so every request — the page, the
+    doors, and each section's own wizard under the same segment — reads the
+    same journey, and two applications are two URLs."""
+
+    description = "Journeys: the application's task list, with a submit."
+    template_name = "testapp/journey_hub.html"
+    url_name = "readme-apply-hub"
+    section_url_name = "readme-apply-hub-section"
+    sections = [
+        Section("setup", SetupSectionViewSet, title="Applicant"),
+        Section("contact", ApplyContactSectionViewSet, title="Contact details"),
+        Section("employment", EmploymentSectionViewSet, title="Employment"),
+        Section("employer", EmployerSectionViewSet, title="Employer"),
+        Section("references", ReferencesSectionViewSet, title="References"),
+    ]
+
+    def journey_done(self, hub, store):
+        # The stashes are still readable here; the tombstone keeps only
+        # `store.data`, so whatever the done page needs goes there.
+        reference = f"APP-{self.get_journey()[:8].upper()}"
+        store.data["reference"] = reference
+        return redirect(self.get_hub_url())
+
+    def journey_completed(self, store):
+        return render(
+            self.request,
+            "testapp/journey_done.html",
+            {"reference": store.data["reference"]},
+        )

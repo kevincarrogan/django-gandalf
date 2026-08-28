@@ -37,6 +37,31 @@ class WizardRun(models.Model):
         indexes = [models.Index(fields=["owner", "updated_at"])]
 
 
+class JourneyRecord(models.Model):
+    """One journey of one user: what its sections decided between them, and
+    whether it has been submitted.
+
+    The session store keeps this on the journey's record beside the runs
+    and the stashes; a table keeps it on its own row, because it is the one
+    part of a journey that outlives submission. `data` is the envelope
+    `store.data` reads — both buckets, verbatim.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wizard_journeys",
+    )
+    journey = models.CharField(max_length=100)
+    data = models.JSONField(default=dict)
+    completed = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "journey"], name="unique_journey"),
+        ]
+
+
 class SectionRecord(models.Model):
     """A hub's bookkeeping for one section of one user's journey.
 
@@ -50,6 +75,7 @@ class SectionRecord(models.Model):
         on_delete=models.CASCADE,
         related_name="wizard_sections",
     )
+    journey = models.CharField(max_length=100, default="default")
     key = models.CharField(max_length=100)
     # Where an unfinished section is picked up; cleared when it finishes.
     run = models.ForeignKey(WizardRun, on_delete=models.SET_NULL, null=True, blank=True)
@@ -58,7 +84,9 @@ class SectionRecord(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["owner", "key"], name="unique_section"),
+            models.UniqueConstraint(
+                fields=["owner", "journey", "key"], name="unique_section"
+            ),
         ]
 
 
@@ -76,12 +104,15 @@ class CollectionRecord(models.Model):
         on_delete=models.CASCADE,
         related_name="wizard_collections",
     )
+    journey = models.CharField(max_length=100, default="default")
     key = models.CharField(max_length=100)
     declared_done = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["owner", "key"], name="unique_collection"),
+            models.UniqueConstraint(
+                fields=["owner", "journey", "key"], name="unique_collection"
+            ),
         ]
 
 
@@ -101,6 +132,7 @@ class CollectionItemRecord(models.Model):
         on_delete=models.CASCADE,
         related_name="wizard_collection_items",
     )
+    journey = models.CharField(max_length=100, default="default")
     collection_key = models.CharField(max_length=100)
     item_id = models.CharField(max_length=64)
     # Worked out once, when the item finished; None until then.
@@ -111,7 +143,7 @@ class CollectionItemRecord(models.Model):
         ordering = ["position"]
         constraints = [
             models.UniqueConstraint(
-                fields=["owner", "collection_key", "item_id"],
+                fields=["owner", "journey", "collection_key", "item_id"],
                 name="unique_collection_item",
             ),
         ]

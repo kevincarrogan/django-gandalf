@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Mapping, MutableMapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
@@ -18,6 +18,7 @@ from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.escapes import Escape
 from gandalf.file_storage import FileRef, WizardFileStorage
+from gandalf.metadata import MetadataBag
 from gandalf.observers import WizardObserver
 from gandalf.types import (
     Context,
@@ -170,7 +171,7 @@ RUN_BUCKET = "run"
 STEP_BUCKET = "steps"
 
 
-class RunMetadata(MutableMapping[str, Any]):
+class RunMetadata(MetadataBag):
     """A run's own record of what it did outside itself, written through to
     storage the moment it changes.
 
@@ -212,12 +213,9 @@ class RunMetadata(MutableMapping[str, Any]):
     A name that no step has is not an error here — checking would cost a
     walk — it is simply a bag nothing else reads.
 
-    Two things to know. Values must be JSON-safe, like everything else a
-    run stores; and only *assignment* writes through — a read hands back a
-    deep copy, so mutating a nested value in place (`metadata["a"]["b"] = 1`)
-    changes that copy and nothing else, on every backend. Assign the whole
-    value back, and use `update()` when several keys change together so
-    they cost one write rather than one each.
+    The mapping itself is `MetadataBag`'s: values must be JSON-safe, a read
+    hands back a deep copy, only assignment writes through, and `update()`
+    batches several keys into one write.
     """
 
     def __init__(
@@ -228,7 +226,11 @@ class RunMetadata(MutableMapping[str, Any]):
     ) -> None:
         self._storage = storage
         self._run_id = run_id
-        self._path = path
+        super().__init__(
+            read=lambda: storage.get_run_metadata(run_id),
+            write=lambda envelope: storage.set_run_metadata(run_id, envelope),
+            path=path,
+        )
 
     def for_step(self, name: str) -> RunMetadata:
         """This run's metadata for the step `name` names.
@@ -238,66 +240,6 @@ class RunMetadata(MutableMapping[str, Any]):
         than a nesting nobody asked for.
         """
         return type(self)(self._storage, self._run_id, (STEP_BUCKET, name))
-
-    def _bucket(self) -> Metadata:
-        bucket = self._storage.get_run_metadata(self._run_id) or {}
-        for key in self._path:
-            bucket = bucket.get(key) or {}
-        return bucket
-
-    def _write(self, mutate: Any) -> None:
-        """Apply `mutate` to this bag and store the whole envelope.
-
-        Read-modify-write, and deliberately not memoised: two handles on one
-        run are the normal case — a step view's and the viewset's — and a
-        cache would let one of them go stale mid-request.
-        """
-        envelope = self._storage.get_run_metadata(self._run_id) or {}
-        node = envelope
-        for key in self._path[:-1]:
-            node = node.setdefault(key, {})
-        bucket = node.setdefault(self._path[-1], {})
-        # Mutating before the write means a `KeyError` from `__delitem__`
-        # leaves storage untouched rather than half-written.
-        mutate(bucket)
-        self._storage.set_run_metadata(self._run_id, envelope)
-
-    def __getitem__(self, key: str) -> Any:
-        # Deep copied on the way out, so a caller that mutates what it reads
-        # cannot reach through into storage. Without this the behaviour
-        # depends on the backend: a session hands back the live dict (the
-        # mutation lands, but nothing marks the session, so the middleware
-        # never saves it), while a durable store re-reads the row and the
-        # mutation is gone at once. Refusing it everywhere beats working in
-        # development and losing data in production.
-        return deepcopy(self._bucket()[key])
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._write(lambda bucket: bucket.__setitem__(key, value))
-
-    def update(self, other: Any = (), /, **kwargs: Any) -> None:
-        """Set several keys in one write.
-
-        `MutableMapping` would do this by looping over `__setitem__`, which
-        is a full read-modify-write of the envelope per key — three keys is
-        three `SELECT`s and three `UPDATE`s on a durable backend. Related
-        facts usually arrive together (`run_started()` recording what it
-        opened and that it is pending), so they go in together.
-        """
-        changes = dict(other, **kwargs)
-        self._write(lambda bucket: bucket.update(changes))
-
-    def __delitem__(self, key: str) -> None:
-        self._write(lambda bucket: bucket.__delitem__(key))
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._bucket())
-
-    def __len__(self) -> int:
-        return len(self._bucket())
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self._bucket()!r})"
 
 
 # Sentinel for "no tree is pinned" — no walk in progress, and no finished

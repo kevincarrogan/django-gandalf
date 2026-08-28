@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from gandalf.context import WizardContext
     from gandalf.runtime import BoundWizard
+    from gandalf.storage import JourneyData
 
     #: Display text that may still be a lazy translation — what Django hands
     #: back for a field label or a `gettext_lazy()` string, and what a
@@ -76,6 +77,11 @@ CollectionItem: TypeAlias = dict[str, Any]
 #: Everything a store keeps about one collection — its items in the order the
 #: user added them, and whether the user has said there are no more to add.
 CollectionData: TypeAlias = dict[str, Any]
+
+#: Everything a session keeps about one journey — its sections' runs and
+#: stashes, its collections, its decided data, or the tombstone a submitted
+#: journey leaves behind. See `SessionSectionStore` for the layout.
+JourneyRecord: TypeAlias = dict[str, Any]
 
 
 class WizardRequest(HttpRequest):
@@ -132,6 +138,67 @@ class WizardStorage(Protocol):
     def complete_run(self, run_id: str) -> None: ...
 
     def is_run_complete(self, run_id: str) -> bool: ...
+
+
+class SectionStore(Protocol):
+    """What a hub's `section_store_class` has to provide.
+
+    Structural, like `WizardStorage`: `SessionSectionStore` satisfies it
+    without inheriting anything, and so does a store of your own that keeps
+    a journey's bookkeeping somewhere longer-lived. Constructed from the
+    journey's `WizardContext` and the journey's identity — a durable backend
+    scopes by both, `context.actor` saying whose and `journey` saying which.
+
+    Every method the hub, the door and a section call is here, so a backend
+    that satisfies this needs no reading of the views to know it is whole.
+    """
+
+    def __init__(self, context: WizardContext, journey: str) -> None: ...
+
+    def get_run(self, key: str) -> str | None: ...
+
+    def set_run(self, key: str, run_id: str) -> None: ...
+
+    def clear_run(self, key: str) -> None: ...
+
+    def get_stash(self, key: str) -> Stash: ...
+
+    def has_stash(self, key: str) -> bool: ...
+
+    def put_stash(self, key: str, payload: Stash) -> None: ...
+
+    def delete_stash(self, key: str) -> None: ...
+
+    def keys(self) -> list[str]: ...
+
+    @property
+    def data(self) -> JourneyData: ...
+
+    def complete(self) -> None: ...
+
+    def is_complete(self) -> bool: ...
+
+
+class CollectionStore(SectionStore, Protocol):
+    """What a collection's `section_store_class` has to provide: a section
+    store, plus the ordered registry of items per collection and the user's
+    answer to *add another*."""
+
+    def item_ids(self, key: str) -> list[str]: ...
+
+    def has_item(self, key: str, item_id: str) -> bool: ...
+
+    def add_item(self, key: str, item_id: str) -> None: ...
+
+    def remove_item(self, key: str, item_id: str) -> None: ...
+
+    def get_item_title(self, key: str, item_id: str) -> str | None: ...
+
+    def set_item_title(self, key: str, item_id: str, title: str | None) -> None: ...
+
+    def is_declared_done(self, key: str) -> bool: ...
+
+    def set_declared_done(self, key: str, declared_done: bool) -> None: ...
 
 
 #: A storage class as it is configured — named on the viewset and called

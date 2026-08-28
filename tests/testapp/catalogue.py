@@ -118,6 +118,20 @@ GROUPS = (
                 "readme-guests",
                 note="Add another: add a few guests, then change and remove them.",
             ),
+            Example(
+                "readme-apply-start",
+                note="Journeys: start here — it mints an application and lands on its hub.",
+            ),
+            Example(
+                "readme-apply-hub",
+                url_kwargs={"journey": "example"},
+                note="The hub of one application. Reach it from the setup wizard.",
+            ),
+            Example("readme-apply-setup", url_kwargs={"journey": "example"}),
+            Example("readme-apply-contact", url_kwargs={"journey": "example"}),
+            Example("readme-apply-employment", url_kwargs={"journey": "example"}),
+            Example("readme-apply-employer", url_kwargs={"journey": "example"}),
+            Example("readme-apply-references", url_kwargs={"journey": "example"}),
         ),
     ),
     Group(
@@ -365,6 +379,13 @@ GROUPS = (
         "item from its collection page — the item wizard's own URL needs an "
         "item id, and the collection is what mints them.",
         (
+            Example(
+                "submit-hub",
+                url_kwargs={"journey": "example"},
+                note="A hub under a journey segment; finish both rows, then submit.",
+            ),
+            Example("submit-first", url_kwargs={"journey": "example"}),
+            Example("submit-second", url_kwargs={"journey": "example"}),
             Example("party-hub", note="Start here — a task list with a collection."),
             Example("party-venue", note="A plain section beside the collection."),
             Example(

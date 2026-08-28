@@ -30,7 +30,7 @@ from gandalf.testing import (
     seed_collection_item,
     stored_collection_items,
     stored_section_run,
-    stored_stashes,
+    stored_section_stashes,
 )
 
 
@@ -110,7 +110,7 @@ def test_an_item_is_registered_before_its_wizard_starts(client):
     _add(client)
 
     assert len(stored_collection_items(client, "guests")) == 1
-    assert stored_stashes(client) == {}
+    assert stored_section_stashes(client) == {}
 
 
 def test_an_item_the_user_started_but_never_finished_reads_as_incomplete(client):
@@ -249,7 +249,7 @@ def test_removing_an_item_takes_its_row_its_stash_and_its_run(client):
 
     assertRedirects(response, PAGE)
     assert stored_collection_items(client, "guests") == []
-    assert stored_stashes(client) == {}
+    assert stored_section_stashes(client) == {}
     assert stored_section_run(client, f"guests:{item_id}") is None
 
 
@@ -611,7 +611,10 @@ def test_a_reshaped_item_stamps_the_bumped_label_into_its_stash(client):
     _complete(client, "Ada", page=page)
     (item_id,) = stored_collection_items(client, "reshaped-guests")
 
-    assert stored_stashes(client)[f"reshaped-guests:{item_id}"]["label"] == "guests-v2"
+    assert (
+        stored_section_stashes(client)[f"reshaped-guests:{item_id}"]["label"]
+        == "guests-v2"
+    )
     response = client.get(
         reverse("reshaped-guests-item", kwargs={"item": item_id}), follow=True
     )
@@ -787,7 +790,7 @@ def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, 
         request.session = session
         _Fixed.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.item_ids("guests") == [ITEM]
 
 

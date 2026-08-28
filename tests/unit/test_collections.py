@@ -39,6 +39,20 @@ class _Session(dict):
     modified = False
 
 
+#: The parts of a journey's record a test seeds, lifted under the journey
+#: key the store reads them from. Everything else (`gandalf_runs`) passes
+#: through untouched.
+_JOURNEY_PARTS = ("runs", "stashes", "collections", "data", "completed")
+
+
+def _session(seed=None, journey="default"):
+    seed = dict(seed or {})
+    record = {part: seed.pop(part) for part in _JOURNEY_PARTS if part in seed}
+    if record:
+        seed["gandalf_journeys"] = {journey: record}
+    return _Session(seed)
+
+
 class _ItemViewSet(ItemSectionMixin, WizardViewSet):
     url_name = "party-guest"
     template_name = "testapp/linear_wizard.html"
@@ -72,7 +86,7 @@ class _Collection(CollectionMixin, _TemplateView):
 def collection(rf):
     def build(session=None):
         request = rf.get("/party-guests/")
-        request.session = _Session(session or {})
+        request.session = _session(session or {})
         return _Collection(request)
 
     return build
@@ -87,7 +101,7 @@ ITEM_C = "33333333-3333-3333-3333-333333333333"
 
 def _seed(items=(), declared_done=False, key="guests"):
     return {
-        "gandalf_collections": {
+        "collections": {
             key: {
                 "items": [{"id": i, "title": t} for i, t in items],
                 "declared_done": declared_done,
@@ -133,7 +147,7 @@ def test_a_collection_with_items_the_user_has_not_signed_off_is_incomplete(
     """Every item can be finished and the collection still not be — only the
     user can say there are no more."""
     page = collection(
-        _seed(items=[(ITEM_A, "Ada")]) | {"gandalf_stashes": {f"guests:{ITEM_A}": {}}}
+        _seed(items=[(ITEM_A, "Ada")]) | {"stashes": {f"guests:{ITEM_A}": {}}}
     )
 
     assert page.get_collection().status == INCOMPLETE
@@ -142,7 +156,7 @@ def test_a_collection_with_items_the_user_has_not_signed_off_is_incomplete(
 def test_a_declared_collection_whose_items_are_all_finished_is_complete(collection):
     page = collection(
         _seed(items=[(ITEM_A, "Ada")], declared_done=True)
-        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}}}
+        | {"stashes": {f"guests:{ITEM_A}": {}}}
     )
 
     assert page.get_collection().status == COMPLETE
@@ -166,7 +180,7 @@ def test_an_empty_declared_collection_is_incomplete_when_one_is_required(rf):
         min_items = 1
 
     request = rf.get("/party-guests/")
-    request.session = _Session(_seed(declared_done=True))
+    request.session = _session(_seed(declared_done=True))
 
     assert _AtLeastOne(request).get_collection().status == INCOMPLETE
 
@@ -201,7 +215,7 @@ def test_the_collection_counts_its_items_the_way_a_hub_counts_its_sections(
     the template means the loop the `Hub` counts exist to remove."""
     page = collection(
         _seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace"), (ITEM_C, None)])
-        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
+        | {"stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
     )
 
     result = page.get_collection()
@@ -216,13 +230,13 @@ def test_an_item_the_user_cannot_start_yet_is_counted_as_blocked(rf):
     have to answer for it too."""
 
     class _Locked(_Collection):
-        def section_blocked(self, section):
+        def section_blocked(self, section, store):
             return section.key.endswith(ITEM_B)
 
     request = rf.get("/party-guests/")
-    request.session = _Session(
+    request.session = _session(
         _seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")])
-        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
+        | {"stashes": {f"guests:{ITEM_A}": {}, f"guests:{ITEM_B}": {}}}
     )
 
     result = _Locked(request).get_collection()
@@ -238,14 +252,14 @@ def test_an_item_viewset_can_gate_its_own_items_one_by_one(rf):
 
     class _GatedItemViewSet(_ItemViewSet):
         @classmethod
-        def blocked(cls, request, section):
+        def blocked(cls, request, section, store):
             return section.url_kwargs["item"] == ITEM_B
 
     class _PerItem(_Collection):
         item_viewset = _GatedItemViewSet
 
     request = rf.get("/party-guests/")
-    request.session = _Session(_seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")]))
+    request.session = _session(_seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")]))
     page = _PerItem(request)
 
     result = page.get_collection()
@@ -294,7 +308,7 @@ def test_an_item_name_is_derived_from_the_collection_key_by_default(rf):
         item_name = None
 
     request = rf.get("/party-guests/")
-    request.session = _Session(_seed(items=[(ITEM_A, None)]))
+    request.session = _session(_seed(items=[(ITEM_A, None)]))
 
     assert str(_Unnamed(request).get_collection().rows[0].title) == "Guest 1"
 
@@ -338,7 +352,7 @@ def test_adding_an_item_registers_it_before_entering_its_wizard(collection):
 
     page.add_item()
 
-    store = SessionCollectionStore(page.request)
+    store = SessionCollectionStore(page.request, "default")
     (item_id,) = store.item_ids("guests")
     assert store.get_run(f"guests:{item_id}") is not None
 
@@ -348,7 +362,10 @@ def test_adding_an_item_withdraws_the_users_answer(collection):
 
     page.add_item()
 
-    assert SessionCollectionStore(page.request).is_declared_done("guests") is False
+    assert (
+        SessionCollectionStore(page.request, "default").is_declared_done("guests")
+        is False
+    )
 
 
 def test_declaring_no_more_records_the_answer_and_moves_the_user_on(collection):
@@ -356,7 +373,10 @@ def test_declaring_no_more_records_the_answer_and_moves_the_user_on(collection):
 
     response = page.declare_done()
 
-    assert SessionCollectionStore(page.request).is_declared_done("guests") is True
+    assert (
+        SessionCollectionStore(page.request, "default").is_declared_done("guests")
+        is True
+    )
     assert response.status_code == 302
     assert response["Location"] == "/party/"
 
@@ -381,7 +401,7 @@ def test_removing_an_item_destroys_the_pointer_last(collection):
     with pytest.raises(RuntimeError):
         page.remove_item(ITEM_A)
 
-    store = SessionCollectionStore(page.request)
+    store = SessionCollectionStore(page.request, "default")
     assert events == [(None, True)]
     assert store.item_ids("guests") == [ITEM_A]
 
@@ -393,18 +413,20 @@ def test_removing_an_item_leaves_the_users_answer_alone(collection):
 
     page.remove_item(ITEM_A)
 
-    assert SessionCollectionStore(page.request).is_declared_done("guests") is True
+    assert (
+        SessionCollectionStore(page.request, "default").is_declared_done("guests")
+        is True
+    )
 
 
 def test_discarding_a_run_the_storage_has_forgotten_is_not_an_error(collection):
     page = collection(
-        _seed(items=[(ITEM_A, "Ada")])
-        | {"gandalf_section_runs": {f"guests:{ITEM_A}": "gone"}}
+        _seed(items=[(ITEM_A, "Ada")]) | {"runs": {f"guests:{ITEM_A}": "gone"}}
     )
 
     page.remove_item(ITEM_A)
 
-    assert SessionCollectionStore(page.request).item_ids("guests") == []
+    assert SessionCollectionStore(page.request, "default").item_ids("guests") == []
 
 
 def test_an_item_id_the_registry_does_not_list_is_refused(collection):
@@ -482,10 +504,10 @@ def test_a_finished_item_returns_to_its_collection_without_its_own_id(rf):
 
 def test_an_item_caches_the_answer_that_names_it(rf):
     request = rf.get("/party-guest/7/run-1/")
-    request.session = _Session(
+    request.session = _session(
         {
             "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
-            "gandalf_collections": {
+            "collections": {
                 "guests": {
                     "items": [{"id": "7", "title": None}],
                     "declared_done": False,
@@ -498,7 +520,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
 
     view.done(_ItemViewSet.inspect(request, "run-1", item="7"))
 
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.get_item_title("guests", "7") == "Ada"
     assert store.get_stash("guests:7")["label"] == "guests"
 
@@ -511,7 +533,7 @@ def test_an_item_whose_naming_step_is_off_the_route_falls_back(rf):
         item_title_step = "not-on-this-route"
 
     request = rf.get("/party-guest/7/run-1/")
-    request.session = _Session(
+    request.session = _session(
         {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
     )
     view = _Elsewhere()
@@ -524,7 +546,7 @@ def test_a_removed_items_wizard_sends_the_user_back_to_the_collection(rf):
     """Never to its own start URL, which would mint a fresh run for an item
     no row lists."""
     request = rf.get("/party-guest/7/")
-    request.session = _Session()
+    request.session = _session()
     view = _ItemViewSet()
     view.setup(request, item="7")
 
@@ -536,7 +558,7 @@ def test_a_removed_items_wizard_sends_the_user_back_to_the_collection(rf):
 
 def test_an_item_wizard_refuses_a_request_for_an_item_that_is_gone(rf):
     request = rf.get("/party-guest/7/")
-    request.session = _Session()
+    request.session = _session()
 
     response = _ItemViewSet.as_view()(request, item="7")
 
@@ -638,7 +660,7 @@ def test_an_item_wizard_that_cannot_name_its_items_is_misconfigured(rf):
         item_title_step = None
 
     request = rf.get("/party-guest/7/run-1/")
-    request.session = _Session({"gandalf_runs": {"run-1": {"state": []}}})
+    request.session = _session({"gandalf_runs": {"run-1": {"state": []}}})
     view = _Anonymous()
     view.setup(request, item="7")
 
@@ -669,7 +691,7 @@ def test_a_collection_view_needs_a_remove_template_to_confirm_with(rf):
 
 def _view_request(rf, method="get", path="/party-guests/", data=None, session=None):
     request = getattr(rf, method)(path, data=data or {})
-    request.session = _Session(session or {})
+    request.session = _session(session or {})
     return request
 
 
@@ -695,7 +717,7 @@ def test_the_page_route_registers_an_item_and_redirects_into_its_wizard(rf):
 
     response = GuestCollectionView.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     (item_id,) = store.item_ids("guests")
     assert response.status_code == 302
     assert response["Location"].startswith(f"/party-guest/{item_id}/")
@@ -720,7 +742,7 @@ def test_answering_no_records_it_and_moves_the_user_on(rf):
     response = GuestCollectionView.as_view()(request)
 
     assert response["Location"] == "/party/"
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.is_declared_done("guests") is True
 
 
@@ -758,7 +780,7 @@ def test_adding_to_a_locked_collection_still_registers_the_item(rf):
 
     response = LockedGuestCollectionView.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert response["Location"] == "/locked-guests/"
     assert len(store.item_ids("locked-guests")) == 1
 
@@ -778,7 +800,7 @@ def test_the_remove_route_asks_before_it_destroys_anything(rf):
     assert response.status_code == 200
     assert response.template_name == ["testapp/collection_remove.html"]
     assert response.context_data["row"].title == "Ada"
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.item_ids("guests") == [ITEM_A]
 
 
@@ -796,7 +818,7 @@ def test_posting_to_the_remove_route_destroys_the_item(rf):
     response = GuestCollectionView.as_view()(request, item=ITEM_A)
 
     assert response["Location"] == "/party-guests/"
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.item_ids("guests") == []
 
 
@@ -810,7 +832,7 @@ def test_removing_an_item_reclaims_whatever_its_run_was_holding(rf):
             path=f"/party-guests/{ITEM_A}/remove/",
             session=_seed(items=[(ITEM_A, None)])
             | {
-                "gandalf_section_runs": {f"guests:{ITEM_A}": "run-1"},
+                "runs": {f"guests:{ITEM_A}": "run-1"},
                 "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
             },
         ),
@@ -862,7 +884,7 @@ def test_posting_to_an_items_door_removes_nothing(rf):
     response = GuestCollectionView.as_view()(request, item=ITEM_A)
 
     assert response.status_code == 405
-    store = SessionCollectionStore(WizardContext.from_request(request))
+    store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.item_ids("guests") == [ITEM_A]
 
 
@@ -888,13 +910,13 @@ def test_a_collection_reports_its_status_to_a_parent_task_list(rf):
         rf,
         path="/party/",
         session=_seed(items=[(ITEM_A, "Ada")], declared_done=True)
-        | {"gandalf_stashes": {f"guests:{ITEM_A}": {}}},
+        | {"stashes": {f"guests:{ITEM_A}": {}}},
     )
     section = GuestCollectionView.as_section("guests", title="Guests")
 
     assert section.viewset is None
     assert section.url_name == "party-guests"
-    assert section.status(request) == COMPLETE
+    assert section.status(request, {}) == COMPLETE
 
 
 def test_an_item_wizard_serves_a_request_for_an_item_the_registry_lists(rf):
@@ -908,3 +930,65 @@ def test_an_item_wizard_serves_a_request_for_an_item_the_registry_lists(rf):
 
     assert response.status_code == 302
     assert f"/party-guest/{ITEM_A}/" in response["Location"]
+
+
+# --- the journey -------------------------------------------------------------
+
+
+def test_a_collection_keeps_its_registry_under_its_journey(rf):
+    class _JourneyedItem(_ItemViewSet):
+        journey = "app-1"
+
+    class _Journeyed(_Collection):
+        journey = "app-1"
+        item_viewset = _JourneyedItem
+
+    request = rf.get("/party-guests/")
+    request.session = _session(_seed(items=[(ITEM_A, "Ada")]), journey="app-1")
+
+    assert _Collection(request).get_collection().count == 0
+    assert _Journeyed(request).get_collection().count == 1
+
+
+def test_an_item_viewset_can_hide_its_items(rf):
+    """`hidden()` reaches a collection through the same seam `blocked()`
+    does: the hub's `section_hidden()`, asked of the item viewset."""
+
+    class _Hiding(_ItemViewSet):
+        @classmethod
+        def hidden(cls, request, section, store):
+            return section.url_kwargs["item"] == ITEM_B
+
+    class _PerItem(_Collection):
+        item_viewset = _Hiding
+
+    request = rf.get("/party-guests/")
+    request.session = _session(_seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")]))
+
+    result = _PerItem(request).get_collection()
+
+    assert [row.item_id for row in result.rows] == [ITEM_A]
+
+
+def test_a_collection_reports_its_status_under_its_own_journey(rf):
+    """`as_section()` answers for the journey the collection is on."""
+
+    class _JourneyedItem(GuestItemViewSet):
+        journey = "app-1"
+
+    class _Journeyed(GuestCollectionView):
+        journey = "app-1"
+        item_viewset = _JourneyedItem
+
+    request = _view_request(
+        rf,
+        path="/party/",
+        session=_session(
+            _seed(items=[(ITEM_A, "Ada")], declared_done=True)
+            | {"stashes": {f"guests:{ITEM_A}": {}}},
+            journey="app-1",
+        ),
+    )
+
+    assert _Journeyed.as_section("guests").status(request, {}) == COMPLETE
+    assert GuestCollectionView.as_section("guests").status(request, {}) == NOT_STARTED

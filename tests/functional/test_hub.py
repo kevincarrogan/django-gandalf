@@ -23,8 +23,8 @@ from gandalf.testing import (
     seed_section_run,
     stored_runs,
     stored_section_run,
-    stored_stash,
-    stored_stashes,
+    stored_section_stash,
+    stored_section_stashes,
 )
 from tests.testapp.readme_examples import ContactSectionViewSet
 
@@ -233,7 +233,7 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_stash(client, "contact")["state"] == [
+    assert stored_section_stash(client, "contact")["state"] == [
         {"step": {"name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
         {"step": {}},
@@ -265,7 +265,9 @@ def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client)
             follow=True,
         )
 
-    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Ada"}}
+    assert stored_section_stash(client, "contact")["state"][0] == {
+        "step": {"name": "Ada"}
+    }
 
 
 def test_sections_progress_independently_of_each_other(client):
@@ -337,7 +339,9 @@ def test_reopening_a_completed_section_seeds_a_new_prefilled_run(client):
     # `reopen_step` lands on the review page, which shows every answer.
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     assertContains(response, "Ada")
-    assert stored_stashes(client)["contact"]["state"][0] == {"step": {"name": "Ada"}}
+    assert stored_section_stashes(client)["contact"]["state"][0] == {
+        "step": {"name": "Ada"}
+    }
 
 
 def test_reopening_a_completed_section_lands_on_a_step_not_the_run_url(client):
@@ -376,7 +380,9 @@ def test_one_edit_in_a_reopened_section_re_stashes_and_returns_to_the_hub(client
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Grace"}}
+    assert stored_section_stash(client, "contact")["state"][0] == {
+        "step": {"name": "Grace"}
+    }
     assert _statuses(client.get(HUB_URL))["contact"] == COMPLETE
 
 
@@ -394,7 +400,9 @@ def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client)
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_stash(client, "contact")["state"][0] == {"step": {"name": "Ada"}}
+    assert stored_section_stash(client, "contact")["state"][0] == {
+        "step": {"name": "Ada"}
+    }
 
 
 def test_a_completed_section_already_being_edited_resumes_that_edit(client):
@@ -488,7 +496,7 @@ def test_a_section_that_advances_out_of_its_final_step_never_yields_a_run_url(
 
     # Still a live run — the escape deferred completion rather than firing it.
     assert stored_runs(client)[run_id].get("completed") is None
-    assert "advancing" not in stored_stashes(client)
+    assert "advancing" not in stored_section_stashes(client)
     assertRedirects(
         response,
         reverse(
@@ -724,7 +732,7 @@ def test_a_row_that_is_not_a_wizard_links_past_the_door_and_answers_for_itself(
                 "elsewhere",
                 title="Elsewhere",
                 url_name="readme-hub",
-                status=lambda request: COMPLETE,
+                status=lambda request, url_kwargs: COMPLETE,
             )
         ],
     )
@@ -741,7 +749,7 @@ def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
         url_name="readme-hub",
         section_url_name="readme-hub-section",
         sections=[
-            Section("elsewhere", url_name="readme-hub", status=lambda r: COMPLETE)
+            Section("elsewhere", url_name="readme-hub", status=lambda r, k: COMPLETE)
         ],
     )
 
@@ -804,7 +812,7 @@ def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
 
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"].endswith("/name/")
-    assert "contact" not in request.session["gandalf_stashes"]
+    assert "contact" not in request.session["gandalf_journeys"]["default"]["stashes"]
 
 
 def test_a_section_without_a_title_is_named_from_its_key(client):
@@ -833,7 +841,8 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
 
     view.done(bound_wizard)
 
-    assert request.session["gandalf_stashes"]["contact"]["label"] == "contact-v2"
+    stashes = request.session["gandalf_journeys"]["default"]["stashes"]
+    assert stashes["contact"]["label"] == "contact-v2"
 
 
 def test_a_hubs_declaration_is_vetted_once_per_request(rf, client):

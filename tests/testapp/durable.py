@@ -22,6 +22,9 @@ Four contracts are easy to miss and matter more than the rest:
 
 A durable hub needs **both** stores swapped: `storage_class` on every section
 viewset, and `section_store_class` on the hub and on each `SectionMixin`. A
+section store is built with the journey as well as the context, and its
+`data` and `complete()` are the journey's own — kept on a row that survives
+the sections being deleted at submission. A
 durable *collection* needs the same two, with `ModelCollectionStore` in place
 of `ModelSectionStore` — it is the section store plus an ordered registry, so
 one swap covers both halves. Swapping only one gives you durable answers
@@ -32,11 +35,12 @@ import uuid
 
 from django.core.exceptions import ValidationError
 
-from gandalf.storage import RunNotFound, StashNotFound
+from gandalf.storage import JourneyData, RunNotFound, StashNotFound
 
 from .models import (
     CollectionItemRecord,
     CollectionRecord,
+    JourneyRecord,
     SectionRecord,
     WizardRun,
 )
@@ -103,19 +107,28 @@ class ModelStorage:
 
 
 class ModelSectionStore:
-    """`SessionSectionStore`'s protocol, against a table scoped to the user.
+    """`SessionSectionStore`'s protocol, against tables scoped to the user
+    and the journey.
 
     The run id and the stash live on one row per section because they are two
     facts about the same thing, but they still outlive each other: finishing a
     section clears its run and leaves the stash, which is what lets a completed
     section survive its run being deleted.
+
+    The journey's own facts — its data and its completion — live on a row of
+    their own, because they are the one part of a journey that survives
+    submission: `complete()` deletes the sections and keeps that row.
     """
 
-    def __init__(self, context):
+    def __init__(self, context, journey):
         self.context = context
+        self.journey = str(journey)
+
+    def _scope(self):
+        return {"owner": self.context.actor, "journey": self.journey}
 
     def _records(self):
-        return SectionRecord.objects.filter(owner=self.context.actor)
+        return SectionRecord.objects.filter(**self._scope())
 
     def _record(self, key):
         return self._records().filter(key=key).first()
@@ -128,7 +141,7 @@ class ModelSectionStore:
 
     def set_run(self, key, run_id):
         SectionRecord.objects.update_or_create(
-            owner=self.context.actor, key=key, defaults={"run_id": run_id}
+            **self._scope(), key=key, defaults={"run_id": run_id}
         )
 
     def clear_run(self, key):
@@ -145,7 +158,7 @@ class ModelSectionStore:
 
     def put_stash(self, key, payload):
         SectionRecord.objects.update_or_create(
-            owner=self.context.actor, key=key, defaults={"stash": payload}
+            **self._scope(), key=key, defaults={"stash": payload}
         )
 
     def delete_stash(self, key):
@@ -156,9 +169,41 @@ class ModelSectionStore:
             self._records().filter(stash__isnull=False).values_list("key", flat=True)
         )
 
+    # --- the journey itself ---
+
+    def _journey(self):
+        return JourneyRecord.objects.filter(**self._scope()).first()
+
+    @property
+    def data(self):
+        return JourneyData(read=self._read_data, write=self._write_data)
+
+    def _read_data(self):
+        record = self._journey()
+        return None if record is None else record.data
+
+    def _write_data(self, envelope):
+        # Written now, not at the end of a walk — the same contract as
+        # `set_run_metadata`, for the same reason.
+        JourneyRecord.objects.update_or_create(
+            **self._scope(), defaults={"data": envelope}
+        )
+
+    def complete(self):
+        # The sections go, the journey's row stays: what its sections decided
+        # is what a done page still has to say.
+        self._records().delete()
+        JourneyRecord.objects.update_or_create(
+            **self._scope(), defaults={"completed": True}
+        )
+
+    def is_complete(self):
+        return JourneyRecord.objects.filter(**self._scope(), completed=True).exists()
+
 
 class ModelCollectionStore(ModelSectionStore):
-    """`SessionCollectionStore`'s protocol, against tables scoped to the user.
+    """`SessionCollectionStore`'s protocol, against tables scoped to the user
+    and the journey.
 
     Everything `ModelSectionStore` does — an item's run and stash live under
     the composite key the view builds — plus the registry the session store
@@ -168,9 +213,7 @@ class ModelCollectionStore(ModelSectionStore):
     """
 
     def _items(self, key):
-        return CollectionItemRecord.objects.filter(
-            owner=self.context.actor, collection_key=key
-        )
+        return CollectionItemRecord.objects.filter(**self._scope(), collection_key=key)
 
     def item_ids(self, key):
         return list(self._items(key).values_list("item_id", flat=True))
@@ -184,7 +227,7 @@ class ModelCollectionStore(ModelSectionStore):
         # the values. `get_or_create` makes adding an id already listed a
         # no-op, as the session store's early return does.
         CollectionItemRecord.objects.get_or_create(
-            owner=self.context.actor,
+            **self._scope(),
             collection_key=key,
             item_id=item_id,
             defaults={"position": self._items(key).count()},
@@ -202,10 +245,15 @@ class ModelCollectionStore(ModelSectionStore):
 
     def is_declared_done(self, key):
         return CollectionRecord.objects.filter(
-            owner=self.context.actor, key=key, declared_done=True
+            **self._scope(), key=key, declared_done=True
         ).exists()
 
     def set_declared_done(self, key, declared_done):
         CollectionRecord.objects.update_or_create(
-            owner=self.context.actor, key=key, defaults={"declared_done": declared_done}
+            **self._scope(), key=key, defaults={"declared_done": declared_done}
         )
+
+    def complete(self):
+        CollectionItemRecord.objects.filter(**self._scope()).delete()
+        CollectionRecord.objects.filter(**self._scope()).delete()
+        super().complete()

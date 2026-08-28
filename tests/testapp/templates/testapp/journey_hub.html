@@ -1,0 +1,36 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/journey_hub.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h1>Your application</h1>
+        <p class="lede">
+            One journey, scoped by the id in the URL. A section that does not
+            apply yet is not listed; one that waits on another is listed but
+            cannot start yet. The whole thing submits once every row is
+            complete.
+        </p>
+        <p class="lede">
+            You have completed {{ hub.completed }} of {{ hub.count }} section{{ hub.count|pluralize }}.
+        </p>
+        <ul class="task-list">
+            {% for row in hub.rows %}
+                <li class="task-list__item">
+                    {% if row.is_blocked %}
+                        <span>{{ row.title }}</span>
+                    {% else %}
+                        <a href="{{ row.url }}">{{ row.title }}</a>
+                    {% endif %}
+                    <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+                </li>
+            {% endfor %}
+        </ul>
+        {% if hub.is_complete %}
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit">Submit application</button>
+            </form>
+        {% endif %}
+    </div>
+{% endblock %}

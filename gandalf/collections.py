@@ -64,12 +64,8 @@ from gandalf.sections import (
     SectionMixin,
     SectionRow,
 )
-from gandalf.storage import (
-    RunNotFound,
-    SessionCollectionStore,
-    SessionSectionStore,
-)
-from gandalf.types import StrOrPromise
+from gandalf.storage import RunNotFound, SessionCollectionStore
+from gandalf.types import CollectionStore, SectionStore, StrOrPromise
 from gandalf.viewsets import WizardViewSet
 
 
@@ -249,10 +245,10 @@ class ItemSectionMixin(SectionMixin):
             return self.get_collection_key()
         return self.section_label
 
-    def get_section_store(self) -> SessionCollectionStore:
+    def get_section_store(self) -> CollectionStore:
         # `section_store_class` is narrowed on this subclass; mypy reads the
         # attribute through the base's declaration.
-        return cast(SessionCollectionStore, super().get_section_store())
+        return cast(CollectionStore, super().get_section_store())
 
     def get_item_title(self, bound_wizard: BoundWizard) -> str:
         """The name this item goes by on the collection page.
@@ -280,7 +276,7 @@ class ItemSectionMixin(SectionMixin):
         return str(step.form.cleaned_data.get(self.item_title_field, ""))
 
     def section_recorded(
-        self, bound_wizard: BoundWizard, store: SessionSectionStore, key: str
+        self, bound_wizard: BoundWizard, store: SectionStore, key: str
     ) -> None:
         """Cache this item's title, in the window where its answers are still
         readable."""
@@ -383,8 +379,8 @@ class CollectionMixin(HubMixin):
             )
         return self.collection_key
 
-    def get_collection_store(self) -> SessionCollectionStore:
-        return cast(SessionCollectionStore, self.get_section_store())
+    def get_collection_store(self) -> CollectionStore:
+        return cast(CollectionStore, self.get_section_store())
 
     def get_item_viewset(self) -> type[WizardViewSet]:
         if self.item_viewset is None:
@@ -493,7 +489,7 @@ class CollectionMixin(HubMixin):
         )
 
     def build_collection_row(
-        self, section: Section, store: SessionCollectionStore, position: int
+        self, section: Section, store: CollectionStore, position: int
     ) -> CollectionRow:
         item_id = self.item_id_for(section)
         status = self.get_section_status(section, store)
@@ -512,7 +508,7 @@ class CollectionMixin(HubMixin):
         return cast(str, section.url_kwargs[self.item_url_kwarg])
 
     def get_item_title(
-        self, item_id: str, store: SessionCollectionStore, position: int
+        self, item_id: str, store: CollectionStore, position: int
     ) -> StrOrPromise:
         """What names an item on the page: the title its own section cached
         when it last finished, or a positional name for one that never has."""
@@ -538,7 +534,7 @@ class CollectionMixin(HubMixin):
         return capfirst(key[:-1] if key.endswith("s") else key)
 
     def get_collection_status(
-        self, rows: tuple[CollectionRow, ...], store: SessionCollectionStore
+        self, rows: tuple[CollectionRow, ...], store: CollectionStore
     ) -> str:
         """How far the whole collection has got.
 
@@ -676,7 +672,7 @@ class CollectionMixin(HubMixin):
         store.remove_item(key, item_id)
         return redirect(self.get_collection_url())
 
-    def discard_item_run(self, section: Section, store: SessionCollectionStore) -> None:
+    def discard_item_run(self, section: Section, store: CollectionStore) -> None:
         """Forget an item's live run and reclaim anything it uploaded. A run
         the storage no longer holds has already answered the question."""
         run_id = store.get_run(section.key)
@@ -684,14 +680,14 @@ class CollectionMixin(HubMixin):
             return
         try:
             bound_wizard = self.section_viewset(section).inspect(
-                self.request, run_id, **section.url_kwargs
+                self.request, run_id, **self.section_url_kwargs(section)
             )
         except RunNotFound:
             return
         bound_wizard.obliterate()
 
     def item_removed(
-        self, item_id: str, section: Section, store: SessionCollectionStore
+        self, item_id: str, section: Section, store: CollectionStore
     ) -> None:
         """Application work for an item going away — deleting whatever
         `section_done()` saved for it. Runs while the item is still listed, so
@@ -714,12 +710,14 @@ class CollectionMixin(HubMixin):
         A collection page is not a wizard, so the row links straight at it
         rather than through the hub's door — there is no run for the door to
         walk — and reports the status the page itself would, which no stash
-        key could express.
+        key could express. The hub hands the status callable the URL kwargs
+        it would run the page with — its journey under these `url_kwargs` —
+        so the collection reads the same journey the hub is on.
         """
 
-        def status(request: HttpRequest) -> str:
+        def status(request: HttpRequest, hub_url_kwargs: dict[str, Any]) -> str:
             view = cls()
-            view.setup(request, **url_kwargs)
+            view.setup(request, **hub_url_kwargs)
             return view.get_collection().status
 
         return Section(

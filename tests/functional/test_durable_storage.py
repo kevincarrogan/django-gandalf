@@ -21,10 +21,15 @@ from pytest_django.asserts import assertContains, assertRedirects
 from gandalf.context import WizardContext
 from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
-from tests.testapp.durable import ModelCollectionStore, ModelStorage
+from tests.testapp.durable import (
+    ModelCollectionStore,
+    ModelSectionStore,
+    ModelStorage,
+)
 from tests.testapp.models import (
     CollectionItemRecord,
     CollectionRecord,
+    JourneyRecord,
     SectionRecord,
     WizardRun,
 )
@@ -73,7 +78,7 @@ def test_the_hubs_bookkeeping_lives_in_the_database_too(logged_in):
     record = SectionRecord.objects.get()
     assert record.key == "durable"
     assert record.run_id == WizardRun.objects.get().pk
-    assert "gandalf_section_runs" not in logged_in.session
+    assert "gandalf_journeys" not in logged_in.session
 
 
 def test_a_whole_section_completes_over_model_storage(logged_in):
@@ -230,7 +235,7 @@ def test_a_collections_registry_lives_in_the_database_not_the_session(logged_in)
     (record,) = CollectionItemRecord.objects.all()
     assert record.collection_key == "durable-guests"
     assert record.position == 0
-    assert "gandalf_collections" not in logged_in.session
+    assert "gandalf_journeys" not in logged_in.session
 
 
 def test_an_items_title_is_cached_in_the_database_when_it_finishes(logged_in):
@@ -296,7 +301,7 @@ def test_removing_an_item_takes_its_row_and_its_run_out_of_the_database(logged_i
 def test_a_unique_constraint_settles_the_race_the_session_store_loses(logged_in):
     """Two tabs adding at once both read the same list and both append one,
     so a session-backed registry loses an item outright. A table cannot."""
-    store = ModelCollectionStore(WizardContext(actor=User.objects.get()))
+    store = ModelCollectionStore(WizardContext(actor=User.objects.get()), "default")
 
     store.add_item("durable-guests", "same-id")
     store.add_item("durable-guests", "same-id")
@@ -313,3 +318,61 @@ def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
     response = logged_in.get(COLLECTION_URL)
 
     assert response.context["collection"].is_empty
+
+
+# --- the journey ------------------------------------------------------------
+
+
+def test_a_journeys_data_lives_on_its_own_row(user):
+    """The one part of a journey that survives submission — kept on a row of
+    its own, written now rather than at the end of a walk."""
+    store = ModelSectionStore(WizardContext(actor=user), "app-1")
+
+    store.data["applicant_type"] = "business"
+    store.data.for_section("employment")["checked"] = True
+
+    record = JourneyRecord.objects.get(owner=user, journey="app-1")
+    assert record.data == {
+        "journey": {"applicant_type": "business"},
+        "sections": {"employment": {"checked": True}},
+    }
+    assert (
+        ModelSectionStore(WizardContext(actor=user), "app-1").data["applicant_type"]
+        == "business"
+    )
+
+
+def test_journeys_are_scoped_by_owner_and_by_journey(user, django_user_model):
+    other = django_user_model.objects.create_user("grace", password="secret")
+    ModelSectionStore(WizardContext(actor=user), "app-1").put_stash("contact", {})
+
+    assert ModelSectionStore(WizardContext(actor=user), "app-2").keys() == []
+    assert ModelSectionStore(WizardContext(actor=other), "app-1").keys() == []
+
+
+def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
+    store = ModelCollectionStore(WizardContext(actor=user), "app-1")
+    store.set_run("contact", None)
+    store.put_stash("contact", {"state": []})
+    store.add_item("guests", "a")
+    store.set_declared_done("guests", True)
+    store.data["reference"] = "APP-1"
+
+    store.complete()
+
+    assert store.is_complete() is True
+    assert store.keys() == []
+    assert store.item_ids("guests") == []
+    assert store.is_declared_done("guests") is False
+    assert store.data["reference"] == "APP-1"
+    assert not SectionRecord.objects.filter(owner=user).exists()
+    assert not CollectionItemRecord.objects.filter(owner=user).exists()
+
+
+def test_a_submitted_durable_journey_is_gone_from_its_hub(logged_in, user):
+    """The default `journey_completed()`: a tombstone is a 404 until the hub
+    says what a submitted journey looks like."""
+    ModelSectionStore(WizardContext(actor=user), "default").complete()
+
+    assert logged_in.get(HUB_URL).status_code == HTTPStatus.NOT_FOUND
+    assert logged_in.get(DOOR_URL).status_code == HTTPStatus.NOT_FOUND

@@ -26,7 +26,12 @@ from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.collections import CollectionView, ItemSectionMixin
 from gandalf.sections import HubView, Section, SectionMixin
-from gandalf.storage import SessionStashStore, SessionStorage, StashNotFound
+from gandalf.storage import (
+    SessionSectionStore,
+    SessionStashStore,
+    SessionStorage,
+    StashNotFound,
+)
 from gandalf.summary import Group, Hide, SummaryMixin
 
 from . import catalogue
@@ -2203,8 +2208,7 @@ class GatedSecondSectionViewSet(GatedFirstSectionViewSet):
     section_key = "second"
 
     @classmethod
-    def blocked(cls, request, section):
-        store = cls.section_store_class(WizardContext.from_request(request))
+    def blocked(cls, request, section, store):
         return not store.has_stash("first")
 
 
@@ -2260,7 +2264,7 @@ class LockedGuestCollectionView(GuestCollectionView):
     collection_key = "locked-guests"
     item_viewset = LockedGuestItemViewSet
 
-    def section_blocked(self, section):
+    def section_blocked(self, section, store):
         return True
 
 
@@ -2405,3 +2409,49 @@ class DurableGuestCollectionView(GuestCollectionView):
     item_viewset = DurableGuestItemViewSet
     section_store_class = ModelCollectionStore
     continue_url_name = "durable-hub"
+
+
+# --- Journeys ----------------------------------------------------------------
+
+
+class ShortMemorySectionStore(SessionSectionStore):
+    """A session store that keeps one completed journey, so pruning can be
+    watched without submitting eleven applications."""
+
+    max_completed_journeys = 1
+
+
+class SubmitFirstSectionViewSet(SectionMixin, WizardViewSet):
+    description = "Journeys: a section of a hub that submits with nothing to say."
+    url_name = "submit-first"
+    template_name = "testapp/linear_wizard.html"
+    section_key = "first"
+    hub_url_name = "submit-hub"
+    section_store_class = ShortMemorySectionStore
+    wizard = Wizard().step(FirstStepForm, name="first")
+
+
+class SubmitSecondSectionViewSet(SubmitFirstSectionViewSet):
+    url_name = "submit-second"
+    section_key = "second"
+
+
+class SubmitHubView(HubView):
+    """A journey-mounted hub whose submit records nothing: the tombstone it
+    leaves is the bare one, and its default `journey_completed()` is the
+    404 the library ships."""
+
+    description = (
+        "Journeys: a hub under a journey segment, submitting to a bare tombstone."
+    )
+    template_name = "testapp/journey_hub.html"
+    url_name = "submit-hub"
+    section_url_name = "submit-hub-section"
+    section_store_class = ShortMemorySectionStore
+    sections = [
+        Section("first", SubmitFirstSectionViewSet, title="First"),
+        Section("second", SubmitSecondSectionViewSet, title="Second"),
+    ]
+
+    def journey_done(self, hub, store):
+        return HttpResponse(f"submitted {self.get_journey()}")

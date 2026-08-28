@@ -1482,7 +1482,7 @@ under a name only its URLconf knows.
 
 | Status | Comes from |
 | --- | --- |
-| **Cannot start yet** | The section's own `blocked()` — it is waiting on an answer given somewhere else |
+| **Cannot start yet** | The section's own `blocked()` — it is waiting on another section, or on an answer given in one |
 | **Complete** | A stash under the section's key — the section ran to its own end and `done()` fired |
 | **Incomplete** | A recorded run holding at least one submission |
 | **Not started** | Everything else, including a section opened and left unanswered, and one whose run has expired |
@@ -1496,29 +1496,41 @@ leaves the section in progress just as surely as one that does.
 ### Sections that unlock
 
 Most task lists are not a flat set. A section becomes available because of
-what another one said, and until then the row should say **Cannot start yet**
-rather than offer a link. **The section says so itself** — override
-`blocked()` on its own viewset:
+what happened in another one, and until then the row should say **Cannot
+start yet** rather than offer a link. **The section says so itself** —
+override `blocked()` on its own viewset. It is handed the journey's store,
+and the two rules that cover nearly every task list are each one read of it:
 
 ```python
-class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
-    section_key = "employment"
+class ReferencesSectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "references"
     hub_url_name = "application-hub"
     wizard = ...
 
     @classmethod
-    def blocked(cls, request, section):
-        """Only for applicants who told us they are employed."""
-        return not request.user.profile.is_employed
+    def blocked(cls, request, section, store):
+        """Unlocks once Contact details are finished."""
+        return not store.has_stash("contact")
+
+
+class EmployerSectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "employer"
+    hub_url_name = "application-hub"
+    wizard = ...
+
+    @classmethod
+    def blocked(cls, request, section, store):
+        """Unlocks once the applicant has said they are employed."""
+        return store.data.get("employment_status") != "employed"
 ```
 
-The hub declares nothing about it — `Section("employment",
-EmploymentSectionViewSet, title="Employment history")`, as before. Answered
-by the section rather than asked about it, the rule lives with the wizard it
-gates: it has a name, a docstring, a subclass, and a test that needs no hub.
-A hub method taking a `section` is a method with a key in scope, and a task
-list that grows becomes a chain of `if section.key == ...`. Here there is no
-key to branch on.
+The hub declares nothing about it — `Section("references",
+ReferencesSectionViewSet, title="References")`, as before. Answered by the
+section rather than asked about it, the rule lives with the wizard it gates:
+it has a name, a docstring, a subclass, and a test that needs no hub. A hub
+method taking a `section` is a method with a key in scope, and a task list
+that grows becomes a chain of `if section.key == ...`. Here there is no key
+to branch on.
 
 A classmethod because the hub asks from outside the section's own dispatch,
 exactly as it asks `begin()` and `inspect()`: there is no instance yet, and
@@ -1533,10 +1545,29 @@ place display and dispatch have to agree, so the door asks for the *status*
 rather than the hook, and a `Section.status` reporting `BLOCKED` under its own
 steam is guarded too.
 
-Declared on the section rather than as a `requires=["contact"]` on the hub's
-list, because availability turns on *answers*, not on which sections are
-finished: "employment history, but only if you said you are employed" is the
-common case and no graph of section keys expresses it.
+**Where the second rule's answer comes from.** `store.data` is the journey's
+record of what its sections decided — see [Journeys](#journeys) — and the
+Employment section wrote it there when it finished:
+
+```python
+class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "employment"
+    ...
+
+    def section_done(self, bound_wizard):
+        step = bound_wizard.path.find_step(name="status")
+        self.get_section_store().data["employment_status"] = (
+            step.form.cleaned_data["status"]
+        )
+        return super().section_done(bound_wizard)
+```
+
+**Read `store.data` and `has_stash()` there, never a stash's state.** A
+stash is positional against a tree whose shape may depend on a branch
+predicate nobody has evaluated, so reading an answer out of one costs a walk.
+`section_done()` is where a section pays that once — the run is still
+readable there, and this request has already walked — and `blocked()` is
+where the rest of the journey reads back what it decided, for free.
 
 The hub keeps `section_blocked()` for what a section cannot answer alone — a
 rule spanning rows, or a collection gating every item at once. It is the
@@ -1545,26 +1576,53 @@ not call `super()` replaces the sections' own answers:
 
 ```python
 class LockedGuestCollectionView(GuestCollectionView):
-    def section_blocked(self, section):
+    def section_blocked(self, section, store):
         return True
 ```
-
-**Read your own models there, not the other section's stash.** A stash's state
-is positional against a tree whose shape may depend on a branch predicate
-nobody has evaluated. `section_done()` is where the answers become yours —
-that is what it is for — and `blocked()` is where you read back what you
-saved.
 
 Two consequences worth knowing. Being blocked **outranks** a stash, so a
 section whose prerequisite was withdrawn after it was answered reports what
 the user can do rather than what they once did — a **Complete** row over a
 link the door refuses is the worse of the two lies. And a blocked section
-keeps the whole hub off `COMPLETE`, which is why a section that will never
-unlock belongs out of `get_sections()` rather than locked forever inside it.
+keeps the whole hub off `COMPLETE`, which is why a section that may never
+unlock is a job for `hidden()`, below, rather than a lock that never opens.
 
 `blocked()` runs once per row when the page renders and once more at the
 door, so keep it cheap — a hub row's promise is storage reads and no walk, and
 this runs inside it.
+
+### Sections that appear
+
+Locked is one thing; *not there yet* is another. "Employer details" for an
+applicant who has not said they are employed is not waiting on anything — it
+may never apply, and listing it as **Cannot start yet** makes a promise the
+journey cannot keep. For that, override `hidden()`, the sibling of
+`blocked()` with the same signature and the same store:
+
+```python
+class EmployerSectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "employer"
+    hub_url_name = "application-hub"
+    wizard = ...
+
+    @classmethod
+    def hidden(cls, request, section, store):
+        """Only exists for an applicant who said they are employed."""
+        return store.data.get("employment_status") != "employed"
+```
+
+A hidden section is gone for that request: not in `hub.rows`, not in
+`hub.count` or `hub.completed`, and its door refuses a stale link exactly as
+it refuses a key the hub never declared. A hub of five sections with one
+hidden is a hub of four, and finishing those four completes it. Hidden
+outranks blocked, since a section that does not exist cannot also be waiting.
+
+Use `hidden()` for a section that may never apply and `blocked()` for one
+that will, once the user has done something else first. The hub's
+`section_hidden()` mirrors `section_blocked()` for what one section cannot
+answer alone. `get_sections()` keeps its own job — choosing the sections by
+user, plan or feature flag — and is no longer where a section hides from an
+answer.
 
 ### Every link is a step URL, never a bare run URL
 
@@ -1614,14 +1672,17 @@ Each hands back a `BoundWizard`, so `cursor()`, `path`, `step_url()` and
 ### Customising
 
 Every decision is a hook. `get_sections()` chooses the sections per request,
-`get_section_status()` decides how far one has got, `get_hub_status()` decides
-how far they have got between them — override it where an optional section should not hold
-the whole page back — `get_section_title()` names it,
-`get_status_label()` reworks the wording, and `resume_section()` /
-`reopen_section()` / `start_section()` each own one way into a run.
-`stash_unusable()` handles a payload whose `label` no longer matches — it
-re-raises by default, because silently starting over looks to the user exactly
-like their answers vanishing.
+`section_hidden()` / `section_blocked()` are the hub's say over which are
+listed and which are open, `get_section_status()` decides how far one has
+got, `get_hub_status()` decides how far they have got between them — override
+it where an optional section should not hold the whole page back —
+`get_section_title()` names it, `get_status_label()` reworks the wording, and
+`resume_section()` / `reopen_section()` / `start_section()` each own one way
+into a run. `stash_unusable()` handles a payload whose `label` no longer
+matches — it re-raises by default, because silently starting over looks to
+the user exactly like their answers vanishing. `journey_done()`,
+`hub_incomplete()` and `journey_completed()` are the submit's — see
+[Journeys](#journeys).
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L337-L410)
 
@@ -1849,6 +1910,123 @@ saved, and `collection_done()` is what happens when the user says that is all.
 `min_items` makes "at least one" declarative.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/guests/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py#L399-L456)
+
+---
+
+## Journeys
+
+> **Optional module.** Journeys are `gandalf.sections` and
+> `gandalf.collections` taken to their conclusion: the thing a hub's sections
+> add up to. Nothing here is new machinery — it is the store those two
+> already use, given a scope, a memory and an ending.
+
+A hub's sections add up to something — an application, a claim, a profile —
+and that something is a **journey**. It has three things a single hub does
+not.
+
+**A scope.** Everything a hub keeps — which run each section is being
+answered in, the stash a finished one left, a collection's items — lives in
+one record per journey. A hub mounted under a `<journey>` segment reads its
+journey off the URL, and so does every section mounted under the same
+segment, so two applications in two tabs are two URLs and two records in one
+session that never see each other:
+
+```python
+urlpatterns = [
+    path("apply/new/", include(ApplicationStartViewSet.urls())),
+    path("apply/<slug:journey>/", include(ApplicationHubView.urls())),
+    path("apply-contact/<slug:journey>/", include(ContactSectionViewSet.urls())),
+    path("apply-employment/<slug:journey>/", include(EmploymentSectionViewSet.urls())),
+    # ...
+]
+```
+
+The hub and the sections are siblings, as always — the hub's own
+`<slug:section>/` door would swallow anything mounted beneath it. A hub not
+mounted under a journey uses the one it declares, `journey = "default"`: one
+per session, which is what a profile task list is. Every section's viewset
+declares the same pair (`journey`, `journey_url_kwarg`), and the hub refuses
+one that does not, since it would finish into a record the hub never reads.
+
+**Somewhere to be minted.** The library does not decide when a journey
+begins; the first wizard does. It has no journey yet, so its `done()` mints
+one, stashes its own answers as the journey's first section, and sends the
+user to the hub under the new id:
+
+```python
+class ApplicationStartViewSet(WizardViewSet):
+    url_name = "apply-start"
+    wizard = Wizard().step(ApplicantTypeForm, name="type")
+
+    def done(self, bound_wizard):
+        journey = uuid.uuid4().hex
+        store = SessionSectionStore(self.context_for(self.request), journey)
+        store.put_stash("setup", bound_wizard.stash(label="setup"))
+        record_applicant_type(store, bound_wizard)
+        return redirect("apply-hub", journey=journey)
+```
+
+The hub then lists `Section("setup", SetupSectionViewSet, title="Applicant")`
+— the same wizard as a `SectionMixin` viewset mounted under the journey — so
+the setup answers are re-openable like any other section.
+
+**A memory.** `store.data` is the journey's record of what its sections
+decided: a JSON-safe mapping written through on every assignment, with
+`for_section(key)` sub-bags so sections cannot tread on each other or on the
+journey. It is the answer to the question a stash cannot answer cheaply.
+Stashes are positional against trees nobody has walked, so "did the applicant
+say they are employed?" costs a walk to read out of one — and a hub row must
+never walk. So the section that knows pays that walk **once**, in
+`section_done()`, while the run is still readable, and writes the decided
+fact; `blocked()` and `hidden()` read it back for free on every render after.
+It is the same bargain a collection strikes to name its rows, generalised
+from one cached title to the whole journey.
+
+**An ending.** `Hub.is_complete` says the submit button may appear; a POST to
+the hub page presses it. `submit()` refuses if any row is not complete, then
+runs `journey_done()` — the application's work, and the one thing with no
+default — and only once that has returned tombstones the journey, exactly as
+`SectionMixin.done()` runs `section_done()` before clearing the run. A
+`journey_done()` that raises leaves every section resumable:
+
+```python
+class ApplicationHubView(HubView):
+    url_name = "apply-hub"
+    section_url_name = "apply-hub-section"
+    sections = [...]
+
+    def journey_done(self, hub, store):
+        application = file_application(
+            contact=store.get_stash("contact"),
+            employment=store.get_stash("employment"),
+        )
+        store.data["reference"] = application.reference
+        return redirect(self.get_hub_url())
+
+    def journey_completed(self, store):
+        return render(self.request, "apply/done.html", {
+            "reference": store.data["reference"],
+        })
+```
+
+The tombstone keeps `store.data` and nothing else — the runs and stashes go,
+so a submitted journey can neither be edited nor keep growing the session,
+and the reference the done page shows is what the journey kept. After that,
+the hub page and every door answer with `journey_completed()` (`Http404`
+until you say what a submitted journey looks like), and each section's own
+wizard sends a bookmarked step URL back to the hub. Only the ten most
+recently completed journeys are kept per session.
+
+**Beyond the session.** The store behind all of this is one class,
+`SessionSectionStore(context, journey)`, and the contract it satisfies is
+written down as `gandalf.types.SectionStore` (and `CollectionStore` for a
+collection). A journey of six sections is a lot to hold in a cookie; the day
+it outgrows the session, a store that keeps the same nine methods, `data`,
+`complete()` and `is_complete()` in a table drops in by `section_store_class`
+alone — [`tests/testapp/durable.py`](tests/testapp/durable.py) is that store,
+scoped by owner and by journey.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`readme_examples.py`](tests/testapp/readme_examples.py)
 
 ---
 
@@ -2300,8 +2478,12 @@ A few notes:
 - **Session peeking and seeding.** `stored_runs(client)` /
   `stored_run(client, run_id)` / `seed_run(client, run_id, data)` read and
   write raw run entries; `stored_stash(client, key)` / `seed_stash(...)` do
-  the same for stash payloads; and `stored_section_run(client, key)` /
-  `seed_section_run(...)` do it for a hub's section-to-run bookkeeping — no
+  the same for caller-owned stash payloads; and `stored_journey(client)`,
+  `stored_section_run(client, key)` / `seed_section_run(...)`,
+  `stored_section_stash(client, key)` / `seed_section_stash(...)`,
+  `stored_journey_data(client)` / `seed_journey_data(...)` and
+  `seed_journey_complete(client)` do it for a journey's record, each taking
+  `journey=` for a hub mounted under one — no
   session keys in your tests.
 - **Outside pytest** the helpers work from any test:
   `WizardTestDriver(Client(), "signup")` (with
