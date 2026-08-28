@@ -435,3 +435,37 @@ def test_completing_a_run_that_recorded_nothing_leaves_a_bare_tombstone():
     storage.complete_run(run_id)
 
     assert context.session[SessionStorage.SESSION_KEY][run_id] == {"completed": True}
+
+
+def test_session_stash_store_can_be_pointed_at_a_home_of_the_callers_choosing():
+    """What a journey does with it: the payloads live inside the journey's
+    record, and reads never create that record."""
+    context = _Context()
+    record = {}
+    store = SessionStashStore(
+        context,
+        home=(
+            lambda: record.get("stashes", {}),
+            lambda: record.setdefault("stashes", {}),
+        ),
+    )
+
+    assert store.has("contact") is False
+    assert store.keys() == []
+    assert record == {}
+
+    store.put("contact", _PAYLOAD)
+
+    assert record == {"stashes": {"contact": _PAYLOAD}}
+    assert store.get("contact") == _PAYLOAD
+    assert store.has("contact") is True
+    assert "gandalf_stashes" not in context.session
+    assert context.session.modified is True
+
+
+def test_session_stash_store_has_answers_without_raising():
+    store = SessionStashStore(_Context())
+    store.put("contact", _PAYLOAD)
+
+    assert store.has("contact") is True
+    assert store.has("address") is False

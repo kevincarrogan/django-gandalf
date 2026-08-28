@@ -127,6 +127,23 @@ def test_section_store_keys_are_the_sections_holding_a_stash():
     assert store.keys() == ["contact", "address"]
 
 
+def test_a_journeys_stashes_are_a_stash_store_kept_in_its_record():
+    """The same class a caller uses by hand, pointed at the journey: one
+    implementation, two homes, and nothing under the top-level key."""
+    from gandalf.storage import SessionStashStore
+
+    context = _Context()
+    store = SessionSectionStore(context, "app-1")
+
+    store.stashes.put("contact", _PAYLOAD)
+
+    assert isinstance(store.stashes, SessionStashStore)
+    assert store.get_stash("contact") == _PAYLOAD
+    assert store.stashes.pop("contact") == _PAYLOAD
+    assert store.has_stash("contact") is False
+    assert "gandalf_stashes" not in context.session
+
+
 def test_a_run_and_a_stash_under_one_key_are_independent():
     """Re-opening a completed section gives it a live run again, and the
     stash it was re-opened from stays put until the section completes anew."""

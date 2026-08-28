@@ -38,8 +38,11 @@ def reopen_contact_details(request):
 Inside `done()`, `bound_wizard.stash()` returns a small JSON-safe payload of
 the run's answers. The payload is yours — a model field, the session,
 wherever your bigger flow keeps its pieces; `SessionStashStore` is the helper
-for the common case (`put` / `get` / `pop` / `delete` / `keys`), server-side
-so it cannot be tampered with in transit. To re-open it,
+for the common case (`put` / `get` / `has` / `pop` / `delete` / `keys`),
+server-side so it cannot be tampered with in transit. It is also what a
+task list (chapter 11) keeps its sections' stashes in, pointed at the
+journey's own record rather than its top-level key — the same store in two
+homes, not a second mechanism. To re-open it,
 `resurrect(request, payload)` seeds a brand-new run from the payload and
 returns the URL to send the user to; they land in the ordinary wizard UI with
 every answer pre-filled, edit whatever they need, and `done()` fires again
