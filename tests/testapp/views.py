@@ -2195,14 +2195,23 @@ class GatedFirstSectionViewSet(SectionMixin, WizardViewSet):
 
 
 class GatedSecondSectionViewSet(GatedFirstSectionViewSet):
+    """The section a gated task list keeps locked until then — and it says so
+    itself, rather than the hub saying it on its behalf."""
+
     description = "The section a gated task list keeps locked until then."
     url_name = "gated-second"
     section_key = "second"
 
+    @classmethod
+    def blocked(cls, request, section):
+        store = cls.section_store_class(WizardContext.from_request(request))
+        return not store.has_stash("first")
+
 
 class GatedHubView(HubView):
     """A task list whose second row waits on its first — the shape of every
-    "Cannot start yet"."""
+    "Cannot start yet". The hub declares nothing about it: the rule is the
+    section's own."""
 
     description = "Task list whose second section unlocks when the first ends."
     template_name = "testapp/hub.html"
@@ -2212,11 +2221,6 @@ class GatedHubView(HubView):
         Section("first", GatedFirstSectionViewSet, title="First"),
         Section("second", GatedSecondSectionViewSet, title="Second"),
     ]
-
-    def section_blocked(self, section):
-        return section.key == "second" and not self.get_section_store().has_stash(
-            "first"
-        )
 
 
 class PartyVenueSectionViewSet(SectionMixin, WizardViewSet):

@@ -231,6 +231,30 @@ def test_an_item_the_user_cannot_start_yet_is_counted_as_blocked(rf):
     assert result.remaining == 1
 
 
+def test_an_item_viewset_can_gate_its_own_items_one_by_one(rf):
+    """Every item shares one viewset, so the row it is being asked about is
+    the only thing that tells them apart — which is why `blocked()` is handed
+    it."""
+
+    class _GatedItemViewSet(_ItemViewSet):
+        @classmethod
+        def blocked(cls, request, section):
+            return section.url_kwargs["item"] == ITEM_B
+
+    class _PerItem(_Collection):
+        item_viewset = _GatedItemViewSet
+
+    request = rf.get("/party-guests/")
+    request.session = _Session(_seed(items=[(ITEM_A, "Ada"), (ITEM_B, "Grace")]))
+    page = _PerItem(request)
+
+    result = page.get_collection()
+
+    assert result.blocked == 1
+    assert page.enter(page.get_item(ITEM_B)) is None
+    assert page.enter(page.get_item(ITEM_A)) is not None
+
+
 def test_the_collection_says_how_many_items_it_needs(collection):
     """A page that asks for at least one has to be able to say so, and
     `min_items` lived only on the view."""

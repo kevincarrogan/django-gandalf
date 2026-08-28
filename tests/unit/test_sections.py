@@ -375,6 +375,105 @@ def test_an_unblocked_section_still_enters(gated_hub):
     assert page.enter(page.get_section("address")) is not None
 
 
+# --- a section that gates itself --------------------------------------------
+
+
+class _EmploymentViewSet(_AddressSectionViewSet):
+    """A section that answers for its own availability. The rule lives with
+    the wizard it gates, so there is no key in scope to branch on."""
+
+    @classmethod
+    def blocked(cls, request, section):
+        return not request.session.get("employed", False)
+
+
+class _SelfGatedHub(_Hub):
+    sections = [Section("address", _EmploymentViewSet, title="Address")]
+
+
+@pytest.fixture
+def self_gated_hub(rf):
+    def build(session=None):
+        request = rf.get("/hub/")
+        request.session = _Session(session or {})
+        return _SelfGatedHub(request)
+
+    return build
+
+
+def test_a_section_can_say_it_is_not_open_yet_itself(self_gated_hub):
+    (address,) = self_gated_hub().get_section_rows()
+
+    assert address.status == BLOCKED
+    assert str(address.status_label) == "Cannot start yet"
+
+
+def test_a_section_that_opens_says_so_too(self_gated_hub):
+    (address,) = self_gated_hub({"employed": True}).get_section_rows()
+
+    assert address.status == NOT_STARTED
+
+
+def test_a_section_gating_itself_is_refused_at_its_hubs_door(self_gated_hub):
+    """The hub asks the section, so display and dispatch cannot disagree even
+    though the hub declares nothing about the rule."""
+    page = self_gated_hub()
+
+    assert page.enter(page.get_section("address")) is None
+    assert SessionSectionStore(page.request).get_run("address") is None
+
+
+def test_the_section_is_handed_the_row_it_is_asked_about(self_gated_hub):
+    """One viewset mounted per item of a collection needs to tell its items
+    apart; a plain section ignores it."""
+    seen = []
+
+    class _Recording(_EmploymentViewSet):
+        @classmethod
+        def blocked(cls, request, section):
+            seen.append(section)
+            return False
+
+    page = self_gated_hub()
+    page.sections = [Section("address", _Recording, title="Address")]
+
+    page.get_section_rows()
+
+    assert [section.key for section in seen] == ["address"]
+
+
+def test_a_hub_override_answers_instead_of_the_section(self_gated_hub):
+    """`section_blocked()` is the question, not a vote joined to the
+    section's: an override that does not call `super()` replaces it."""
+    page = self_gated_hub()
+    page.section_blocked = lambda section: False
+
+    (address,) = page.get_section_rows()
+
+    assert address.status == NOT_STARTED
+
+
+def test_a_section_that_is_not_a_wizard_is_never_asked(rf):
+    """It has no viewset to ask. It supplies its own `status` instead, which
+    the door reads — and which may itself be `BLOCKED`."""
+
+    class _Linked(_Hub):
+        sections = [
+            Section(
+                "payment",
+                title="Payment",
+                url_name="pay",
+                status=lambda request: NOT_STARTED,
+            )
+        ]
+
+    request = rf.get("/hub/")
+    request.session = _Session()
+    page = _Linked(request)
+
+    assert page.section_blocked(page.get_section("payment")) is False
+
+
 # --- the hub as a whole ----------------------------------------------------
 
 

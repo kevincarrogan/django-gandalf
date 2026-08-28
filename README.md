@@ -1482,7 +1482,7 @@ under a name only its URLconf knows.
 
 | Status | Comes from |
 | --- | --- |
-| **Cannot start yet** | `section_blocked()` — the section is waiting on an answer given somewhere else |
+| **Cannot start yet** | The section's own `blocked()` — it is waiting on an answer given somewhere else |
 | **Complete** | A stash under the section's key — the section ran to its own end and `done()` fired |
 | **Incomplete** | A recorded run holding at least one submission |
 | **Not started** | Everything else, including a section opened and left unanswered, and one whose run has expired |
@@ -1497,35 +1497,63 @@ leaves the section in progress just as surely as one that does.
 
 Most task lists are not a flat set. A section becomes available because of
 what another one said, and until then the row should say **Cannot start yet**
-rather than offer a link. Override `section_blocked()`:
+rather than offer a link. **The section says so itself** — override
+`blocked()` on its own viewset:
 
 ```python
-class ApplicationHubView(HubView):
-    ...
+class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
+    section_key = "employment"
+    hub_url_name = "application-hub"
+    wizard = ...
 
-    def section_blocked(self, section):
-        if section.key == "employment":
-            return not self.request.user.profile.is_employed
-        return False
+    @classmethod
+    def blocked(cls, request, section):
+        """Only for applicants who told us they are employed."""
+        return not request.user.profile.is_employed
 ```
 
-That one hook does both halves. The row renders `BLOCKED` with the label
+The hub declares nothing about it — `Section("employment",
+EmploymentSectionViewSet, title="Employment history")`, as before. Answered
+by the section rather than asked about it, the rule lives with the wizard it
+gates: it has a name, a docstring, a subclass, and a test that needs no hub.
+A hub method taking a `section` is a method with a key in scope, and a task
+list that grows becomes a chain of `if section.key == ...`. Here there is no
+key to branch on.
+
+A classmethod because the hub asks from outside the section's own dispatch,
+exactly as it asks `begin()` and `inspect()`: there is no instance yet, and
+the point of the question is that there must not be a run. `section` is the
+row being asked about — what one viewset mounted per item of a collection
+needs to tell its items apart, and what a plain section can ignore.
+
+That one answer does both halves. The row renders `BLOCKED` with the label
 **Cannot start yet**, and `enter()` refuses it — a stale link or a hand-typed
 URL lands back on the task list instead of starting the run. This is the one
 place display and dispatch have to agree, so the door asks for the *status*
 rather than the hook, and a `Section.status` reporting `BLOCKED` under its own
 steam is guarded too.
 
-A hook rather than a `requires=["contact"]` on the declaration, because
-availability turns on *answers*, not on which sections are finished:
-"employment history, but only if you said you are employed" is the common case
-and no graph of section keys expresses it.
+Declared on the section rather than as a `requires=["contact"]` on the hub's
+list, because availability turns on *answers*, not on which sections are
+finished: "employment history, but only if you said you are employed" is the
+common case and no graph of section keys expresses it.
+
+The hub keeps `section_blocked()` for what a section cannot answer alone — a
+rule spanning rows, or a collection gating every item at once. It is the
+question rather than a vote joined to the section's, so an override that does
+not call `super()` replaces the sections' own answers:
+
+```python
+class LockedGuestCollectionView(GuestCollectionView):
+    def section_blocked(self, section):
+        return True
+```
 
 **Read your own models there, not the other section's stash.** A stash's state
 is positional against a tree whose shape may depend on a branch predicate
 nobody has evaluated. `section_done()` is where the answers become yours —
-that is what it is for — and `section_blocked()` is where you read back what
-you saved.
+that is what it is for — and `blocked()` is where you read back what you
+saved.
 
 Two consequences worth knowing. Being blocked **outranks** a stash, so a
 section whose prerequisite was withdrawn after it was answered reports what
@@ -1534,9 +1562,9 @@ link the door refuses is the worse of the two lies. And a blocked section
 keeps the whole hub off `COMPLETE`, which is why a section that will never
 unlock belongs out of `get_sections()` rather than locked forever inside it.
 
-`section_blocked()` runs once per row when the page renders and once more at
-the door, so keep it cheap or cache it on the view — a hub row's promise is
-storage reads and no walk, and this runs inside it.
+`blocked()` runs once per row when the page renders and once more at the
+door, so keep it cheap — a hub row's promise is storage reads and no walk, and
+this runs inside it.
 
 ### Every link is a step URL, never a bare run URL
 
@@ -1586,9 +1614,8 @@ Each hands back a `BoundWizard`, so `cursor()`, `path`, `step_url()` and
 ### Customising
 
 Every decision is a hook. `get_sections()` chooses the sections per request,
-`get_section_status()` decides how far one has got, `section_blocked()` decides
-whether it is open to the user yet, `get_hub_status()` decides how far they
-have got between them — override it where an optional section should not hold
+`get_section_status()` decides how far one has got, `get_hub_status()` decides
+how far they have got between them — override it where an optional section should not hold
 the whole page back — `get_section_title()` names it,
 `get_status_label()` reworks the wording, and `resume_section()` /
 `reopen_section()` / `start_section()` each own one way into a run.

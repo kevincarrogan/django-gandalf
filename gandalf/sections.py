@@ -14,12 +14,17 @@ Finding out where a half-finished run actually is does cost a walk, so it
 happens once, on the way in, for the one section the user clicked.
 
 Every decision is a hook: `get_sections()` chooses the sections,
-`get_section_status()` decides how far one has got, `section_blocked()` decides
-whether it is open to the user yet, `get_hub_status()` decides how far they
-have got between them, `get_section_title()` names it,
+`get_section_status()` decides how far one has got, `get_hub_status()` decides
+how far they have got between them, `get_section_title()` names it,
 `get_section_url()` says where its link goes, and `resume_section()` /
 `reopen_section()` / `start_section()` each own one way into a run. The
 defaults suit a plain task list; override what your domain needs.
+
+Whether a section is open to the user yet is the one question the section
+answers rather than the hub: `SectionMixin.blocked()` on its own viewset, so
+the rule lives with the wizard it gates instead of as an arm of a hub method
+with a key in scope. `section_blocked()` remains for what one section cannot
+answer alone.
 """
 
 from __future__ import annotations
@@ -265,6 +270,54 @@ class SectionMixin(_SectionMixinBase):
     #: overrides `get_section_key()` and declares no `section_key`, so the
     #: usual "set the class attribute" advice would be wrong for it.
     dynamic_section_key: bool = False
+
+    @classmethod
+    def blocked(cls, request: HttpRequest, section: Section) -> bool:
+        """Whether this section is not open to the user yet, because it is
+        waiting on an answer given somewhere else.
+
+        `False` for everything by default. Override to gate the section on
+        what your own models say:
+
+            class EmploymentSectionViewSet(SectionMixin, WizardViewSet):
+                section_key = "employment"
+
+                # Only for applicants who told us they are employed.
+                @classmethod
+                def blocked(cls, request, section):
+                    return not request.user.profile.is_employed
+
+        Answered by the section rather than asked about it, so the rule lives
+        with the wizard it gates: it has a name, a docstring, a subclass, and
+        a test that needs no hub. Declared on this side, there is no key in
+        scope to branch on, which is the whole point — the hub's own
+        `section_blocked()` hook is still there for a rule one section cannot
+        answer alone.
+
+        A classmethod because the hub asks from outside this section's own
+        dispatch, exactly as it asks `begin()` and `inspect()`: there is no
+        instance yet, and the point of the question is that there must not be
+        a run.
+
+        Not a `requires=["contact"]` on the hub's declaration, because
+        availability turns on *answers*, not on which sections are finished:
+        "employment history, but only if you said you are employed" is the
+        common case and no graph of section keys expresses it.
+
+        Read your own models here, not the other section's stash. A stash's
+        state is positional against a tree whose shape may depend on a branch
+        predicate nobody has evaluated; `section_done()` is where the answers
+        become yours, and this is where you read what you saved.
+
+        `section` is the row being asked about — what one viewset mounted per
+        item of a collection needs to tell its items apart, and what a plain
+        section can ignore.
+
+        Called once per row when the page renders, and once more at the door,
+        so keep it cheap — the hub's promise is that a row costs storage reads
+        and no walk, and this runs inside it.
+        """
+        return False
 
     def get_section_key(self) -> str:
         if self.section_key is None:
@@ -597,32 +650,21 @@ class HubMixin(_HubMixinBase):
         return NOT_STARTED
 
     def section_blocked(self, section: Section) -> bool:
-        """Whether this section is not open to the user yet, because it is
-        waiting on an answer given somewhere else.
+        """Whether this section is not open to the user yet.
 
-        `False` for everything by default. Override to gate a section on what
-        another one said:
+        Asks the section itself — `SectionMixin.blocked()` on its own viewset
+        — because that is where a rule about one section belongs, and a hub
+        method taking a `section` is a method with a key in scope. Override
+        here only for what a section cannot answer alone: a rule spanning
+        rows, or a collection gating every item at once. An override replaces
+        the question rather than joining it, so call `super()` where the
+        sections should still get their say.
 
-            def section_blocked(self, section):
-                if section.key == "employment":
-                    return not employment_declared(self.request.user)
-                return False
-
-        A hook rather than a `requires=["contact"]` on the declaration,
-        because availability turns on *answers*, not on which sections are
-        finished: "employment history, but only if you said you are employed"
-        is the common case and no graph of section keys expresses it.
-
-        Read your own models here, not the other section's stash. A stash's
-        state is positional against a tree whose shape may depend on a branch
-        predicate nobody has evaluated; `section_done()` is where the answers
-        become yours, and this is where you read what you saved.
-
-        Called once per row when the page renders, and once more at the door,
-        so keep it cheap or cache it on the view — the hub's promise is that a
-        row costs storage reads and no walk, and this runs inside it.
+        A section with no viewset is never blocked from here. It supplies its
+        own `status` — which may be `BLOCKED` — and the door asks for that.
         """
-        return False
+        blocked = getattr(section.viewset, "blocked", None)
+        return blocked is not None and blocked(self.request, section)
 
     def get_section_state(self, section: Section, store: SessionSectionStore) -> State:
         """The stored state of the section's recorded run — an empty list when
