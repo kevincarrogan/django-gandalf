@@ -169,8 +169,9 @@ class Member:
     #: for it to do, so the row addresses it directly.
     url_name: str | None = None
     #: What decides this member's status when the hub cannot. Called with the
-    #: request and the URL kwargs the hub would hand the member's own view —
-    #: its journey, its mount prefix — so the answer is scoped as the hub is.
+    #: request and the URL kwargs the hub would hand the member's own view
+    #: (`HubMixin.member_url_kwargs()`: its journey, under these `url_kwargs`)
+    #: so the answer is scoped as the hub is.
     #: Excluded from comparison for the same reason as `url_kwargs`.
     status: Callable[[HttpRequest, dict[str, Any]], str] | None = dataclass_field(
         default=None, compare=False
@@ -829,8 +830,17 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
         return {}
 
     def member_url_kwargs(self, member: Member) -> dict[str, Any]:
-        """The URL kwargs a member's own view is run with: the journey this
-        hub is on, under the member's declared `url_kwargs`."""
+        """The URL kwargs a member's own view is run and reversed with: the
+        journey this hub is on, under the member's declared `url_kwargs`.
+
+        The one rule for every use of a member — asking its `blocked()`,
+        its `status`, a hub child's `status_for()`, reversing its page,
+        beginning or resuming its run. The hub's *own* mount prefix is not
+        forwarded by default (`get_page_url_kwargs()` is for the hub's own
+        URLs): a member is mounted wherever it is mounted, and one under a
+        tenant prefix says so in `Member.url_kwargs` — `get_members()` can
+        read the prefix off `self.kwargs` and declare it per request.
+        """
         return {**self.get_journey_url_kwargs(), **member.url_kwargs}
 
     def member_viewset(self, member: Member) -> type[WizardViewSet]:
@@ -1038,10 +1048,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
                 kwargs=self.member_url_kwargs(member),
             )
         if member.url_name is not None:
-            return reverse(
-                member.url_name,
-                kwargs={**self.get_member_url_kwargs(), **member.url_kwargs},
-            )
+            return reverse(member.url_name, kwargs=self.member_url_kwargs(member))
         if self.member_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -1050,16 +1057,18 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
         return reverse(
             self.member_url_name,
             kwargs={
-                **self.get_member_url_kwargs(),
+                **self.get_page_url_kwargs(),
                 self.member_url_kwarg: member.key,
             },
         )
 
-    def get_member_url_kwargs(self) -> dict[str, Any]:
+    def get_page_url_kwargs(self) -> dict[str, Any]:
         """URL kwargs the hub's mount prefix captured (e.g. a tenant slug),
-        forwarded into every reverse of the hub's own URLs — the same
-        arrangement `WizardViewSet.get_url_kwargs()` makes. Everything the
-        request captured except the member key the door itself owns."""
+        forwarded into every reverse of the hub's *own* URLs — its page and
+        its doors — the same arrangement `WizardViewSet.get_url_kwargs()`
+        makes. Everything the request captured except the member key the
+        door itself owns. Not what a member is reversed with: that is
+        `member_url_kwargs()`."""
         url_kwargs = getattr(self, "kwargs", None) or {}
         return {
             key: value
@@ -1076,12 +1085,12 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
             raise ImproperlyConfigured(
                 f"Set url_name (or override get_page_url) on {name}."
             )
-        return reverse(self.url_name, kwargs=self.get_member_url_kwargs())
+        return reverse(self.url_name, kwargs=self.get_page_url_kwargs())
 
     def get_hub_url_kwargs(self) -> dict[str, Any]:
         """The parent hub is reversed with this page's own mount-prefix
         kwargs — the journey among them — since the two share a mount."""
-        return self.get_member_url_kwargs()
+        return self.get_page_url_kwargs()
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)

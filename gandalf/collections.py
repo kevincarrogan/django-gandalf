@@ -565,7 +565,7 @@ class CollectionMixin(HubMixin):
 
     def get_collection_url_kwargs(self) -> dict[str, Any]:
         """Mount-prefix kwargs this page came in through, minus the item the
-        routes own — the same arrangement `get_member_url_kwargs()` makes."""
+        routes own — the same arrangement `get_page_url_kwargs()` makes."""
         url_kwargs = getattr(self, "kwargs", None) or {}
         return {
             key: value

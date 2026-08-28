@@ -1216,7 +1216,7 @@ def test_a_hub_forwards_its_mount_prefix_and_drops_the_member_kwarg(rf):
 
     page = _ReversingHub(request, org="acme", member="details")
 
-    assert page.get_member_url_kwargs() == {"org": "acme"}
+    assert page.get_page_url_kwargs() == {"org": "acme"}
 
 
 def test_the_hub_url_is_reversed_from_its_own_url_name(rf):

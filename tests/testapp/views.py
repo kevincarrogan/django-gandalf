@@ -2076,6 +2076,14 @@ class OrgHubView(HubView):
                 title="Details",
                 url_kwargs={"org": self.kwargs["org"]},
             ),
+            # A hub child under the same prefix declares it the same way:
+            # nothing about being a hub forwards the parent's mount.
+            Member(
+                "org-guests",
+                OrgGuestCollectionView,
+                title="Guests",
+                url_kwargs={"org": self.kwargs["org"]},
+            ),
         ]
 
 

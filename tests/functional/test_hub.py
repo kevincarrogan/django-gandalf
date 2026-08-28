@@ -529,11 +529,18 @@ def test_no_hub_link_is_ever_a_bare_run_url(client, member):
 
 
 def test_a_hub_forwards_its_mount_prefix_into_every_url_it_builds(client):
+    """A wizard member and a hub member under the prefix are reversed the
+    same way: with the journey and whatever `Member.url_kwargs` declares."""
     response = client.get("/org/acme/hub/")
 
     assert response.status_code == HTTPStatus.OK
-    (row,) = response.context["hub"].rows
-    assert row.url == "/org/acme/hub/details/"
+    rows = {row.key: row for row in response.context["hub"].rows}
+    assert rows["details"].url == "/org/acme/hub/details/"
+    assert (rows["org-guests"].url, rows["org-guests"].status) == (
+        "/org/acme/guests/",
+        NOT_STARTED,
+    )
+    assertRedirects(client.get("/org/acme/hub/org-guests/"), "/org/acme/guests/")
 
 
 def test_entering_a_prefixed_member_keeps_the_prefix(client):
