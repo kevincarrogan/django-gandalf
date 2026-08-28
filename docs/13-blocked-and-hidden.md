@@ -13,7 +13,7 @@ hub keeps its bookkeeping in, and the two rules that cover nearly every task
 list are each one read of it:
 
 ```python
-class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
+class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "referees"
     hub_url_name = "readme-gated"
     wizard = Wizard().step(RefereeForm, name="referee", label="Referee")
@@ -57,7 +57,7 @@ page renders and once more at the door, so keep it cheap.
 project member wrote it down when it finished:
 
 ```python
-class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
+class GatedProjectMemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "project"
     hub_url_name = "readme-gated"
     wizard = (
@@ -90,7 +90,7 @@ keep. For that, override `hidden()`, the sibling of `blocked()` with the same
 signature and the same store:
 
 ```python
-class MatchFundingMemberViewSet(RunMemberMixin, WizardViewSet):
+class MatchFundingMemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "match_funding"
     hub_url_name = "readme-gated"
     wizard = Wizard().step(MatchFundingForm, name="source", label="Match funding")

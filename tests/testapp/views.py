@@ -25,7 +25,7 @@ from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.collections import CollectionView, ItemMemberMixin
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.storage import (
     SessionJourneyStore,
     SessionStashStore,
@@ -2013,7 +2013,7 @@ class ExpandedSummaryWizardViewSet(WizardViewSet):
 # --- Hub and spoke scenarios -------------------------------------------------
 
 
-class AdvancingMemberViewSet(RunMemberMixin, WizardViewSet):
+class AdvancingMemberViewSet(WizardMemberMixin, WizardViewSet):
     """A member whose only step escapes with `Advance`.
 
     `Advance` persists the answer and redirects out without reaching
@@ -2030,7 +2030,7 @@ class AdvancingMemberViewSet(RunMemberMixin, WizardViewSet):
     wizard = Wizard().step(NewsletterForm, name="newsletter")
 
 
-class PlainMemberViewSet(RunMemberMixin, WizardViewSet):
+class PlainMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Hub member with no review step."
     url_name = "hub-plain-member"
     template_name = "testapp/linear_wizard.html"
@@ -2050,7 +2050,7 @@ class ScenarioHubView(HubView):
     ]
 
 
-class OrgMemberViewSet(RunMemberMixin, WizardViewSet):
+class OrgMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Hub member mounted under an org prefix."
     url_name = "org-hub-member-wizard"
     template_name = "testapp/linear_wizard.html"
@@ -2087,7 +2087,7 @@ class OrgHubView(HubView):
         ]
 
 
-class CountingMemberViewSet(RunMemberMixin, WizardViewSet):
+class CountingMemberViewSet(WizardMemberMixin, WizardViewSet):
     """A hub member wired to the counting walker, so tests can assert that
     a hub row costs no walk at all."""
 
@@ -2141,7 +2141,7 @@ class CountingHubView(HubView):
 # --- Storage that outlives a session -----------------------------------------
 
 
-class DurableMemberViewSet(RunMemberMixin, WizardViewSet):
+class DurableMemberViewSet(WizardMemberMixin, WizardViewSet):
     """A member on model-backed storage — both stores swapped, which is what
     a hub spanning days needs."""
 
@@ -2198,7 +2198,7 @@ class GuestCollectionView(CollectionView):
     hub_url_name = "party-hub"
 
 
-class GatedFirstMemberViewSet(RunMemberMixin, WizardViewSet):
+class GatedFirstMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "The member a gated task list unlocks the next one with."
     url_name = "gated-first"
     template_name = "testapp/linear_wizard.html"
@@ -2235,7 +2235,7 @@ class GatedHubView(HubView):
     ]
 
 
-class PartyVenueMemberViewSet(RunMemberMixin, WizardViewSet):
+class PartyVenueMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "A plain member beside a collection on the same task list."
     url_name = "party-venue"
     template_name = "testapp/linear_wizard.html"
@@ -2429,7 +2429,7 @@ class ShortMemoryJourneyStore(SessionJourneyStore):
     max_completed_journeys = 1
 
 
-class SubmitFirstMemberViewSet(RunMemberMixin, WizardViewSet):
+class SubmitFirstMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Journeys: a member of a hub that submits with nothing to say."
     url_name = "submit-first"
     template_name = "testapp/linear_wizard.html"

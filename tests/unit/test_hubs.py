@@ -18,7 +18,7 @@ from gandalf.hubs import (
     Hub,
     HubMixin,
     Member,
-    RunMemberMixin,
+    WizardMemberMixin,
     MemberNotFound,
     MemberRow,
 )
@@ -47,7 +47,7 @@ def _session(seed=None, journey="default"):
     return _Session(seed)
 
 
-class _MemberViewSet(RunMemberMixin, WizardViewSet):
+class _MemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "contact"
     hub_url_name = "hub"
     template_name = "testapp/linear_wizard.html"
@@ -673,7 +673,7 @@ def test_a_key_that_drifts_from_the_members_own_member_key_is_rejected(rf):
 
 
 def test_a_member_viewset_that_does_its_own_bookkeeping_is_not_key_checked(rf):
-    """Only a `RunMemberMixin` declares a `member_key` to drift from."""
+    """Only a `WizardMemberMixin` declares a `member_key` to drift from."""
 
     class _Plain(WizardViewSet):
         wizard = Wizard().step(FirstStepForm, name="first")
@@ -733,7 +733,7 @@ def test_a_hub_that_names_no_url_of_its_own_checks_no_return(rf):
 
 
 def test_a_member_viewset_that_does_its_own_bookkeeping_is_not_return_checked(rf):
-    """Only a `RunMemberMixin` declares a `hub_url_name` to drift from."""
+    """Only a `WizardMemberMixin` declares a `hub_url_name` to drift from."""
 
     class _Plain(WizardViewSet):
         wizard = Wizard().step(FirstStepForm, name="first")
@@ -979,7 +979,7 @@ def test_stash_unusable_can_be_overridden_to_start_over(rf):
     assert url == f"/contact/{run_id}/first/"
 
 
-# --- RunMemberMixin ----------------------------------------------------------
+# --- WizardMemberMixin ----------------------------------------------------------
 
 
 def test_finishing_a_member_stashes_its_answers_and_clears_its_run(rf):
@@ -1168,7 +1168,7 @@ def test_a_finished_member_sends_the_user_back_to_its_hub(rf):
 
     class _Homed(_MemberViewSet):
         hub_url_name = "readme-hub"
-        run_done = RunMemberMixin.run_done
+        run_done = WizardMemberMixin.run_done
 
     request = rf.get("/contact/run-1/")
     request.session = _session(

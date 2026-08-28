@@ -68,7 +68,7 @@ class ApplicationStartViewSet(WizardViewSet):
         return redirect("readme-apply-hub", journey=journey)
 
 
-class SetupMemberViewSet(RunMemberMixin, WizardViewSet):
+class SetupMemberViewSet(WizardMemberMixin, WizardViewSet):
     """The same wizard, once a journey exists."""
 
     url_name = "readme-apply-setup"
@@ -82,7 +82,7 @@ class SetupMemberViewSet(RunMemberMixin, WizardViewSet):
 ```
 
 The hub then lists `Member("setup", SetupMemberViewSet, title="Applying
-as")` — the same wizard as a `RunMemberMixin` viewset mounted under the journey
+as")` — the same wizard as a `WizardMemberMixin` viewset mounted under the journey
 — so the setup answers are re-openable like any other member.
 
 ### A memory
@@ -96,7 +96,7 @@ stash cannot answer cheaply. `record_applying_as` writes *individual* or
 *organisation* there, and the governing document member reads it back:
 
 ```python
-class DocumentsMemberViewSet(RunMemberMixin, WizardViewSet):
+class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "documents"
     hub_url_name = "readme-apply-hub"
     wizard = Wizard().step(GoverningDocumentForm, name="document", label="Document")
@@ -159,7 +159,7 @@ class GrantApplicationHubView(HubView):
 `submit()` refuses if any row is not complete (`hub_incomplete()`, which
 sends the user back to the hub by default), then runs `journey_done()` — the
 application's work, and the one thing with no default — and only once that
-has returned tombstones the journey, exactly as `RunMemberMixin.done()` runs
+has returned tombstones the journey, exactly as `WizardMemberMixin.done()` runs
 `run_done()` before clearing the run. A `journey_done()` that raises
 leaves every member resumable. It runs inside the window where the stashes
 are still readable; anything the done page needs goes in `store.data`, which
@@ -181,7 +181,7 @@ same two things a wizard member does: the key it sits under, and the hub it
 returns to.
 
 ```python
-class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
+class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
     member_key = "supporting:referees"
     hub_url_name = "readme-apply-supporting"
     ...

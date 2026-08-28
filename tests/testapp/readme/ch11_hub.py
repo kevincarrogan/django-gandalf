@@ -1,7 +1,7 @@
 """Chapter 11 — a task list. The application becomes several wizards the
 applicant can do in any order."""
 
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -9,7 +9,7 @@ from .ch06_review import AddressReviewStepView, ReviewStepView
 from .forms import AddressForm, ApplicantForm, EmailForm
 
 
-class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
+class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 11: the contact member of the task list."
     url_name = "readme-hub-contact"
     template_name = "testapp/linear_wizard.html"
@@ -25,7 +25,7 @@ class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
     )
 
 
-class AddressMemberViewSet(RunMemberMixin, WizardViewSet):
+class AddressMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 11: the address member of the task list."
     url_name = "readme-hub-address"
     template_name = "testapp/linear_wizard.html"

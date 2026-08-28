@@ -2,7 +2,7 @@
 line, on a task list beside the project itself."""
 
 from gandalf.collections import CollectionView, ItemMemberMixin
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -40,7 +40,7 @@ class BudgetCollectionView(CollectionView):
     hub_url_name = "readme-project-hub"
 
 
-class ProjectMemberViewSet(RunMemberMixin, WizardViewSet):
+class ProjectMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 12: the project member beside the budget."
     url_name = "readme-project"
     template_name = "testapp/linear_wizard.html"

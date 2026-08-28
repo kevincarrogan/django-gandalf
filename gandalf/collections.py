@@ -61,7 +61,7 @@ from gandalf.hubs import (
     Hub,
     HubMixin,
     Member,
-    RunMemberMixin,
+    WizardMemberMixin,
     MemberRow,
 )
 from gandalf.storage import RunNotFound, SessionCollectionStore
@@ -163,10 +163,10 @@ class Collection(Hub):
         return not self.rows
 
 
-class ItemMemberMixin(RunMemberMixin):
+class ItemMemberMixin(WizardMemberMixin):
     """Mix into the wizard that collects one item of a collection.
 
-    Everything `RunMemberMixin` does, keyed per item instead of per class. The
+    Everything `WizardMemberMixin` does, keyed per item instead of per class. The
     key cannot be a class attribute — there is one member per item, and the
     items are not known until the user makes them — so it comes from the URL.
     Mount this wizard under an item segment and the id reaches every request
@@ -188,7 +188,7 @@ class ItemMemberMixin(RunMemberMixin):
     `get_hub_url_kwargs()` drops it. The collection page is this wizard's hub:
     `hub_url_name` names it, as it would for a plain member.
 
-    **Items override `run_done()`, never `done()`** — `RunMemberMixin`'s rule
+    **Items override `run_done()`, never `done()`** — `WizardMemberMixin`'s rule
     holds here for its own reason, with one more on top: `done()` is also where
     the item's title is cached, and a member that never caches one leaves a
     page that can only ever say *Guest 1*, *Guest 2*.
@@ -604,7 +604,7 @@ class CollectionMixin(HubMixin):
         """Register a new item, then enter its wizard.
 
         The registry is written *first*. That is what makes a half-finished
-        item possible at all, and it is `RunMemberMixin.done()`'s discipline —
+        item possible at all, and it is `WizardMemberMixin.done()`'s discipline —
         write the durable fact, then do the thing that can fail. If entering
         raises, the user is left with a listed, removable, not-started row
         rather than a live run nothing points at.
@@ -633,7 +633,7 @@ class CollectionMixin(HubMixin):
     def remove_item(self, item_id: str) -> HttpResponse:
         """Destroy an item, pointer last.
 
-        The exact mirror of `RunMemberMixin.done()`: everything reachable
+        The exact mirror of `WizardMemberMixin.done()`: everything reachable
         *through* the registry goes before the registry entry itself, so a
         hook that raises leaves an item still listed and still removable
         rather than one that has vanished with its side effects intact.

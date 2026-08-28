@@ -21,7 +21,7 @@ Four contracts are easy to miss and matter more than the rest:
   replays. A backend that batched it would lose the record it names.
 
 A durable hub needs **both** stores swapped: `storage_class` on every member
-viewset, and `journey_store_class` on the hub and on each `RunMemberMixin`. A
+viewset, and `journey_store_class` on the hub and on each `WizardMemberMixin`. A
 journey store is built with the journey as well as the context, and its
 `data` and `complete()` are the journey's own — kept on a row that survives
 the members being deleted at submission. A

@@ -40,7 +40,7 @@ record — a nested hub prefixes its `member_key` onto every member it lists
 (`full_key()`), the way a collection prefixes its items — so task lists nest
 to any depth, a member two hubs down still reads the journey's `data`, and
 the root's submit still ends everything at once. A *member* is anything a
-hub lists — a run (`RunMemberMixin` on its viewset), a hub, a collection —
+hub lists — a run (`WizardMemberMixin` on its viewset), a hub, a collection —
 and `JourneyMemberMixin` is what they share: a key, a return, a journey, and
 `blocked()` / `hidden()`.
 """
@@ -97,7 +97,7 @@ __all__ = [
     "HubView",
     "JourneyMemberMixin",
     "Member",
-    "RunMemberMixin",
+    "WizardMemberMixin",
     "MemberNotFound",
     "MemberRow",
 ]
@@ -130,7 +130,7 @@ class Member:
     hub that lists it: a hub nested under a parent prefixes its own key, so
     the store sees `"supporting:referees"` where the hub declared
     `"referees"` (see `HubMixin.full_key()`). `viewset` is the class that runs
-    it — a `RunMemberMixin` wizard viewset, or a `HubMixin` view for a task list
+    it — a `WizardMemberMixin` wizard viewset, or a `HubMixin` view for a task list
     (or a collection) that is itself a member of this one. `title` is what
     the hub renders; without one the key is made readable, exactly as a
     summary row's label is.
@@ -268,7 +268,7 @@ class Hub:
 class JourneyMemberMixin(_JourneyMemberBase):
     """What a run and a hub have in common: being a member of a journey.
 
-    Both are listed by a hub above them — a wizard as a `RunMemberMixin`
+    Both are listed by a hub above them — a wizard as a `WizardMemberMixin`
     viewset, a task list or a collection as a `HubMixin` view — and a hub
     asks the same things of each: which key it finishes under
     (`member_key`), where finishing sends the user back to (`hub_url_name`),
@@ -321,7 +321,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
         `False` for everything by default. Two rules cover nearly every task
         list, and both are one read of the journey's store:
 
-            class EmploymentHistoryMemberViewSet(RunMemberMixin, WizardViewSet):
+            class EmploymentHistoryMemberViewSet(WizardMemberMixin, WizardViewSet):
                 member_key = "employment_history"
 
                 # Unlocks once the Employment member has been finished.
@@ -329,7 +329,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
                 def blocked(cls, request, member, store):
                     return not store.has_stash("employment")
 
-            class ReferencesMemberViewSet(RunMemberMixin, WizardViewSet):
+            class ReferencesMemberViewSet(WizardMemberMixin, WizardViewSet):
                 member_key = "references"
 
                 # Unlocks once the applicant has said they are employed —
@@ -379,7 +379,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
         `False` for everything by default. Override with the same kind of
         rule `blocked()` takes, read from the same store:
 
-            class PartnerMemberViewSet(RunMemberMixin, WizardViewSet):
+            class PartnerMemberViewSet(WizardMemberMixin, WizardViewSet):
                 member_key = "partner"
 
                 # Only exists for an applicant who said they have one.
@@ -452,7 +452,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
         return redirect(self.get_hub_url())
 
 
-class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
+class WizardMemberMixin(JourneyMemberMixin, _MemberMixinBase):
     """Mix into a member's `WizardViewSet` so finishing it registers with the
     hub.
 
@@ -461,7 +461,7 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
     would never learn the member had finished — a member that appears to
     reset itself every time it is completed.
 
-        class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
+        class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
             url_name = "profile-contact"
             member_key = "contact"
             hub_url_name = "profile-hub"
@@ -1259,7 +1259,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
     def submit(self) -> HttpResponseBase:
         """Finish this hub, once every member has.
 
-        The counterpart of `RunMemberMixin.done()` one level up, with the same
+        The counterpart of `WizardMemberMixin.done()` one level up, with the same
         ordering: the application's work first, the bookkeeping after. If
         the hub is not complete the submit is refused (`hub_incomplete()`),
         so a stale button or a hand-made POST cannot submit half a journey.

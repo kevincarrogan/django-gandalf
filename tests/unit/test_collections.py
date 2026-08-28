@@ -384,7 +384,7 @@ def test_declaring_no_more_records_the_answer_and_moves_the_user_on(collection):
 
 
 def test_removing_an_item_destroys_the_pointer_last(collection):
-    """The mirror of `RunMemberMixin.done()`: a hook that raises leaves the item
+    """The mirror of `WizardMemberMixin.done()`: a hook that raises leaves the item
     still listed and still removable."""
     events = []
 

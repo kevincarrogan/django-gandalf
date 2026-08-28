@@ -7,7 +7,7 @@ from django.shortcuts import redirect, render
 
 from gandalf.collections import CollectionView, ItemMemberMixin
 from gandalf.observers import WizardObserver
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.storage import SessionJourneyStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
@@ -77,7 +77,7 @@ class ApplicationStartViewSet(WizardViewSet):
         return redirect("readme-apply-hub", journey=journey)
 
 
-class SetupMemberViewSet(RunMemberMixin, WizardViewSet):
+class SetupMemberViewSet(WizardMemberMixin, WizardViewSet):
     """The same wizard, once a journey exists: re-openable from the hub like
     any other member, and re-recording its answer when it is re-saved."""
 
@@ -95,7 +95,7 @@ class SetupMemberViewSet(RunMemberMixin, WizardViewSet):
 # --- the members --------------------------------------------------------------
 
 
-class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
+class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 14: a plain member of the application."
     url_name = "readme-apply-contact"
     template_name = "testapp/linear_wizard.html"
@@ -116,7 +116,7 @@ class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
         return super().run_done(bound_wizard)
 
 
-class ProjectMemberViewSet(RunMemberMixin, WizardViewSet):
+class ProjectMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 14: the project, whose amount reveals match funding."
     url_name = "readme-apply-project"
     template_name = "testapp/linear_wizard.html"
@@ -164,7 +164,7 @@ class BudgetCollectionView(CollectionView):
     hub_url_name = "readme-apply-hub"
 
 
-class MatchFundingMemberViewSet(RunMemberMixin, WizardViewSet):
+class MatchFundingMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 14: hidden until the amount crosses the threshold."
     url_name = "readme-apply-match-funding"
     template_name = "testapp/linear_wizard.html"
@@ -180,7 +180,7 @@ class MatchFundingMemberViewSet(RunMemberMixin, WizardViewSet):
 # --- a task list within the task list -------------------------------------------
 
 
-class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
+class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
     """Listed by the supporting-information hub, not the application's: its
     key carries that hub's prefix, and it returns there when it finishes.
     The record it reads is still the journey's — `contact` is a root key."""
@@ -197,7 +197,7 @@ class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
         return not store.has_stash("contact")
 
 
-class DocumentsMemberViewSet(RunMemberMixin, WizardViewSet):
+class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
     description = "Chapter 14: the governing document, only for organisations."
     url_name = "readme-apply-documents"
     template_name = "testapp/file_upload_wizard.html"

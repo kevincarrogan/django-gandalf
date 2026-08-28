@@ -695,7 +695,7 @@ def test_a_member_without_a_key_cannot_register_as_finished(rf, client):
 
 
 def test_a_dynamic_member_that_derives_no_key_is_misconfigured(rf, client):
-    """`RunMemberMixin`'s usual advice — set the class attribute — is wrong for
+    """`WizardMemberMixin`'s usual advice — set the class attribute — is wrong for
     a member that deliberately has none, so it is told something else."""
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage

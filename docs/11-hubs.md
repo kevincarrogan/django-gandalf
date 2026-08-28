@@ -8,15 +8,15 @@ An application is not one wizard. Contact details, an address, the project,
 the budget, referees — each is its own thing, finished on its own, in any
 order, and re-opened later. Chapter 10 did the stashing by hand; a **hub** is
 that pattern with the bookkeeping owned by the library: declare the members,
-mix `RunMemberMixin` into each member's viewset, and the hub renders a row per
+mix `WizardMemberMixin` into each member's viewset, and the hub renders a row per
 member carrying its title, its status and one URL that does the right thing
 whichever state it is in.
 
 ```python
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 
 
-class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
+class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
     url_name = "readme-hub-contact"
     template_name = "testapp/linear_wizard.html"
     member_key = "contact"
@@ -31,7 +31,7 @@ class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
     )
 
 
-class AddressMemberViewSet(RunMemberMixin, WizardViewSet):
+class AddressMemberViewSet(WizardMemberMixin, WizardViewSet):
     url_name = "readme-hub-address"
     template_name = "testapp/linear_wizard.html"
     member_key = "address"

@@ -1,7 +1,7 @@
 """Chapter 13 — locked and hidden. One member waits on another; one is not
 there until an answer says it should be."""
 
-from gandalf.hubs import HubView, Member, RunMemberMixin
+from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -12,7 +12,7 @@ from .forms import MatchFundingForm, ProjectForm, RefereeForm
 MATCH_FUNDING_THRESHOLD = 10_000
 
 
-class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
+class GatedProjectMemberViewSet(WizardMemberMixin, WizardViewSet):
     """Decides whether the match funding member exists. The amount is read
     off the path here — the one moment the run is readable and a walk has
     already been paid — and written to the journey's data."""
@@ -36,7 +36,7 @@ class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
         return super().run_done(bound_wizard)
 
 
-class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
+class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
     """Listed from the start but locked until the project is described: the
     row reads *Cannot start yet* and the door refuses it."""
 
@@ -52,7 +52,7 @@ class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):
         return not store.has_stash("project")
 
 
-class MatchFundingMemberViewSet(RunMemberMixin, WizardViewSet):
+class MatchFundingMemberViewSet(WizardMemberMixin, WizardViewSet):
     """Hidden until the amount asked for crosses the threshold: not listed,
     not counted, and its door refuses a stale link."""
 
