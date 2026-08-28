@@ -1,0 +1,70 @@
+# Chapter 3 — Which kind of organisation
+
+A charity has a charity number, a company has a company number, and a
+community group has neither. That is not "is this true" but "which of these",
+and `.switch()` says so directly:
+
+```python
+from gandalf.wizard import Wizard, on_field
+
+from . import ch02_branching as ch02
+
+
+class OrganisationTypeForm(forms.Form):
+    organisation_type = forms.ChoiceField(
+        label="What kind of organisation is it?",
+        choices=[
+            ("charity", "A registered charity"),
+            ("company", "A company"),
+            ("community", "An unincorporated community group"),
+        ],
+    )
+
+
+organisation_details = (
+    ch02.organisation_details.step(OrganisationTypeForm, name="organisation_type")
+    .switch(
+        on_field("organisation_type", "organisation_type"),
+        {
+            "charity": Wizard().step(CharityNumberForm, name="charity_number"),
+            "company": Wizard().step(CompanyNumberForm, name="company_number"),
+        },
+        # A community group has no number to give, so there is no default
+        # arm: the walk continues past the switch.
+    )
+)
+
+
+class SwitchingApplicationViewSet(WizardViewSet):
+    url_name = "readme-switch"
+    template_name = "testapp/linear_wizard.html"
+    wizard = ch02.applicant(organisation=organisation_details).step(
+        EmailForm, name="contact"
+    )
+```
+
+`ch02.organisation_details` is untouched — this chapter's
+`organisation_details` is a new value built from it.
+
+A selector is the same arbitrary code a predicate is — read several answers,
+call out to a service, compute whatever you like — but asking *which* rather
+than *whether* buys three things. Exactly one case can apply, so overlapping
+conditions cannot resolve by declaration order. The selector runs **once per
+switch** however many cases there are, so it is free to be expensive. And each
+case's answers are stored under its own name rather than its position, so
+reordering the cases cannot strand them.
+
+`on_field(step, field)` is the common case said declaratively — route on the
+value of an earlier answer. Prefer a plain function whenever the decision is
+anything more than "what did they say"; a multi-valued field has no single
+value to switch on, so route those with a predicate `.branch()` or a selector
+of your own.
+
+A value no case names falls to `default`, or past the switch entirely when
+there is none — which is what the community group does.
+
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/switch/ &nbsp;·&nbsp; **Source:** [`ch03_switch.py`](../tests/testapp/readme/ch03_switch.py)
+
+---
+
+[← Chapter 2 — Individuals and organisations](02-individuals-and-organisations.md) · [README](../README.md) · [Chapter 4 — As many trustees as there are →](04-as-many-trustees-as-there-are.md)
