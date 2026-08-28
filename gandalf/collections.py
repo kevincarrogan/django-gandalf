@@ -460,14 +460,12 @@ class CollectionMixin(HubMixin):
             )
         return super()._validate_members(members)
 
-    @classmethod
-    def status_for(cls, request: HttpRequest, url_kwargs: dict[str, Any]) -> str:
-        """A collection's status on the hub above it is its own — declared by
-        the user, not derived from the rows alone — so it answers with the
-        `Collection`'s, which no stash key could express."""
-        view = cls()
-        view.setup(request, **url_kwargs)
-        return view.get_collection().status
+    def get_hub(self) -> Hub:
+        """A collection's `Hub` *is* its `Collection`: the same rows, with a
+        status the user declared rather than one the rows alone derive. So
+        the hub above reads it through `status_for()`, and `submit()` guards
+        on it, without either knowing a collection is any different."""
+        return self.get_collection()
 
     # --- the page ----------------------------------------------------------
 
@@ -649,15 +647,17 @@ class CollectionMixin(HubMixin):
         return self.enter(self.get_item_member(item_id))
 
     def declare_done(self) -> HttpResponseBase:
-        """Record that the user has nothing more to add, and move them on."""
-        self.get_collection_store().set_declared_done(self.get_collection_key(), True)
-        return self.collection_done()
+        """Record that the user has nothing more to add, then submit.
 
-    def collection_done(self) -> HttpResponseBase:
-        """What the collection does once the user says that is all. The
-        default sends them up to the hub that lists this collection — the
-        collection's `hub_done()`, in effect, without a submit of its own."""
-        return redirect(self.get_hub_url())
+        The answer is written first and stands whatever happens next —
+        declaring is the user's fact, not the collection's. Then *Continue*
+        is a hub's submit: refused with `hub_incomplete()` while an item is
+        unfinished or `min_items` is unmet (back to this page, which shows
+        why), and `hub_done()` otherwise — up to the hub that lists this
+        collection, exactly as a nested hub returns to its parent.
+        """
+        self.get_collection_store().set_declared_done(self.get_collection_key(), True)
+        return self.submit()
 
     def remove_item(self, item_id: str) -> HttpResponse:
         """Destroy an item, pointer last.

@@ -171,8 +171,11 @@ only that one may.
 own records instead of the registry. `new_item_id()` mints identity,
 `get_item_title()` names a row, `get_collection_status()` decides how far the
 whole thing has got, `item_removed()` is where the application deletes
-whatever `run_done()` saved, and `collection_done()` is what happens when
-the user says that is all.
+whatever `run_done()` saved, and `hub_done()` is what happens when the user
+says that is all and everything is finished — *Continue* is the
+collection's `submit()`, so with an item half-done or `min_items` unmet it
+is refused (`hub_incomplete()`) and the page shows why, and otherwise it goes
+up to the hub that lists the collection, as any nested hub does.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch12_budget.py`](../tests/testapp/readme/ch12_budget.py)
 

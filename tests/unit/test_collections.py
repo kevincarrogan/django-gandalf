@@ -369,7 +369,9 @@ def test_adding_an_item_withdraws_the_users_answer(collection):
 
 
 def test_declaring_no_more_records_the_answer_and_moves_the_user_on(collection):
-    page = collection(_seed(items=[(ITEM_A, "Ada")]))
+    page = collection(
+        _seed(items=[(ITEM_A, "Ada")]) | {"stashes": {f"guests:{ITEM_A}": {}}}
+    )
 
     response = page.declare_done()
 
@@ -586,11 +588,15 @@ def test_a_collection_without_an_item_viewset_is_misconfigured(collection):
         _Wizardless(collection().request).get_collection()
 
 
-def test_a_collection_without_a_continue_url_is_misconfigured(collection):
+def test_a_collection_listed_by_no_hub_is_a_root_and_needs_a_journey_done(collection):
+    """No `hub_url_name` means nothing above: Continue is then the journey's
+    submit, and a root with nothing to do at submit is misconfigured — the
+    same refusal a root hub gives."""
+
     class _Endless(_Collection):
         hub_url_name = None
 
-    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _Endless(collection().request).declare_done()
 
 
@@ -751,7 +757,10 @@ def test_an_unanswered_question_re_renders_the_page(rf):
 
 def test_answering_no_records_it_and_moves_the_user_on(rf):
     request = _view_request(
-        rf, "post", data={"add_another": "no"}, session=_seed(items=[(ITEM_A, "Ada")])
+        rf,
+        "post",
+        data={"add_another": "no"},
+        session=_seed(items=[(ITEM_A, "Ada")]) | {"stashes": {f"guests:{ITEM_A}": {}}},
     )
 
     response = GuestCollectionView.as_view()(request)

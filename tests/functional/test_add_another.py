@@ -359,8 +359,12 @@ def test_declaring_no_more_over_a_half_finished_item_is_still_incomplete(client)
     _complete(client, "Ada")
     _answer(client, _add(client), "Grace")
 
-    client.post(PAGE, {"add_another": "no"})
+    response = client.post(PAGE, {"add_another": "no"})
 
+    # The answer stands, but Continue is a submit and an incomplete one is
+    # refused: back to the page, not up to the hub.
+    assertRedirects(response, PAGE)
+    assert client.get(PAGE).context["collection"].declared_done is True
     assert client.get(PAGE).context["collection"].status == INCOMPLETE
 
 
@@ -689,11 +693,11 @@ def test_a_collection_with_no_item_wizard_is_misconfigured(rf, client):
         _dispatch(rf, client, _Wizardless)
 
 
-def test_a_collection_with_nowhere_to_continue_to_is_misconfigured(rf, client):
+def test_a_collection_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
     class _Endless(GuestCollectionView):
         hub_url_name = None
 
-    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _dispatch(rf, client, _Endless, method="post", data={"add_another": "no"})
 
 
