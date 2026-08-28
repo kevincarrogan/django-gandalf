@@ -328,9 +328,9 @@ class VehicleItemViewSet(ItemMemberMixin, WizardViewSet):
         .step(VehicleReviewStepView, name="review")
     )
 
-    def member_done(self, bound_wizard):
+    def run_done(self, bound_wizard):
         save_vehicle(self.request, self.get_item_id(), bound_wizard)
-        return super().member_done(bound_wizard)
+        return super().run_done(bound_wizard)
 
 
 class VehicleCollectionView(CollectionView):

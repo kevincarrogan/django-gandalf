@@ -28,12 +28,12 @@ class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def member_done(self, bound_wizard):
+    def run_done(self, bound_wizard):
         project = bound_wizard.path.find_step(name="project")
         self.get_journey_store().data["amount"] = int(
             project.form.cleaned_data["amount"]
         )
-        return super().member_done(bound_wizard)
+        return super().run_done(bound_wizard)
 
 
 class RefereesMemberViewSet(RunMemberMixin, WizardViewSet):

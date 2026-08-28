@@ -188,7 +188,7 @@ class ItemMemberMixin(RunMemberMixin):
     `get_hub_url_kwargs()` drops it. The collection page is this wizard's hub:
     `hub_url_name` names it, as it would for a plain member.
 
-    **Items override `member_done()`, never `done()`** — `RunMemberMixin`'s rule
+    **Items override `run_done()`, never `done()`** — `RunMemberMixin`'s rule
     holds here for its own reason, with one more on top: `done()` is also where
     the item's title is cached, and a member that never caches one leaves a
     page that can only ever say *Guest 1*, *Guest 2*.
@@ -274,7 +274,7 @@ class ItemMemberMixin(RunMemberMixin):
             return ""
         return str(step.form.cleaned_data.get(self.item_title_field, ""))
 
-    def member_recorded(
+    def run_recorded(
         self, bound_wizard: BoundWizard, store: JourneyStore, key: str
     ) -> None:
         """Cache this item's title, in the window where its answers are still
@@ -697,7 +697,7 @@ class CollectionMixin(HubMixin):
         self, item_id: str, member: Member, store: CollectionStore
     ) -> None:
         """Application work for an item going away — deleting whatever
-        `member_done()` saved for it. Runs while the item is still listed, so
+        `run_done()` saved for it. Runs while the item is still listed, so
         raising here is recoverable."""
 
     def item_unavailable(self, item_id: str) -> HttpResponse:

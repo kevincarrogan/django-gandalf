@@ -31,7 +31,7 @@ The members add up to a *journey* — the application, the claim, the profile
 — and everything a hub keeps is scoped to one: `SessionJourneyStore` is built
 with the journey's identity, which a hub reads off a URL kwarg or declares.
 `store.data` is the journey's record of what its members decided, written at
-`member_done()` and read by `blocked()` and `hidden()` without a walk. And a
+`run_done()` and read by `blocked()` and `hidden()` without a walk. And a
 journey has its own completion: `submit()` runs `journey_done()` once the
 hub is complete, then tombstones the journey so a revisit reads as submitted.
 
@@ -321,7 +321,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
                 member_key = "references"
 
                 # Unlocks once the applicant has said they are employed —
-                # a fact the Employment member wrote at member_done().
+                # a fact the Employment member wrote at run_done().
                 @classmethod
                 def blocked(cls, request, member, store):
                     return store.data.get("employment_status") != "employed"
@@ -341,7 +341,7 @@ class JourneyMemberMixin(_JourneyMemberBase):
         Read `store.data` and `store.has_stash()` here, never a stash's
         *state*. A stash is positional against a tree whose shape may depend
         on a branch predicate nobody has evaluated, so reading an answer out
-        of one costs a walk; `member_done()` is where a member pays that
+        of one costs a walk; `run_done()` is where a member pays that
         once and writes what it decided into `store.data`, and this is where
         the rest of the journey reads it back for free.
 
@@ -444,7 +444,7 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
     """Mix into a member's `WizardViewSet` so finishing it registers with the
     hub.
 
-    **Members override `member_done()`, never `done()`.** `done()` is this
+    **Members override `run_done()`, never `done()`.** `done()` is this
     mixin's: a subclass that replaced it would stash nothing, and the hub
     would never learn the member had finished — a member that appears to
     reset itself every time it is completed.
@@ -455,13 +455,13 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
             hub_url_name = "profile-hub"
             wizard = ...
 
-            def member_done(self, bound_wizard):
+            def run_done(self, bound_wizard):
                 save_contact(self.request.user, bound_wizard)
-                return super().member_done(bound_wizard)
+                return super().run_done(bound_wizard)
 
     Re-opening a completed member and fixing one answer walks to the end and
     fires `done()` again. That is the intended "edit and re-save" semantics,
-    which is why the bookkeeping here is idempotent and `member_done()` is
+    which is why the bookkeeping here is idempotent and `run_done()` is
     where work that runs once per edit belongs. Give the wizard a review step
     if the user should get an explicit confirm gate first.
 
@@ -507,26 +507,26 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
         return self.get_url_kwargs()
 
     def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
-        """Record the member as finished, then hand off to `member_done()`.
+        """Record the member as finished, then hand off to `run_done()`.
 
         The stash is taken first because it can only be taken at all while the
         run's state is readable — completion tears that down after `done()`
-        returns (see `WizardViewSet.finish`), but a `member_done()` that
-        obliterates or escapes would get there first. `member_recorded()`
+        returns (see `WizardViewSet.finish`), but a `run_done()` that
+        obliterates or escapes would get there first. `run_recorded()`
         shares that window, for the same reason. The run id is cleared after
-        `member_done()` returns, mirroring `finish`'s own ordering: a
-        `member_done()` that raises leaves the member resumable rather than
+        `run_done()` returns, mirroring `finish`'s own ordering: a
+        `run_done()` that raises leaves the member resumable rather than
         stranded with a stash and no way back to the run that made it.
         """
         key = self.get_member_key()
         store = self.get_journey_store()
         store.put_stash(key, bound_wizard.stash(label=self.get_member_label()))
-        self.member_recorded(bound_wizard, store, key)
-        response = self.member_done(bound_wizard)
+        self.run_recorded(bound_wizard, store, key)
+        response = self.run_done(bound_wizard)
         store.clear_run(key)
         return response
 
-    def member_recorded(
+    def run_recorded(
         self, bound_wizard: BoundWizard, store: JourneyStore, key: str
     ) -> None:
         """Bookkeeping to record alongside the stash, inside the window where
@@ -534,19 +534,19 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
 
         Sits where it does for the same reason the stash does: completion
         tears the run's state down after `done()` returns, and a
-        `member_done()` that obliterates or escapes gets there first — so
+        `run_done()` that obliterates or escapes gets there first — so
         anything that has to *read* the finished run belongs above it. A plain
         member records nothing here; a collection's item caches its title,
         because working one out means reading `bound_wizard.path` and there is
         no later moment at which that is possible.
 
-        Not for application work. That is `member_done()`, which runs once
+        Not for application work. That is `run_done()`, which runs once
         per edit and is allowed to fail; this is the library's own half of the
         same ordering, and a hub whose bookkeeping raised here would leave a
         stash it could not describe.
         """
 
-    def member_done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
+    def run_done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """What this member does when it finishes, beyond being recorded.
         Returns the response the user sees; the default sends them back to the
         hub, which is where a task list expects a finished task to deposit
@@ -557,12 +557,12 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
         `blocked()` or `hidden()` needs to know is read off the path now and
         written to `store.data`, once:
 
-            def member_done(self, bound_wizard):
+            def run_done(self, bound_wizard):
                 step = bound_wizard.path.find_step(name="status")
                 self.get_journey_store().data["employment_status"] = (
                     step.form.cleaned_data["status"]
                 )
-                return super().member_done(bound_wizard)
+                return super().run_done(bound_wizard)
         """
         return redirect(self.get_hub_url())
 
@@ -1224,7 +1224,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
         has returned is the journey tombstoned, so a `journey_done()` that
         raises leaves every member resumable rather than a journey that is
         neither submitted nor editable. It runs inside the window where the
-        stashes are still readable, exactly as `member_done()` runs before
+        stashes are still readable, exactly as `run_done()` runs before
         the run is torn down. Anything it needs to keep for the done page goes
         in `store.data`, which the tombstone keeps.
         """

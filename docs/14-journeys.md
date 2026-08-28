@@ -74,9 +74,9 @@ class SetupMemberViewSet(RunMemberMixin, WizardViewSet):
     hub_url_name = "readme-apply-hub"
     wizard = ApplicationStartViewSet.wizard
 
-    def member_done(self, bound_wizard):
+    def run_done(self, bound_wizard):
         record_applying_as(self.get_journey_store(), bound_wizard)
-        return super().member_done(bound_wizard)
+        return super().run_done(bound_wizard)
 ```
 
 The hub then lists `Member("setup", SetupMemberViewSet, title="Applying
@@ -156,7 +156,7 @@ class GrantApplicationHubView(HubView):
 sends the user back to the hub by default), then runs `journey_done()` — the
 application's work, and the one thing with no default — and only once that
 has returned tombstones the journey, exactly as `RunMemberMixin.done()` runs
-`member_done()` before clearing the run. A `journey_done()` that raises
+`run_done()` before clearing the run. A `journey_done()` that raises
 leaves every member resumable. It runs inside the window where the stashes
 are still readable; anything the done page needs goes in `store.data`, which
 the tombstone keeps.

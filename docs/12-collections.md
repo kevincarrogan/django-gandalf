@@ -171,7 +171,7 @@ only that one may.
 own records instead of the registry. `new_item_id()` mints identity,
 `get_item_title()` names a row, `get_collection_status()` decides how far the
 whole thing has got, `item_removed()` is where the application deletes
-whatever `member_done()` saved, and `collection_done()` is what happens when
+whatever `run_done()` saved, and `collection_done()` is what happens when
 the user says that is all.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch12_budget.py`](../tests/testapp/readme/ch12_budget.py)

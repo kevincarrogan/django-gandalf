@@ -64,7 +64,7 @@ class _MemberViewSet(RunMemberMixin, WizardViewSet):
     def get_start_url(self):
         return "/contact/"
 
-    def member_done(self, bound_wizard):
+    def run_done(self, bound_wizard):
         # The default redirects to `hub_url_name`; reversing a real hub URL
         # is the functional suite's job.
         from django.http import HttpResponse
@@ -1017,7 +1017,7 @@ def test_a_member_done_that_raises_leaves_the_member_resumable(rf):
     from gandalf.storage import SessionStorage
 
     class _Failing(_MemberViewSet):
-        def member_done(self, bound_wizard):
+        def run_done(self, bound_wizard):
             raise RuntimeError("nope")
 
     request = rf.get("/contact/run-1/")
@@ -1042,7 +1042,7 @@ def test_a_member_done_that_raises_leaves_the_member_resumable(rf):
 def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_member_done(
     rf,
 ):
-    """`member_recorded()` sits above `member_done()` and below the stash, so
+    """`run_recorded()` sits above `run_done()` and below the stash, so
     it can read what was just recorded and cannot be pre-empted by an
     application hook that obliterates, escapes or raises."""
     from gandalf.runtime import BoundWizard
@@ -1051,12 +1051,12 @@ def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_member_do
     events = []
 
     class _Recording(_MemberViewSet):
-        def member_recorded(self, bound_wizard, store, key):
+        def run_recorded(self, bound_wizard, store, key):
             events.append(("recorded", key, store.get_stash(key)["state"]))
 
-        def member_done(self, bound_wizard):
+        def run_done(self, bound_wizard):
             events.append(("done", self.get_member_key(), None))
-            return super().member_done(bound_wizard)
+            return super().run_done(bound_wizard)
 
     request = rf.get("/contact/run-1/")
     request.session = _session(
@@ -1087,7 +1087,7 @@ def test_bookkeeping_recorded_at_completion_can_still_read_the_runs_answers(rf):
     seen = []
 
     class _Recording(_MemberViewSet):
-        def member_recorded(self, bound_wizard, store, key):
+        def run_recorded(self, bound_wizard, store, key):
             seen.append(bound_wizard.get_state())
 
     request = rf.get("/contact/run-1/")
@@ -1161,14 +1161,14 @@ def test_a_member_without_a_hub_url_name_is_misconfigured(rf):
 
 
 def test_a_finished_member_sends_the_user_back_to_its_hub(rf):
-    """The default `member_done` — a task list expects a finished task to
+    """The default `run_done` — a task list expects a finished task to
     deposit the user back on the list."""
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
 
     class _Homed(_MemberViewSet):
         hub_url_name = "readme-hub"
-        member_done = RunMemberMixin.member_done
+        run_done = RunMemberMixin.run_done
 
     request = rf.get("/contact/run-1/")
     request.session = _session(
@@ -1658,10 +1658,10 @@ def test_finishing_a_member_writes_what_it_decided_where_the_hub_reads_it(rf):
     later render reads a string."""
 
     class _Deciding(_MemberViewSet):
-        def member_done(self, bound_wizard):
+        def run_done(self, bound_wizard):
             step = bound_wizard.path.find_step(name="first")
             self.get_journey_store().data["name"] = step.form.cleaned_data["name"]
-            return super().member_done(bound_wizard)
+            return super().run_done(bound_wizard)
 
     request = rf.get("/contact/run-1/")
     request.session = _session(

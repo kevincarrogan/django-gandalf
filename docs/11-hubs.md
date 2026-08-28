@@ -83,10 +83,10 @@ started** when none has been touched, **Incomplete** in between — so the
 button that submits the whole thing reads one flag rather than counting rows
 in the view. The rows are built once per request, so asking is free.
 
-**Members override `member_done()`, never `done()`.** `done()` belongs to
+**Members override `run_done()`, never `done()`.** `done()` belongs to
 the mixin: it stashes the finished answers under `member_key`, which is the
 only thing that can tell the hub the member is finished, then hands off to
-`member_done()` for what runs once per edit — saving to your models, say —
+`run_done()` for what runs once per edit — saving to your models, say —
 whose default sends the user back to the hub. A subclass that replaced
 `done()` would leave the member reading as not started forever.
 

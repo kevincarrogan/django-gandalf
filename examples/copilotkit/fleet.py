@@ -20,7 +20,7 @@ Two decisions worth naming, because neither is forced by the code.
 **It finishes what it adds.** Everywhere else this demo stops short of
 confirming, and that rule is about the *quote*: `done()` is where the price
 is struck and only the person may strike it. A vehicle is not that. Its
-`member_done` writes a registration and a value onto the person's own list,
+`run_done` writes a registration and a value onto the person's own list,
 which they can see and remove, and which commits them to nothing — and an
 item left unfinished is worse than not added, because it has no title, shows
 as *not started*, and prices as zero. Half a vehicle is not a smaller

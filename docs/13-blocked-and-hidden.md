@@ -66,10 +66,10 @@ class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def member_done(self, bound_wizard):
+    def run_done(self, bound_wizard):
         project = bound_wizard.path.find_step(name="project")
         self.get_journey_store().data["amount"] = int(project.form.cleaned_data["amount"])
-        return super().member_done(bound_wizard)
+        return super().run_done(bound_wizard)
 ```
 
 `store.data` is the journey's record of what its members decided — chapter
@@ -77,7 +77,7 @@ class GatedProjectMemberViewSet(RunMemberMixin, WizardViewSet):
 and `hidden()`, never a stash's state.** A stash is positional against a
 tree whose shape may depend on a branch predicate nobody has evaluated, so
 reading an answer out of one costs a walk — and a hub row must never walk.
-`member_done()` is where a member pays that walk once, while the run is
+`run_done()` is where a member pays that walk once, while the run is
 still readable and on a request that has already walked, and writes what it
 decided; every render after reads a string.
 
