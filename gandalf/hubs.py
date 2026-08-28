@@ -307,6 +307,12 @@ class JourneyMemberMixin(_JourneyMemberBase):
     #: a page and one composed by an item wizard agree.
     key_separator = ":"
 
+    def compose_key(self, prefix: str, key: str) -> str:
+        """`prefix` and `key` as one store key — the one spelling of nesting,
+        used by a hub for the members it lists and by an item wizard for
+        itself, so the two halves of a collection agree by construction."""
+        return f"{prefix}{self.key_separator}{key}"
+
     @classmethod
     def blocked(cls, request: HttpRequest, member: Member, store: JourneyStore) -> bool:
         """Whether this member is visible but not open to the user yet — the
@@ -505,8 +511,14 @@ class RunMemberMixin(JourneyMemberMixin, _MemberMixinBase):
         wizard, so a payload from the old shape is refused rather than walked
         into a tree it no longer matches."""
         if self.member_label is None:
-            return self.get_member_key()
+            return self.default_member_label()
         return self.member_label
+
+    def default_member_label(self) -> str:
+        """The label when none is declared: the member's key. An item of a
+        collection answers with the collection's, since a per-item id would
+        never match anything."""
+        return self.get_member_key()
 
     def get_hub_url_kwargs(self) -> dict[str, Any]:
         """This wizard's own mount-prefix kwargs — the journey among them."""
@@ -628,7 +640,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
         prefix = self.get_member_key()
         if prefix is None:
             return member.key
-        return f"{prefix}{self.key_separator}{member.key}"
+        return self.compose_key(prefix, member.key)
 
     def stash_label(self, member: Member) -> str:
         """The label a member's stash is expected to carry: its declared

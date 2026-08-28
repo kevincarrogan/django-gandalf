@@ -229,20 +229,16 @@ class ItemMemberMixin(RunMemberMixin):
         return str(item_id)
 
     def get_member_key(self) -> str:
-        """This item's key in the shared member key space."""
-        return f"{self.get_collection_key()}{self.key_separator}{self.get_item_id()}"
+        """This item's key in the shared member key space — what the
+        collection's `full_key()` composes for it."""
+        return self.compose_key(self.get_collection_key(), self.get_item_id())
 
-    def get_member_label(self) -> str:
-        """The *collection's* label, not this item's key.
-
-        The inherited default is the member key, which here carries an opaque
-        per-item id — so every item would stamp a different label into its
-        stash and the deploy guard would never match anything. One shape, one
-        label, however many items wear it.
-        """
-        if self.member_label is None:
-            return self.get_collection_key()
-        return self.member_label
+    def default_member_label(self) -> str:
+        """The *collection's* key, not this item's: the inherited default
+        carries an opaque per-item id, so every item would stamp a different
+        label into its stash and the deploy guard would never match anything.
+        One shape, one label, however many items wear it."""
+        return self.get_collection_key()
 
     def get_journey_store(self) -> CollectionStore:
         # `journey_store_class` is narrowed on this subclass; mypy reads the
@@ -280,7 +276,7 @@ class ItemMemberMixin(RunMemberMixin):
         """Cache this item's title, in the window where its answers are still
         readable."""
         title = self.get_item_title(bound_wizard)
-        self.get_journey_store().set_item_title(
+        cast(CollectionStore, store).set_item_title(
             self.get_collection_key(), self.get_item_id(), title or None
         )
 
@@ -345,7 +341,9 @@ class CollectionMixin(HubMixin):
     #: page, so the hub's own context object is suppressed.
     hub_context_name: str | None = None
     item_viewset: type[WizardViewSet] | None = None
-    item_url_kwarg = "item"
+    #: The hub's door segment is an item's id here, and it is a uuid rather
+    #: than a slug — which is what lets `remove/` be a safe sibling of it.
+    member_url_kwarg = "item"
     item_label: str | None = None
     item_reopen_step: str | None = None
     item_name: StrOrPromise | None = None
@@ -408,8 +406,8 @@ class CollectionMixin(HubMixin):
             label=self.get_item_label(),
             reopen_step=self.item_reopen_step,
             url_kwargs={
-                **self.get_collection_url_kwargs(),
-                self.item_url_kwarg: item_id,
+                **self.get_page_url_kwargs(),
+                self.member_url_kwarg: item_id,
             },
         )
 
@@ -515,7 +513,7 @@ class CollectionMixin(HubMixin):
         )
 
     def item_id_for(self, member: Member) -> str:
-        return cast(str, member.url_kwargs[self.item_url_kwarg])
+        return cast(str, member.url_kwargs[self.member_url_kwarg])
 
     def get_item_title(
         self, item_id: str, store: CollectionStore, position: int
@@ -561,28 +559,6 @@ class CollectionMixin(HubMixin):
             return INCOMPLETE
         return COMPLETE
 
-    def get_collection_url_kwargs(self) -> dict[str, Any]:
-        """Mount-prefix kwargs this page came in through, minus the item the
-        routes own — the same arrangement `get_page_url_kwargs()` makes."""
-        url_kwargs = getattr(self, "kwargs", None) or {}
-        return {
-            key: value
-            for key, value in url_kwargs.items()
-            if key != self.item_url_kwarg
-        }
-
-    def get_page_url(self) -> str:
-        """This collection's own page, reversed without the item segment."""
-        if self.url_name is None:
-            name = self.__class__.__name__
-            raise ImproperlyConfigured(
-                f"Set url_name (or override get_page_url) on {name}."
-            )
-        return reverse(self.url_name, kwargs=self.get_collection_url_kwargs())
-
-    def get_hub_url_kwargs(self) -> dict[str, Any]:
-        return self.get_collection_url_kwargs()
-
     def get_member_url(self, member: Member) -> str:
         """The hub's own hook: a row links to this page's door for its item."""
         return self.get_item_url(self.item_id_for(member))
@@ -599,15 +575,10 @@ class CollectionMixin(HubMixin):
     def _reverse_item(self, suffix: str, item_id: str) -> str:
         if self.url_name is None:
             name = self.__class__.__name__
-            raise ImproperlyConfigured(
-                f"Set url_name (or override get_item_url) on {name}."
-            )
+            raise ImproperlyConfigured(f"Set url_name on {name}.")
         return reverse(
             f"{self.url_name}-{suffix}",
-            kwargs={
-                **self.get_collection_url_kwargs(),
-                self.item_url_kwarg: item_id,
-            },
+            kwargs={**self.get_page_url_kwargs(), self.member_url_kwarg: item_id},
         )
 
     def get_form_class(self) -> type[AddAnotherForm]:
@@ -700,12 +671,6 @@ class CollectionMixin(HubMixin):
         `run_done()` saved for it. Runs while the item is still listed, so
         raising here is recoverable."""
 
-    def item_unavailable(self, item_id: str) -> HttpResponse:
-        """Response for an id this collection lists no item for — a removed
-        item, a stale link. The default sends the user back to the page;
-        override to raise `Http404`."""
-        return redirect(self.get_page_url())
-
 
 class CollectionView(CollectionMixin, TemplateView):
     """A collection page, its door into each item, and its remove route.
@@ -749,16 +714,16 @@ class CollectionView(CollectionMixin, TemplateView):
         view = cls.as_view()
         return [
             path("", view, name=cls.url_name),
-            path(f"<uuid:{cls.item_url_kwarg}>/", view, name=f"{cls.url_name}-item"),
+            path(f"<uuid:{cls.member_url_kwarg}>/", view, name=f"{cls.url_name}-item"),
             path(
-                f"<uuid:{cls.item_url_kwarg}>/remove/",
+                f"<uuid:{cls.member_url_kwarg}>/remove/",
                 view,
                 name=f"{cls.url_name}-remove",
             ),
         ]
 
     def _item_id(self) -> str | None:
-        item_id = self.kwargs.get(self.item_url_kwarg)
+        item_id = self.kwargs.get(self.member_url_kwarg)
         return None if item_id is None else str(item_id)
 
     def _is_remove(self) -> bool:
@@ -784,7 +749,7 @@ class CollectionView(CollectionMixin, TemplateView):
         try:
             member = self.get_item(item_id)
         except ItemNotFound:
-            return self.item_unavailable(item_id)
+            return self.member_unavailable(item_id)
         if self._is_remove():
             return self.render_to_response(self.get_context_data(row=self.row(item_id)))
         # Entering yields a step URL for any item this collection lists —
@@ -792,7 +757,7 @@ class CollectionView(CollectionMixin, TemplateView):
         # `member_blocked()` an app has overridden to gate its items.
         url = self.enter(member)
         if url is None:
-            return self.item_unavailable(item_id)
+            return self.member_unavailable(item_id)
         return redirect(url)
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponseBase:
@@ -809,7 +774,7 @@ class CollectionView(CollectionMixin, TemplateView):
             try:
                 self.get_item(item_id)
             except ItemNotFound:
-                return self.item_unavailable(item_id)
+                return self.member_unavailable(item_id)
             return self.remove_item(item_id)
         form = self.get_form(request.POST)
         if not form.is_valid():

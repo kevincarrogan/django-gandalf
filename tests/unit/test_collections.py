@@ -441,7 +441,7 @@ def test_an_item_id_the_registry_does_not_list_is_refused(collection):
 
 
 def test_an_unavailable_item_is_sent_back_to_the_page(collection):
-    response = collection().item_unavailable("nope")
+    response = collection().member_unavailable("nope")
 
     assert response.status_code == 302
     assert response["Location"] == "/party-guests/"
