@@ -283,8 +283,13 @@ class JourneyMemberMixin(_JourneyMemberBase):
     it lists (`HubMixin.full_key()`), the way a collection prefixes its items.
     """
 
-    #: The key this member finishes under in its hub's store: a member's
-    #: stash key, a nested hub's prefix. `None` for a hub nothing lists.
+    #: The key this member finishes under in the journey's store — the *full*
+    #: key, prefix included: `"referees"` under a root hub,
+    #: `"supporting:referees"` under a hub keyed `"supporting"`. A wizard
+    #: stashes under it; a hub keys every member it lists under it. It is the
+    #: same string the hub above computes with `full_key()` from the *short*
+    #: `Member.key` it lists this member by, and the hub checks that the two
+    #: agree. `None` for a hub nothing lists.
     member_key: str | None = None
     #: The hub finishing returns to — the parent's `url_name`. `None` for a
     #: root hub.
@@ -600,8 +605,9 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
     # --- this hub's place on the journey -----------------------------------
 
     def get_member_key(self) -> str | None:
-        """The prefix this hub keys its members under: its own key on the hub
-        above, or `None` for a root hub."""
+        """The prefix this hub keys its members under: its own full key on the
+        journey (`"supporting"`, or `"supporting:more"` two hubs down), or
+        `None` for a root hub."""
         return self.member_key
 
     @property
@@ -704,9 +710,11 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
         bookkeeping declares neither. A hub listed as a member is not — it
         keys every member *it* lists under its `member_key`, so one that
         declares none would file them at the root beside this hub's own; and
-        a hub with no `hub_url_name` has nowhere for its submit to go. A hub
-        that leaves `url_name` unset is mounted under a name only its URLconf
-        knows, so there is nothing to compare the return against.
+        a hub with no `hub_url_name` has nowhere for its submit to go. Those
+        two are reported as what they are, something left undeclared, rather
+        than as drift. A hub that leaves `url_name` unset is mounted under a
+        name only its URLconf knows, so there is nothing to compare the
+        return against.
         """
         keys = [member.key for member in members]
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
@@ -739,6 +747,26 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
                 "A hub listed as a member must declare url_name, or the hub "
                 "above it has no page to send the user to. Unmounted: "
                 f"{', '.join(sorted(unmounted))}."
+            )
+        undeclared = [
+            f"{member.key} ({member.viewset.__name__} leaves {', '.join(missing)} unset)"
+            for member in members
+            if self.is_hub(member) and member.viewset is not None
+            for missing in [
+                [
+                    name
+                    for name in ("member_key", "hub_url_name")
+                    if getattr(member.viewset, name, None) is None
+                ]
+            ]
+            if missing
+        ]
+        if undeclared:
+            raise ImproperlyConfigured(
+                "A hub listed as a member must declare member_key (the prefix "
+                "it keys its own members under — here its key on this hub, "
+                "under this hub's prefix if any) and hub_url_name (this hub, "
+                f"where its submit returns to). Undeclared: {', '.join(undeclared)}."
             )
         drifted = [
             member

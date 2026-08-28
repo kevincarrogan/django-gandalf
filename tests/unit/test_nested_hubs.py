@@ -116,7 +116,7 @@ def test_a_nested_hub_may_not_leave_its_key_unset(rf):
     class _Unkeyed(SupportingHubView):
         member_key = None
 
-    with pytest.raises(ImproperlyConfigured, match="must match"):
+    with pytest.raises(ImproperlyConfigured, match="leaves member_key unset"):
         _validate(rf, members=[Member("supporting", _Unkeyed)])
 
 
@@ -130,7 +130,7 @@ def test_a_nested_hub_must_return_to_the_hub_that_lists_it(rf):
     class _Rootless(SupportingHubView):
         hub_url_name = None
 
-    with pytest.raises(ImproperlyConfigured, match="must return to the hub"):
+    with pytest.raises(ImproperlyConfigured, match="leaves hub_url_name unset"):
         _validate(rf, members=[Member("supporting", _Rootless)])
 
 

@@ -501,6 +501,20 @@ def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
         client.post(reverse("readme-hub"))
 
 
+def test_a_nested_hub_that_declares_no_key_is_told_so_not_that_it_drifted(rf, client):
+    class _Unkeyed(ch14_journey.SupportingHubView):
+        member_key = None
+
+    class _Parent(ch14_journey.GrantApplicationHubView):
+        members = [Member("supporting", _Unkeyed)]
+
+    request = rf.get("/readme/apply/app-1/")
+    request.session = client.session
+
+    with pytest.raises(ImproperlyConfigured, match="leaves member_key unset"):
+        _Parent.as_view()(request, journey="app-1")
+
+
 def test_a_nested_hub_with_no_url_name_is_misconfigured(rf, client):
     """A hub listed as a member is reached by its page, so it has to have one."""
 
