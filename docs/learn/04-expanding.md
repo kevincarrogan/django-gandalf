@@ -51,22 +51,17 @@ class ExpandingApplicationViewSet(WizardViewSet):
 The builder runs mid-walk, behind the validated count, and its steps are
 spliced in where `.expand()` sits — inside the organisation arm, so an
 individual is never asked. Answering the count parks the user on the first
-grown step in a *single* request; a `get_wizard()` that read the count back
-off stored state (chapter 5) would have to walk twice to notice its own
-submission had changed the shape.
+grown step in a single request.
 
-Good to know: the builder reaches back to prior answers **by name**, so
-renaming an upstream step can break it; grown answers store positionally, so
-raising a count keeps the answers already given and lowering it drops the
-trailing ones; and every grown step must be routable (carry a `name`).
+Grown answers are stored positionally: raising a count keeps the answers
+already given, lowering it drops the trailing ones. That is exactly why
+`.expand()` is the wrong tool for a list the user grows and prunes over time
+— deleting from the middle would shift every answer after it. Budget lines,
+in [chapter 12](12-collections.md), are that kind of list, and each is its
+own run.
 
-That positional storage is exactly why `.expand()` is the wrong tool for a
-list the user grows and prunes over time — deleting from the middle would
-shift every answer after it. Budget lines, in chapter 12, are that kind of
-list, and each is its own run.
-
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`ch04_expand.py`](../tests/testapp/readme/ch04_expand.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`ch04_expand.py`](../../tests/testapp/readme/ch04_expand.py) &nbsp;·&nbsp; **Reference:** [`Wizard.expand()`](../reference/wizard.md)
 
 ---
 
-[← Chapter 3 — Switching on a choice](03-switching.md) · [README](../README.md) · [Chapter 5 — A wizard per request →](05-a-wizard-per-request.md)
+[← Chapter 3 — Switching on a choice](03-switching.md) · [Learn](README.md) · [Chapter 5 — A wizard per request →](05-a-wizard-per-request.md)

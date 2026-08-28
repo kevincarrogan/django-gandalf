@@ -1,12 +1,12 @@
-# Appendix D — Coming from `django-formtools`
+# Coming from `django-formtools`
 
 Gandalf neither forks nor depends on `django-formtools` — the storage shape,
 the URL model, and the re-proving walk all differ, so there is no drop-in
 replacement. What maps cleanly is the *declaration*: a `form_list` becomes
 chained `.step(...)` calls, and a `condition_dict` becomes
 `.branch(condition(predicate, subflow))`. The predicates are the same idea —
-a callable given the request — but a Gandalf predicate runs behind a
-fully-validated prefix, so it reads prior answers with
+a callable that decides — but a Gandalf predicate is handed a `WizardContext`
+and runs behind a fully-validated prefix, so it reads prior answers with
 `path.find_step(...).form.cleaned_data` unconditionally.
 
 ### Linear wizard
@@ -82,4 +82,4 @@ multiply.
 
 ---
 
-[← Appendix C — What replaying costs](appendix-c-what-replaying-costs.md) · [README](../README.md)
+[← Chapter 15 — Outline, observers and the driver](15-outline-observers-and-the-driver.md) · [Learn](README.md) · **Reference:** [Wizard](../reference/wizard.md)

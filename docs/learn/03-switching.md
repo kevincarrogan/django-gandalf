@@ -46,25 +46,20 @@ class SwitchingApplicationViewSet(WizardViewSet):
 `ch02.organisation_details` is untouched — this chapter's
 `organisation_details` is a new value built from it.
 
-A selector is the same arbitrary code a predicate is — read several answers,
-call out to a service, compute whatever you like — but asking *which* rather
-than *whether* buys three things. Exactly one case can apply, so overlapping
-conditions cannot resolve by declaration order. The selector runs **once per
-switch** however many cases there are, so it is free to be expensive. And each
-case's answers are stored under its own name rather than its position, so
-reordering the cases cannot strand them.
+A selector is the same arbitrary code a predicate is, but asking *which*
+rather than *whether* buys three things: exactly one case can apply, so
+overlapping conditions cannot resolve by declaration order; the selector runs
+once per switch however many cases there are; and each case's answers are
+stored under its own name, so reordering the cases cannot strand them.
 
 `on_field(step, field)` is the common case said declaratively — route on the
 value of an earlier answer. Prefer a plain function whenever the decision is
-anything more than "what did they say"; a multi-valued field has no single
-value to switch on, so route those with a predicate `.branch()` or a selector
-of your own.
+anything more than "what did they say". A value no case names falls to
+`default`, or past the switch entirely when there is none — which is what
+the community group does.
 
-A value no case names falls to `default`, or past the switch entirely when
-there is none — which is what the community group does.
-
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/switch/ &nbsp;·&nbsp; **Source:** [`ch03_switch.py`](../tests/testapp/readme/ch03_switch.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/switch/ &nbsp;·&nbsp; **Source:** [`ch03_switch.py`](../../tests/testapp/readme/ch03_switch.py) &nbsp;·&nbsp; **Reference:** [`Wizard.switch()`](../reference/wizard.md)
 
 ---
 
-[← Chapter 2 — Branching on an answer](02-branching.md) · [README](../README.md) · [Chapter 4 — Expanding from an answer →](04-expanding.md)
+[← Chapter 2 — Branching on an answer](02-branching.md) · [Learn](README.md) · [Chapter 4 — Expanding from an answer →](04-expanding.md)

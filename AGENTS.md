@@ -11,8 +11,8 @@ This project follows a test-driven development approach for filling out the requ
 - Run the relevant tests again and confirm they pass.
 - Refactor after the tests pass, keeping the test suite green.
 - Only move on to the next task after the failing-test, implementation, passing-test, and refactor cycle is complete.
-- Keep `README.md` in sync where possible, and call out any inconsistencies you notice between it and the implemented behavior.
-- Prefer adding reusable developer workflow commands to `justfile` rather than documenting raw shell commands in `README.md`. Keep README prose focused on project behavior and point to the `just` command when a workflow needs to be discoverable.
+- Keep the docs in sync where possible: `docs/learn/` is the walkthrough (one idea per chapter, not exhaustive) and `docs/reference/` is the API (one page per thing, exhaustive). A new hook, attribute or default goes in the reference; the walkthrough only changes when the *story* does. Call out any inconsistencies you notice between the docs and the implemented behavior.
+- Prefer adding reusable developer workflow commands to `justfile` rather than documenting raw shell commands in the docs. Keep doc prose focused on project behavior and point to the `just` command when a workflow needs to be discoverable.
 - In documentation examples, if Django classes/functions are referenced, include the full Django import lines needed for that snippet.
 
 ## Django Test Style

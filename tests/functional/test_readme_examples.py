@@ -1,10 +1,10 @@
-"""Drive every chapter of the README through the Django test client.
+"""Drive every chapter of the Learn walkthrough through the Django test client.
 
-Each chapter of ``README.md`` has a runnable counterpart in
+Each chapter of ``docs/learn/`` has a runnable counterpart in
 ``tests/testapp/readme/`` mounted under ``readme/``. These tests exercise those
-counterparts end to end, so a README snippet that stops working (or a "Try it
-live" link that stops resolving) fails CI. The README's *Testing your wizards*
-appendix is kept honest the same way: its snippets are these tests, driven
+counterparts end to end, so a chapter snippet that stops working (or a "Try it
+live" link that stops resolving) fails CI. The *Testing* reference page
+(``docs/reference/testing.md``) is kept honest the same way: its snippets are these tests, driven
 through ``gandalf.testing``.
 """
 

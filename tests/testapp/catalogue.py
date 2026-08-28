@@ -31,7 +31,7 @@ from gandalf.viewsets import WizardViewSet
 # is mount-prefix context that only the catalogue can supply.
 RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "member", "item"})
 
-#: The journey the README's chapter 14 examples are listed under. Any slug
+#: The journey the walkthrough's chapter 14 examples are listed under. Any slug
 #: works — a journey is minted by the setup wizard, and the index only needs
 #: the URLs to reverse.
 JOURNEY = {"journey": "example"}
@@ -70,9 +70,9 @@ class Group:
 
 GROUPS = (
     Group(
-        "Start here — the README, chapter by chapter",
+        "Start here — the Learn walkthrough, chapter by chapter",
         "One grant application, built up a chapter at a time. Each entry is "
-        "the code its README chapter shows, running for real, and every one "
+        "the code its docs/learn chapter shows, running for real, and every one "
         "is driven by tests/functional/test_readme_examples.py — so what you "
         "click through here is what the documentation promises.",
         (

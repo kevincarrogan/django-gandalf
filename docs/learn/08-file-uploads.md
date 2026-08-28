@@ -32,26 +32,19 @@ The step template just needs the usual `enctype="multipart/form-data"`. Here
 document step — it is on the organisation arm.
 
 On replay, Gandalf reopens each stored file and re-injects it into
-`request.FILES` before re-validating the step, so validators that inspect the
-upload see the same value they saw originally. The bytes stay on the backend
-until something asks for them: a plain `FileField` only reads the name and
-the size, both of which the ref already carries, so a run's requests cost the
-same whether its uploads are a kilobyte or a hundred megabytes. A validator
-that does read the content — `ImageField`, a MIME sniff — still gets it,
-fetched at the moment it asks. Editing respects keep-vs-replace per field.
-
-The run's files are cleaned up automatically once `done()`'s response has
-been rendered — so a `done()` that hands back a `TemplateResponse` can still
-read the finished run back in the template, even though Django renders that
-response after the view has returned.
+`request.FILES` before re-validating the step, so validators see the same
+value they saw originally. The bytes stay on the backend until something
+asks for them — a plain `FileField` reads only the name and size, which the
+ref already carries — so a run costs the same whether its uploads are a
+kilobyte or a hundred megabytes. Editing respects keep-vs-replace per field,
+and the run's files are cleaned up once `done()`'s response has rendered.
 
 The default storage writes under a `gandalf/<run_id>/` prefix of Django's
-default storage; point it elsewhere (S3, a per-tenant location) by
-subclassing `WizardFileStorage` and passing it to
-`.configure(file_storage_class=...)`.
+default storage; point it elsewhere by subclassing `WizardFileStorage` and
+passing it to `.configure(file_storage_class=...)`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/upload/ &nbsp;·&nbsp; **Source:** [`ch08_uploads.py`](../tests/testapp/readme/ch08_uploads.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/upload/ &nbsp;·&nbsp; **Source:** [`ch08_uploads.py`](../../tests/testapp/readme/ch08_uploads.py) &nbsp;·&nbsp; **Reference:** [File uploads](../reference/file-uploads.md)
 
 ---
 
-[← Chapter 7 — Step views and escapes](07-step-views-and-escapes.md) · [README](../README.md) · [Chapter 9 — Completion hooks and run metadata →](09-completion-hooks-and-metadata.md)
+[← Chapter 7 — Step views and escapes](07-step-views-and-escapes.md) · [Learn](README.md) · [Chapter 9 — Completion hooks and run metadata →](09-completion-hooks-and-metadata.md)

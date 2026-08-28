@@ -11,9 +11,9 @@ because a hub is itself a member, a journey's task lists nest.
 Everything a hub keeps — which run each member is being answered in, the
 stash a finished one left, a collection's items, what the members decided —
 lives in one record per journey. A hub mounted under a `<journey>` segment
-reads its journey off the URL, and so does every member, collection page and
-item wizard mounted under the same segment, so two applications in two tabs
-are two URLs and two records in one session that never see each other:
+reads its journey off the URL, and so does every member mounted under the
+same segment, so two applications in two tabs are two URLs and two records
+in one session that never see each other:
 
 ```python
 urlpatterns = [
@@ -33,9 +33,7 @@ urlpatterns = [
 
 Siblings, as always. A hub not mounted under a journey uses the one it
 declares, `journey = "default"` — one per session, which is what chapters
-11 to 13 were. Every member's viewset declares the same pair (`journey`,
-`journey_url_kwarg`), and the hub refuses one that does not, since it would
-finish into a record the hub never reads.
+11 to 13 were.
 
 ### Somewhere to be minted
 
@@ -82,18 +80,17 @@ class SetupMemberViewSet(WizardMemberMixin, WizardViewSet):
 ```
 
 The hub then lists `Member("setup", SetupMemberViewSet, title="Applying
-as")` — the same wizard as a `WizardMemberMixin` viewset mounted under the journey
-— so the setup answers are re-openable like any other member.
+as")` — the same wizard as a member mounted under the journey — so the setup
+answers are re-openable like any other member.
 
 ### A memory
 
 `store.data` is the journey's record of what its members decided: a
 JSON-safe mapping written through on every assignment, with
-`for_member(key)` sub-bags so members cannot tread on each other or on the
-journey. It is the same bag chapter 9's `bound_wizard.metadata` is, kept for
-the journey rather than for one run, and it is the answer to the question a
-stash cannot answer cheaply. `record_applying_as` writes *individual* or
-*organisation* there, and the governing document member reads it back:
+`for_member(key)` sub-bags so members cannot tread on each other. It is the
+same bag chapter 9's `bound_wizard.metadata` is, kept for the journey rather
+than for one run. `record_applying_as` writes *individual* or *organisation*
+there, and the governing document member reads it back:
 
 ```python
 class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
@@ -107,12 +104,9 @@ class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
 ```
 
 The project member writes the amount and match funding reads it, exactly as
-in chapter 13; referees lock on `has_stash("contact")`; contact writes the
-email address, which is how `journey_done()` below can submit without
-reading a stash's positional state — a stash is for re-opening, `data` is
-for reading back. It is the bargain a
-collection strikes to name its rows — one walk at completion, none per render
-— generalised from one cached title to the whole journey.
+in chapter 13; contact writes the email address, which is how
+`journey_done()` below can submit without reading a stash. A stash is for
+re-opening; `data` is for reading back.
 
 ### An ending
 
@@ -156,21 +150,13 @@ class GrantApplicationHubView(HubView):
 {% endif %}
 ```
 
-`submit()` refuses if any row is not complete (`hub_incomplete()`, which
-sends the user back to the hub by default), then runs `journey_done()` — the
-application's work, and the one thing with no default — and only once that
-has returned tombstones the journey, exactly as `WizardMemberMixin.done()` runs
-`run_done()` before clearing the run. A `journey_done()` that raises
-leaves every member resumable. It runs inside the window where the stashes
-are still readable; anything the done page needs goes in `store.data`, which
-the tombstone keeps.
-
-After that, the runs and stashes are gone, so a submitted journey can neither
-be edited nor keep growing the session. The hub page and every door answer
-with `journey_completed()` — `Http404` until you say what a submitted journey
-looks like — a collection page and a nested hub send the user up to the hub
-above them, and each member's own wizard sends a bookmarked step URL back to
-its hub. Only the ten most recently completed journeys are kept per session.
+`submit()` refuses if any row is not complete, then runs `journey_done()` —
+the application's work, and the one thing with no default — and only once
+that has returned tombstones the journey. A `journey_done()` that raises
+leaves every member resumable. After that, the runs and stashes are gone;
+the hub page answers with `journey_completed()`, which is `Http404` until
+you say what a submitted journey looks like. Anything the done page needs
+goes in `store.data`, which the tombstone keeps.
 
 ### A task list within the task list
 
@@ -198,44 +184,25 @@ class SupportingHubView(HubView):
     ]
 ```
 
-**Nesting is a key namespace, not a second record.** A nested hub's
-`member_key` is the prefix every member it lists is keyed under
-(`full_key()`), the way a collection prefixes its items — so a wizard two
-hubs down declares its full key, `"supporting:referees"`, and the hub checks
-it agrees, exactly as it checks a drifted `member_key` or `hub_url_name` one
-level up. Everything still lives in the one journey record: the governing
-document's `hidden()` reads `store.data["applying_as"]`, written by the setup
-wizard at the root, without being handed anything.
-
-**A hub's row is its own rows.** The application never reads a stash for
-`supporting`; it asks the hub's `status_for()`, which derives the same
-status the hub's own page shows — Not started, Incomplete, Complete — from
-the members under its prefix. Still no walk. The row links straight at the
-hub's page, and so does the door.
-
-**Only the root ends the journey.** A POST to the supporting hub is its
-submit too, but `is_nested` is true, so it runs `hub_done()` — back to the
-application by default — and tombstones nothing. `journey_done()` and the
-tombstone are the root's alone, and they take every nested run and stash
-with them. There is no new word for another layer: a hub in a hub in a hub
-is three hubs, and `JourneyMemberMixin` is what every one of them and every
-wizard share.
+Nesting is a key namespace, not a second record: a nested hub's
+`member_key` is the prefix every member it lists is keyed under, so a wizard
+two hubs down declares its full key, `"supporting:referees"`. Everything
+still lives in the one journey record — the governing document's `hidden()`
+reads `store.data["applying_as"]`, written by the setup wizard at the root.
+A hub's row is its own rows' status, and only the root ends the journey: a
+POST to the supporting hub goes back up to the application.
 
 ### Beyond the session
 
-The store behind all of this is one class,
-`SessionJourneyStore(context, journey)`, and the contract it satisfies is
-written down as `gandalf.types.JourneyStore` (and `CollectionStore` for a
-collection): the member runs and stashes, `data`, `complete()` and
-`is_complete()`, plus a collection's registry. An application of seven
-members is a lot to hold in a cookie; the day it outgrows the session, a
-store that keeps the same things in a table drops in by `journey_store_class`
-alone — [`tests/testapp/durable.py`](../tests/testapp/durable.py) is that store,
-scoped by owner and by journey, and the swap is the same one chapter 9
-described for runs.
+The store behind all of this is `SessionJourneyStore(context, journey)`, and
+the contract it satisfies is written down as a protocol. The day an
+application outgrows the session, a store that keeps the same things in a
+table drops in by `journey_store_class` alone. The
+[Journey store reference](../reference/journey-store.md) has the contract
+and points at the worked durable store in the test app.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch14_journey.py`](../tests/testapp/readme/ch14_journey.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch14_journey.py`](../../tests/testapp/readme/ch14_journey.py) &nbsp;·&nbsp; **Reference:** [Hubs](../reference/hubs.md)
 
 ---
 
-[← Chapter 13 — Blocked and hidden members](13-blocked-and-hidden.md) · [README](../README.md) · [Chapter 15 — Outline, observers and the driver →](15-outline-observers-and-the-driver.md)
+[← Chapter 13 — Blocked and hidden members](13-blocked-and-hidden.md) · [Learn](README.md) · [Chapter 15 — Outline, observers and the driver →](15-outline-observers-and-the-driver.md)

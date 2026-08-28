@@ -51,32 +51,33 @@ class BranchingApplicationViewSet(WizardViewSet):
         return HttpResponse(f"Application from {who} <{answers['email']}>")
 ```
 
-`.branch()` forks the flow on a prior answer. Each arm is a sub-`Wizard` (or
-`None` for "nothing extra here"); a `condition(predicate, arm)` pairs a
-`predicate(context)` with the arm it selects. Selection is **first-match-wins**,
-falling back to `default`.
+`.branch()` forks the flow on a prior answer. Each arm is a sub-`Wizard`
+(an empty `Wizard()` for "nothing extra here"); a `condition(predicate, arm)`
+pairs a `predicate(context)` with the arm it selects. Selection is
+first-match-wins, falling back to `default`, which may be left out.
 
-A predicate always runs **behind a fully-validated prefix** — every step before
+A predicate always runs behind a fully-validated prefix — every step before
 the branch has already validated on this same walk — so it can dereference
-`path.find_step(...).form.cleaned_data` unconditionally without guarding for
-missing answers.
+`path.find_step(...).form.cleaned_data` without guarding for missing answers.
 
-**Why the arms are module-level values, and why `applicant()` is a function.**
+### Why `applicant()` is a function
+
 The builder is immutable: every `.step()` / `.branch()` / `.expand()` returns
-a *new* `Wizard`, like Django `QuerySet` chaining — nothing mutates in place.
-So `organisation_details` is a thing later chapters can *grow* — chapter 3
-adds a switch to it, chapter 4 an expansion — and hand back into
-`applicant()` without chapter 2's own wizard changing underneath them. Every
-chapter from here on is `applicant(organisation=...)` plus whatever the
-chapter is about. That is what composable means here: arms are wizards, so a
-subflow defined once drops into several branches, and a wizard is a value you
-can pass around.
+a *new* `Wizard`, like Django `QuerySet` chaining. So `organisation_details`
+is a thing later chapters can *grow* — chapter 3 adds a switch to it, chapter
+4 an expansion — and hand back into `applicant()` without chapter 2's own
+wizard changing underneath them. Every chapter from here on is
+`applicant(organisation=...)` plus whatever the chapter is about.
+
+That is what composable means here: arms are wizards, so a subflow defined
+once drops into several branches, and a wizard is a value you can pass
+around.
 
 A de-selected arm's answers are not thrown away either — see
 [dormant memory](06-the-summary.md#dormant-memory) in chapter 6.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`ch02_branching.py`](../tests/testapp/readme/ch02_branching.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`ch02_branching.py`](../../tests/testapp/readme/ch02_branching.py) &nbsp;·&nbsp; **Reference:** [`Wizard.branch()`](../reference/wizard.md)
 
 ---
 
-[← Chapter 1 — Steps and completion](01-steps-and-completion.md) · [README](../README.md) · [Chapter 3 — Switching on a choice →](03-switching.md)
+[← Chapter 1 — Steps and completion](01-steps-and-completion.md) · [Learn](README.md) · [Chapter 3 — Switching on a choice →](03-switching.md)

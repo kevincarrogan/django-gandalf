@@ -2,7 +2,7 @@
 
 If you're exploring this project:
 
-1. Read `README.md` for the intended developer experience and end-to-end examples.
+1. Read `README.md`, then `docs/learn/` (the walkthrough) and `docs/reference/` (the API), for the intended developer experience and end-to-end examples.
 2. Read `ARCHITECTURE.md` for the runtime structure and how the pieces fit together.
 3. Browse `tests/testapp/` for working `WizardViewSet` examples that exercise the real API.
 4. Open issues or pull requests with concrete branch/tree use-cases, especially where existing wizard tooling becomes hard to maintain.
