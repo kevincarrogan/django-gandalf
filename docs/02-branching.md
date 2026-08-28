@@ -1,4 +1,4 @@
-# Chapter 2 — Individuals and organisations
+# Chapter 2 — Branching on an answer
 
 The fund takes applications from people and from organisations, and the two
 are asked different things. The first question decides which.
@@ -73,10 +73,10 @@ subflow defined once drops into several branches, and a wizard is a value you
 can pass around.
 
 A de-selected arm's answers are not thrown away either — see
-[dormant memory](06-check-your-answers.md#dormant-memory) in chapter 6.
+[dormant memory](06-the-summary.md#dormant-memory) in chapter 6.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`ch02_branching.py`](../tests/testapp/readme/ch02_branching.py)
 
 ---
 
-[← Chapter 1 — A first wizard](01-a-first-wizard.md) · [README](../README.md) · [Chapter 3 — Which kind of organisation →](03-which-kind-of-organisation.md)
+[← Chapter 1 — Steps and completion](01-steps-and-completion.md) · [README](../README.md) · [Chapter 3 — Switching on a choice →](03-switching.md)

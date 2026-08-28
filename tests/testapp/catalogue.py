@@ -23,13 +23,13 @@ from functools import lru_cache
 from django.urls import NoReverseMatch, get_resolver, reverse
 
 from gandalf.collections import CollectionView
-from gandalf.sections import HubView
+from gandalf.hubs import HubView
 from gandalf.viewsets import WizardViewSet
 
 
 # URL kwargs the wizard's own patterns own. Anything else a pattern captures
 # is mount-prefix context that only the catalogue can supply.
-RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "section", "item"})
+RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "member", "item"})
 
 #: The journey the README's chapter 14 examples are listed under. Any slug
 #: works — a journey is minted by the setup wizard, and the index only needs
@@ -125,15 +125,15 @@ GROUPS = (
             ),
             Example(
                 "readme-hub",
-                note="Chapter 11. The task list; enter the sections from here.",
+                note="Chapter 11. The task list; enter the members from here.",
             ),
             Example(
                 "readme-hub-contact",
-                note="Chapter 11. A section, reached from the task list.",
+                note="Chapter 11. A member, reached from the task list.",
             ),
             Example(
                 "readme-hub-address",
-                note="Chapter 11. A section, reached from the task list.",
+                note="Chapter 11. A member, reached from the task list.",
             ),
             Example(
                 "readme-project-hub",
@@ -141,7 +141,7 @@ GROUPS = (
             ),
             Example(
                 "readme-project",
-                note="Chapter 12. The project section beside the budget.",
+                note="Chapter 12. The project member beside the budget.",
             ),
             Example(
                 "readme-budget",
@@ -149,7 +149,7 @@ GROUPS = (
             ),
             Example(
                 "readme-gated",
-                note="Chapter 13. Ask for over 10,000 and a section appears.",
+                note="Chapter 13. Ask for over 10,000 and a member appears.",
             ),
             Example("readme-gated-project"),
             Example("readme-gated-referees"),
@@ -276,7 +276,7 @@ GROUPS = (
         "actually are.",
         (
             Example("routed-wizard"),
-            Example("section-editing-wizard"),
+            Example("member-editing-wizard"),
             Example(
                 "org-scoped-wizard",
                 url_kwargs={"org": "acme"},
@@ -360,20 +360,20 @@ GROUPS = (
             Example("branching-stashing-wizard", note="Run this first."),
             Example(
                 "branching-stashing-wizard-resurrect",
-                title="resurrect_sections_stash",
-                description="Consumes the sections stash and re-opens it at "
+                title="resurrect_members_stash",
+                description="Consumes the members stash and re-opens it at "
                 "the count step.",
                 note="Then this — it pops the stash, so it only works once.",
             ),
             Example(
-                "stashed-section-keys",
-                title="stashed_section_keys",
+                "stashed-member-keys",
+                title="stashed_member_keys",
                 description="Plain text: which stashes this session holds.",
             ),
             Example(
-                "discard-sections-stash",
-                title="discard_sections_stash",
-                description="Throws the sections stash away.",
+                "discard-members-stash",
+                title="discard_members_stash",
+                description="Throws the members stash away.",
             ),
             Example(
                 "resurrect-empty-stash",
@@ -385,22 +385,22 @@ GROUPS = (
     ),
     Group(
         "Hub and spoke",
-        "Parallel sections instead of one line: a task list where each row is "
-        "an independent run with its own status. Enter the sections from "
-        "their hub — a section's own URL starts a run the hub is not tracking.",
+        "Parallel members instead of one line: a task list where each row is "
+        "an independent run with its own status. Enter the members from "
+        "their hub — a member's own URL starts a run the hub is not tracking.",
         (
             Example("scenario-hub", note="Start here."),
-            Example("hub-plain-section"),
-            Example("hub-advancing-section"),
+            Example("hub-plain-member"),
+            Example("hub-advancing-member"),
             Example(
                 "org-hub",
                 url_kwargs={"org": "acme"},
-                note="A hub whose sections carry the tenant slug.",
+                note="A hub whose members carry the tenant slug.",
             ),
-            Example("org-hub-section-wizard", url_kwargs={"org": "acme"}),
+            Example("org-hub-member-wizard", url_kwargs={"org": "acme"}),
             Example("counting-hub", note="Start here."),
-            Example("counting-hub-section-wizard"),
-            Example("other-counting-hub-section-wizard"),
+            Example("counting-hub-member-wizard"),
+            Example("other-counting-hub-member-wizard"),
             Example(
                 "gated-hub",
                 note="The second row waits on the first: Cannot start yet, "
@@ -426,7 +426,7 @@ GROUPS = (
             Example("submit-first", url_kwargs={"journey": "example"}),
             Example("submit-second", url_kwargs={"journey": "example"}),
             Example("party-hub", note="Start here — a task list with a collection."),
-            Example("party-venue", note="A plain section beside the collection."),
+            Example("party-venue", note="A plain member beside the collection."),
             Example(
                 "party-guests",
                 note="The collection page. Add a few, then change and remove them.",
@@ -471,7 +471,7 @@ GROUPS = (
         "cannot fire twice, and the tombstones are eventually pruned.",
         (
             Example("durable-hub", note="Start here; its runs survive a restart."),
-            Example("durable-section"),
+            Example("durable-member"),
             Example(
                 "durable-guests",
                 note="A collection whose registry is a table, so two tabs "
@@ -575,7 +575,7 @@ def published_url_names():
 
     Derived from the URLconf rather than declared, so a wizard added to
     `urls.py` and forgotten here shows up as a test failure. The per-run,
-    per-step, per-section and per-item patterns are skipped: they are ways
+    per-step, per-member and per-item patterns are skipped: they are ways
     back into something that already exists, not places to begin. A
     collection's items are per-item wherever the segment sits, so the whole
     item wizard is reached from its collection page rather than the index.

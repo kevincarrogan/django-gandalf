@@ -144,7 +144,7 @@ class SessionStorage:
 
 class SessionStashStore:
     """Keyed stash payloads in the session — where a journey keeps its
-    sections' finished answers, and the shipped home for a stash a caller
+    members' finished answers, and the shipped home for a stash a caller
     keeps by hand.
 
     A stash is caller-owned — `BoundWizard.stash()` hands back a payload and
@@ -153,7 +153,7 @@ class SessionStashStore:
     cannot be tampered with in transit: the arrangement for one wizard that
     wants to be re-openable and has no hub above it.
 
-    Built with a `home`, it keeps them wherever it is told. `SessionSectionStore`
+    Built with a `home`, it keeps them wherever it is told. `SessionJourneyStore`
     hands it the stash mapping inside a journey's record, so a hub's stashes
     are this class too — scoped to the journey, torn down with it — and the
     two arrangements share one implementation and one `StashNotFound`.
@@ -225,30 +225,30 @@ class SessionStashStore:
 
 #: The two buckets a journey's data is kept in — see `JourneyData`.
 JOURNEY_BUCKET = "journey"
-SECTION_BUCKET = "sections"
+SECTION_BUCKET = "members"
 
 
 class JourneyData(MetadataBag):
-    """A journey's record of what its sections decided — the facts a hub and
+    """A journey's record of what its members decided — the facts a hub and
     its doors read without walking anything.
 
-    A section's answers live in its stash, and a stash's state is positional
+    A member's answers live in its stash, and a stash's state is positional
     against a tree whose shape may depend on a branch predicate nobody has
-    evaluated — so no hub, and no other section, can read an answer out of
+    evaluated — so no hub, and no other member, can read an answer out of
     one without paying a walk. This is where the *decided* version goes:
-    `section_done()` reads its own answers, once, inside the window where
+    `member_done()` reads its own answers, once, inside the window where
     the run is still readable, and writes what the rest of the journey needs
     to know. `blocked()` and `hidden()` read it back for free.
 
-        # in a section's section_done()
+        # in a member's member_done()
         store.data["employment_status"] = step.form.cleaned_data["status"]
 
-        # in another section's blocked()
+        # in another member's blocked()
         return store.data.get("employment_status") != "employed"
 
     Two buckets, as a run's metadata has: the journey's own keys, and one
-    sub-bag per section under `for_section(key)`, so a section can keep its
-    own notes without treading on the journey or on another section. The
+    sub-bag per member under `for_member(key)`, so a member can keep its
+    own notes without treading on the journey or on another member. The
     mapping itself is `MetadataBag`'s — JSON-safe values, deep-copied reads,
     one write per assignment, `update()` for several at once.
 
@@ -265,29 +265,29 @@ class JourneyData(MetadataBag):
     ) -> None:
         super().__init__(read, write, path)
 
-    def for_section(self, key: str) -> JourneyData:
-        """This journey's data for the section `key` names. Addressed from
+    def for_member(self, key: str) -> JourneyData:
+        """This journey's data for the member `key` names. Addressed from
         the root whichever bag it is called on."""
         return type(self)(self._read, self._write_envelope, (SECTION_BUCKET, key))
 
 
-class SessionSectionStore:
+class SessionJourneyStore:
     """Session-backed home for one journey's bookkeeping: which run each
-    section is currently being answered in, the stash a finished one left
-    behind, and what the sections decided between them.
+    member is currently being answered in, the stash a finished one left
+    behind, and what the members decided between them.
 
-    A *journey* is the whole thing the sections add up to — an application,
+    A *journey* is the whole thing the members add up to — an application,
     a profile, a claim — and the store is scoped to one. Every mapping here
     sits under the journey's record, so two applications in two tabs are two
-    records in one session, and a section key means the same thing in each.
+    records in one session, and a member key means the same thing in each.
     The journey's identity is the caller's: a hub reads it off a URL kwarg or
     declares one, and hands it here.
 
-    Two mappings for a section, because they answer different questions and
-    outlive each other. A run id says where an unfinished section can be
-    picked up, and is forgotten the moment the section finishes. A payload is
-    `BoundWizard.stash()` output and *is* the section's completion — a hub
-    reads it and needs no run at all, which is what lets a completed section
+    Two mappings for a member, because they answer different questions and
+    outlive each other. A run id says where an unfinished member can be
+    picked up, and is forgotten the moment the member finishes. A payload is
+    `BoundWizard.stash()` output and *is* the member's completion — a hub
+    reads it and needs no run at all, which is what lets a completed member
     survive its run being pruned by `max_completed_runs`. The payload half is
     a `SessionStashStore` pointed at the journey's record, so a hub's stashes
     and a hand-kept one are the same thing in two homes.
@@ -353,19 +353,19 @@ class SessionSectionStore:
     # --- the run registry --------------------------------------------------
 
     def get_run(self, key: str) -> str | None:
-        """The run this section is being answered in, or None when it is not
+        """The run this member is being answered in, or None when it is not
         being answered at all."""
         return cast("str | None", self._read().get("runs", {}).get(key))
 
     def set_run(self, key: str, run_id: str) -> None:
-        """Record `run_id` as where this section is answered, replacing any
+        """Record `run_id` as where this member is answered, replacing any
         run already recorded for it."""
         self._mapping("runs")[key] = str(run_id)
         self.context.session_changed()
 
     def clear_run(self, key: str) -> None:
-        """Forget where this section was being answered. Idempotent: clearing
-        a section with no run is not an error, so callers need not check
+        """Forget where this member was being answered. Idempotent: clearing
+        a member with no run is not an error, so callers need not check
         first."""
         self._read().get("runs", {}).pop(key, None)
         self.context.session_changed()
@@ -373,33 +373,33 @@ class SessionSectionStore:
     # --- the completion record ---------------------------------------------
 
     def get_stash(self, key: str) -> Stash:
-        """The finished section's stash, raising `StashNotFound` without
+        """The finished member's stash, raising `StashNotFound` without
         one."""
         return self.stashes.get(key)
 
     def has_stash(self, key: str) -> bool:
-        """Whether this section has finished — what a hub row asks, answered
+        """Whether this member has finished — what a hub row asks, answered
         without an exception to catch."""
         return self.stashes.has(key)
 
     def put_stash(self, key: str, payload: Stash) -> None:
-        """Record this section as finished, replacing any earlier answers."""
+        """Record this member as finished, replacing any earlier answers."""
         self.stashes.put(key, payload)
 
     def delete_stash(self, key: str) -> None:
-        """Forget that this section ever finished. Idempotent."""
+        """Forget that this member ever finished. Idempotent."""
         self.stashes.delete(key)
 
     def keys(self) -> list[str]:
-        """The sections holding a stash, in insertion order.
+        """The members holding a stash, in insertion order.
 
         Note that a collection's items stash under composed keys of their own
         (`"guests:<id>"`), so a hub sharing its store with one will see them
-        here alongside the sections it declared.
+        here alongside the members it declared.
         """
         return self.stashes.keys()
 
-    # --- what the sections decided -----------------------------------------
+    # --- what the members decided -----------------------------------------
 
     @property
     def data(self) -> JourneyData:
@@ -451,10 +451,10 @@ class SessionSectionStore:
             del journeys[journey]
 
 
-class SessionCollectionStore(SessionSectionStore):
+class SessionCollectionStore(SessionJourneyStore):
     """A collection's registry, on top of a journey's bookkeeping.
 
-    A hub's sections are declared, so the store never has to enumerate them. A
+    A hub's members are declared, so the store never has to enumerate them. A
     collection's items are not: the user grows them, and there is no reading of
     runs or stashes that can hand back the list — `keys()` is the stash key
     space, which holds only the items that have *finished*, in the order they
@@ -469,7 +469,7 @@ class SessionCollectionStore(SessionSectionStore):
     cannot orphan one.
 
     Nothing here touches the methods above it. An item's run and stash live
-    under an ordinary section key the *view* composes — the store never
+    under an ordinary member key the *view* composes — the store never
     learns the scheme — so a hub store and a collection store share one key
     space and one contract.
     """

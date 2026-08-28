@@ -1,6 +1,6 @@
 """Unit coverage for `SessionCollectionStore` — a collection's registry.
 
-A hub's sections are declared, so the store never has to enumerate them. A
+A hub's members are declared, so the store never has to enumerate them. A
 collection's items are not: the user grows them, and no reading of runs or
 stashes can hand back the list — the stash key space holds only the items that
 have *finished*. So the registry is explicit, ordered, and separate, and an
@@ -221,8 +221,8 @@ def test_the_users_answer_to_add_another_round_trips():
 # --- composing with a hub's bookkeeping ------------------------------------
 
 
-def test_a_collections_items_and_a_hubs_sections_share_one_key_space():
-    """An item's run and stash live under an ordinary section key the view
+def test_a_collections_items_and_a_hubs_members_share_one_key_space():
+    """An item's run and stash live under an ordinary member key the view
     composes, so the nine inherited methods are untouched."""
     store = SessionCollectionStore(_Context(), "default")
 
@@ -248,7 +248,7 @@ def test_a_collections_registry_is_the_journeys_own():
 
 
 def test_completing_the_journey_takes_the_registry_with_it():
-    """A tombstone lists no items — the same tearing-down the sections get."""
+    """A tombstone lists no items — the same tearing-down the members get."""
     store = SessionCollectionStore(_Context(), "default")
     store.add_item("guests", "a")
     store.set_declared_done("guests", True)

@@ -339,7 +339,7 @@ extra.**
 **`gandalf/driver.py` is in the package.** It imports nothing beyond Django
 and gandalf, so it adds no dependency, no setting, no migration and no
 import-time cost to anyone who never touches it — a module nobody imports
-is never executed. That makes it exactly as optional as `sections.py`
+is never executed. That makes it exactly as optional as `members.py`
 (hub and spoke) or `summary.py`, both of which most users never
 reach for. It is also not really an AI feature: with the LLM removed the
 surface reads *begin, describe, submit, answers, outline, prefill, check,

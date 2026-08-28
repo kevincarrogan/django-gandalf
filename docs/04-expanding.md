@@ -1,4 +1,4 @@
-# Chapter 4 — As many trustees as there are
+# Chapter 4 — Expanding from an answer
 
 An organisation names its trustees. How many there are is not known until
 the applicant says, so the *shape* of the flow is decided by an answer the
@@ -69,4 +69,4 @@ list, and each is its own run.
 
 ---
 
-[← Chapter 3 — Which kind of organisation](03-which-kind-of-organisation.md) · [README](../README.md) · [Chapter 5 — Different funds, different questions →](05-different-funds-different-questions.md)
+[← Chapter 3 — Switching on a choice](03-switching.md) · [README](../README.md) · [Chapter 5 — A wizard per request →](05-a-wizard-per-request.md)

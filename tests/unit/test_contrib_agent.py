@@ -156,7 +156,7 @@ def test_a_profile_can_be_passed_for_a_wizard_that_carries_none():
     assert "helping someone with something else" in instructions
 
 
-def test_a_profile_without_notes_adds_no_note_section():
+def test_a_profile_without_notes_adds_no_note_member():
     instructions = build_instructions(_PhotoViewSet)
 
     assert "About this one in particular" not in instructions

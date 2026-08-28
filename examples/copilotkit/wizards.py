@@ -74,13 +74,13 @@ class HybridVehicleItemViewSet(VehicleItemViewSet):
     """One vehicle, kept where somebody other than this browser can find it.
 
     Both stores are swapped, which is what a durable collection needs:
-    `storage_class` for the run itself and `section_store_class` for the
+    `storage_class` for the run itself and `journey_store_class` for the
     registry that says the run exists. Swapping one gives you durable
     answers nobody can find, or an index into runs that have expired.
     """
 
     storage_class = ModelStorage
-    section_store_class = ModelCollectionStore
+    journey_store_class = ModelCollectionStore
 
 
 class HybridVehicleCollectionView(VehicleCollectionView):
@@ -92,7 +92,7 @@ class HybridVehicleCollectionView(VehicleCollectionView):
     Scoped to the *user* instead, both sides see one fleet.
     """
 
-    section_store_class = ModelCollectionStore
+    journey_store_class = ModelCollectionStore
     item_viewset = HybridVehicleItemViewSet
 
 
@@ -102,7 +102,7 @@ def fleet_values(context):
     The session copy `examples.insurance` keeps is the right shape for a
     demo with no database and the wrong one here: an agent writes it to a
     request the browser will never see. The collection already holds the
-    answers durably — a finished section stashes its own state — so this
+    answers durably — a finished member stashes its own state — so this
     reads them from there and there is no second copy to disagree.
     """
     page = HybridVehicleCollectionView()
@@ -110,7 +110,7 @@ def fleet_values(context):
     store = page.get_collection_store()
     values = []
     for item_id in page.get_item_ids():
-        stash = store.get_stash(page.item_section_key(item_id))
+        stash = store.get_stash(page.item_member_key(item_id))
         if not stash:
             continue
         for entry in stash.get("state", []):

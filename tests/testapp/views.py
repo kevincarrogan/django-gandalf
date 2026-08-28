@@ -24,10 +24,10 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
-from gandalf.collections import CollectionView, ItemSectionMixin
-from gandalf.sections import HubView, Section, SectionMixin
+from gandalf.collections import CollectionView, ItemMemberMixin
+from gandalf.hubs import HubView, Member, RunMemberMixin
 from gandalf.storage import (
-    SessionSectionStore,
+    SessionJourneyStore,
     SessionStashStore,
     SessionStorage,
     StashNotFound,
@@ -36,7 +36,7 @@ from gandalf.summary import Group, Hide, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
-from .durable import ModelCollectionStore, ModelSectionStore, ModelStorage
+from .durable import ModelCollectionStore, ModelJourneyStore, ModelStorage
 from .forms import (
     AccountKindForm,
     AddressForm,
@@ -367,31 +367,31 @@ class BranchingWizardViewSet(WizardViewSet):
     url_name = "branching-wizard"
 
 
-class SectionRouter(StepNameRouter):
-    """Custom router keying step URLs on a `section` context entry rather
+class MemberRouter(StepNameRouter):
+    """Custom router keying step URLs on a `member` context entry rather
     than `name`."""
 
-    context_key = "section"
+    context_key = "member"
 
 
-class SectionEditingWizardViewSet(WizardViewSet):
+class MemberEditingWizardViewSet(WizardViewSet):
     description = (
         "Wizard configuring a custom `step_router_class` that routes step "
-        "URLs by a `section` context entry rather than `name`."
+        "URLs by a `member` context entry rather than `name`."
     )
     template_name = "testapp/editing_wizard.html"
     wizard = (
         Wizard()
-        .step(AccountTypeForm, section="account")
-        .step(PersonalDetailsForm, section="details")
-        .step(ReviewForm, section="review")
+        .step(AccountTypeForm, member="account")
+        .step(PersonalDetailsForm, member="details")
+        .step(ReviewForm, member="review")
         .configure(
             template_name="testapp/editing_wizard.html",
-            step_router_class=SectionRouter,
+            step_router_class=MemberRouter,
         )
     )
 
-    url_name = "section-editing-wizard"
+    url_name = "member-editing-wizard"
 
     def done(self, bound_wizard):
         return HttpResponse(f"completed {bound_wizard.run_id}")
@@ -1799,7 +1799,7 @@ class BranchingStashingWizardViewSet(WizardViewSet):
     description = (
         "Stashing wizard with a branch and an expansion, so its stash "
         "payload nests entries at every depth. done() stashes without a "
-        "label under the 'sections' key; the resurrect view consumes the "
+        "label under the 'members' key; the resurrect view consumes the "
         "stash and reopens the run at the count step."
     )
     template_name = "testapp/linear_wizard.html"
@@ -1826,29 +1826,29 @@ class BranchingStashingWizardViewSet(WizardViewSet):
     url_name = "branching-stashing-wizard"
 
     def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put("sections", bound_wizard.stash())
-        return HttpResponse(b"stashed sections")
+        SessionStashStore(bound_wizard.context).put("members", bound_wizard.stash())
+        return HttpResponse(b"stashed members")
 
 
-def resurrect_sections_stash(request):
-    """Consume the sections stash and reopen it at the count step."""
+def resurrect_members_stash(request):
+    """Consume the members stash and reopen it at the count step."""
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
-        payload = stashes.pop("sections")
+        payload = stashes.pop("members")
         url = BranchingStashingWizardViewSet.resurrect(request, payload, step="count")
     except (StashNotFound, InvalidStash):
         return HttpResponse(status=HTTPStatus.GONE)
     return redirect(url)
 
 
-def stashed_section_keys(request):
-    """The bigger-collection page's view of which sections are stashed."""
+def stashed_member_keys(request):
+    """The bigger-collection page's view of which members are stashed."""
     stashes = SessionStashStore(WizardContext.from_request(request))
     return HttpResponse(",".join(stashes.keys()))
 
 
-def discard_sections_stash(request):
-    SessionStashStore(WizardContext.from_request(request)).delete("sections")
+def discard_members_stash(request):
+    SessionStashStore(WizardContext.from_request(request)).delete("members")
     return HttpResponse(b"discarded")
 
 
@@ -2013,8 +2013,8 @@ class ExpandedSummaryWizardViewSet(WizardViewSet):
 # --- Hub and spoke scenarios -------------------------------------------------
 
 
-class AdvancingSectionViewSet(SectionMixin, WizardViewSet):
-    """A section whose only step escapes with `Advance`.
+class AdvancingMemberViewSet(RunMemberMixin, WizardViewSet):
+    """A member whose only step escapes with `Advance`.
 
     `Advance` persists the answer and redirects out without reaching
     `_finish`, so the run stays live and non-tombstoned with every stored
@@ -2022,70 +2022,70 @@ class AdvancingSectionViewSet(SectionMixin, WizardViewSet):
     `done()` on a GET. The hub must never hand one out.
     """
 
-    description = "Hub section escaping with Advance, so its run never completes."
-    url_name = "hub-advancing-section"
+    description = "Hub member escaping with Advance, so its run never completes."
+    url_name = "hub-advancing-member"
     template_name = "testapp/linear_wizard.html"
-    section_key = "advancing"
+    member_key = "advancing"
     hub_url_name = "scenario-hub"
     wizard = Wizard().step(NewsletterForm, name="newsletter")
 
 
-class PlainSectionViewSet(SectionMixin, WizardViewSet):
-    description = "Hub section with no review step."
-    url_name = "hub-plain-section"
+class PlainMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "Hub member with no review step."
+    url_name = "hub-plain-member"
     template_name = "testapp/linear_wizard.html"
-    section_key = "plain"
+    member_key = "plain"
     hub_url_name = "scenario-hub"
     wizard = Wizard().step(FirstStepForm, name="first")
 
 
 class ScenarioHubView(HubView):
-    description = "Hub over sections that exercise the awkward run states."
+    description = "Hub over members that exercise the awkward run states."
     template_name = "testapp/hub.html"
     url_name = "scenario-hub"
-    section_url_name = "scenario-hub-section"
-    sections = [
-        Section("plain", PlainSectionViewSet, title="Plain"),
-        Section("advancing", AdvancingSectionViewSet, title="Advancing"),
+    member_url_name = "scenario-hub-member"
+    members = [
+        Member("plain", PlainMemberViewSet, title="Plain"),
+        Member("advancing", AdvancingMemberViewSet, title="Advancing"),
     ]
 
 
-class OrgSectionViewSet(SectionMixin, WizardViewSet):
-    description = "Hub section mounted under an org prefix."
-    url_name = "org-hub-section-wizard"
+class OrgMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "Hub member mounted under an org prefix."
+    url_name = "org-hub-member-wizard"
     template_name = "testapp/linear_wizard.html"
-    section_key = "details"
+    member_key = "details"
     hub_url_name = "org-hub"
     wizard = Wizard().step(FirstStepForm, name="first")
 
 
 class OrgHubView(HubView):
-    description = "Hub whose sections carry mount-prefix URL kwargs."
+    description = "Hub whose members carry mount-prefix URL kwargs."
     template_name = "testapp/hub.html"
     url_name = "org-hub"
-    section_url_name = "org-hub-section"
+    member_url_name = "org-hub-member"
 
-    def get_sections(self):
-        # The section's wizard is mounted under the same org prefix, so the
+    def get_members(self):
+        # The member's wizard is mounted under the same org prefix, so the
         # slug this request came in through has to reach every URL the hub
         # builds for it.
         return [
-            Section(
+            Member(
                 "details",
-                OrgSectionViewSet,
+                OrgMemberViewSet,
                 title="Details",
                 url_kwargs={"org": self.kwargs["org"]},
             ),
         ]
 
 
-class CountingSectionViewSet(SectionMixin, WizardViewSet):
-    """A hub section wired to the counting walker, so tests can assert that
+class CountingMemberViewSet(RunMemberMixin, WizardViewSet):
+    """A hub member wired to the counting walker, so tests can assert that
     a hub row costs no walk at all."""
 
-    description = "Hub section wired to counting walker/dispatcher classes."
-    url_name = "counting-hub-section-wizard"
-    section_key = "counting"
+    description = "Hub member wired to counting walker/dispatcher classes."
+    url_name = "counting-hub-member-wizard"
+    member_key = "counting"
     hub_url_name = "counting-hub"
     wizard = (
         Wizard()
@@ -2099,32 +2099,32 @@ class CountingSectionViewSet(SectionMixin, WizardViewSet):
     )
 
 
-class OtherCountingSectionViewSet(CountingSectionViewSet):
-    url_name = "other-counting-hub-section-wizard"
-    section_key = "other"
+class OtherCountingMemberViewSet(CountingMemberViewSet):
+    url_name = "other-counting-hub-member-wizard"
+    member_key = "other"
 
 
 class CountingHubView(HubView):
-    description = "Hub over counting sections, for asserting a row's cost."
+    description = "Hub over counting members, for asserting a row's cost."
     template_name = "testapp/hub.html"
     url_name = "counting-hub"
-    section_url_name = "counting-hub-section"
-    sections = [
-        Section("counting", CountingSectionViewSet, title="Counting"),
-        Section("other", OtherCountingSectionViewSet, title="Other"),
+    member_url_name = "counting-hub-member"
+    members = [
+        Member("counting", CountingMemberViewSet, title="Counting"),
+        Member("other", OtherCountingMemberViewSet, title="Other"),
     ]
     builds = 0
 
-    def build_section_rows(self):
+    def build_member_rows(self):
         self.builds += 1
-        return super().build_section_rows()
+        return super().build_member_rows()
 
     def get_context_data(self, **kwargs):
         """An app wanting something the `Hub` does not offer asks for the rows
         again — which is the pattern that used to cost a second build."""
         context = super().get_context_data(**kwargs)
         context["first_unfinished"] = next(
-            (row for row in self.get_section_rows() if not row.is_complete), None
+            (row for row in self.get_member_rows() if not row.is_complete), None
         )
         context["builds"] = self.builds
         return context
@@ -2133,35 +2133,35 @@ class CountingHubView(HubView):
 # --- Storage that outlives a session -----------------------------------------
 
 
-class DurableSectionViewSet(SectionMixin, WizardViewSet):
-    """A section on model-backed storage — both stores swapped, which is what
+class DurableMemberViewSet(RunMemberMixin, WizardViewSet):
+    """A member on model-backed storage — both stores swapped, which is what
     a hub spanning days needs."""
 
-    description = "Hub section whose runs and bookkeeping live in the database."
-    url_name = "durable-section"
+    description = "Hub member whose runs and bookkeeping live in the database."
+    url_name = "durable-member"
     template_name = "testapp/linear_wizard.html"
-    section_key = "durable"
+    member_key = "durable"
     hub_url_name = "durable-hub"
     storage_class = ModelStorage
-    section_store_class = ModelSectionStore
+    journey_store_class = ModelJourneyStore
     wizard = (
         Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
     )
 
 
 class DurableHubView(HubView):
-    description = "Hub whose sections and bookkeeping outlive the session."
+    description = "Hub whose members and bookkeeping outlive the session."
     template_name = "testapp/hub.html"
     url_name = "durable-hub"
-    section_url_name = "durable-hub-section"
-    section_store_class = ModelSectionStore
-    sections = [Section("durable", DurableSectionViewSet, title="Durable")]
+    member_url_name = "durable-hub-member"
+    journey_store_class = ModelJourneyStore
+    members = [Member("durable", DurableMemberViewSet, title="Durable")]
 
 
 # --- Collections: the add-another pattern ------------------------------------
 
 
-class GuestItemViewSet(ItemSectionMixin, WizardViewSet):
+class GuestItemViewSet(ItemMemberMixin, WizardViewSet):
     """One guest, collected by its own run.
 
     Mounted under an item segment beside the collection page, never under it —
@@ -2184,54 +2184,54 @@ class GuestCollectionView(CollectionView):
     template_name = "testapp/collection.html"
     remove_template_name = "testapp/collection_remove.html"
     url_name = "party-guests"
-    section_key = "guests"
+    member_key = "guests"
     item_viewset = GuestItemViewSet
     item_name = "Guest"
     hub_url_name = "party-hub"
 
 
-class GatedFirstSectionViewSet(SectionMixin, WizardViewSet):
-    description = "The section a gated task list unlocks the next one with."
+class GatedFirstMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "The member a gated task list unlocks the next one with."
     url_name = "gated-first"
     template_name = "testapp/linear_wizard.html"
-    section_key = "first"
+    member_key = "first"
     hub_url_name = "gated-hub"
     wizard = Wizard().step(FirstStepForm, name="first")
 
 
-class GatedSecondSectionViewSet(GatedFirstSectionViewSet):
-    """The section a gated task list keeps locked until then — and it says so
+class GatedSecondMemberViewSet(GatedFirstMemberViewSet):
+    """The member a gated task list keeps locked until then — and it says so
     itself, rather than the hub saying it on its behalf."""
 
-    description = "The section a gated task list keeps locked until then."
+    description = "The member a gated task list keeps locked until then."
     url_name = "gated-second"
-    section_key = "second"
+    member_key = "second"
 
     @classmethod
-    def blocked(cls, request, section, store):
+    def blocked(cls, request, member, store):
         return not store.has_stash("first")
 
 
 class GatedHubView(HubView):
     """A task list whose second row waits on its first — the shape of every
     "Cannot start yet". The hub declares nothing about it: the rule is the
-    section's own."""
+    member's own."""
 
-    description = "Task list whose second section unlocks when the first ends."
+    description = "Task list whose second member unlocks when the first ends."
     template_name = "testapp/hub.html"
     url_name = "gated-hub"
-    section_url_name = "gated-hub-section"
-    sections = [
-        Section("first", GatedFirstSectionViewSet, title="First"),
-        Section("second", GatedSecondSectionViewSet, title="Second"),
+    member_url_name = "gated-hub-member"
+    members = [
+        Member("first", GatedFirstMemberViewSet, title="First"),
+        Member("second", GatedSecondMemberViewSet, title="Second"),
     ]
 
 
-class PartyVenueSectionViewSet(SectionMixin, WizardViewSet):
-    description = "A plain section beside a collection on the same task list."
+class PartyVenueMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "A plain member beside a collection on the same task list."
     url_name = "party-venue"
     template_name = "testapp/linear_wizard.html"
-    section_key = "venue"
+    member_key = "venue"
     hub_url_name = "party-hub"
     wizard = Wizard().step(FirstStepForm, name="first")
 
@@ -2239,13 +2239,13 @@ class PartyVenueSectionViewSet(SectionMixin, WizardViewSet):
 class PartyHubView(HubView):
     """A task list whose second row is a collection rather than a wizard."""
 
-    description = "Task list with a collection row beside a plain section."
+    description = "Task list with a collection row beside a plain member."
     template_name = "testapp/hub.html"
     url_name = "party-hub"
-    section_url_name = "party-hub-section"
-    sections = [
-        Section("venue", PartyVenueSectionViewSet, title="Venue"),
-        Section("guests", GuestCollectionView, title="Guests"),
+    member_url_name = "party-hub-member"
+    members = [
+        Member("venue", PartyVenueMemberViewSet, title="Venue"),
+        Member("guests", GuestCollectionView, title="Guests"),
     ]
 
 
@@ -2261,10 +2261,10 @@ class LockedGuestCollectionView(GuestCollectionView):
 
     description = "A collection whose items are all locked."
     url_name = "locked-guests"
-    section_key = "locked-guests"
+    member_key = "locked-guests"
     item_viewset = LockedGuestItemViewSet
 
-    def section_blocked(self, section, store):
+    def member_blocked(self, member, store):
         return True
 
 
@@ -2279,7 +2279,7 @@ class MinimumGuestCollectionView(GuestCollectionView):
 
     description = "A collection that needs at least one item to be complete."
     url_name = "minimum-guests"
-    section_key = "minimum-guests"
+    member_key = "minimum-guests"
     item_viewset = MinimumGuestItemViewSet
     min_items = 1
 
@@ -2291,13 +2291,13 @@ class DriftedGuestItemViewSet(GuestItemViewSet):
     url_name = "drifted-guest"
     collection_key = "drifted-guests"
     hub_url_name = "drifted-guests"
-    section_label = "guests-v2"
+    member_label = "guests-v2"
 
 
 class DriftedGuestCollectionView(GuestCollectionView):
     description = "A collection whose item label drifts from its own."
     url_name = "drifted-guests"
-    section_key = "drifted-guests"
+    member_key = "drifted-guests"
     item_viewset = DriftedGuestItemViewSet
 
 
@@ -2319,7 +2319,7 @@ class AdvancingGuestItemViewSet(GuestItemViewSet):
 class AdvancingGuestCollectionView(GuestCollectionView):
     description = "A collection over items that park rather than complete."
     url_name = "advancing-guests"
-    section_key = "advancing-guests"
+    member_key = "advancing-guests"
     item_viewset = AdvancingGuestItemViewSet
 
 
@@ -2332,7 +2332,7 @@ class OrgGuestItemViewSet(GuestItemViewSet):
 class OrgGuestCollectionView(GuestCollectionView):
     description = "A collection mounted under an org prefix."
     url_name = "org-guests"
-    section_key = "org-guests"
+    member_key = "org-guests"
     item_viewset = OrgGuestItemViewSet
     hub_url_name = "org-hub"
 
@@ -2350,7 +2350,7 @@ class AnonymousGuestItemViewSet(GuestItemViewSet):
 class AnonymousGuestCollectionView(GuestCollectionView):
     description = "A collection whose items cannot name themselves."
     url_name = "anonymous-guests"
-    section_key = "anonymous-guests"
+    member_key = "anonymous-guests"
     item_viewset = AnonymousGuestItemViewSet
 
 
@@ -2368,7 +2368,7 @@ class OffRouteGuestItemViewSet(GuestItemViewSet):
 class OffRouteGuestCollectionView(GuestCollectionView):
     description = "A collection whose items answer nothing that names them."
     url_name = "off-route-guests"
-    section_key = "off-route-guests"
+    member_key = "off-route-guests"
     item_viewset = OffRouteGuestItemViewSet
 
 
@@ -2378,13 +2378,13 @@ class ReshapedGuestItemViewSet(GuestItemViewSet):
     url_name = "reshaped-guest"
     collection_key = "reshaped-guests"
     hub_url_name = "reshaped-guests"
-    section_label = "guests-v2"
+    member_label = "guests-v2"
 
 
 class ReshapedGuestCollectionView(GuestCollectionView):
     description = "A collection whose item shape was reshaped and re-labelled."
     url_name = "reshaped-guests"
-    section_key = "reshaped-guests"
+    member_key = "reshaped-guests"
     item_viewset = ReshapedGuestItemViewSet
     item_label = "guests-v2"
     item_name = None
@@ -2399,41 +2399,41 @@ class DurableGuestItemViewSet(GuestItemViewSet):
     collection_key = "durable-guests"
     hub_url_name = "durable-guests"
     storage_class = ModelStorage
-    section_store_class = ModelCollectionStore
+    journey_store_class = ModelCollectionStore
 
 
 class DurableGuestCollectionView(GuestCollectionView):
     description = "A collection whose items and registry outlive the session."
     url_name = "durable-guests"
-    section_key = "durable-guests"
+    member_key = "durable-guests"
     item_viewset = DurableGuestItemViewSet
-    section_store_class = ModelCollectionStore
+    journey_store_class = ModelCollectionStore
     hub_url_name = "durable-hub"
 
 
 # --- Journeys ----------------------------------------------------------------
 
 
-class ShortMemorySectionStore(SessionSectionStore):
+class ShortMemorySectionStore(SessionJourneyStore):
     """A session store that keeps one completed journey, so pruning can be
     watched without submitting eleven applications."""
 
     max_completed_journeys = 1
 
 
-class SubmitFirstSectionViewSet(SectionMixin, WizardViewSet):
-    description = "Journeys: a section of a hub that submits with nothing to say."
+class SubmitFirstMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "Journeys: a member of a hub that submits with nothing to say."
     url_name = "submit-first"
     template_name = "testapp/linear_wizard.html"
-    section_key = "first"
+    member_key = "first"
     hub_url_name = "submit-hub"
-    section_store_class = ShortMemorySectionStore
+    journey_store_class = ShortMemorySectionStore
     wizard = Wizard().step(FirstStepForm, name="first")
 
 
-class SubmitSecondSectionViewSet(SubmitFirstSectionViewSet):
+class SubmitSecondMemberViewSet(SubmitFirstMemberViewSet):
     url_name = "submit-second"
-    section_key = "second"
+    member_key = "second"
 
 
 class SubmitHubView(HubView):
@@ -2446,11 +2446,11 @@ class SubmitHubView(HubView):
     )
     template_name = "testapp/journey_hub.html"
     url_name = "submit-hub"
-    section_url_name = "submit-hub-section"
-    section_store_class = ShortMemorySectionStore
-    sections = [
-        Section("first", SubmitFirstSectionViewSet, title="First"),
-        Section("second", SubmitSecondSectionViewSet, title="Second"),
+    member_url_name = "submit-hub-member"
+    journey_store_class = ShortMemorySectionStore
+    members = [
+        Member("first", SubmitFirstMemberViewSet, title="First"),
+        Member("second", SubmitSecondMemberViewSet, title="Second"),
     ]
 
     def journey_done(self, hub, store):

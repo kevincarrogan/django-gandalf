@@ -29,8 +29,8 @@ from tests.testapp.views import GuestCollectionView, GuestItemViewSet
 from gandalf.testing import (
     seed_collection_item,
     stored_collection_items,
-    stored_section_run,
-    stored_section_stashes,
+    stored_member_run,
+    stored_member_stashes,
 )
 
 
@@ -96,7 +96,7 @@ def test_adding_an_item_lands_the_user_on_its_first_step(client):
             "party-guest-step",
             kwargs={
                 "item": item_id,
-                "run_id": stored_section_run(client, f"guests:{item_id}"),
+                "run_id": stored_member_run(client, f"guests:{item_id}"),
                 "gandalf_step": "guest",
             },
         ),
@@ -110,7 +110,7 @@ def test_an_item_is_registered_before_its_wizard_starts(client):
     _add(client)
 
     assert len(stored_collection_items(client, "guests")) == 1
-    assert stored_section_stashes(client) == {}
+    assert stored_member_stashes(client) == {}
 
 
 def test_an_item_the_user_started_but_never_finished_reads_as_incomplete(client):
@@ -249,8 +249,8 @@ def test_removing_an_item_takes_its_row_its_stash_and_its_run(client):
 
     assertRedirects(response, PAGE)
     assert stored_collection_items(client, "guests") == []
-    assert stored_section_stashes(client) == {}
-    assert stored_section_run(client, f"guests:{item_id}") is None
+    assert stored_member_stashes(client) == {}
+    assert stored_member_run(client, f"guests:{item_id}") is None
 
 
 def test_removing_from_the_middle_renumbers_nothing(client):
@@ -274,7 +274,7 @@ def test_removing_from_the_middle_renumbers_nothing(client):
 def test_removing_an_item_the_user_was_halfway_through_discards_its_run(client):
     _answer(client, _add(client), "Ada")
     (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_section_run(client, f"guests:{item_id}")
+    run_id = stored_member_run(client, f"guests:{item_id}")
 
     client.post(_remove(item_id))
 
@@ -286,7 +286,7 @@ def test_a_removed_items_own_wizard_url_is_refused(client):
     longer exists, and must not mint a fresh run for it either."""
     _answer(client, _add(client), "Ada")
     (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_section_run(client, f"guests:{item_id}")
+    run_id = stored_member_run(client, f"guests:{item_id}")
     step_url = reverse(
         "party-guest-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
@@ -416,9 +416,7 @@ def test_a_task_list_links_straight_at_a_collection_page(client):
 
     rows = {row.key: row for row in response.context["hub"].rows}
     assert rows["guests"].url == PAGE
-    assert rows["venue"].url == reverse(
-        "party-hub-section", kwargs={"section": "venue"}
-    )
+    assert rows["venue"].url == reverse("party-hub-member", kwargs={"member": "venue"})
 
 
 def test_a_task_list_reports_the_collections_own_status(client):
@@ -434,7 +432,7 @@ def test_a_task_list_reports_the_collections_own_status(client):
 def test_the_hub_door_sends_a_collection_row_on_to_its_page(client):
     """Rows never point there — they link straight at the page — but a typed
     or stale door URL should land where the row would have."""
-    response = client.get(reverse("party-hub-section", kwargs={"section": "guests"}))
+    response = client.get(reverse("party-hub-member", kwargs={"member": "guests"}))
 
     assertRedirects(response, "/party-guests/")
 
@@ -447,7 +445,7 @@ def test_a_collection_door_hands_out_a_step_url_not_a_bare_run_url(client):
     door redirects to a step URL."""
     _answer(client, _add(client), "Ada")
     (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_section_run(client, f"guests:{item_id}")
+    run_id = stored_member_run(client, f"guests:{item_id}")
 
     response = client.get(_door(item_id))
 
@@ -468,7 +466,7 @@ def test_an_item_parked_with_every_answer_valid_still_gets_a_step_url(client):
 
     response = client.get(reverse("advancing-guests-item", kwargs={"item": item_id}))
 
-    run_id = stored_section_run(client, f"advancing-guests:{item_id}")
+    run_id = stored_member_run(client, f"advancing-guests:{item_id}")
     assert response["Location"] != reverse(
         "advancing-guest-run", kwargs={"item": item_id, "run_id": run_id}
     )
@@ -485,10 +483,10 @@ def test_the_collection_door_and_the_item_wizard_do_not_share_a_url():
 
 
 def test_the_hub_door_and_the_collection_page_do_not_share_a_url():
-    """`HubView` publishes `<slug:section>/`, which matches any single
+    """`HubView` publishes `<slug:member>/`, which matches any single
     segment — so a collection mounted beneath a hub would be swallowed by the
-    hub's own door for a section of that name."""
-    assert PAGE != reverse("party-hub-section", kwargs={"section": "guests"})
+    hub's own door for a member of that name."""
+    assert PAGE != reverse("party-hub-member", kwargs={"member": "guests"})
 
 
 def test_building_the_rows_never_walks_an_item(client, monkeypatch):
@@ -613,7 +611,7 @@ def test_a_reshaped_item_stamps_the_bumped_label_into_its_stash(client):
     (item_id,) = stored_collection_items(client, "reshaped-guests")
 
     assert (
-        stored_section_stashes(client)[f"reshaped-guests:{item_id}"]["label"]
+        stored_member_stashes(client)[f"reshaped-guests:{item_id}"]["label"]
         == "guests-v2"
     )
     response = client.get(
@@ -630,7 +628,7 @@ def test_a_listed_item_whose_run_the_storage_forgot_returns_to_the_page(client):
     whose completion would stash under a key the page still lists."""
     _answer(client, _add(client), "Ada")
     (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_section_run(client, f"guests:{item_id}")
+    run_id = stored_member_run(client, f"guests:{item_id}")
     step_url = reverse(
         "party-guest-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
@@ -664,10 +662,23 @@ def _dispatch(rf, client, view, path=PAGE, method="get", data=None, **kwargs):
 
 def test_a_collection_with_no_key_is_misconfigured(rf, client):
     class _Keyless(GuestCollectionView):
-        section_key = None
+        member_key = None
 
-    with pytest.raises(ImproperlyConfigured, match="section_key"):
+    with pytest.raises(ImproperlyConfigured, match="member_key"):
         _dispatch(rf, client, _Keyless)
+
+
+def test_a_collection_whose_item_wizard_names_another_collection_is_misconfigured(
+    rf, client
+):
+    class _Elsewhere(GuestItemViewSet):
+        collection_key = "gatecrashers"
+
+    class _Mismatched(GuestCollectionView):
+        item_viewset = _Elsewhere
+
+    with pytest.raises(ImproperlyConfigured, match="must name the collection"):
+        _dispatch(rf, client, _Mismatched)
 
 
 def test_a_collection_with_no_item_wizard_is_misconfigured(rf, client):
@@ -832,7 +843,7 @@ def test_removing_an_item_that_was_never_registered_is_not_an_error(rf, client):
 def test_removing_an_item_whose_run_the_storage_forgot_is_not_an_error(client):
     _answer(client, _add(client), "Ada")
     (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_section_run(client, f"guests:{item_id}")
+    run_id = stored_member_run(client, f"guests:{item_id}")
     session = client.session
     del session["gandalf_runs"][run_id]
     session.save()
@@ -904,7 +915,7 @@ def test_a_driver_fills_one_item_of_a_collection():
 
     seen = GuestCollectionView()
     seen.setup(context.http_request())
-    assert [str(row.title) for row in seen.get_section_rows()] == ["Ada Lovelace"]
+    assert [str(row.title) for row in seen.get_member_rows()] == ["Ada Lovelace"]
 
 
 def test_addressing_a_second_item_does_not_disturb_the_first():

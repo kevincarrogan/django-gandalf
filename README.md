@@ -8,8 +8,8 @@ You build a flow with a small, immutable builder — `.step()` to add a form,
 mount it as an ordinary Django view. Gandalf handles the per-step URLs, the
 session state, back-navigation, editing, file uploads, and running your
 completion logic exactly once. When one wizard is not enough, it handles the
-task list of wizards too: sections the user does in any order, lists they
-grow, sections that unlock or appear because of what they said elsewhere, and
+task list of wizards too: members the user does in any order, lists they
+grow, members that unlock or appear because of what they said elsewhere, and
 a submit at the end of all of it.
 
 ```python
@@ -109,21 +109,21 @@ the `django-formtools` mapping — is in the appendices at the end.
 
 ## The chapters
 
-- [Chapter 1 — A first wizard](docs/01-a-first-wizard.md)
-- [Chapter 2 — Individuals and organisations](docs/02-individuals-and-organisations.md)
-- [Chapter 3 — Which kind of organisation](docs/03-which-kind-of-organisation.md)
-- [Chapter 4 — As many trustees as there are](docs/04-as-many-trustees-as-there-are.md)
-- [Chapter 5 — Different funds, different questions](docs/05-different-funds-different-questions.md)
-- [Chapter 6 — Check your answers](docs/06-check-your-answers.md)
-- [Chapter 7 — A step with a view of its own](docs/07-a-step-with-a-view-of-its-own.md)
-- [Chapter 8 — Proof it exists](docs/08-proof-it-exists.md)
-- [Chapter 9 — Finishing, and what it leaves behind](docs/09-finishing-and-what-it-leaves-behind.md)
-- [Chapter 10 — Coming back later](docs/10-coming-back-later.md)
-- [Chapter 11 — A task list](docs/11-a-task-list.md)
-- [Chapter 12 — Budget lines](docs/12-budget-lines.md)
-- [Chapter 13 — Locked and hidden](docs/13-locked-and-hidden.md)
-- [Chapter 14 — One application, start to submit](docs/14-one-application-start-to-submit.md)
-- [Chapter 15 — Knowing what you built](docs/15-knowing-what-you-built.md)
+- [Chapter 1 — Steps and completion](docs/01-steps-and-completion.md)
+- [Chapter 2 — Branching on an answer](docs/02-branching.md)
+- [Chapter 3 — Switching on a choice](docs/03-switching.md)
+- [Chapter 4 — Expanding from an answer](docs/04-expanding.md)
+- [Chapter 5 — A wizard per request](docs/05-a-wizard-per-request.md)
+- [Chapter 6 — The summary: check your answers](docs/06-the-summary.md)
+- [Chapter 7 — Step views and escapes](docs/07-step-views-and-escapes.md)
+- [Chapter 8 — File uploads](docs/08-file-uploads.md)
+- [Chapter 9 — Completion hooks and run metadata](docs/09-completion-hooks-and-metadata.md)
+- [Chapter 10 — Stashing: leave and come back](docs/10-stashing.md)
+- [Chapter 11 — Hubs: a task list of members](docs/11-hubs.md)
+- [Chapter 12 — Collections: add another](docs/12-collections.md)
+- [Chapter 13 — Blocked and hidden members](docs/13-blocked-and-hidden.md)
+- [Chapter 14 — Journeys: scope, memory, nesting and an ending](docs/14-journeys.md)
+- [Chapter 15 — Outline, observers and the driver](docs/15-outline-observers-and-the-driver.md)
 - [Appendix A — Testing your wizards](docs/appendix-a-testing-your-wizards.md)
 - [Appendix B — Configuration](docs/appendix-b-configuration.md)
 - [Appendix C — What replaying costs](docs/appendix-c-what-replaying-costs.md)

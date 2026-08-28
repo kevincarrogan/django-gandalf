@@ -1,4 +1,4 @@
-# Chapter 1 — A first wizard
+# Chapter 1 — Steps and completion
 
 The shortest application asks who is applying and how to reach them, and does
 something once when both are answered.
@@ -114,4 +114,4 @@ read the answers however it needs:
 
 ---
 
-[← README](../README.md) · [Chapter 2 — Individuals and organisations →](02-individuals-and-organisations.md)
+[← README](../README.md) · [Chapter 2 — Branching on an answer →](02-branching.md)

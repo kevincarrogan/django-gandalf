@@ -6,15 +6,15 @@ employments. Each is collected by its own run through one item wizard, and each
 has to be separately resumable, separately completable and separately
 destroyable.
 
-**A collection is a hub whose sections are built rather than declared.** One
-`Section` per id in an ordered registry, and everything `HubMixin` already does
+**A collection is a hub whose members are built rather than declared.** One
+`Member` per id in an ordered registry, and everything `HubMixin` already does
 — the status derivation, the row building, the resume-before-reopen door —
 applies unchanged, because none of it ever cared where the list came from. Most
 of what follows is a name for something the hub already knew how to do.
 
 Two things a hub does not have.
 
-*Completeness is declared, not derived.* A hub section is Complete when a stash
+*Completeness is declared, not derived.* A hub member is Complete when a stash
 appears, because finishing is the only thing that can produce one. No amount of
 reading a collection's storage can say whether the user has more guests to add
 — only the user can, so the page asks, and the answer is stored.
@@ -54,24 +54,24 @@ from django.utils.translation import gettext, gettext_lazy as _
 from django.views.generic import TemplateView
 
 from gandalf.runtime import BoundWizard
-from gandalf.sections import (
+from gandalf.hubs import (
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
     Hub,
     HubMixin,
-    Section,
-    SectionMixin,
-    SectionRow,
+    Member,
+    RunMemberMixin,
+    MemberRow,
 )
 from gandalf.storage import RunNotFound, SessionCollectionStore
-from gandalf.types import CollectionStore, SectionStore, StrOrPromise
+from gandalf.types import CollectionStore, JourneyStore, StrOrPromise
 from gandalf.viewsets import WizardViewSet
 
 
 __all__ = [
     # Re-exported so a collection's statuses read from one import, as a hub's
-    # do; they are `gandalf.sections`' and mean exactly the same thing.
+    # do; they are `gandalf.hubs`' and mean exactly the same thing.
     "COMPLETE",
     "INCOMPLETE",
     "NOT_STARTED",
@@ -81,7 +81,7 @@ __all__ = [
     "CollectionRow",
     "CollectionView",
     "ItemNotFound",
-    "ItemSectionMixin",
+    "ItemMemberMixin",
 ]
 
 
@@ -112,11 +112,11 @@ class AddAnotherForm(forms.Form):
 
 
 @dataclass(frozen=True)
-class CollectionRow(SectionRow):
+class CollectionRow(MemberRow):
     """One item of a collection: what it is called, how far it has got, and
     the two links a row carries — change it, remove it.
 
-    `title` is a *cached string*, not a computation. The item's own section
+    `title` is a *cached string*, not a computation. The item's own member
     worked it out at the moment it finished, when it had the answers and a walk
     to read them with; the row reads it back. That is what keeps a collection
     of thirty items costing thirty dict lookups rather than thirty walks — the
@@ -163,11 +163,11 @@ class Collection(Hub):
         return not self.rows
 
 
-class ItemSectionMixin(SectionMixin):
+class ItemMemberMixin(RunMemberMixin):
     """Mix into the wizard that collects one item of a collection.
 
-    Everything `SectionMixin` does, keyed per item instead of per class. The
-    key cannot be a class attribute — there is one section per item, and the
+    Everything `RunMemberMixin` does, keyed per item instead of per class. The
+    key cannot be a class attribute — there is one member per item, and the
     items are not known until the user makes them — so it comes from the URL.
     Mount this wizard under an item segment and the id reaches every request
     through `self.kwargs`, exactly as a tenant slug does:
@@ -186,18 +186,18 @@ class ItemSectionMixin(SectionMixin):
     itself (`get_url_kwargs()` forwards it for free, since it is not among
     `reserved_url_kwargs`) and in none of the collection's, which is why
     `get_hub_url_kwargs()` drops it. The collection page is this wizard's hub:
-    `hub_url_name` names it, as it would for a plain section.
+    `hub_url_name` names it, as it would for a plain member.
 
-    **Items override `section_done()`, never `done()`** — `SectionMixin`'s rule
+    **Items override `member_done()`, never `done()`** — `RunMemberMixin`'s rule
     holds here for its own reason, with one more on top: `done()` is also where
-    the item's title is cached, and a section that never caches one leaves a
+    the item's title is cached, and a member that never caches one leaves a
     page that can only ever say *Guest 1*, *Guest 2*.
     """
 
-    dynamic_section_key = True
-    section_store_class = SessionCollectionStore
+    dynamic_member_key = True
+    journey_store_class = SessionCollectionStore
 
-    #: The collection this item belongs to — its page's `section_key`, which
+    #: The collection this item belongs to — its page's `member_key`, which
     #: is the full key when the collection is itself nested under a hub.
     collection_key: str | None = None
     item_url_kwarg = "item"
@@ -228,26 +228,26 @@ class ItemSectionMixin(SectionMixin):
             )
         return str(item_id)
 
-    def get_section_key(self) -> str:
-        """This item's key in the shared section key space."""
+    def get_member_key(self) -> str:
+        """This item's key in the shared member key space."""
         return f"{self.get_collection_key()}{self.key_separator}{self.get_item_id()}"
 
-    def get_section_label(self) -> str:
+    def get_member_label(self) -> str:
         """The *collection's* label, not this item's key.
 
-        The inherited default is the section key, which here carries an opaque
+        The inherited default is the member key, which here carries an opaque
         per-item id — so every item would stamp a different label into its
         stash and the deploy guard would never match anything. One shape, one
         label, however many items wear it.
         """
-        if self.section_label is None:
+        if self.member_label is None:
             return self.get_collection_key()
-        return self.section_label
+        return self.member_label
 
-    def get_section_store(self) -> CollectionStore:
-        # `section_store_class` is narrowed on this subclass; mypy reads the
+    def get_journey_store(self) -> CollectionStore:
+        # `journey_store_class` is narrowed on this subclass; mypy reads the
         # attribute through the base's declaration.
-        return cast(CollectionStore, super().get_section_store())
+        return cast(CollectionStore, super().get_journey_store())
 
     def get_item_title(self, bound_wizard: BoundWizard) -> str:
         """The name this item goes by on the collection page.
@@ -259,7 +259,7 @@ class ItemSectionMixin(SectionMixin):
 
         Costs one walk, once, at completion — on a request that has already
         walked twice — in exchange for no walk at all on every later render of
-        this page and of any hub above it. It is `gandalf.sections`' bargain,
+        this page and of any hub above it. It is `gandalf.hubs`' bargain,
         moved one level down.
         """
         if self.item_title_step is None or self.item_title_field is None:
@@ -274,13 +274,13 @@ class ItemSectionMixin(SectionMixin):
             return ""
         return str(step.form.cleaned_data.get(self.item_title_field, ""))
 
-    def section_recorded(
-        self, bound_wizard: BoundWizard, store: SectionStore, key: str
+    def member_recorded(
+        self, bound_wizard: BoundWizard, store: JourneyStore, key: str
     ) -> None:
         """Cache this item's title, in the window where its answers are still
         readable."""
         title = self.get_item_title(bound_wizard)
-        self.get_section_store().set_item_title(
+        self.get_journey_store().set_item_title(
             self.get_collection_key(), self.get_item_id(), title or None
         )
 
@@ -317,7 +317,7 @@ class ItemSectionMixin(SectionMixin):
         directly. One store read per request buys the guarantee that a run can
         never be answered for an item that no longer exists.
         """
-        store = self.get_section_store()
+        store = self.get_journey_store()
         if not store.has_item(self.get_collection_key(), self.get_item_id()):
             return self.item_unavailable()
         return super().dispatch(request, *args, **kwargs)
@@ -337,7 +337,7 @@ class CollectionMixin(HubMixin):
     over a `TemplateView` with the three URL patterns already published.
     """
 
-    section_store_class = SessionCollectionStore
+    journey_store_class = SessionCollectionStore
     #: A collection page answers "how far has the whole thing got" with its
     #: `Collection`, whose completeness is the user's declared answer to *add
     #: another* rather than anything the rows can tell you. Publishing a `Hub`
@@ -358,29 +358,29 @@ class CollectionMixin(HubMixin):
 
     # --- the items ---------------------------------------------------------
 
-    def get_section_key(self) -> str:
+    def get_member_key(self) -> str:
         """A collection's key is never `None`: it is the prefix its items are
         registered and keyed under, whether or not a hub above lists it."""
-        if self.section_key is None:
+        if self.member_key is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"{name} has no collection to list. Set {name}.section_key "
+                f"{name} has no collection to list. Set {name}.member_key "
                 f"to the key its items are registered under."
             )
-        return self.section_key
+        return self.member_key
 
     def get_collection_key(self) -> str:
-        return self.get_section_key()
+        return self.get_member_key()
 
     def get_collection_store(self) -> CollectionStore:
-        return cast(CollectionStore, self.get_section_store())
+        return cast(CollectionStore, self.get_journey_store())
 
     def get_item_viewset(self) -> type[WizardViewSet]:
         if self.item_viewset is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
                 f"{name} has no wizard to collect an item with. Set "
-                f"{name}.item_viewset to an ItemSectionMixin viewset."
+                f"{name}.item_viewset to an ItemMemberMixin viewset."
             )
         return self.item_viewset
 
@@ -389,25 +389,20 @@ class CollectionMixin(HubMixin):
 
     def get_item_label(self) -> str:
         """The *shape's* identity, shared by every item — see
-        `ItemSectionMixin.get_section_label()`."""
+        `ItemMemberMixin.get_member_label()`."""
         if self.item_label is None:
             return self.get_collection_key()
         return self.item_label
 
-    def item_section_key(self, item_id: str) -> str:
-        """An item's key in the journey's store — what `full_key()` composes
-        for its section, and what its own wizard composes for itself."""
-        return f"{self.get_collection_key()}{self.key_separator}{item_id}"
-
-    def get_item_section(self, item_id: str) -> Section:
-        """One item, as the `Section` the hub machinery already understands.
+    def get_item_member(self, item_id: str) -> Member:
+        """One item, as the `Member` the hub machinery already understands.
 
         This is the piece the reuse rests on: past here, resuming, re-opening
-        and starting an item are `HubMixin`'s, unchanged. The section's key is
+        and starting an item are `HubMixin`'s, unchanged. The member's key is
         the item's id, and the collection's own key is the prefix `full_key()`
-        puts in front of it — exactly as a nested hub prefixes its sections.
+        puts in front of it — exactly as a nested hub prefixes its members.
         """
-        return Section(
+        return Member(
             key=item_id,
             viewset=self.get_item_viewset(),
             label=self.get_item_label(),
@@ -418,13 +413,13 @@ class CollectionMixin(HubMixin):
             },
         )
 
-    def get_sections(self) -> list[Section]:
+    def get_members(self) -> list[Member]:
         """The hub's own hook, answered from the registry instead of a
         declaration."""
-        return [self.get_item_section(item_id) for item_id in self.get_item_ids()]
+        return [self.get_item_member(item_id) for item_id in self.get_item_ids()]
 
-    def get_item(self, item_id: str) -> Section:
-        """The section for a listed item, raising `ItemNotFound` otherwise.
+    def get_item(self, item_id: str) -> Member:
+        """The member for a listed item, raising `ItemNotFound` otherwise.
 
         Asks `get_item_ids()`, not the registry underneath it, so a
         collection that builds its list from somewhere else — the
@@ -432,13 +427,13 @@ class CollectionMixin(HubMixin):
         """
         if item_id not in self.get_item_ids():
             raise ItemNotFound(item_id)
-        return self.get_item_section(item_id)
+        return self.get_item_member(item_id)
 
-    def _validate_sections(self, sections: list[Section]) -> list[Section]:
+    def _validate_members(self, members: list[Member]) -> list[Member]:
         """The hub's checks, plus the collection's own two drift checks.
 
         An item viewset whose `collection_key` is not this page's
-        `section_key` registers under one prefix and stashes under another,
+        `member_key` registers under one prefix and stashes under another,
         so a finished item never shows as complete. One whose label disagrees
         with the collection's writes stashes that the door will refuse on the
         way back in, so a completed item could never be changed. Both are the
@@ -454,7 +449,7 @@ class CollectionMixin(HubMixin):
                 f"reads. {self.__class__.__name__} is {self.get_collection_key()!r} "
                 f"and {viewset.__name__} declares collection_key={key!r}."
             )
-        declared = getattr(viewset, "section_label", None)
+        declared = getattr(viewset, "member_label", None)
         expected = self.get_item_label()
         if declared is not None and declared != expected:
             raise ImproperlyConfigured(
@@ -463,7 +458,7 @@ class CollectionMixin(HubMixin):
                 f"changed. {self.__class__.__name__} labels items {expected!r} "
                 f"and {viewset.__name__} stamps {declared!r}."
             )
-        return super()._validate_sections(sections)
+        return super()._validate_members(members)
 
     @classmethod
     def status_for(cls, request: HttpRequest, url_kwargs: dict[str, Any]) -> str:
@@ -476,24 +471,24 @@ class CollectionMixin(HubMixin):
 
     # --- the page ----------------------------------------------------------
 
-    def build_section_rows(self) -> list[SectionRow]:
+    def build_member_rows(self) -> list[MemberRow]:
         """The hub's own row builder, one `CollectionRow` per item.
 
-        A collection's rows *are* its sections' rows, so `hub.rows` and
+        A collection's rows *are* its members' rows, so `hub.rows` and
         `collection.rows` name one list and a template written for a hub reads
-        a collection unchanged. `HubMixin.get_section_rows()` caches what this
+        a collection unchanged. `HubMixin.get_member_rows()` caches what this
         returns, so wrapping them in a `Collection` costs no second build.
         """
         store = self.get_collection_store()
         return [
-            self.build_collection_row(section, store, position)
-            for position, section in enumerate(self._vetted_sections())
+            self.build_collection_row(member, store, position)
+            for position, member in enumerate(self._vetted_members())
         ]
 
     def get_collection(self) -> Collection:
         store = self.get_collection_store()
         key = self.get_collection_key()
-        rows = tuple(cast("list[CollectionRow]", self.get_section_rows()))
+        rows = tuple(cast("list[CollectionRow]", self.get_member_rows()))
         status = self.get_collection_status(rows, store)
         return Collection(
             key=key,
@@ -506,28 +501,28 @@ class CollectionMixin(HubMixin):
         )
 
     def build_collection_row(
-        self, section: Section, store: CollectionStore, position: int
+        self, member: Member, store: CollectionStore, position: int
     ) -> CollectionRow:
-        item_id = self.item_id_for(section)
-        status = self.get_section_status(section, store)
+        item_id = self.item_id_for(member)
+        status = self.get_member_status(member, store)
         return CollectionRow(
-            section=section,
+            member=member,
             status=status,
             title=self.get_item_title(item_id, store, position),
             status_label=self.get_status_label(status),
-            url=self.get_section_url(section),
+            url=self.get_member_url(member),
             item_id=item_id,
             position=position,
             remove_url=self.get_item_remove_url(item_id),
         )
 
-    def item_id_for(self, section: Section) -> str:
-        return cast(str, section.url_kwargs[self.item_url_kwarg])
+    def item_id_for(self, member: Member) -> str:
+        return cast(str, member.url_kwargs[self.item_url_kwarg])
 
     def get_item_title(
         self, item_id: str, store: CollectionStore, position: int
     ) -> StrOrPromise:
-        """What names an item on the page: the title its own section cached
+        """What names an item on the page: the title its own member cached
         when it last finished, or a positional name for one that never has."""
         title = store.get_item_title(self.get_collection_key(), item_id)
         if title:
@@ -570,7 +565,7 @@ class CollectionMixin(HubMixin):
 
     def get_collection_url_kwargs(self) -> dict[str, Any]:
         """Mount-prefix kwargs this page came in through, minus the item the
-        routes own — the same arrangement `get_section_url_kwargs()` makes."""
+        routes own — the same arrangement `get_member_url_kwargs()` makes."""
         url_kwargs = getattr(self, "kwargs", None) or {}
         return {
             key: value
@@ -590,13 +585,13 @@ class CollectionMixin(HubMixin):
     def get_hub_url_kwargs(self) -> dict[str, Any]:
         return self.get_collection_url_kwargs()
 
-    def get_section_url(self, section: Section) -> str:
+    def get_member_url(self, member: Member) -> str:
         """The hub's own hook: a row links to this page's door for its item."""
-        return self.get_item_url(self.item_id_for(section))
+        return self.get_item_url(self.item_id_for(member))
 
     def get_item_url(self, item_id: str) -> str:
         """Where a row's *Change* link goes: this page's own door for the
-        item. Never the wizard's, for the reason `HubMixin.get_section_url()`
+        item. Never the wizard's, for the reason `HubMixin.get_member_url()`
         gives at length."""
         return self._reverse_item("item", item_id)
 
@@ -640,7 +635,7 @@ class CollectionMixin(HubMixin):
         """Register a new item, then enter its wizard.
 
         The registry is written *first*. That is what makes a half-finished
-        item possible at all, and it is `SectionMixin.done()`'s discipline —
+        item possible at all, and it is `RunMemberMixin.done()`'s discipline —
         write the durable fact, then do the thing that can fail. If entering
         raises, the user is left with a listed, removable, not-started row
         rather than a live run nothing points at.
@@ -651,7 +646,7 @@ class CollectionMixin(HubMixin):
         store.add_item(key, item_id)
         # Pressing Add *is* the user withdrawing their answer to "any more?".
         store.set_declared_done(key, False)
-        return self.enter(self.get_item_section(item_id))
+        return self.enter(self.get_item_member(item_id))
 
     def declare_done(self) -> HttpResponseBase:
         """Record that the user has nothing more to add, and move them on."""
@@ -667,7 +662,7 @@ class CollectionMixin(HubMixin):
     def remove_item(self, item_id: str) -> HttpResponse:
         """Destroy an item, pointer last.
 
-        The exact mirror of `SectionMixin.done()`: everything reachable
+        The exact mirror of `RunMemberMixin.done()`: everything reachable
         *through* the registry goes before the registry entry itself, so a
         hook that raises leaves an item still listed and still removable
         rather than one that has vanished with its side effects intact.
@@ -675,34 +670,34 @@ class CollectionMixin(HubMixin):
         """
         store = self.get_collection_store()
         key = self.get_collection_key()
-        section = self.get_item_section(item_id)
-        self.discard_item_run(section, store)
-        store.clear_run(self.full_key(section))
-        store.delete_stash(self.full_key(section))
+        member = self.get_item_member(item_id)
+        self.discard_item_run(member, store)
+        store.clear_run(self.full_key(member))
+        store.delete_stash(self.full_key(member))
         store.set_item_title(key, item_id, None)
-        self.item_removed(item_id, section, store)
+        self.item_removed(item_id, member, store)
         store.remove_item(key, item_id)
         return redirect(self.get_page_url())
 
-    def discard_item_run(self, section: Section, store: CollectionStore) -> None:
+    def discard_item_run(self, member: Member, store: CollectionStore) -> None:
         """Forget an item's live run and reclaim anything it uploaded. A run
         the storage no longer holds has already answered the question."""
-        run_id = store.get_run(self.full_key(section))
+        run_id = store.get_run(self.full_key(member))
         if run_id is None:
             return
         try:
-            bound_wizard = self.section_viewset(section).inspect(
-                self.request, run_id, **self.section_url_kwargs(section)
+            bound_wizard = self.member_viewset(member).inspect(
+                self.request, run_id, **self.member_url_kwargs(member)
             )
         except RunNotFound:
             return
         bound_wizard.obliterate()
 
     def item_removed(
-        self, item_id: str, section: Section, store: CollectionStore
+        self, item_id: str, member: Member, store: CollectionStore
     ) -> None:
         """Application work for an item going away — deleting whatever
-        `section_done()` saved for it. Runs while the item is still listed, so
+        `member_done()` saved for it. Runs while the item is still listed, so
         raising here is recoverable."""
 
     def item_unavailable(self, item_id: str) -> HttpResponse:
@@ -724,7 +719,7 @@ class CollectionView(CollectionMixin, TemplateView):
             template_name = "party/guests.html"
             remove_template_name = "party/remove_guest.html"
             url_name = "party-guests"
-            section_key = "guests"
+            member_key = "guests"
             item_viewset = GuestItemViewSet
             hub_url_name = "party-hub"
 
@@ -787,15 +782,15 @@ class CollectionView(CollectionMixin, TemplateView):
         if item_id is None:
             return super().get(request, *args, **kwargs)
         try:
-            section = self.get_item(item_id)
+            member = self.get_item(item_id)
         except ItemNotFound:
             return self.item_unavailable(item_id)
         if self._is_remove():
             return self.render_to_response(self.get_context_data(row=self.row(item_id)))
         # Entering yields a step URL for any item this collection lists —
         # every one has a viewset, so the only arm that declines is a
-        # `section_blocked()` an app has overridden to gate its items.
-        url = self.enter(section)
+        # `member_blocked()` an app has overridden to gate its items.
+        url = self.enter(member)
         if url is None:
             return self.item_unavailable(item_id)
         return redirect(url)
@@ -834,7 +829,7 @@ class CollectionView(CollectionMixin, TemplateView):
         """The one row a confirmation page is about, built rather than
         searched for — `get_item()` has already vouched for the id."""
         return self.build_collection_row(
-            self.get_item_section(item_id),
+            self.get_item_member(item_id),
             self.get_collection_store(),
             self.get_item_ids().index(item_id),
         )

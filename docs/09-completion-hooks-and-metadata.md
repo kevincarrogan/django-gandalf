@@ -1,4 +1,4 @@
-# Chapter 9 — Finishing, and what it leaves behind
+# Chapter 9 — Completion hooks and run metadata
 
 An application is a record in a database, not a string in a response. This
 chapter opens one when the run starts, submits it when the run finishes, and
@@ -151,7 +151,7 @@ driven end to end by
 [`test_durable_storage.py`](../tests/functional/test_durable_storage.py) — a
 whole task list over the database, with the session holding nothing but the
 login. The task list (chapter 11) and the journey (chapter 14) have a second,
-smaller seam of their own, `section_store_class`; the same module implements
+smaller seam of their own, `journey_store_class`; the same module implements
 that too, and a durable task list needs **both** swapped — durable answers
 nobody can find, or a durable index into runs that have expired, is what
 swapping one gives you.
@@ -160,4 +160,4 @@ swapping one gives you.
 
 ---
 
-[← Chapter 8 — Proof it exists](08-proof-it-exists.md) · [README](../README.md) · [Chapter 10 — Coming back later →](10-coming-back-later.md)
+[← Chapter 8 — File uploads](08-file-uploads.md) · [README](../README.md) · [Chapter 10 — Stashing: leave and come back →](10-stashing.md)

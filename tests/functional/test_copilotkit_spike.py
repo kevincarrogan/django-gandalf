@@ -115,7 +115,7 @@ def test_the_ag_ui_stream_carries_wizard_state_snapshots():
     # The shared-state channel the browser panel renders from.
     assert "STATE_SNAPSHOT" in body
     # One prefill placed the whole profile: both branches and the grown
-    # fleet section show up in the streamed snapshots.
+    # fleet member show up in the streamed snapshots.
     for step in PROFILE_ANSWERS:
         assert step in body
     # It stops at the confirmation rather than answering it.

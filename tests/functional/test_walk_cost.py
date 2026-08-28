@@ -193,25 +193,25 @@ def test_a_summary_render_validates_each_answer_twice(run_at_summary):
     assert counts.form_rebuilds == 3 + 1
 
 
-# --- a hub of sections ------------------------------------------------------
+# --- a hub of members ------------------------------------------------------
 
 
 @pytest.fixture
 def counting_hub(client):
-    """A hub whose two sections are wired to the counting classes: one left
+    """A hub whose two members are wired to the counting classes: one left
     half-answered, one untouched."""
     client.get("/counting-hub/counting/", follow=True)
-    from gandalf.testing import stored_section_run
+    from gandalf.testing import stored_member_run
 
-    run_id = stored_section_run(client, "counting")
-    client.post(f"/counting-hub-section/{run_id}/first/", {"name": "Ada"}, follow=True)
+    run_id = stored_member_run(client, "counting")
+    client.post(f"/counting-hub-member/{run_id}/first/", {"name": "Ada"}, follow=True)
     return client
 
 
 def test_rendering_a_hub_walks_nothing(counting_hub):
     """The claim the hub's design rests on: status comes from the shape of
     stored state, so a row costs storage reads and no form validation —
-    however many sections the page lists and however far each has got.
+    however many members the page lists and however far each has got.
     """
     with counting_walks() as counts:
         response = counting_hub.get("/counting-hub/")
@@ -225,21 +225,21 @@ def test_rendering_a_hub_walks_nothing(counting_hub):
 def test_a_hub_asked_for_its_rows_twice_builds_them_once(counting_hub):
     """The `Hub` counts them and the view asks again for the first unfinished
     one. A row is two storage reads and a `reverse()`, and a whole
-    `Collection` for a section that is one, so the second ask is cached."""
+    `Collection` for a member that is one, so the second ask is cached."""
     response = counting_hub.get("/counting-hub/")
 
     assert response.context["builds"] == 1
     assert response.context["first_unfinished"].key == "counting"
 
 
-def test_entering_a_section_walks_once_in_the_door_and_once_in_the_wizard(
+def test_entering_a_member_walks_once_in_the_door_and_once_in_the_wizard(
     counting_hub,
 ):
-    """The one walk a hub cannot avoid, paid once for the section clicked.
+    """The one walk a hub cannot avoid, paid once for the member clicked.
 
     The door walks to turn "this run exists" into "this step URL"; the
     wizard walks again to render it. Two walks for the redirect-and-render,
-    exactly like the POST-redirect-GET cycle above — not one per section.
+    exactly like the POST-redirect-GET cycle above — not one per member.
     """
     with counting_walks() as counts:
         response = counting_hub.get("/counting-hub/counting/", follow=True)

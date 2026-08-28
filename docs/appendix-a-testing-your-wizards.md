@@ -75,9 +75,9 @@ after `done()` fires), and `run.seed_state([...])`.
   `stored_run(client, run_id)` / `seed_run(client, run_id, data)` read and
   write raw run entries; `stored_stash(client, key)` / `seed_stash(...)` do
   the same for caller-owned stash payloads (chapter 10); and
-  `stored_journey(client)`, `stored_section_run(client, key)` /
-  `seed_section_run(...)`, `stored_section_stash(client, key)` /
-  `seed_section_stash(...)`, `stored_journey_data(client)` /
+  `stored_journey(client)`, `stored_member_run(client, key)` /
+  `seed_member_run(...)`, `stored_member_stash(client, key)` /
+  `seed_member_stash(...)`, `stored_journey_data(client)` /
   `seed_journey_data(...)` and `seed_journey_complete(client)` do it for a
   journey's record, each taking `journey=` for a hub mounted under one — no
   session keys in your tests. They read the session stores directly, so they
@@ -94,4 +94,4 @@ snippets above are the checked-in tests for chapter 1 — **Source:**
 
 ---
 
-[← Chapter 15 — Knowing what you built](15-knowing-what-you-built.md) · [README](../README.md) · [Appendix B — Configuration →](appendix-b-configuration.md)
+[← Chapter 15 — Outline, observers and the driver](15-outline-observers-and-the-driver.md) · [README](../README.md) · [Appendix B — Configuration →](appendix-b-configuration.md)

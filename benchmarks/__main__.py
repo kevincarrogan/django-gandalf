@@ -168,7 +168,7 @@ def main():
 
     # Same path length as a 12-step linear wizard, so any difference in
     # validations is what branching itself costs.
-    branching = branching_wizard(sections=3, arm_steps=3)
+    branching = branching_wizard(members=3, arm_steps=3)
     branching_records = run_journey(branching)
     linear_twelve = linear_wizard(steps=12)
     linear_records = run_journey(linear_twelve)

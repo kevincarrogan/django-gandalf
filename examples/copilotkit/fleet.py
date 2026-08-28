@@ -9,7 +9,7 @@ is the honest thing to do about a limit and no substitute for lifting it.
 Lifting it needs no new library API. A collection page is an ordinary Django
 view, and its four verbs — add, change, remove, declare done — are ordinary
 methods on it: `add_item()` mints and registers an id, `get_item_ids()` is
-the registry, `get_section_rows()` is what the person would see. Set the view
+the registry, `get_member_rows()` is what the person would see. Set the view
 up against a fabricated request and they all answer. What the item id then
 buys is a URL kwarg, and `RunDriver.begin(ItemViewSet, item=…)` already takes
 those — so filling one vehicle is the same driver doing the same thing it
@@ -20,7 +20,7 @@ Two decisions worth naming, because neither is forced by the code.
 **It finishes what it adds.** Everywhere else this demo stops short of
 confirming, and that rule is about the *quote*: `done()` is where the price
 is struck and only the person may strike it. A vehicle is not that. Its
-`section_done` writes a registration and a value onto the person's own list,
+`member_done` writes a registration and a value onto the person's own list,
 which they can see and remove, and which commits them to nothing — and an
 item left unfinished is worse than not added, because it has no title, shows
 as *not started*, and prices as zero. Half a vehicle is not a smaller
@@ -81,12 +81,12 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
         return {
             "vehicles": [
                 {
-                    "item_id": page.item_id_for(row.section),
+                    "item_id": page.item_id_for(row.member),
                     "title": str(row.title),
                     "status": str(row.status),
-                    "change_url": page.get_item_url(page.item_id_for(row.section)),
+                    "change_url": page.get_item_url(page.item_id_for(row.member)),
                 }
-                for row in page.get_section_rows()
+                for row in page.get_member_rows()
             ],
             "count": collection.count,
             # Theirs to answer, so it is reported and never set here.

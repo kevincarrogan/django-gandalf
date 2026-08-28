@@ -1,6 +1,6 @@
 """Storage that outlives a session, driven end to end.
 
-Gandalf ships no durable backend — `storage_class` and `section_store_class`
+Gandalf ships no durable backend — `storage_class` and `journey_store_class`
 are the seams a project swaps. This suite is the proof that they are
 sufficient: `tests/testapp/durable.py` implements both protocols against
 ordinary models, and a whole hub journey runs over them with the session
@@ -19,11 +19,11 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects
 
 from gandalf.context import WizardContext
-from gandalf.sections import COMPLETE, INCOMPLETE, NOT_STARTED
+from gandalf.hubs import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
 from tests.testapp.durable import (
     ModelCollectionStore,
-    ModelSectionStore,
+    ModelJourneyStore,
     ModelStorage,
 )
 from tests.testapp.models import (
@@ -54,7 +54,7 @@ def logged_in(client, user):
 
 def _step_url(run_id, step):
     return reverse(
-        "durable-section-step", kwargs={"run_id": run_id, "gandalf_step": step}
+        "durable-member-step", kwargs={"run_id": run_id, "gandalf_step": step}
     )
 
 
@@ -81,7 +81,7 @@ def test_the_hubs_bookkeeping_lives_in_the_database_too(logged_in):
     assert "gandalf_journeys" not in logged_in.session
 
 
-def test_a_whole_section_completes_over_model_storage(logged_in):
+def test_a_whole_member_completes_over_model_storage(logged_in):
     logged_in.get(DOOR_URL, follow=True)
     run = WizardRun.objects.get()
 
@@ -121,8 +121,8 @@ def _status(client):
 # --- what durability actually buys ------------------------------------------
 
 
-def test_a_half_answered_section_survives_the_session_being_lost(logged_in, user):
-    """The whole point: come back tomorrow, on a new session, and the section
+def test_a_half_answered_member_survives_the_session_being_lost(logged_in, user):
+    """The whole point: come back tomorrow, on a new session, and the member
     is still where you left it."""
     logged_in.get(DOOR_URL, follow=True)
     run = WizardRun.objects.get()
@@ -136,7 +136,7 @@ def test_a_half_answered_section_survives_the_session_being_lost(logged_in, user
     assertRedirects(logged_in.get(DOOR_URL), _step_url(run.pk, "second"))
 
 
-def test_a_completed_section_reopens_from_its_stored_stash(logged_in, user):
+def test_a_completed_member_reopens_from_its_stored_stash(logged_in, user):
     logged_in.get(DOOR_URL, follow=True)
     original = WizardRun.objects.get()
     logged_in.post(_step_url(original.pk, "first"), {"name": "Ada"}, follow=True)
@@ -172,7 +172,7 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
 
     # Not this session's run, so the wizard answers exactly as it would for a
     # run that never existed: back to the start.
-    assertRedirects(response, "/durable-section/", fetch_redirect_response=False)
+    assertRedirects(response, "/durable-member/", fetch_redirect_response=False)
     assert client.get(HUB_URL).context["hub"].rows[0].status == NOT_STARTED
 
 
@@ -326,31 +326,31 @@ def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
 def test_a_journeys_data_lives_on_its_own_row(user):
     """The one part of a journey that survives submission — kept on a row of
     its own, written now rather than at the end of a walk."""
-    store = ModelSectionStore(WizardContext(actor=user), "app-1")
+    store = ModelJourneyStore(WizardContext(actor=user), "app-1")
 
     store.data["applicant_type"] = "business"
-    store.data.for_section("employment")["checked"] = True
+    store.data.for_member("employment")["checked"] = True
 
     record = JourneyRecord.objects.get(owner=user, journey="app-1")
     assert record.data == {
         "journey": {"applicant_type": "business"},
-        "sections": {"employment": {"checked": True}},
+        "members": {"employment": {"checked": True}},
     }
     assert (
-        ModelSectionStore(WizardContext(actor=user), "app-1").data["applicant_type"]
+        ModelJourneyStore(WizardContext(actor=user), "app-1").data["applicant_type"]
         == "business"
     )
 
 
 def test_journeys_are_scoped_by_owner_and_by_journey(user, django_user_model):
     other = django_user_model.objects.create_user("grace", password="secret")
-    ModelSectionStore(WizardContext(actor=user), "app-1").put_stash("contact", {})
+    ModelJourneyStore(WizardContext(actor=user), "app-1").put_stash("contact", {})
 
-    assert ModelSectionStore(WizardContext(actor=user), "app-2").keys() == []
-    assert ModelSectionStore(WizardContext(actor=other), "app-1").keys() == []
+    assert ModelJourneyStore(WizardContext(actor=user), "app-2").keys() == []
+    assert ModelJourneyStore(WizardContext(actor=other), "app-1").keys() == []
 
 
-def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
+def test_completing_a_journey_deletes_its_members_and_keeps_its_row(user):
     store = ModelCollectionStore(WizardContext(actor=user), "app-1")
     store.set_run("contact", None)
     store.put_stash("contact", {"state": []})
@@ -372,7 +372,7 @@ def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
 def test_a_submitted_durable_journey_is_gone_from_its_hub(logged_in, user):
     """The default `journey_completed()`: a tombstone is a 404 until the hub
     says what a submitted journey looks like."""
-    ModelSectionStore(WizardContext(actor=user), "default").complete()
+    ModelJourneyStore(WizardContext(actor=user), "default").complete()
 
     assert logged_in.get(HUB_URL).status_code == HTTPStatus.NOT_FOUND
     assert logged_in.get(DOOR_URL).status_code == HTTPStatus.NOT_FOUND

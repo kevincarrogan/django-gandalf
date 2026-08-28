@@ -20,11 +20,11 @@ def test_escape_carries_the_redirect_target():
 
 
 def test_escape_carries_redirect_arguments():
-    escape = Park("account-detail", "ada", permanent=True, section="billing")
+    escape = Park("account-detail", "ada", permanent=True, member="billing")
 
     assert escape.to == "account-detail"
     assert escape.redirect_args == ("ada",)
-    assert escape.redirect_kwargs == {"section": "billing"}
+    assert escape.redirect_kwargs == {"member": "billing"}
     assert escape.permanent is True
 
 

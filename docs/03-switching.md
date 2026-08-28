@@ -1,4 +1,4 @@
-# Chapter 3 — Which kind of organisation
+# Chapter 3 — Switching on a choice
 
 A charity has a charity number, a company has a company number, and a
 community group has neither. That is not "is this true" but "which of these",
@@ -67,4 +67,4 @@ there is none — which is what the community group does.
 
 ---
 
-[← Chapter 2 — Individuals and organisations](02-individuals-and-organisations.md) · [README](../README.md) · [Chapter 4 — As many trustees as there are →](04-as-many-trustees-as-there-are.md)
+[← Chapter 2 — Branching on an answer](02-branching.md) · [README](../README.md) · [Chapter 4 — Expanding from an answer →](04-expanding.md)

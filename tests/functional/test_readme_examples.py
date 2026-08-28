@@ -20,7 +20,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.testing import stored_section_stash, stored_stash
+from gandalf.testing import stored_member_stash, stored_stash
 from tests.testapp.models import Application
 
 
@@ -512,7 +512,7 @@ def test_chapter_10_reopening_without_a_stash_starts_fresh(client, wizard_driver
 # --- Chapter 11: a task list --------------------------------------------------
 
 
-def test_chapter_11_lists_sections_and_drives_one_to_complete(client, wizard_driver):
+def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driver):
     hub_url = reverse("readme-hub")
     response = client.get(hub_url)
 
@@ -522,13 +522,13 @@ def test_chapter_11_lists_sections_and_drives_one_to_complete(client, wizard_dri
         ("Address", "not-started"),
     ]
 
-    # Entering a section from the hub lands on its first step.
-    door = reverse("readme-hub-section", kwargs={"section": "contact"})
+    # Entering a member from the hub lands on its first step.
+    door = reverse("readme-hub-member", kwargs={"member": "contact"})
     client.get(door, follow=True)
     driver = wizard_driver("readme-hub-contact")
     run = driver.only_run()
 
-    # Half-answered, the section reads as Incomplete on the hub.
+    # Half-answered, the member reads as Incomplete on the hub.
     run.post_step("name", {"full_name": "Ada"}, follow=True)
     assertContains(client.get(hub_url), "Incomplete")
 
@@ -542,15 +542,15 @@ def test_chapter_11_lists_sections_and_drives_one_to_complete(client, wizard_dri
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Complete")
-    assert stored_section_stash(client, "contact")["state"][0] == {
+    assert stored_member_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 
 
-def test_chapter_11_reopens_a_completed_section_on_its_review_page(
+def test_chapter_11_reopens_a_completed_member_on_its_review_page(
     client, wizard_driver
 ):
-    door = reverse("readme-hub-section", kwargs={"section": "address"})
+    door = reverse("readme-hub-member", kwargs={"member": "address"})
     client.get(door, follow=True)
     driver = wizard_driver("readme-hub-address")
     run = driver.only_run()
@@ -562,7 +562,7 @@ def test_chapter_11_reopens_a_completed_section_on_its_review_page(
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "12 High Street")
     assertContains(response, "Check your answers")
-    # A re-opened section arrives with every step answered, the review step
+    # A re-opened member arrives with every step answered, the review step
     # included, so the page has to drop itself from its own rows.
     assertContains(response, "Change Address")
     assertNotContains(response, "Change Review")
@@ -632,7 +632,7 @@ def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
 
 
 def _finish_project(client, amount):
-    door = reverse("readme-gated-section", kwargs={"section": "project"})
+    door = reverse("readme-gated-member", kwargs={"member": "project"})
     step_url = client.get(door)["Location"]
     client.post(step_url, {"title": "Boathouse roof", "amount": str(amount)})
     return client.post(step_url.replace("/project/", "/review/"), {}, follow=True)
@@ -645,7 +645,7 @@ def _gated_statuses(client):
 
 def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
     assert _gated_statuses(client)["referees"] == "blocked"
-    door = reverse("readme-gated-section", kwargs={"section": "referees"})
+    door = reverse("readme-gated-member", kwargs={"member": "referees"})
     assertRedirects(client.get(door), reverse("readme-gated"))
 
     _finish_project(client, 5_000)
@@ -666,5 +666,5 @@ def test_chapter_13_match_funding_stays_hidden_below_it(client):
     _finish_project(client, 5_000)
 
     assert "match_funding" not in _gated_statuses(client)
-    door = reverse("readme-gated-section", kwargs={"section": "match_funding"})
+    door = reverse("readme-gated-member", kwargs={"member": "match_funding"})
     assertRedirects(client.get(door), reverse("readme-gated"))

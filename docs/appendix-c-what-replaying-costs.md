@@ -46,7 +46,7 @@ bench` measures your own shapes, and `tests/functional/test_walk_cost.py`
 pins the counts so they cannot regress unnoticed.
 
 A hub row (chapter 11) deliberately pays none of this: two storage reads and
-a `reverse()`, never a walk. That is why what a section decided is written to
+a `reverse()`, never a walk. That is why what a member decided is written to
 `store.data` at completion rather than read out of a stash at render time.
 
 ---

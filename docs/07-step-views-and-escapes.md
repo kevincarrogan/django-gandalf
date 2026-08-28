@@ -1,4 +1,4 @@
-# Chapter 7 — A step with a view of its own
+# Chapter 7 — Step views and escapes
 
 Two things a plain `Form` cannot do. An organisation's website can be
 guessed from its email domain, so the website step wants a pre-filled
@@ -114,4 +114,4 @@ catches all three.
 
 ---
 
-[← Chapter 6 — Check your answers](06-check-your-answers.md) · [README](../README.md) · [Chapter 8 — Proof it exists →](08-proof-it-exists.md)
+[← Chapter 6 — The summary: check your answers](06-the-summary.md) · [README](../README.md) · [Chapter 8 — File uploads →](08-file-uploads.md)

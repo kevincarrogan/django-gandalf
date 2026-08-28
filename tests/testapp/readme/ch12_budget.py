@@ -1,8 +1,8 @@
 """Chapter 12 — budget lines. A list the applicant grows, one wizard per
 line, on a task list beside the project itself."""
 
-from gandalf.collections import CollectionView, ItemSectionMixin
-from gandalf.sections import HubView, Section, SectionMixin
+from gandalf.collections import CollectionView, ItemMemberMixin
+from gandalf.hubs import HubView, Member, RunMemberMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -10,7 +10,7 @@ from .ch06_review import ReviewStepView
 from .forms import BudgetLineForm, ProjectForm
 
 
-class BudgetLineViewSet(ItemSectionMixin, WizardViewSet):
+class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
     description = "Chapter 12: one budget line of a collection the applicant grows."
     url_name = "readme-budget-line"
     template_name = "testapp/linear_wizard.html"
@@ -32,7 +32,7 @@ class BudgetCollectionView(CollectionView):
     template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"
     url_name = "readme-budget"
-    section_key = "budget"
+    member_key = "budget"
     item_viewset = BudgetLineViewSet
     item_name = "Budget line"
     item_reopen_step = "review"
@@ -40,11 +40,11 @@ class BudgetCollectionView(CollectionView):
     hub_url_name = "readme-project-hub"
 
 
-class ProjectSectionViewSet(SectionMixin, WizardViewSet):
-    description = "Chapter 12: the project section beside the budget."
+class ProjectMemberViewSet(RunMemberMixin, WizardViewSet):
+    description = "Chapter 12: the project member beside the budget."
     url_name = "readme-project"
     template_name = "testapp/linear_wizard.html"
-    section_key = "project"
+    member_key = "project"
     hub_url_name = "readme-project-hub"
     wizard = (
         Wizard()
@@ -57,12 +57,10 @@ class ProjectHubView(HubView):
     description = "Chapter 12: a task list whose second row is a collection."
     template_name = "testapp/readme_hub.html"
     url_name = "readme-project-hub"
-    section_url_name = "readme-project-hub-section"
-    sections = [
-        Section(
-            "project", ProjectSectionViewSet, title="Project", reopen_step="review"
-        ),
-        # A collection page is not a wizard, so the row links straight at it
-        # and answers for its own status.
-        Section("budget", BudgetCollectionView, title="Budget"),
+    member_url_name = "readme-project-hub-member"
+    members = [
+        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
+        # A collection is a hub, and a hub is a member: the row links
+        # straight at its page and reads its own status.
+        Member("budget", BudgetCollectionView, title="Budget"),
     ]

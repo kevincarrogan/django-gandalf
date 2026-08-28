@@ -191,7 +191,7 @@ def test_a_driver_can_open_the_file_a_person_uploaded(
 
 def test_the_driver_prefills_a_long_quote_wizard_from_a_profile():
     """The value case: a fourteen-ish step wizard where one prefill from a
-    business profile crosses two branches and a grown fleet section,
+    business profile crosses two branches and a grown fleet member,
     leaving only the confirmation for a human."""
     from examples.insurance import InsuranceQuoteViewSet
 

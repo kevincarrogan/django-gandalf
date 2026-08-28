@@ -1,20 +1,20 @@
-# Chapter 12 — Budget lines
+# Chapter 12 — Collections: add another
 
 A budget is not one answer but a list of them, and the applicant decides how
 long the list is. `gandalf.collections` is the "add another" pattern — a page
 listing what has been added so far, with **Change** and **Remove** on each
 row, an **Add another** question, and one item wizard behind all of them.
 
-A collection is a hub whose sections are *built* rather than declared: one per
+A collection is a hub whose members are *built* rather than declared: one per
 id in an ordered registry the user grows. Everything the hub does — the status
 derivation, the resume-before-reopen door, the no-bare-run-URL guarantee —
 applies unchanged.
 
 ```python
-from gandalf.collections import CollectionView, ItemSectionMixin
+from gandalf.collections import CollectionView, ItemMemberMixin
 
 
-class BudgetLineViewSet(ItemSectionMixin, WizardViewSet):
+class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
     url_name = "readme-budget-line"
     template_name = "testapp/linear_wizard.html"
     collection_key = "budget"
@@ -33,7 +33,7 @@ class BudgetCollectionView(CollectionView):
     template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"
     url_name = "readme-budget"
-    section_key = "budget"
+    member_key = "budget"
     item_viewset = BudgetLineViewSet
     item_name = "Budget line"
     item_reopen_step = "review"
@@ -44,12 +44,12 @@ class BudgetCollectionView(CollectionView):
 class ProjectHubView(HubView):
     template_name = "testapp/readme_hub.html"
     url_name = "readme-project-hub"
-    section_url_name = "readme-project-hub-section"
-    sections = [
-        Section("project", ProjectSectionViewSet, title="Project", reopen_step="review"),
-        # A collection page is not a wizard, so the row links straight at it
-        # and answers for its own status.
-        Section("budget", BudgetCollectionView, title="Budget"),
+    member_url_name = "readme-project-hub-member"
+    members = [
+        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
+        # A collection is a hub, and a hub is a member: the row links
+        # straight at its page and reads its own status.
+        Member("budget", BudgetCollectionView, title="Budget"),
     ]
 ```
 
@@ -60,15 +60,15 @@ This is the one thing that will bite you, and it fails silently:
 ```python
 urlpatterns = [
     path("readme/project/", include(ProjectHubView.urls())),
-    path("readme/project-details/", include(ProjectSectionViewSet.urls())),
+    path("readme/project-details/", include(ProjectMemberViewSet.urls())),
     path("readme/budget/", include(BudgetCollectionView.urls())),
     path("readme/budget-line/<uuid:item>/", include(BudgetLineViewSet.urls())),
 ]
 ```
 
-`HubView` publishes `<slug:section>/`, which matches **any** single segment —
+`HubView` publishes `<slug:member>/`, which matches **any** single segment —
 so a collection mounted at `project/budget/` is swallowed by the hub's own
-door for a section named `budget`. And `WizardViewSet` publishes `""` as its
+door for a member named `budget`. And `WizardViewSet` publishes `""` as its
 start URL — so an item wizard mounted at `budget/<uuid:item>/` occupies the
 exact path of the collection's door for that item. Either way, whichever
 `include()` is listed first wins, and the symptom is "Change stopped working"
@@ -157,7 +157,7 @@ mind. Removing an item does not re-ask it: three lines minus one is still
 | Action | What happens |
 | --- | --- |
 | **Add** | The item is registered *first*, then its wizard starts — which is what lets a half-finished item have a row, and leaves a listed, removable row rather than an orphan run if entering fails |
-| **Read** | One `Section` per registered id; the hub's own status derivation and row building, unchanged |
+| **Read** | One `Member` per registered id; the hub's own status derivation and row building, unchanged |
 | **Change** | The door resumes a live run or re-opens a stash. A re-opened item re-saves on the next submission — and re-caches the title, so a rename shows on the page |
 | **Remove** | Run obliterated → run cleared → stash deleted → title cleared → `item_removed()` → registry entry last, so a hook that raises leaves the item still listed and still removable |
 
@@ -171,11 +171,11 @@ only that one may.
 own records instead of the registry. `new_item_id()` mints identity,
 `get_item_title()` names a row, `get_collection_status()` decides how far the
 whole thing has got, `item_removed()` is where the application deletes
-whatever `section_done()` saved, and `collection_done()` is what happens when
+whatever `member_done()` saved, and `collection_done()` is what happens when
 the user says that is all.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch12_budget.py`](../tests/testapp/readme/ch12_budget.py)
 
 ---
 
-[← Chapter 11 — A task list](11-a-task-list.md) · [README](../README.md) · [Chapter 13 — Locked and hidden →](13-locked-and-hidden.md)
+[← Chapter 11 — Hubs: a task list of members](11-hubs.md) · [README](../README.md) · [Chapter 13 — Blocked and hidden members →](13-blocked-and-hidden.md)

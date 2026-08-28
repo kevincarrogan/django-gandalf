@@ -1193,8 +1193,8 @@ def test_branching_wizard_done_can_merge_cleaned_data_across_runtime_tree(
     )
 
 
-def test_section_editing_wizard_uses_custom_step_router_for_get(wizard_driver):
-    run = wizard_driver("section-editing-wizard").start()
+def test_member_editing_wizard_uses_custom_step_router_for_get(wizard_driver):
+    run = wizard_driver("member-editing-wizard").start()
     run.post_steps(
         [
             ("account", {"account_type": "personal"}),
@@ -1210,8 +1210,8 @@ def test_section_editing_wizard_uses_custom_step_router_for_get(wizard_driver):
     assert form.initial == {"account_type": "personal"}
 
 
-def test_section_editing_wizard_uses_custom_step_router_for_post(wizard_driver):
-    run = wizard_driver("section-editing-wizard").start()
+def test_member_editing_wizard_uses_custom_step_router_for_post(wizard_driver):
+    run = wizard_driver("member-editing-wizard").start()
     run.post_steps(
         [
             ("account", {"account_type": "personal"}),
@@ -2241,8 +2241,8 @@ def test_branching_stashing_wizard_stashes_nested_entries_without_a_label(
         wizard_driver("branching-stashing-wizard")
     )
 
-    assert response.content == b"stashed sections"
-    payload = stored_stash(client, "sections")
+    assert response.content == b"stashed members"
+    payload = stored_stash(client, "members")
     assert "label" not in payload
     assert payload["state"] == [
         {"step": {"account_type": "business"}},
@@ -2267,12 +2267,12 @@ def test_branching_stashing_wizard_strips_a_legacy_branch_entry(client, wizard_d
 
     response = run.get()
 
-    assert response.content == b"stashed sections"
-    payload = stored_stash(client, "sections")
+    assert response.content == b"stashed members"
+    payload = stored_stash(client, "members")
     assert payload["state"][1] == {"branch": [{"step": {"business_name": "Acme"}}]}
 
 
-def test_resurrecting_the_sections_stash_lands_on_the_named_step_and_consumes_it(
+def test_resurrecting_the_members_stash_lands_on_the_named_step_and_consumes_it(
     client, wizard_driver
 ):
     driver = wizard_driver("branching-stashing-wizard")
@@ -2292,16 +2292,16 @@ def test_resurrecting_the_sections_stash_lands_on_the_named_step_and_consumes_it
     )
 
 
-def test_stashed_section_keys_lists_completions_and_discard_removes_them(
+def test_stashed_member_keys_lists_completions_and_discard_removes_them(
     client, wizard_driver
 ):
-    assert client.get(reverse("stashed-section-keys")).content == b""
+    assert client.get(reverse("stashed-member-keys")).content == b""
 
     _complete_branching_stashing_wizard(wizard_driver("branching-stashing-wizard"))
-    assert client.get(reverse("stashed-section-keys")).content == b"sections"
+    assert client.get(reverse("stashed-member-keys")).content == b"members"
 
-    client.get(reverse("discard-sections-stash"))
-    assert client.get(reverse("stashed-section-keys")).content == b""
+    client.get(reverse("discard-members-stash"))
+    assert client.get(reverse("stashed-member-keys")).content == b""
 
 
 def test_resurrecting_an_empty_stash_completes_on_arrival(client, wizard_driver):

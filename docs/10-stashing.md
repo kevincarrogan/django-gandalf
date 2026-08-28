@@ -1,4 +1,4 @@
-# Chapter 10 — Coming back later
+# Chapter 10 — Stashing: leave and come back
 
 Completion is terminal — `done()` fires once and the run's answers are gone.
 An application is not filled in one sitting, though: the contact details
@@ -40,7 +40,7 @@ the run's answers. The payload is yours — a model field, the session,
 wherever your bigger flow keeps its pieces; `SessionStashStore` is the helper
 for the common case (`put` / `get` / `has` / `pop` / `delete` / `keys`),
 server-side so it cannot be tampered with in transit. It is also what a
-task list (chapter 11) keeps its sections' stashes in, pointed at the
+task list (chapter 11) keeps its members' stashes in, pointed at the
 journey's own record rather than its top-level key — the same store in two
 homes, not a second mechanism. To re-open it,
 `resurrect(request, payload)` seeds a brand-new run from the payload and
@@ -84,4 +84,4 @@ What resurrection promises:
 
 ---
 
-[← Chapter 9 — Finishing, and what it leaves behind](09-finishing-and-what-it-leaves-behind.md) · [README](../README.md) · [Chapter 11 — A task list →](11-a-task-list.md)
+[← Chapter 9 — Completion hooks and run metadata](09-completion-hooks-and-metadata.md) · [README](../README.md) · [Chapter 11 — Hubs: a task list of members →](11-hubs.md)

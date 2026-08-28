@@ -1,4 +1,4 @@
-# Chapter 5 — Different funds, different questions
+# Chapter 5 — A wizard per request
 
 The fund runs an arts programme and a sports programme, and the arts
 programme wants a link to your work. That is a difference in the *request* —
@@ -80,4 +80,4 @@ serving an unreachable step. For a scheme the router cannot express, skip
 
 ---
 
-[← Chapter 4 — As many trustees as there are](04-as-many-trustees-as-there-are.md) · [README](../README.md) · [Chapter 6 — Check your answers →](06-check-your-answers.md)
+[← Chapter 4 — Expanding from an answer](04-expanding.md) · [README](../README.md) · [Chapter 6 — The summary: check your answers →](06-the-summary.md)

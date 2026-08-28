@@ -1,6 +1,6 @@
 """Unit coverage for the add-another layer.
 
-A collection is a hub whose sections are built from an ordered registry rather
+A collection is a hub whose members are built from an ordered registry rather
 than declared, so most of its behaviour is `HubMixin`'s and is covered there.
 What is genuinely its own: how far the whole thing has got, what an item is
 called, what the four actions do in what order, and what it refuses to be
@@ -19,10 +19,10 @@ from gandalf.collections import (
     CollectionRow,
     CollectionView,
     ItemNotFound,
-    ItemSectionMixin,
+    ItemMemberMixin,
 )
 from gandalf.context import WizardContext
-from gandalf.sections import Hub, HubMixin, Section
+from gandalf.hubs import Hub, HubMixin, Member
 from gandalf.storage import SessionCollectionStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
@@ -53,7 +53,7 @@ def _session(seed=None, journey="default"):
     return _Session(seed)
 
 
-class _ItemViewSet(ItemSectionMixin, WizardViewSet):
+class _ItemViewSet(ItemMemberMixin, WizardViewSet):
     url_name = "party-guest"
     template_name = "testapp/linear_wizard.html"
     collection_key = "guests"
@@ -72,7 +72,7 @@ class _TemplateView:
 
 class _Collection(CollectionMixin, _TemplateView):
     url_name = "party-guests"
-    section_key = "guests"
+    member_key = "guests"
     item_viewset = _ItemViewSet
     item_name = "Guest"
     hub_url_name = "party-hub"
@@ -208,7 +208,7 @@ def test_an_empty_collection_says_so(collection):
     assert result.is_not_started is True
 
 
-def test_the_collection_counts_its_items_the_way_a_hub_counts_its_sections(
+def test_the_collection_counts_its_items_the_way_a_hub_counts_its_members(
     collection,
 ):
     """ "2 of 3 guests finished" is the page's own heading, and deriving it in
@@ -230,8 +230,8 @@ def test_an_item_the_user_cannot_start_yet_is_counted_as_blocked(rf):
     have to answer for it too."""
 
     class _Locked(_Collection):
-        def section_blocked(self, section, store):
-            return section.key.endswith(ITEM_B)
+        def member_blocked(self, member, store):
+            return member.key.endswith(ITEM_B)
 
     request = rf.get("/party-guests/")
     request.session = _session(
@@ -252,8 +252,8 @@ def test_an_item_viewset_can_gate_its_own_items_one_by_one(rf):
 
     class _GatedItemViewSet(_ItemViewSet):
         @classmethod
-        def blocked(cls, request, section, store):
-            return section.url_kwargs["item"] == ITEM_B
+        def blocked(cls, request, member, store):
+            return member.url_kwargs["item"] == ITEM_B
 
     class _PerItem(_Collection):
         item_viewset = _GatedItemViewSet
@@ -285,7 +285,7 @@ def test_the_collection_says_how_many_items_it_needs(collection):
 # --- what an item is called -------------------------------------------------
 
 
-def test_an_item_is_named_by_the_title_its_own_section_cached(collection):
+def test_an_item_is_named_by_the_title_its_own_member_cached(collection):
     page = collection(_seed(items=[(ITEM_A, "Ada Lovelace")]))
 
     (row,) = page.get_collection().rows
@@ -322,13 +322,13 @@ def test_a_row_carries_both_links_a_crud_list_needs(collection):
     assert row.remove_url.endswith(f"/{ITEM_A}/remove/")
 
 
-def test_a_collections_rows_are_also_its_sections_rows(collection):
+def test_a_collections_rows_are_also_its_members_rows(collection):
     """So a template written for a hub reads a collection unchanged."""
     page = collection(_seed(items=[(ITEM_A, "Ada")]))
 
     context = page.get_context_data()
 
-    assert list(page.get_section_rows()) == list(context["collection"].rows)
+    assert list(page.get_member_rows()) == list(context["collection"].rows)
     assert isinstance(context["collection"].rows[0], CollectionRow)
     assert isinstance(context["form"], AddAnotherForm)
 
@@ -382,12 +382,12 @@ def test_declaring_no_more_records_the_answer_and_moves_the_user_on(collection):
 
 
 def test_removing_an_item_destroys_the_pointer_last(collection):
-    """The mirror of `SectionMixin.done()`: a hook that raises leaves the item
+    """The mirror of `RunMemberMixin.done()`: a hook that raises leaves the item
     still listed and still removable."""
     events = []
 
     class _Failing(_Collection):
-        def item_removed(self, item_id, section, store):
+        def item_removed(self, item_id, member, store):
             events.append(
                 (
                     store.get_item_title("guests", item_id),
@@ -458,7 +458,7 @@ def test_an_item_keys_itself_from_the_url(rf):
     view = _ItemViewSet()
     view.setup(rf.get("/party-guest/7/"), item="7")
 
-    assert view.get_section_key() == "guests:7"
+    assert view.get_member_key() == "guests:7"
 
 
 def test_every_item_of_a_collection_stamps_one_label(rf):
@@ -467,14 +467,14 @@ def test_every_item_of_a_collection_stamps_one_label(rf):
     view = _ItemViewSet()
     view.setup(rf.get("/party-guest/7/"), item="7")
 
-    assert view.get_section_label() == "guests"
+    assert view.get_member_label() == "guests"
 
 
 def test_a_collections_item_label_can_be_bumped_alongside_its_items(collection):
     """Both halves move together, or the drift check refuses the pair."""
 
     class _Reshaped(_ItemViewSet):
-        section_label = "guests-v2"
+        member_label = "guests-v2"
 
     class _ReshapedCollection(_Collection):
         item_viewset = _Reshaped
@@ -483,17 +483,17 @@ def test_a_collections_item_label_can_be_bumped_alongside_its_items(collection):
     page = _ReshapedCollection(collection(_seed(items=[(ITEM_A, "Ada")])).request)
 
     assert page.get_item_label() == "guests-v2"
-    assert page.stash_label(page.get_item_section(ITEM_A)) == "guests-v2"
+    assert page.stash_label(page.get_item_member(ITEM_A)) == "guests-v2"
 
 
 def test_an_items_label_can_be_bumped_when_its_shape_changes(rf):
     class _Reshaped(_ItemViewSet):
-        section_label = "guests-v2"
+        member_label = "guests-v2"
 
     view = _Reshaped()
     view.setup(rf.get("/party-guest/7/"), item="7")
 
-    assert view.get_section_label() == "guests-v2"
+    assert view.get_member_label() == "guests-v2"
 
 
 def test_a_finished_item_returns_to_its_collection_without_its_own_id(rf):
@@ -572,9 +572,9 @@ def test_an_item_wizard_refuses_a_request_for_an_item_that_is_gone(rf):
 
 def test_a_collection_without_a_key_is_misconfigured(collection):
     class _Keyless(_Collection):
-        section_key = None
+        member_key = None
 
-    with pytest.raises(ImproperlyConfigured, match="section_key"):
+    with pytest.raises(ImproperlyConfigured, match="member_key"):
         _Keyless(collection().request).get_collection()
 
 
@@ -612,12 +612,26 @@ def test_a_collection_without_a_url_name_is_misconfigured(collection):
         _NamelessView.urls()
 
 
+def test_an_item_that_names_another_collection_is_rejected(collection):
+    """Its items would register under this page's key and stash under the
+    other's, so a finished item never shows as complete."""
+
+    class _Elsewhere(_ItemViewSet):
+        collection_key = "gatecrashers"
+
+    class _Mismatched(_Collection):
+        item_viewset = _Elsewhere
+
+    with pytest.raises(ImproperlyConfigured, match="must name the collection"):
+        _Mismatched(collection().request).get_collection()
+
+
 def test_an_item_label_that_drifts_from_its_collections_is_rejected(collection):
     """A re-opened item would be refused at the door and could never be
     changed."""
 
     class _Drifted(_ItemViewSet):
-        section_label = "guests-v2"
+        member_label = "guests-v2"
 
     class _Mismatched(_Collection):
         item_viewset = _Drifted
@@ -634,7 +648,7 @@ def test_an_item_wizard_without_a_collection_key_is_misconfigured(rf):
     view.setup(rf.get("/party-guest/7/"), item="7")
 
     with pytest.raises(ImproperlyConfigured, match="collection_key"):
-        view.get_section_key()
+        view.get_member_key()
 
 
 def test_an_item_wizard_not_mounted_under_an_item_segment_is_misconfigured(rf):
@@ -672,7 +686,7 @@ def test_an_item_wizard_that_cannot_name_its_items_is_misconfigured(rf):
 def test_a_collection_view_needs_a_remove_template_to_confirm_with(rf):
     class _Blunt(CollectionView):
         url_name = "party-guests"
-        section_key = "guests"
+        member_key = "guests"
         item_viewset = _ItemViewSet
         remove_template_name = None
 
@@ -905,7 +919,7 @@ def test_a_collection_publishes_a_page_an_item_and_a_remove_pattern():
 
 
 def test_a_collection_reports_its_status_to_a_parent_task_list(rf):
-    """A collection is a hub, so a parent lists it as a section like any
+    """A collection is a hub, so a parent lists it as a member like any
     other, and asks `status_for()` — the collection's own status, which no
     stash key could express."""
     request = _view_request(
@@ -914,9 +928,9 @@ def test_a_collection_reports_its_status_to_a_parent_task_list(rf):
         session=_seed(items=[(ITEM_A, "Ada")], declared_done=True)
         | {"stashes": {f"guests:{ITEM_A}": {}}},
     )
-    section = Section("guests", GuestCollectionView, title="Guests")
+    member = Member("guests", GuestCollectionView, title="Guests")
 
-    assert HubMixin.is_hub(section)
+    assert HubMixin.is_hub(member)
     assert GuestCollectionView.status_for(request, {}) == COMPLETE
 
 
@@ -953,12 +967,12 @@ def test_a_collection_keeps_its_registry_under_its_journey(rf):
 
 def test_an_item_viewset_can_hide_its_items(rf):
     """`hidden()` reaches a collection through the same seam `blocked()`
-    does: the hub's `section_hidden()`, asked of the item viewset."""
+    does: the hub's `member_hidden()`, asked of the item viewset."""
 
     class _Hiding(_ItemViewSet):
         @classmethod
-        def hidden(cls, request, section, store):
-            return section.url_kwargs["item"] == ITEM_B
+        def hidden(cls, request, member, store):
+            return member.url_kwargs["item"] == ITEM_B
 
     class _PerItem(_Collection):
         item_viewset = _Hiding

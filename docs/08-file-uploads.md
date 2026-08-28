@@ -1,4 +1,4 @@
-# Chapter 8 — Proof it exists
+# Chapter 8 — File uploads
 
 An organisation uploads its governing document. Uploaded bytes cannot live in
 the session, so Gandalf persists them through a companion
@@ -54,4 +54,4 @@ subclassing `WizardFileStorage` and passing it to
 
 ---
 
-[← Chapter 7 — A step with a view of its own](07-a-step-with-a-view-of-its-own.md) · [README](../README.md) · [Chapter 9 — Finishing, and what it leaves behind →](09-finishing-and-what-it-leaves-behind.md)
+[← Chapter 7 — Step views and escapes](07-step-views-and-escapes.md) · [README](../README.md) · [Chapter 9 — Completion hooks and run metadata →](09-completion-hooks-and-metadata.md)

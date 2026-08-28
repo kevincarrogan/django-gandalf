@@ -1,10 +1,10 @@
 """A whole journey over HTTP: the README's grant application, start to
 submit.
 
-A journey is what a hub's sections add up to. The load-bearing claims here
+A journey is what a hub's members add up to. The load-bearing claims here
 are the ones a single hub cannot make: two journeys in one session never see
-each other; a section that does not apply yet is not there, while one that
-waits on another is there but locked; what a section decided reaches the
+each other; a member that does not apply yet is not there, while one that
+waits on another is there but locked; what a member decided reaches the
 rest of the journey without a walk; and submitting is a thing that happens
 exactly once, after which nothing can be re-opened.
 """
@@ -18,16 +18,16 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertNotContains, assertRedirects
 
 from gandalf.context import WizardContext
-from gandalf.sections import BLOCKED, COMPLETE, NOT_STARTED, Section
-from gandalf.storage import SessionSectionStore
+from gandalf.hubs import BLOCKED, COMPLETE, NOT_STARTED, Member
+from gandalf.storage import SessionJourneyStore
 from gandalf.testing import (
     seed_journey_complete,
     seed_journey_data,
-    seed_section_stash,
+    seed_member_stash,
     stored_journey,
     stored_journey_data,
-    stored_section_run,
-    stored_section_stashes,
+    stored_member_run,
+    stored_member_stashes,
 )
 from tests.testapp.models import Application
 from tests.testapp.readme import ch14_journey
@@ -49,8 +49,8 @@ def _hub(journey):
     return reverse("readme-apply-hub", kwargs={"journey": journey})
 
 
-def _door(journey, section, hub="readme-apply-hub"):
-    return reverse(f"{hub}-section", kwargs={"journey": journey, "section": section})
+def _door(journey, member, hub="readme-apply-hub"):
+    return reverse(f"{hub}-member", kwargs={"journey": journey, "member": member})
 
 
 def _supporting(journey):
@@ -62,11 +62,11 @@ def _statuses(client, journey, hub="readme-apply-hub"):
     return {row.key: row.status for row in response.context["hub"].rows}
 
 
-def _finish(client, journey, section, url_name, steps, hub="readme-apply-hub"):
-    """Enter a section from its hub and drive it to its end."""
-    client.get(_door(journey, section, hub), follow=True)
-    key = section if hub == "readme-apply-hub" else f"supporting:{section}"
-    run_id = stored_section_run(client, key, journey=journey)
+def _finish(client, journey, member, url_name, steps, hub="readme-apply-hub"):
+    """Enter a member from its hub and drive it to its end."""
+    client.get(_door(journey, member, hub), follow=True)
+    key = member if hub == "readme-apply-hub" else f"supporting:{member}"
+    run_id = stored_member_run(client, key, journey=journey)
     response = None
     for step, data in steps:
         response = client.post(
@@ -143,7 +143,7 @@ def test_the_setup_wizard_mints_a_journey_and_lands_on_its_hub(client):
     response = client.get(_hub(journey))
 
     assert response.status_code == HTTPStatus.OK
-    # The setup answers are the journey's first section, already complete,
+    # The setup answers are the journey's first member, already complete,
     # and the answer the journey turns on is in its data.
     assert _statuses(client, journey)["setup"] == COMPLETE
     assert stored_journey_data(client, journey) == {
@@ -159,13 +159,13 @@ def test_two_journeys_in_one_session_never_see_each_other(client):
     assert first != second
     assert _statuses(client, first)["contact"] == COMPLETE
     assert _statuses(client, second)["contact"] == NOT_STARTED
-    assert set(stored_section_stashes(client, second)) == {"setup"}
+    assert set(stored_member_stashes(client, second)) == {"setup"}
 
 
 # --- hidden and locked -----------------------------------------------------
 
 
-def test_a_section_that_does_not_apply_is_not_on_the_page(client):
+def test_a_member_that_does_not_apply_is_not_on_the_page(client):
     journey = _start(client, "individual")
 
     assert "match_funding" not in _statuses(client, journey)
@@ -177,8 +177,8 @@ def test_a_section_that_does_not_apply_is_not_on_the_page(client):
     assertContains(response, "of 1 section")
 
 
-def test_a_section_that_applies_from_the_start_is_listed(client):
-    """`hidden()` on a section two hubs down reads what the setup section
+def test_a_member_that_applies_from_the_start_is_listed(client):
+    """`hidden()` on a member two hubs down reads what the setup member
     wrote at the root: one journey, one record."""
     journey = _start(client, "organisation")
 
@@ -188,16 +188,16 @@ def test_a_section_that_applies_from_the_start_is_listed(client):
     assertContains(client.get(_supporting(journey)), "of 2 sections")
 
 
-def test_a_hidden_sections_door_is_refused(client):
+def test_a_hidden_members_door_is_refused(client):
     journey = _start(client, "individual")
 
     response = client.get(_door(journey, "documents", "readme-apply-supporting"))
 
     assertRedirects(response, _supporting(journey))
-    assert stored_section_run(client, "supporting:documents", journey=journey) is None
+    assert stored_member_run(client, "supporting:documents", journey=journey) is None
 
 
-def test_a_section_appears_once_another_sections_answer_reveals_it(client):
+def test_a_member_appears_once_another_members_answer_reveals_it(client):
     journey = _start(client)
 
     _finish_project(client, journey, 25_000)
@@ -206,7 +206,7 @@ def test_a_section_appears_once_another_sections_answer_reveals_it(client):
     assert stored_journey_data(client, journey)["journey"]["amount"] == 25_000
 
 
-def test_a_section_disappears_again_when_the_answer_is_withdrawn(client):
+def test_a_member_disappears_again_when_the_answer_is_withdrawn(client):
     journey = _start(client)
     _finish_project(client, journey, 25_000)
     assert "match_funding" in _statuses(client, journey)
@@ -217,7 +217,7 @@ def test_a_section_disappears_again_when_the_answer_is_withdrawn(client):
     assert "match_funding" not in _statuses(client, journey)
 
 
-def test_a_section_waiting_on_another_is_listed_but_cannot_start(client):
+def test_a_member_waiting_on_another_is_listed_but_cannot_start(client):
     journey = _start(client)
 
     response = client.get(_supporting(journey))
@@ -228,7 +228,7 @@ def test_a_section_waiting_on_another_is_listed_but_cannot_start(client):
     assertRedirects(client.get(door), _supporting(journey))
 
 
-def test_a_locked_section_unlocks_when_the_one_it_waits_on_finishes(client):
+def test_a_locked_member_unlocks_when_the_one_it_waits_on_finishes(client):
     """`blocked()` reads `contact` — a root key — from inside a nested hub."""
     journey = _start(client)
 
@@ -246,7 +246,7 @@ def test_a_locked_section_unlocks_when_the_one_it_waits_on_finishes(client):
 
 def test_a_nested_hubs_row_reads_its_own_rows(client):
     """The parent never reads a stash for a hub: the row's status is the
-    nested hub's, derived from its sections the same way its page derives
+    nested hub's, derived from its members the same way its page derives
     it."""
     journey = _start(client)
     assert _statuses(client, journey)["supporting"] == NOT_STARTED
@@ -257,7 +257,7 @@ def test_a_nested_hubs_row_reads_its_own_rows(client):
     _finish_referees(client, journey)
 
     assert _statuses(client, journey)["supporting"] == COMPLETE
-    assert stored_section_stashes(client, journey)["supporting:referees"]["label"] == (
+    assert stored_member_stashes(client, journey)["supporting:referees"]["label"] == (
         "supporting:referees"
     )
 
@@ -321,7 +321,7 @@ def _complete_everything(client, journey):
     _finish_budget(client, journey)
 
 
-def test_the_submit_button_appears_only_once_every_section_is_complete(client):
+def test_the_submit_button_appears_only_once_every_member_is_complete(client):
     journey = _start(client)
     assertNotContains(client.get(_hub(journey)), "Submit application")
 
@@ -375,14 +375,14 @@ def test_a_submitted_journey_refuses_every_way_back_in(client):
     client.post(_hub(journey))
 
     # The hub is the done page now, the door leads there, the budget page
-    # leads there, and a section's own wizard sends a bookmarked URL back.
+    # leads there, and a member's own wizard sends a bookmarked URL back.
     assertContains(client.get(_hub(journey)), "Application submitted")
     assertContains(client.get(_door(journey, "contact")), "Application submitted")
     budget = reverse("readme-apply-budget", kwargs={"journey": journey})
     assertRedirects(client.get(budget), _hub(journey), target_status_code=HTTPStatus.OK)
     response = client.get(reverse("readme-apply-contact", kwargs={"journey": journey}))
     assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
-    # A nested hub sends the user up, and its sections send them to it.
+    # A nested hub sends the user up, and its members send them to it.
     assertRedirects(
         client.get(_supporting(journey)),
         _hub(journey),
@@ -428,17 +428,15 @@ def _submit_hub(journey):
 
 
 def _submit_everything(client, journey):
-    for section, url_name, data in [
+    for member, url_name, data in [
         ("first", "submit-first", {"name": "Ada"}),
         ("second", "submit-second", {"name": "Grace"}),
     ]:
         client.get(
-            reverse(
-                "submit-hub-section", kwargs={"journey": journey, "section": section}
-            ),
+            reverse("submit-hub-member", kwargs={"journey": journey, "member": member}),
             follow=True,
         )
-        run_id = stored_section_run(client, section, journey=journey)
+        run_id = stored_member_run(client, member, journey=journey)
         client.post(
             reverse(
                 f"{url_name}-step",
@@ -478,15 +476,15 @@ def test_only_the_most_recent_completed_journeys_are_kept(client):
 
     assert stored_journey(client, "app-1") == {}
     assert stored_journey(client, "app-2") == {"completed": True}
-    assert stored_section_run(client, "first", journey="app-3") is None
-    assert set(stored_section_stashes(client, "app-3")) == {"first", "second"}
+    assert stored_member_run(client, "first", journey="app-3") is None
+    assert set(stored_member_stashes(client, "app-3")) == {"first", "second"}
 
 
 def test_a_post_to_a_door_submits_nothing(client):
     _submit_everything(client, "app-1")
 
     response = client.post(
-        reverse("submit-hub-section", kwargs={"journey": "app-1", "section": "first"})
+        reverse("submit-hub-member", kwargs={"journey": "app-1", "member": "first"})
     )
 
     assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
@@ -497,18 +495,34 @@ def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
     """Chapter 11's task list has no `journey_done()`: a complete hub can be
     submitted, and the library refuses to pretend that meant something."""
     for key in ("contact", "address"):
-        seed_section_stash(client, key, {"version": 1, "label": key, "state": []})
+        seed_member_stash(client, key, {"version": 1, "label": key, "state": []})
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         client.post(reverse("readme-hub"))
 
 
-def test_a_section_on_another_journey_than_its_hub_is_misconfigured(rf, client):
-    class _Astray(ch14_journey.ContactSectionViewSet):
+def test_a_nested_hub_with_no_url_name_is_misconfigured(rf, client):
+    """A hub listed as a member is reached by its page, so it has to have one."""
+
+    class _Unmounted(ch14_journey.SupportingHubView):
+        url_name = None
+
+    class _Parent(ch14_journey.GrantApplicationHubView):
+        members = [Member("supporting", _Unmounted)]
+
+    request = rf.get("/readme/apply/app-1/")
+    request.session = client.session
+
+    with pytest.raises(ImproperlyConfigured, match="Unmounted: supporting"):
+        _Parent.as_view()(request, journey="app-1")
+
+
+def test_a_member_on_another_journey_than_its_hub_is_misconfigured(rf, client):
+    class _Astray(ch14_journey.ContactMemberViewSet):
         journey_url_kwarg = "application"
 
     class _Mismatched(ch14_journey.GrantApplicationHubView):
-        sections = [Section("contact", _Astray)]
+        members = [Member("contact", _Astray)]
 
     request = rf.get("/readme/apply/app-1/")
     request.session = client.session
@@ -520,7 +534,7 @@ def test_a_section_on_another_journey_than_its_hub_is_misconfigured(rf, client):
 # --- arranging a journey from a test ----------------------------------------
 
 
-def test_a_seeded_answer_reveals_a_section_without_driving_the_wizard(client):
+def test_a_seeded_answer_reveals_a_member_without_driving_the_wizard(client):
     journey = _start(client)
 
     seed_journey_data(client, {"amount": 20_000}, journey=journey)
@@ -549,11 +563,11 @@ def test_a_seeded_tombstone_with_nothing_decided_is_the_bare_one(client):
     assert client.get(_submit_hub("app-9")).status_code == HTTPStatus.NOT_FOUND
 
 
-def test_the_stash_keys_are_the_finished_sections(client):
+def test_the_stash_keys_are_the_finished_members(client):
     journey = _start(client)
     _finish_contact(client, journey)
     _finish_project(client, journey, 5_000)
 
-    store = SessionSectionStore(WizardContext(session=client.session), journey)
+    store = SessionJourneyStore(WizardContext(session=client.session), journey)
 
     assert store.keys() == ["setup", "contact", "project"]

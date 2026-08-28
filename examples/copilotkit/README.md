@@ -9,7 +9,7 @@ check-your-answers page, in the ordinary Django UI, with everything
 already filled in and a change link beside every answer.
 
 The wizard is `examples/insurance.py` (a three-way company-type branch
-whose partnership arm grows a step per partner, a fleet section that
+whose partnership arm grows a step per partner, a fleet member that
 grows a step per vehicle, a claims branch, a summary review step).
 
 ## How it is wired
@@ -161,7 +161,7 @@ said so in a comment while the wizard's `AgentProfile` said so out loud.
 `fleet.py` lifts that, and needs no new library API to do it. A collection
 page is an ordinary Django view whose four verbs — add, change, remove,
 declare done — are ordinary methods: `add_item()` mints and registers an id,
-`get_item_ids()` is the registry, `get_section_rows()` is what the person
+`get_item_ids()` is the registry, `get_member_rows()` is what the person
 sees. Set it up against a fabricated request and they all answer. The item
 id is then just a URL kwarg, and `RunDriver.begin(ItemViewSet, item=…)`
 already takes those. Same driver, same walk, a different run.
@@ -170,7 +170,7 @@ What it *did* need was durable storage on both halves. The agent drives a
 fabricated request, and this demo keeps sessions in a signed cookie, so
 there is no session it could share even in principle. `HybridVehicleItem…`
 and `HybridVehicleCollection…` swap `storage_class` **and**
-`section_store_class` — the durable-storage docstring warns that one without
+`journey_store_class` — the durable-storage docstring warns that one without
 the other gives you "durable answers nobody can find" — and both sides then
 see one fleet, scoped to the user. `fleet_values` reads the values off the
 collection's own stashes rather than the session copy `insurance.py` keeps,

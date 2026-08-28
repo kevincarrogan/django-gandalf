@@ -54,29 +54,27 @@ urlpatterns = [
         ch10_stash.reopen_contact_details,
         name="readme-stash-reopen",
     ),
-    # A hub and its sections are siblings: the hub's "<slug:section>/" door
+    # A hub and its members are siblings: the hub's "<slug:member>/" door
     # would swallow anything mounted beneath it.
     path("readme/hub/", include(ch11_hub.GrantHubView.urls())),
-    path("readme/hub-contact/", include(ch11_hub.ContactSectionViewSet.urls())),
-    path("readme/hub-address/", include(ch11_hub.AddressSectionViewSet.urls())),
+    path("readme/hub-contact/", include(ch11_hub.ContactMemberViewSet.urls())),
+    path("readme/hub-address/", include(ch11_hub.AddressMemberViewSet.urls())),
     # A collection page and its item wizard are siblings of each other and of
     # the hub, for the same reason.
     path("readme/project/", include(ch12_budget.ProjectHubView.urls())),
-    path("readme/project-details/", include(ch12_budget.ProjectSectionViewSet.urls())),
+    path("readme/project-details/", include(ch12_budget.ProjectMemberViewSet.urls())),
     path("readme/budget/", include(ch12_budget.BudgetCollectionView.urls())),
     path(
         "readme/budget-line/<uuid:item>/", include(ch12_budget.BudgetLineViewSet.urls())
     ),
     path("readme/gated/", include(ch13_gated.GatedHubView.urls())),
-    path(
-        "readme/gated-project/", include(ch13_gated.GatedProjectSectionViewSet.urls())
-    ),
-    path("readme/gated-referees/", include(ch13_gated.RefereesSectionViewSet.urls())),
+    path("readme/gated-project/", include(ch13_gated.GatedProjectMemberViewSet.urls())),
+    path("readme/gated-referees/", include(ch13_gated.RefereesMemberViewSet.urls())),
     path(
         "readme/gated-match-funding/",
-        include(ch13_gated.MatchFundingSectionViewSet.urls()),
+        include(ch13_gated.MatchFundingMemberViewSet.urls()),
     ),
-    # A journey: the setup wizard mints an id, and the hub, its sections, the
+    # A journey: the setup wizard mints an id, and the hub, its members, the
     # budget page and the budget line wizard are all mounted under it as
     # siblings. "new" is listed before the journey pattern so it is never
     # read as an id.
@@ -87,15 +85,15 @@ urlpatterns = [
     ),
     path(
         "readme/apply-setup/<slug:journey>/",
-        include(ch14_journey.SetupSectionViewSet.urls()),
+        include(ch14_journey.SetupMemberViewSet.urls()),
     ),
     path(
         "readme/apply-contact/<slug:journey>/",
-        include(ch14_journey.ContactSectionViewSet.urls()),
+        include(ch14_journey.ContactMemberViewSet.urls()),
     ),
     path(
         "readme/apply-project/<slug:journey>/",
-        include(ch14_journey.ProjectSectionViewSet.urls()),
+        include(ch14_journey.ProjectMemberViewSet.urls()),
     ),
     path(
         "readme/apply-budget/<slug:journey>/",
@@ -107,17 +105,17 @@ urlpatterns = [
     ),
     path(
         "readme/apply-match-funding/<slug:journey>/",
-        include(ch14_journey.MatchFundingSectionViewSet.urls()),
+        include(ch14_journey.MatchFundingMemberViewSet.urls()),
     ),
     path(
         "readme/apply-referees/<slug:journey>/",
-        include(ch14_journey.RefereesSectionViewSet.urls()),
+        include(ch14_journey.RefereesMemberViewSet.urls()),
     ),
     path(
         "readme/apply-documents/<slug:journey>/",
-        include(ch14_journey.DocumentsSectionViewSet.urls()),
+        include(ch14_journey.DocumentsMemberViewSet.urls()),
     ),
-    # A hub that is a section of the hub above: a sibling too, under the
+    # A hub that is a member of the hub above: a sibling too, under the
     # same journey segment.
     path(
         "readme/apply-supporting/<slug:journey>/",
@@ -217,7 +215,7 @@ urlpatterns = [
         include(views.DynamicListPayloadWizardViewSet.urls()),
     ),
     path("file-uploading-wizard/", include(views.FileUploadingWizardViewSet.urls())),
-    path("section-editing-wizard/", include(views.SectionEditingWizardViewSet.urls())),
+    path("member-editing-wizard/", include(views.MemberEditingWizardViewSet.urls())),
     path("wizardless-wizard/", include(views.WizardlessWizardViewSet.urls())),
     path("file-editing-wizard/", include(views.FileEditingWizardViewSet.urls())),
     path("file-done-wizard/", include(views.FileDoneWizardViewSet.urls())),
@@ -275,18 +273,18 @@ urlpatterns = [
     ),
     path(
         "branching-stashing-wizard-resurrect/",
-        views.resurrect_sections_stash,
+        views.resurrect_members_stash,
         name="branching-stashing-wizard-resurrect",
     ),
     path(
-        "stashed-section-keys/",
-        views.stashed_section_keys,
-        name="stashed-section-keys",
+        "stashed-member-keys/",
+        views.stashed_member_keys,
+        name="stashed-member-keys",
     ),
     path(
-        "discard-sections-stash/",
-        views.discard_sections_stash,
-        name="discard-sections-stash",
+        "discard-members-stash/",
+        views.discard_members_stash,
+        name="discard-members-stash",
     ),
     path(
         "resurrect-empty-stash/",
@@ -346,46 +344,46 @@ urlpatterns = [
         include(views.EscapeParkFileWizardViewSet.urls()),
     ),
     path("scenario-hub/", include(views.ScenarioHubView.urls())),
-    path("scenario-hub-plain/", include(views.PlainSectionViewSet.urls())),
-    path("scenario-hub-advancing/", include(views.AdvancingSectionViewSet.urls())),
+    path("scenario-hub-plain/", include(views.PlainMemberViewSet.urls())),
+    path("scenario-hub-advancing/", include(views.AdvancingMemberViewSet.urls())),
     path("durable-hub/", include(views.DurableHubView.urls())),
-    path("durable-section/", include(views.DurableSectionViewSet.urls())),
+    path("durable-member/", include(views.DurableMemberViewSet.urls())),
     path("counting-hub/", include(views.CountingHubView.urls())),
     path(
-        "counting-hub-section/",
-        include(views.CountingSectionViewSet.urls()),
+        "counting-hub-member/",
+        include(views.CountingMemberViewSet.urls()),
     ),
     path(
-        "other-counting-hub-section/",
-        include(views.OtherCountingSectionViewSet.urls()),
+        "other-counting-hub-member/",
+        include(views.OtherCountingMemberViewSet.urls()),
     ),
     path("org/<slug:org>/hub/", include(views.OrgHubView.urls())),
-    path("org/<slug:org>/hub-details/", include(views.OrgSectionViewSet.urls())),
+    path("org/<slug:org>/hub-details/", include(views.OrgMemberViewSet.urls())),
     # A hub, a collection page and an item wizard are all mounted as
     # *siblings*, never nested, and for two distinct reasons.
     #
-    # `HubView.urls()` publishes "<slug:section>/", which matches any single
+    # `HubView.urls()` publishes "<slug:member>/", which matches any single
     # segment — so a collection page mounted at "party/guests/" would be
-    # swallowed by the hub's own door for a section named "guests".
+    # swallowed by the hub's own door for a member named "guests".
     #
     # `WizardViewSet.urls()` publishes "" as its start URL — so an item wizard
     # mounted at "party-guests/<uuid:item>/" would occupy the exact path of
     # the collection's own door for that item. Either way, whichever
     # `include()` comes first silently wins.
     path("gated-hub/", include(views.GatedHubView.urls())),
-    # A hub under a journey segment, its sections beside it under the same.
+    # A hub under a journey segment, its members beside it under the same.
     path("submit/<slug:journey>/", include(views.SubmitHubView.urls())),
     path(
-        "submit-first/<slug:journey>/", include(views.SubmitFirstSectionViewSet.urls())
+        "submit-first/<slug:journey>/", include(views.SubmitFirstMemberViewSet.urls())
     ),
     path(
         "submit-second/<slug:journey>/",
-        include(views.SubmitSecondSectionViewSet.urls()),
+        include(views.SubmitSecondMemberViewSet.urls()),
     ),
-    path("gated-first/", include(views.GatedFirstSectionViewSet.urls())),
-    path("gated-second/", include(views.GatedSecondSectionViewSet.urls())),
+    path("gated-first/", include(views.GatedFirstMemberViewSet.urls())),
+    path("gated-second/", include(views.GatedSecondMemberViewSet.urls())),
     path("party/", include(views.PartyHubView.urls())),
-    path("party-venue/", include(views.PartyVenueSectionViewSet.urls())),
+    path("party-venue/", include(views.PartyVenueMemberViewSet.urls())),
     path("party-guests/", include(views.GuestCollectionView.urls())),
     path("party-guest/<uuid:item>/", include(views.GuestItemViewSet.urls())),
     path("locked-guests/", include(views.LockedGuestCollectionView.urls())),

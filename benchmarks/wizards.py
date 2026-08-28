@@ -231,9 +231,9 @@ def dynamic_wizard(*, items, fields=1, clean_seconds=0.0, instrumented=True):
 
 
 def branching_wizard(
-    *, sections, arm_steps, fields=1, clean_seconds=0.0, instrumented=True
+    *, members, arm_steps, fields=1, clean_seconds=0.0, instrumented=True
 ):
-    """`sections` repetitions of: one decision step, then a two-arm branch.
+    """`members` repetitions of: one decision step, then a two-arm branch.
 
     Both arms are the same length, so the path taken is the same length
     whichever way each decision goes. What this isolates is whether dormant
@@ -242,8 +242,8 @@ def branching_wizard(
     """
     wizard = Wizard()
     payloads = {}
-    for section in range(sections):
-        decision_segment = f"s{section}-choice"
+    for member in range(members):
+        decision_segment = f"s{member}-choice"
         wizard = wizard.step(
             _make_decision_form(decision_segment, clean_seconds=clean_seconds),
             **_naming(decision_segment),
@@ -254,7 +254,7 @@ def branching_wizard(
         for arm in ("a", "b"):
             arm_wizard = Wizard()
             for index in range(arm_steps):
-                segment = f"s{section}{arm}-{index}"
+                segment = f"s{member}{arm}-{index}"
                 arm_wizard = arm_wizard.step(
                     _make_step_form(
                         segment, fields=fields, clean_seconds=clean_seconds
@@ -270,7 +270,7 @@ def branching_wizard(
         )
 
     label = (
-        f"branching sections={sections} arm_steps={arm_steps} "
+        f"branching members={members} arm_steps={arm_steps} "
         f"fields={fields} clean={clean_seconds}s"
     )
     return BenchmarkWizard(
@@ -279,5 +279,5 @@ def branching_wizard(
             wizard=wizard, url_name="bench", instrumented=instrumented
         ),
         payloads=payloads,
-        path_length=sections * (1 + arm_steps),
+        path_length=members * (1 + arm_steps),
     )

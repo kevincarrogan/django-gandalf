@@ -1,7 +1,7 @@
 """A hub and spoke task list over HTTP.
 
 A hub lists parallel wizards the user drops in and out of, showing each as
-Not started, Incomplete or Complete, and hands out one link per section that
+Not started, Incomplete or Complete, and hands out one link per member that
 resumes, re-opens or starts it as appropriate.
 
 The load-bearing guarantee here is negative: **no hub link is ever a bare run
@@ -17,23 +17,23 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.context import WizardContext
-from gandalf.sections import BLOCKED, COMPLETE, INCOMPLETE, NOT_STARTED, Section
+from gandalf.hubs import BLOCKED, COMPLETE, INCOMPLETE, NOT_STARTED, Member
 from gandalf.testing import (
     seed_run,
-    seed_section_run,
+    seed_member_run,
     stored_runs,
-    stored_section_run,
-    stored_section_stash,
-    stored_section_stashes,
+    stored_member_run,
+    stored_member_stash,
+    stored_member_stashes,
 )
-from tests.testapp.readme.ch11_hub import ContactSectionViewSet
+from tests.testapp.readme.ch11_hub import ContactMemberViewSet
 
 
 HUB_URL = "/readme/hub/"
 
 
-def _door(section):
-    return reverse("readme-hub-section", kwargs={"section": section})
+def _door(member):
+    return reverse("readme-hub-member", kwargs={"member": member})
 
 
 def _statuses(response):
@@ -41,9 +41,9 @@ def _statuses(response):
 
 
 def _complete_contact(client):
-    """Drive the contact section to its end, leaving a stash behind."""
+    """Drive the contact member to its end, leaving a stash behind."""
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     for step, data in [
         ("name", {"full_name": "Ada"}),
         ("email", {"email": "ada@example.com"}),
@@ -61,9 +61,9 @@ def _complete_contact(client):
 
 
 def _complete_address(client):
-    """Drive the address section to its end, leaving a stash behind."""
+    """Drive the address member to its end, leaving a stash behind."""
     client.get(_door("address"), follow=True)
-    run_id = stored_section_run(client, "address")
+    run_id = stored_member_run(client, "address")
     answers = {"line_1": "1 Main St", "town": "Ely", "postcode": "CB1 1AA"}
     for step, data in [("address", answers), ("review", {})]:
         client.post(
@@ -80,7 +80,7 @@ def _complete_address(client):
 # --- the page --------------------------------------------------------------
 
 
-def test_a_fresh_hub_lists_every_section_as_not_started(client):
+def test_a_fresh_hub_lists_every_member_as_not_started(client):
     response = client.get(HUB_URL)
 
     assert response.status_code == HTTPStatus.OK
@@ -90,9 +90,9 @@ def test_a_fresh_hub_lists_every_section_as_not_started(client):
     assertContains(response, 'class="tag tag--not-started">Not started</strong>')
 
 
-def test_a_section_left_half_answered_reads_as_incomplete(client):
+def test_a_member_left_half_answered_reads_as_incomplete(client):
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     client.post(
         reverse(
             "readme-hub-contact-step",
@@ -108,7 +108,7 @@ def test_a_section_left_half_answered_reads_as_incomplete(client):
     assertContains(response, 'class="tag tag--incomplete">Incomplete</strong>')
 
 
-def test_a_section_the_user_opened_and_left_untouched_reads_as_not_started(client):
+def test_a_member_the_user_opened_and_left_untouched_reads_as_not_started(client):
     client.get(_door("contact"), follow=True)
 
     response = client.get(HUB_URL)
@@ -116,7 +116,7 @@ def test_a_section_the_user_opened_and_left_untouched_reads_as_not_started(clien
     assert _statuses(response)["contact"] == NOT_STARTED
 
 
-def test_a_finished_section_reads_as_complete(client):
+def test_a_finished_member_reads_as_complete(client):
     _complete_contact(client)
 
     response = client.get(HUB_URL)
@@ -125,7 +125,7 @@ def test_a_finished_section_reads_as_complete(client):
     assertContains(response, 'class="tag tag--complete">Complete</strong>')
 
 
-# --- a section the user cannot start yet ------------------------------------
+# --- a member the user cannot start yet ------------------------------------
 
 
 GATED_URL = "/gated-hub/"
@@ -137,7 +137,7 @@ def _gated_statuses(client):
 
 def _complete_gated_first(client):
     client.get("/gated-hub/first/", follow=True)
-    run_id = stored_section_run(client, "first")
+    run_id = stored_member_run(client, "first")
     client.post(
         reverse("gated-first-step", kwargs={"run_id": run_id, "gandalf_step": "first"}),
         {"name": "Ada"},
@@ -145,7 +145,7 @@ def _complete_gated_first(client):
     )
 
 
-def test_a_section_waiting_on_another_renders_as_cannot_start_yet(client):
+def test_a_member_waiting_on_another_renders_as_cannot_start_yet(client):
     response = client.get(GATED_URL)
 
     assert _gated_statuses(client) == {"first": NOT_STARTED, "second": BLOCKED}
@@ -156,16 +156,16 @@ def test_a_section_waiting_on_another_renders_as_cannot_start_yet(client):
     assert hub.is_not_started
 
 
-def test_a_locked_sections_door_sends_the_user_back_to_the_task_list(client):
+def test_a_locked_members_door_sends_the_user_back_to_the_task_list(client):
     """The row rendered a link. A stale link or a typed URL reaches the door
     regardless, and it must not start the run."""
     response = client.get("/gated-hub/second/")
 
     assertRedirects(response, GATED_URL)
-    assert stored_section_run(client, "second") is None
+    assert stored_member_run(client, "second") is None
 
 
-def test_a_section_unlocks_once_its_prerequisite_is_finished(client):
+def test_a_member_unlocks_once_its_prerequisite_is_finished(client):
     _complete_gated_first(client)
 
     assert _gated_statuses(client) == {"first": COMPLETE, "second": NOT_STARTED}
@@ -173,7 +173,7 @@ def test_a_section_unlocks_once_its_prerequisite_is_finished(client):
     response = client.get("/gated-hub/second/", follow=True)
 
     assert response.status_code == HTTPStatus.OK
-    assert stored_section_run(client, "second") is not None
+    assert stored_member_run(client, "second") is not None
 
 
 def test_a_fresh_hub_reports_the_whole_page_as_not_started(client):
@@ -183,7 +183,7 @@ def test_a_fresh_hub_reports_the_whole_page_as_not_started(client):
     assert hub.is_not_started
 
 
-def test_one_finished_section_makes_the_whole_page_incomplete(client):
+def test_one_finished_member_makes_the_whole_page_incomplete(client):
     _complete_contact(client)
 
     hub = client.get(HUB_URL).context["hub"]
@@ -193,7 +193,7 @@ def test_one_finished_section_makes_the_whole_page_incomplete(client):
     assertContains(client.get(HUB_URL), "You have completed 1 of 2 sections.")
 
 
-def test_a_hub_is_complete_only_once_every_section_is(client):
+def test_a_hub_is_complete_only_once_every_member_is(client):
     _complete_contact(client)
     _complete_address(client)
 
@@ -204,9 +204,9 @@ def test_a_hub_is_complete_only_once_every_section_is(client):
     assert str(hub.status_label) == "Complete"
 
 
-def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
+def test_finishing_a_member_stashes_its_answers_and_returns_to_the_hub(client):
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     client.post(
         reverse(
             "readme-hub-contact-step",
@@ -233,13 +233,13 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_section_stash(client, "contact")["state"] == [
+    assert stored_member_stash(client, "contact")["state"] == [
         {"step": {"full_name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
         {"step": {}},
     ]
     # The run is finished, so nothing points at it any more.
-    assert stored_section_run(client, "contact") is None
+    assert stored_member_run(client, "contact") is None
 
 
 def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client):
@@ -248,7 +248,7 @@ def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client)
     a token — the viewset drops it as the POST is read — but a run already in
     flight when that landed does, so the way out is swept too."""
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     seed_run(
         client,
         run_id,
@@ -265,15 +265,15 @@ def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client)
             follow=True,
         )
 
-    assert stored_section_stash(client, "contact")["state"][0] == {
+    assert stored_member_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 
 
-def test_sections_progress_independently_of_each_other(client):
+def test_members_progress_independently_of_each_other(client):
     _complete_contact(client)
     client.get(_door("address"), follow=True)
-    address_run = stored_section_run(client, "address")
+    address_run = stored_member_run(client, "address")
     client.post(
         reverse(
             "readme-hub-address-step",
@@ -291,10 +291,10 @@ def test_sections_progress_independently_of_each_other(client):
 # --- the door --------------------------------------------------------------
 
 
-def test_entering_a_not_started_section_lands_on_its_first_step(client):
+def test_entering_a_not_started_member_lands_on_its_first_step(client):
     response = client.get(_door("contact"))
 
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     assertRedirects(
         response,
         reverse(
@@ -304,9 +304,9 @@ def test_entering_a_not_started_section_lands_on_its_first_step(client):
     )
 
 
-def test_entering_an_incomplete_section_resumes_its_own_run(client):
+def test_entering_an_incomplete_member_resumes_its_own_run(client):
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     client.post(
         reverse(
             "readme-hub-contact-step",
@@ -318,7 +318,7 @@ def test_entering_an_incomplete_section_resumes_its_own_run(client):
 
     response = client.get(_door("contact"))
 
-    assert stored_section_run(client, "contact") == run_id
+    assert stored_member_run(client, "contact") == run_id
     assertRedirects(
         response,
         reverse(
@@ -328,30 +328,30 @@ def test_entering_an_incomplete_section_resumes_its_own_run(client):
     )
 
 
-def test_reopening_a_completed_section_seeds_a_new_prefilled_run(client):
+def test_reopening_a_completed_member_seeds_a_new_prefilled_run(client):
     original = _complete_contact(client)
 
     response = client.get(_door("contact"), follow=True)
 
-    reopened = stored_section_run(client, "contact")
+    reopened = stored_member_run(client, "contact")
     assert reopened != original
     assert response.status_code == HTTPStatus.OK
     # `reopen_step` lands on the review page, which shows every answer.
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     assertContains(response, "Ada")
-    assert stored_section_stashes(client)["contact"]["state"][0] == {
+    assert stored_member_stashes(client)["contact"]["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 
 
-def test_reopening_a_completed_section_lands_on_a_step_not_the_run_url(client):
-    """Every answer in a re-opened section validates, so the bare run URL
+def test_reopening_a_completed_member_lands_on_a_step_not_the_run_url(client):
+    """Every answer in a re-opened member validates, so the bare run URL
     would walk straight to completion and fire `done()` again untouched."""
     _complete_contact(client)
 
     response = client.get(_door("contact"))
 
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     assertRedirects(
         response,
         reverse(
@@ -362,14 +362,14 @@ def test_reopening_a_completed_section_lands_on_a_step_not_the_run_url(client):
     )
 
 
-def test_one_edit_in_a_reopened_section_re_stashes_and_returns_to_the_hub(client):
+def test_one_edit_in_a_reopened_member_re_stashes_and_returns_to_the_hub(client):
     """Re-opening is edit-and-re-save: every stored answer already validates,
     so the next successful submission walks to the end and fires `done()`
     again. A review step does not gate that — landing the user on it (via
     `reopen_step`) is what gives them the answers to check first."""
     _complete_contact(client)
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
 
     response = client.post(
         reverse(
@@ -380,16 +380,16 @@ def test_one_edit_in_a_reopened_section_re_stashes_and_returns_to_the_hub(client
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_section_stash(client, "contact")["state"][0] == {
+    assert stored_member_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Grace"}
     }
     assert _statuses(client.get(HUB_URL))["contact"] == COMPLETE
 
 
-def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client):
+def test_confirming_a_reopened_member_without_editing_keeps_it_complete(client):
     _complete_contact(client)
     client.get(_door("contact"), follow=True)
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
 
     response = client.post(
         reverse(
@@ -400,29 +400,29 @@ def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client)
     )
 
     assertRedirects(response, HUB_URL)
-    assert stored_section_stash(client, "contact")["state"][0] == {
+    assert stored_member_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 
 
-def test_a_completed_section_already_being_edited_resumes_that_edit(client):
+def test_a_completed_member_already_being_edited_resumes_that_edit(client):
     """Resume before reopen: otherwise every click would resurrect a run
     beside the in-flight edit and the user's changes would be unreachable."""
     _complete_contact(client)
     client.get(_door("contact"), follow=True)
-    editing = stored_section_run(client, "contact")
+    editing = stored_member_run(client, "contact")
 
     client.get(_door("contact"), follow=True)
 
-    assert stored_section_run(client, "contact") == editing
+    assert stored_member_run(client, "contact") == editing
 
 
-def test_a_section_whose_run_the_session_has_forgotten_starts_again(client):
-    seed_section_run(client, "contact", "00000000-0000-0000-0000-000000000000")
+def test_a_member_whose_run_the_session_has_forgotten_starts_again(client):
+    seed_member_run(client, "contact", "00000000-0000-0000-0000-000000000000")
 
     response = client.get(_door("contact"))
 
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     assert run_id != "00000000-0000-0000-0000-000000000000"
     assertRedirects(
         response,
@@ -433,26 +433,26 @@ def test_a_section_whose_run_the_session_has_forgotten_starts_again(client):
     )
 
 
-def test_a_section_pointing_at_a_forgotten_run_reads_as_not_started(client):
+def test_a_member_pointing_at_a_forgotten_run_reads_as_not_started(client):
     """An expired session or an obliterated run leaves nothing to pick up."""
-    seed_section_run(client, "contact", "00000000-0000-0000-0000-000000000000")
+    seed_member_run(client, "contact", "00000000-0000-0000-0000-000000000000")
 
     response = client.get(HUB_URL)
 
     assert _statuses(response)["contact"] == NOT_STARTED
 
 
-def test_a_section_whose_recorded_run_was_tombstoned_starts_again(client):
+def test_a_member_whose_recorded_run_was_tombstoned_starts_again(client):
     """A completed run is *found*, not missing, so resuming has to ask
     `is_complete` too — sending the user into a tombstone would bounce every
     request back to the start URL with nothing to explain it."""
     tombstoned = "00000000-0000-0000-0000-000000000001"
     seed_run(client, tombstoned, {"completed": True})
-    seed_section_run(client, "contact", tombstoned)
+    seed_member_run(client, "contact", tombstoned)
 
     response = client.get(_door("contact"))
 
-    run_id = stored_section_run(client, "contact")
+    run_id = stored_member_run(client, "contact")
     assert run_id != tombstoned
     assertRedirects(
         response,
@@ -463,7 +463,7 @@ def test_a_section_whose_recorded_run_was_tombstoned_starts_again(client):
     )
 
 
-def test_an_unknown_section_key_redirects_back_to_the_hub(client):
+def test_an_unknown_member_key_redirects_back_to_the_hub(client):
     response = client.get(_door("nope"))
 
     assertRedirects(response, HUB_URL)
@@ -472,7 +472,7 @@ def test_an_unknown_section_key_redirects_back_to_the_hub(client):
 # --- the bare-run-URL hazard ------------------------------------------------
 
 
-def test_a_section_that_advances_out_of_its_final_step_never_yields_a_run_url(
+def test_a_member_that_advances_out_of_its_final_step_never_yields_a_run_url(
     client,
 ):
     """`Advance` at a final step persists and redirects out without reaching
@@ -481,12 +481,12 @@ def test_a_section_that_advances_out_of_its_final_step_never_yields_a_run_url(
     and its side effects on a click.
     """
     hub_url = reverse("scenario-hub")
-    door = reverse("scenario-hub-section", kwargs={"section": "advancing"})
+    door = reverse("scenario-hub-member", kwargs={"member": "advancing"})
     client.get(door, follow=True)
-    run_id = stored_section_run(client, "advancing")
+    run_id = stored_member_run(client, "advancing")
     client.post(
         reverse(
-            "hub-advancing-section-step",
+            "hub-advancing-member-step",
             kwargs={"run_id": run_id, "gandalf_step": "newsletter"},
         ),
         {"email": "ada@example.com", "subscribe": "on"},
@@ -496,28 +496,28 @@ def test_a_section_that_advances_out_of_its_final_step_never_yields_a_run_url(
 
     # Still a live run — the escape deferred completion rather than firing it.
     assert stored_runs(client)[run_id].get("completed") is None
-    assert "advancing" not in stored_section_stashes(client)
+    assert "advancing" not in stored_member_stashes(client)
     assertRedirects(
         response,
         reverse(
-            "hub-advancing-section-step",
+            "hub-advancing-member-step",
             kwargs={"run_id": run_id, "gandalf_step": "newsletter"},
         ),
     )
     assert client.get(hub_url).status_code == HTTPStatus.OK
 
 
-@pytest.mark.parametrize("section", ["plain", "advancing"])
-def test_no_hub_link_is_ever_a_bare_run_url(client, section):
-    """The invariant, asserted directly: whatever state a section is in, its
+@pytest.mark.parametrize("member", ["plain", "advancing"])
+def test_no_hub_link_is_ever_a_bare_run_url(client, member):
+    """The invariant, asserted directly: whatever state a member is in, its
     door redirects to a step URL."""
-    door = reverse("scenario-hub-section", kwargs={"section": section})
+    door = reverse("scenario-hub-member", kwargs={"member": member})
 
     response = client.get(door)
 
-    run_id = stored_section_run(client, section)
+    run_id = stored_member_run(client, member)
     assert response["Location"] != reverse(
-        f"hub-{section}-section-run", kwargs={"run_id": run_id}
+        f"hub-{member}-member-run", kwargs={"run_id": run_id}
     )
     assert response["Location"].rstrip("/").rsplit("/", 1)[-1] in {
         "first",
@@ -536,10 +536,10 @@ def test_a_hub_forwards_its_mount_prefix_into_every_url_it_builds(client):
     assert row.url == "/org/acme/hub/details/"
 
 
-def test_entering_a_prefixed_section_keeps_the_prefix(client):
+def test_entering_a_prefixed_member_keeps_the_prefix(client):
     response = client.get("/org/acme/hub/details/")
 
-    run_id = stored_section_run(client, "details")
+    run_id = stored_member_run(client, "details")
     assertRedirects(response, f"/org/acme/hub-details/{run_id}/first/")
 
 
@@ -548,7 +548,7 @@ def test_entering_a_prefixed_section_keeps_the_prefix(client):
 
 def test_a_row_reports_its_status_as_a_boolean_per_state(client):
     """What a template branches on, rather than comparing status strings."""
-    seed_section_run(client, "address", "00000000-0000-0000-0000-000000000000")
+    seed_member_run(client, "address", "00000000-0000-0000-0000-000000000000")
     seed_run(
         client,
         "00000000-0000-0000-0000-000000000000",
@@ -571,7 +571,7 @@ def test_a_row_reports_its_status_as_a_boolean_per_state(client):
 
 
 def _hub_view(**attributes):
-    from gandalf.sections import HubView
+    from gandalf.hubs import HubView
 
     return type("_Hub", (HubView,), {"template_name": "testapp/hub.html", **attributes})
 
@@ -585,20 +585,20 @@ def _dispatch(rf, client, view, path="/readme/hub/", **kwargs):
     return view.as_view()(request, **kwargs)
 
 
-def test_a_hub_with_no_sections_declared_is_misconfigured(rf, client):
-    view = _hub_view(url_name="readme-hub", section_url_name="readme-hub-section")
+def test_a_hub_with_no_members_declared_is_misconfigured(rf, client):
+    view = _hub_view(url_name="readme-hub", member_url_name="readme-hub-member")
 
-    with pytest.raises(ImproperlyConfigured, match="sections"):
+    with pytest.raises(ImproperlyConfigured, match="members"):
         _dispatch(rf, client, view)
 
 
-def test_a_hub_with_duplicate_section_keys_is_misconfigured(rf, client):
+def test_a_hub_with_duplicate_member_keys_is_misconfigured(rf, client):
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[
-            Section("contact", ContactSectionViewSet),
-            Section("contact", ContactSectionViewSet),
+        member_url_name="readme-hub-member",
+        members=[
+            Member("contact", ContactMemberViewSet),
+            Member("contact", ContactMemberViewSet),
         ],
     )
 
@@ -606,32 +606,32 @@ def test_a_hub_with_duplicate_section_keys_is_misconfigured(rf, client):
         _dispatch(rf, client, view)
 
 
-def test_a_section_key_that_drifts_from_its_viewsets_own_key_is_misconfigured(
+def test_a_member_key_that_drifts_from_its_viewsets_own_key_is_misconfigured(
     rf, client
 ):
-    """The hub would read a stash key the section never writes, so the
-    section could complete and still render as not started, forever."""
+    """The hub would read a stash key the member never writes, so the
+    member could complete and still render as not started, forever."""
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[Section("billing", ContactSectionViewSet)],
+        member_url_name="readme-hub-member",
+        members=[Member("billing", ContactMemberViewSet)],
     )
 
-    with pytest.raises(ImproperlyConfigured, match="section_key"):
+    with pytest.raises(ImproperlyConfigured, match="member_key"):
         _dispatch(rf, client, view)
 
 
-def test_a_section_that_returns_to_another_hub_is_misconfigured(rf, client):
-    """The section finishes, and deposits the user on a page that does not
+def test_a_member_that_returns_to_another_hub_is_misconfigured(rf, client):
+    """The member finishes, and deposits the user on a page that does not
     list it."""
 
-    class _Elsewhere(ContactSectionViewSet):
+    class _Elsewhere(ContactMemberViewSet):
         hub_url_name = "readme-party-hub"
 
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[Section("contact", _Elsewhere)],
+        member_url_name="readme-hub-member",
+        members=[Member("contact", _Elsewhere)],
     )
 
     with pytest.raises(ImproperlyConfigured, match="Mispointed"):
@@ -639,7 +639,7 @@ def test_a_section_that_returns_to_another_hub_is_misconfigured(rf, client):
 
 
 def test_a_hub_without_a_url_name_cannot_publish_urls():
-    from gandalf.sections import HubView
+    from gandalf.hubs import HubView
 
     class _Nameless(HubView):
         pass
@@ -648,32 +648,32 @@ def test_a_hub_without_a_url_name_cannot_publish_urls():
         _Nameless.urls()
 
 
-def test_a_hub_without_a_section_url_name_is_misconfigured(rf, client):
+def test_a_hub_without_a_member_url_name_is_misconfigured(rf, client):
     view = _hub_view(
         url_name="readme-hub",
-        sections=[Section("contact", ContactSectionViewSet)],
+        members=[Member("contact", ContactMemberViewSet)],
     )
 
-    with pytest.raises(ImproperlyConfigured, match="section_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="member_url_name"):
         _dispatch(rf, client, view)
 
 
 def test_a_hub_without_a_url_name_cannot_reverse_itself(rf, client):
     view = _hub_view(
-        section_url_name="readme-hub-section",
-        sections=[Section("contact", ContactSectionViewSet)],
+        member_url_name="readme-hub-member",
+        members=[Member("contact", ContactMemberViewSet)],
     )
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
-        _dispatch(rf, client, view, path="/readme/hub/nope/", section="nope")
+        _dispatch(rf, client, view, path="/readme/hub/nope/", member="nope")
 
 
-def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
+def test_a_member_without_a_key_cannot_register_as_finished(rf, client):
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
 
-    class _Keyless(ContactSectionViewSet):
-        section_key = None
+    class _Keyless(ContactMemberViewSet):
+        member_key = None
 
     request = rf.get("/readme/hub-contact/")
     request.session = client.session
@@ -683,19 +683,19 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
     bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.initialise()
 
-    with pytest.raises(ImproperlyConfigured, match="section_key"):
+    with pytest.raises(ImproperlyConfigured, match="member_key"):
         view.done(bound_wizard)
 
 
-def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf, client):
-    """`SectionMixin`'s usual advice — set the class attribute — is wrong for
-    a section that deliberately has none, so it is told something else."""
+def test_a_dynamic_member_that_derives_no_key_is_misconfigured(rf, client):
+    """`RunMemberMixin`'s usual advice — set the class attribute — is wrong for
+    a member that deliberately has none, so it is told something else."""
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
 
-    class _Undecided(ContactSectionViewSet):
-        section_key = None
-        dynamic_section_key = True
+    class _Undecided(ContactMemberViewSet):
+        member_key = None
+        dynamic_member_key = True
 
     request = rf.get("/readme/hub-contact/")
     request.session = client.session
@@ -705,18 +705,18 @@ def test_a_dynamic_section_that_derives_no_key_is_misconfigured(rf, client):
     bound_wizard = BoundWizard(context, SessionStorage(context))
     bound_wizard.initialise()
 
-    with pytest.raises(ImproperlyConfigured, match="get_section_key"):
+    with pytest.raises(ImproperlyConfigured, match="get_member_key"):
         view.done(bound_wizard)
 
 
 def test_a_row_that_is_not_a_wizard_must_say_where_and_how_far(rf, client):
-    """A section with no viewset answers for itself. Without a `url_name` the
+    """A member with no viewset answers for itself. Without a `url_name` the
     hub builds a door it cannot open; without a `status` it derives one from a
     stash key nothing writes."""
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[Section("elsewhere", url_name="readme-hub")],
+        member_url_name="readme-hub-member",
+        members=[Member("elsewhere", url_name="readme-hub")],
     )
 
     with pytest.raises(ImproperlyConfigured, match="url_name and status"):
@@ -730,9 +730,9 @@ def test_a_row_that_is_not_a_wizard_links_past_the_door_and_answers_for_itself(
     no run for the door to walk, so the row addresses it directly."""
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[
-            Section(
+        member_url_name="readme-hub-member",
+        members=[
+            Member(
                 "elsewhere",
                 title="Elsewhere",
                 url_name="readme-hub",
@@ -751,14 +751,14 @@ def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
     """Rows never point there, so arriving is a hand-typed or stale URL."""
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[
-            Section("elsewhere", url_name="readme-hub", status=lambda r, k: COMPLETE)
+        member_url_name="readme-hub-member",
+        members=[
+            Member("elsewhere", url_name="readme-hub", status=lambda r, k: COMPLETE)
         ],
     )
 
     response = _dispatch(
-        rf, client, view, path="/readme/hub/elsewhere/", section="elsewhere"
+        rf, client, view, path="/readme/hub/elsewhere/", member="elsewhere"
     )
 
     # `assertRedirects` needs a client-fetched response; this one is built
@@ -767,8 +767,8 @@ def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
     assert response["Location"] == HUB_URL
 
 
-def test_a_section_without_a_hub_url_name_cannot_send_the_user_back(rf):
-    class _Homeless(ContactSectionViewSet):
+def test_a_member_without_a_hub_url_name_cannot_send_the_user_back(rf):
+    class _Homeless(ContactMemberViewSet):
         hub_url_name = None
 
     view = _Homeless()
@@ -778,8 +778,8 @@ def test_a_section_without_a_hub_url_name_cannot_send_the_user_back(rf):
         view.get_hub_url()
 
 
-def test_a_section_can_bump_its_stash_label_without_renaming_itself(rf, client):
-    """The guard rail for a deploy that reshapes a section: a payload from
+def test_a_member_can_bump_its_stash_label_without_renaming_itself(rf, client):
+    """The guard rail for a deploy that reshapes a member: a payload from
     the old shape is refused at the door rather than walked into a tree it
     no longer matches."""
     from gandalf.runtime import InvalidStash
@@ -787,53 +787,53 @@ def test_a_section_can_bump_its_stash_label_without_renaming_itself(rf, client):
     _complete_contact(client)
     view = _hub_view(
         url_name="readme-hub",
-        section_url_name="readme-hub-section",
-        sections=[
-            Section("contact", ContactSectionViewSet, label="contact-v2"),
+        member_url_name="readme-hub-member",
+        members=[
+            Member("contact", ContactMemberViewSet, label="contact-v2"),
         ],
     )
 
     with pytest.raises(InvalidStash):
-        _dispatch(rf, client, view, path="/readme/hub/contact/", section="contact")
+        _dispatch(rf, client, view, path="/readme/hub/contact/", member="contact")
 
 
-def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
-    """The other half of the reshaped-section story: a hub that would rather
+def test_stash_unusable_can_be_overridden_to_start_the_member_over(rf, client):
+    """The other half of the reshaped-member story: a hub that would rather
     lose the old answers than 500."""
     _complete_contact(client)
 
     class _Forgiving(_hub_view(url_name="readme-hub")):
-        section_url_name = "readme-hub-section"
-        sections = [Section("contact", ContactSectionViewSet, label="contact-v2")]
+        member_url_name = "readme-hub-member"
+        members = [Member("contact", ContactMemberViewSet, label="contact-v2")]
 
-        def stash_unusable(self, section, error):
-            self.get_section_store().delete_stash(section.key)
-            return self.enter(section)
+        def stash_unusable(self, member, error):
+            self.get_journey_store().delete_stash(member.key)
+            return self.enter(member)
 
     request = rf.get("/readme/hub/contact/")
     request.session = client.session
-    response = _Forgiving.as_view()(request, section="contact")
+    response = _Forgiving.as_view()(request, member="contact")
 
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"].endswith("/name/")
     assert "contact" not in request.session["gandalf_journeys"]["default"]["stashes"]
 
 
-def test_a_section_without_a_title_is_named_from_its_key(client):
+def test_a_member_without_a_title_is_named_from_its_key(client):
     response = client.get(reverse("scenario-hub"))
 
     titles = {row.key: row.title for row in response.context["hub"].rows}
     assert titles == {"plain": "Plain", "advancing": "Advancing"}
 
 
-def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
-    """`section_label` is the *shape's* identity — bumped when a deploy
-    reshapes the wizard, without renaming the section."""
+def test_a_member_stamps_its_declared_label_into_the_stash(rf, client):
+    """`member_label` is the *shape's* identity — bumped when a deploy
+    reshapes the wizard, without renaming the member."""
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
 
-    class _Reshaped(ContactSectionViewSet):
-        section_label = "contact-v2"
+    class _Reshaped(ContactMemberViewSet):
+        member_label = "contact-v2"
 
     request = rf.get("/readme/hub-contact/")
     request.session = client.session
@@ -850,23 +850,23 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
 
 
 def test_a_hubs_declaration_is_vetted_once_per_request(rf, client):
-    """Both halves of the hub ask for the sections — the rows and the door —
+    """Both halves of the hub ask for the members — the rows and the door —
     and the checks are properties of the declaration, not of either use."""
     calls = []
 
     class _Counting(_hub_view(url_name="readme-hub")):
-        section_url_name = "readme-hub-section"
+        member_url_name = "readme-hub-member"
 
-        def get_sections(self):
+        def get_members(self):
             calls.append(1)
-            return [Section("contact", ContactSectionViewSet)]
+            return [Member("contact", ContactMemberViewSet)]
 
     request = rf.get(HUB_URL)
     request.session = client.session
     page = _Counting()
     page.setup(request)
 
-    page.get_section_rows()
-    page.get_section("contact")
+    page.get_member_rows()
+    page.get_member("contact")
 
     assert len(calls) == 1

@@ -1,4 +1,4 @@
-# Chapter 6 — Check your answers
+# Chapter 6 — The summary: check your answers
 
 Before an application goes anywhere, the applicant should see what they said
 and be able to change it. This chapter adds an address and a review step.
@@ -174,4 +174,4 @@ rule that applies to steps.
 
 ---
 
-[← Chapter 5 — Different funds, different questions](05-different-funds-different-questions.md) · [README](../README.md) · [Chapter 7 — A step with a view of its own →](07-a-step-with-a-view-of-its-own.md)
+[← Chapter 5 — A wizard per request](05-a-wizard-per-request.md) · [README](../README.md) · [Chapter 7 — Step views and escapes →](07-step-views-and-escapes.md)

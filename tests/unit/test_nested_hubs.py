@@ -1,10 +1,10 @@
-"""A hub as a section of a hub.
+"""A hub as a member of a hub.
 
 Nesting is a key namespace over one journey record: a nested hub prefixes its
-`section_key` onto every section it lists, its row on the parent reads its own
+`member_key` onto every member it lists, its row on the parent reads its own
 rows, and its submit returns to the parent without tombstoning anything. The
 load-bearing claims are the ones that keep a nested hub honest — the same
-three drift checks a wizard section gets, and the same door and ending shape.
+three drift checks a wizard member gets, and the same door and ending shape.
 """
 
 from http import HTTPStatus
@@ -13,18 +13,18 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf.runtime import STASH_VERSION
-from gandalf.sections import (
+from gandalf.hubs import (
     BLOCKED,
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
     HubMixin,
-    Section,
+    Member,
 )
 from tests.testapp.readme.ch14_journey import (
-    ContactSectionViewSet,
+    ContactMemberViewSet,
     GrantApplicationHubView,
-    RefereesSectionViewSet,
+    RefereesMemberViewSet,
     SupportingHubView,
 )
 
@@ -64,35 +64,33 @@ def _view(cls, request, **kwargs):
 # --- keys --------------------------------------------------------------------
 
 
-def test_a_root_hub_keys_its_sections_as_declared(rf):
+def test_a_root_hub_keys_its_members_as_declared(rf):
     hub = _view(GrantApplicationHubView, _request(rf))
 
-    assert hub.get_section_key() is None
-    assert hub.full_key(Section("contact", ContactSectionViewSet)) == "contact"
+    assert hub.get_member_key() is None
+    assert hub.full_key(Member("contact", ContactMemberViewSet)) == "contact"
 
 
 def test_a_nested_hub_prefixes_its_own_key(rf):
     hub = _view(SupportingHubView, _request(rf))
 
-    assert hub.get_section_key() == "supporting"
-    assert hub.full_key(Section("referees", RefereesSectionViewSet)) == (
+    assert hub.get_member_key() == "supporting"
+    assert hub.full_key(Member("referees", RefereesMemberViewSet)) == (
         "supporting:referees"
     )
 
 
 def test_nesting_composes_to_any_depth(rf):
     class _Deeper(SupportingHubView):
-        section_key = "supporting:more"
+        member_key = "supporting:more"
 
-    assert _view(_Deeper, _request(rf)).full_key(Section("x")) == "supporting:more:x"
+    assert _view(_Deeper, _request(rf)).full_key(Member("x")) == "supporting:more:x"
 
 
-def test_a_hub_knows_a_section_that_is_a_hub():
-    assert HubMixin.is_hub(Section("supporting", SupportingHubView))
-    assert not HubMixin.is_hub(Section("contact", ContactSectionViewSet))
-    assert not HubMixin.is_hub(
-        Section("elsewhere", url_name="x", status=lambda r, k: 1)
-    )
+def test_a_hub_knows_a_member_that_is_a_hub():
+    assert HubMixin.is_hub(Member("supporting", SupportingHubView))
+    assert not HubMixin.is_hub(Member("contact", ContactMemberViewSet))
+    assert not HubMixin.is_hub(Member("elsewhere", url_name="x", status=lambda r, k: 1))
 
 
 # --- the drift checks, one level up ------------------------------------------
@@ -100,26 +98,26 @@ def test_a_hub_knows_a_section_that_is_a_hub():
 
 def _validate(rf, **attributes):
     hub = _view(type("_Hub", (GrantApplicationHubView,), attributes), _request(rf))
-    return hub._validate_sections(hub.get_sections())
+    return hub._validate_members(hub.get_members())
 
 
 def test_a_nested_hub_must_key_itself_as_its_parent_lists_it(rf):
     class _Elsewhere(SupportingHubView):
-        section_key = "extras"
+        member_key = "extras"
 
     with pytest.raises(ImproperlyConfigured, match="expected 'supporting'.*'extras'"):
-        _validate(rf, sections=[Section("supporting", _Elsewhere)])
+        _validate(rf, members=[Member("supporting", _Elsewhere)])
 
 
 def test_a_nested_hub_may_not_leave_its_key_unset(rf):
-    """A wizard section declaring no key does its own bookkeeping; a hub
-    declaring none would file its sections at the root beside the parent's."""
+    """A wizard member declaring no key does its own bookkeeping; a hub
+    declaring none would file its members at the root beside the parent's."""
 
     class _Unkeyed(SupportingHubView):
-        section_key = None
+        member_key = None
 
     with pytest.raises(ImproperlyConfigured, match="must match"):
-        _validate(rf, sections=[Section("supporting", _Unkeyed)])
+        _validate(rf, members=[Member("supporting", _Unkeyed)])
 
 
 def test_a_nested_hub_must_return_to_the_hub_that_lists_it(rf):
@@ -127,13 +125,13 @@ def test_a_nested_hub_must_return_to_the_hub_that_lists_it(rf):
         hub_url_name = "readme-hub"
 
     with pytest.raises(ImproperlyConfigured, match="must return to the hub"):
-        _validate(rf, sections=[Section("supporting", _Astray)])
+        _validate(rf, members=[Member("supporting", _Astray)])
 
     class _Rootless(SupportingHubView):
         hub_url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="must return to the hub"):
-        _validate(rf, sections=[Section("supporting", _Rootless)])
+        _validate(rf, members=[Member("supporting", _Rootless)])
 
 
 def test_a_nested_hub_must_be_mounted(rf):
@@ -141,7 +139,7 @@ def test_a_nested_hub_must_be_mounted(rf):
         url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="Unmounted: supporting"):
-        _validate(rf, sections=[Section("supporting", _Unmounted)])
+        _validate(rf, members=[Member("supporting", _Unmounted)])
 
 
 def test_a_nested_hub_must_share_its_parents_journey(rf):
@@ -149,7 +147,7 @@ def test_a_nested_hub_must_share_its_parents_journey(rf):
         journey_url_kwarg = "application"
 
     with pytest.raises(ImproperlyConfigured, match="Astray: supporting"):
-        _validate(rf, sections=[Section("supporting", _Other)])
+        _validate(rf, members=[Member("supporting", _Other)])
 
 
 # --- the row -------------------------------------------------------------------
@@ -162,7 +160,7 @@ def _statuses(rf, record):
 
 def test_a_nested_hubs_status_is_its_own_rows(rf):
     """No stash is ever read for a hub: its completion is derived exactly as
-    its own page derives it, from the sections under its prefix."""
+    its own page derives it, from the members under its prefix."""
     assert _statuses(rf, {})["supporting"] == NOT_STARTED
     assert (
         _statuses(rf, {"runs": {"supporting:referees": "run-1"}})["supporting"]
@@ -175,19 +173,19 @@ def test_a_nested_hubs_status_is_its_own_rows(rf):
 def test_a_nested_hub_answers_blocked_and_hidden_for_itself(rf):
     class _Locked(SupportingHubView):
         @classmethod
-        def blocked(cls, request, section, store):
+        def blocked(cls, request, member, store):
             return True
 
     class _Gone(SupportingHubView):
         @classmethod
-        def hidden(cls, request, section, store):
+        def hidden(cls, request, member, store):
             return True
 
     class _LockedParent(GrantApplicationHubView):
-        sections = [Section("supporting", _Locked)]
+        members = [Member("supporting", _Locked)]
 
     class _GoneParent(GrantApplicationHubView):
-        sections = [Section("supporting", _Gone)]
+        members = [Member("supporting", _Gone)]
 
     locked = _view(_LockedParent, _request(rf)).get_hub()
     gone = _view(_GoneParent, _request(rf)).get_hub()
@@ -196,9 +194,9 @@ def test_a_nested_hub_answers_blocked_and_hidden_for_itself(rf):
     assert gone.rows == ()
 
 
-def test_a_nested_hubs_sections_read_the_journeys_own_data(rf):
+def test_a_nested_hubs_members_read_the_journeys_own_data(rf):
     """`hidden()` on the governing document reads `applying_as`, which the
-    setup section wrote at the root — one record, whatever the depth."""
+    setup member wrote at the root — one record, whatever the depth."""
     individual = _view(SupportingHubView, _request(rf, record={}))
     organisation = _view(
         SupportingHubView,
@@ -214,24 +212,24 @@ def test_a_nested_hubs_sections_read_the_journeys_own_data(rf):
 
 def test_a_nested_hubs_row_links_at_its_page_and_so_does_the_door(rf):
     hub = _view(GrantApplicationHubView, _request(rf))
-    section = hub.get_section("supporting")
+    member = hub.get_member("supporting")
 
-    assert hub.get_section_url(section) == "/readme/apply-supporting/app-1/"
-    assert hub.enter(section) == "/readme/apply-supporting/app-1/"
+    assert hub.get_member_url(member) == "/readme/apply-supporting/app-1/"
+    assert hub.enter(member) == "/readme/apply-supporting/app-1/"
 
 
 def test_the_door_refuses_a_nested_hub_the_user_cannot_start_yet(rf):
     class _Locked(SupportingHubView):
         @classmethod
-        def blocked(cls, request, section, store):
+        def blocked(cls, request, member, store):
             return True
 
     class _Parent(GrantApplicationHubView):
-        sections = [Section("supporting", _Locked)]
+        members = [Member("supporting", _Locked)]
 
     hub = _view(_Parent, _request(rf))
 
-    assert hub.enter(hub.get_section("supporting")) is None
+    assert hub.enter(hub.get_member("supporting")) is None
 
 
 # --- the ending ------------------------------------------------------------------
@@ -253,8 +251,8 @@ def test_a_nested_hubs_submit_returns_to_its_parent_and_keeps_the_record(rf):
 
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == "/readme/apply/app-1/"
-    assert hub.get_section_store().is_complete() is False
-    assert hub.get_section_store().keys() == ["contact", "supporting:referees"]
+    assert hub.get_journey_store().is_complete() is False
+    assert hub.get_journey_store().keys() == ["contact", "supporting:referees"]
 
 
 def test_a_nested_hubs_submit_is_refused_while_incomplete(rf):
@@ -279,13 +277,13 @@ def test_hub_done_is_the_nested_hubs_hook(rf):
 
     hub.submit()
 
-    assert hub.get_section_store().data["supporting_done"] == 1
+    assert hub.get_journey_store().data["supporting_done"] == 1
 
 
 def test_a_nested_hub_under_a_submitted_journey_sends_the_user_up(rf):
     hub = _view(SupportingHubView, _request(rf, record={"completed": True}))
 
-    response = hub.journey_completed(hub.get_section_store())
+    response = hub.journey_completed(hub.get_journey_store())
 
     assert response["Location"] == "/readme/apply/app-1/"
 

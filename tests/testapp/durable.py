@@ -20,13 +20,13 @@ Four contracts are easy to miss and matter more than the rest:
   places that never persist state — `run_started()`, a GET that only
   replays. A backend that batched it would lose the record it names.
 
-A durable hub needs **both** stores swapped: `storage_class` on every section
-viewset, and `section_store_class` on the hub and on each `SectionMixin`. A
-section store is built with the journey as well as the context, and its
+A durable hub needs **both** stores swapped: `storage_class` on every member
+viewset, and `journey_store_class` on the hub and on each `RunMemberMixin`. A
+member store is built with the journey as well as the context, and its
 `data` and `complete()` are the journey's own — kept on a row that survives
-the sections being deleted at submission. A
+the members being deleted at submission. A
 durable *collection* needs the same two, with `ModelCollectionStore` in place
-of `ModelSectionStore` — it is the section store plus an ordered registry, so
+of `ModelJourneyStore` — it is the member store plus an ordered registry, so
 one swap covers both halves. Swapping only one gives you durable answers
 nobody can find, or a durable index into runs that have expired.
 """
@@ -106,18 +106,18 @@ class ModelStorage:
         return self._runs().filter(pk=run_id, completed=True).exists()
 
 
-class ModelSectionStore:
-    """`SessionSectionStore`'s protocol, against tables scoped to the user
+class ModelJourneyStore:
+    """`SessionJourneyStore`'s protocol, against tables scoped to the user
     and the journey.
 
-    The run id and the stash live on one row per section because they are two
+    The run id and the stash live on one row per member because they are two
     facts about the same thing, but they still outlive each other: finishing a
-    section clears its run and leaves the stash, which is what lets a completed
-    section survive its run being deleted.
+    member clears its run and leaves the stash, which is what lets a completed
+    member survive its run being deleted.
 
     The journey's own facts — its data and its completion — live on a row of
     their own, because they are the one part of a journey that survives
-    submission: `complete()` deletes the sections and keeps that row.
+    submission: `complete()` deletes the members and keeps that row.
     """
 
     def __init__(self, context, journey):
@@ -190,7 +190,7 @@ class ModelSectionStore:
         )
 
     def complete(self):
-        # The sections go, the journey's row stays: what its sections decided
+        # The members go, the journey's row stays: what its members decided
         # is what a done page still has to say.
         self._records().delete()
         JourneyRecord.objects.update_or_create(
@@ -201,11 +201,11 @@ class ModelSectionStore:
         return JourneyRecord.objects.filter(**self._scope(), completed=True).exists()
 
 
-class ModelCollectionStore(ModelSectionStore):
+class ModelCollectionStore(ModelJourneyStore):
     """`SessionCollectionStore`'s protocol, against tables scoped to the user
     and the journey.
 
-    Everything `ModelSectionStore` does — an item's run and stash live under
+    Everything `ModelJourneyStore` does — an item's run and stash live under
     the composite key the view builds — plus the registry the session store
     keeps as a list. Two things the list could not give you: `position` makes
     the order explicit rather than incidental, and the unique constraint

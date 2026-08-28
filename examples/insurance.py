@@ -3,7 +3,7 @@
 This is the tedium the agent work exists to kill. Driven by hand it is up
 to fourteen steps: company details, a three-way branch on company type
 (the partnership arm grows one step per partner), cover selection, a
-fleet section that appears only when vehicles are covered and grows one
+fleet member that appears only when vehicles are covered and grows one
 step per vehicle, a claims-history branch, contact details, and a final
 confirmation. Driven by an agent holding a business profile, almost all
 of it prefills in one call.
@@ -16,7 +16,7 @@ from django import forms
 from django.http import HttpResponse
 
 from examples.eventlog import log_event
-from gandalf.collections import CollectionView, ItemSectionMixin
+from gandalf.collections import CollectionView, ItemMemberMixin
 from gandalf.contrib.agent import AgentProfile
 from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
@@ -312,7 +312,7 @@ class VehicleReviewStepView(SummaryMixin, StepFormView):
     template_name = "hybrid/summary.html"
 
 
-class VehicleItemViewSet(ItemSectionMixin, WizardViewSet):
+class VehicleItemViewSet(ItemMemberMixin, WizardViewSet):
     """One vehicle. Mounted under an item id, so the same wizard serves every
     row of the collection."""
 
@@ -328,9 +328,9 @@ class VehicleItemViewSet(ItemSectionMixin, WizardViewSet):
         .step(VehicleReviewStepView, name="review")
     )
 
-    def section_done(self, bound_wizard):
+    def member_done(self, bound_wizard):
         save_vehicle(self.request, self.get_item_id(), bound_wizard)
-        return super().section_done(bound_wizard)
+        return super().member_done(bound_wizard)
 
 
 class VehicleCollectionView(CollectionView):
@@ -339,7 +339,7 @@ class VehicleCollectionView(CollectionView):
     template_name = "hybrid/collection.html"
     remove_template_name = "hybrid/remove_item.html"
     url_name = "vehicles"
-    section_key = "vehicles"
+    member_key = "vehicles"
     item_viewset = VehicleItemViewSet
     item_name = "Vehicle"
     item_reopen_step = "review"

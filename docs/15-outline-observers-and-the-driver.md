@@ -1,4 +1,4 @@
-# Chapter 15 — Knowing what you built
+# Chapter 15 — Outline, observers and the driver
 
 The application is done. Three things are worth knowing about it from the
 outside.
@@ -116,4 +116,4 @@ the bytes, and `submit({}, files={"document": uploaded})` places one.
 
 ---
 
-[← Chapter 14 — One application, start to submit](14-one-application-start-to-submit.md) · [README](../README.md) · [Appendix A — Testing your wizards →](appendix-a-testing-your-wizards.md)
+[← Chapter 14 — Journeys: scope, memory, nesting and an ending](14-journeys.md) · [README](../README.md) · [Appendix A — Testing your wizards →](appendix-a-testing-your-wizards.md)
