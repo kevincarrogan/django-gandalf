@@ -992,3 +992,14 @@ def test_a_collection_reports_its_status_under_its_own_journey(rf):
 
     assert _Journeyed.as_section("guests").status(request, {}) == COMPLETE
     assert GuestCollectionView.as_section("guests").status(request, {}) == NOT_STARTED
+
+
+def test_a_collection_under_a_submitted_journey_sends_the_user_on(rf):
+    """The hub above it is the page that can say what a submitted journey
+    looks like; a collection has no page of its own for that."""
+    request = _view_request(rf, session={"completed": True})
+
+    response = GuestCollectionView.as_view()(request)
+
+    assert response.status_code == 302
+    assert response["Location"] == "/party/"

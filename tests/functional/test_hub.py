@@ -26,7 +26,7 @@ from gandalf.testing import (
     stored_section_stash,
     stored_section_stashes,
 )
-from tests.testapp.readme_examples import ContactSectionViewSet
+from tests.testapp.readme.ch11_hub import ContactSectionViewSet
 
 
 HUB_URL = "/readme/hub/"
@@ -45,7 +45,7 @@ def _complete_contact(client):
     client.get(_door("contact"), follow=True)
     run_id = stored_section_run(client, "contact")
     for step, data in [
-        ("name", {"name": "Ada"}),
+        ("name", {"full_name": "Ada"}),
         ("email", {"email": "ada@example.com"}),
         ("review", {}),
     ]:
@@ -64,7 +64,7 @@ def _complete_address(client):
     """Drive the address section to its end, leaving a stash behind."""
     client.get(_door("address"), follow=True)
     run_id = stored_section_run(client, "address")
-    answers = {"line_one": "1 Main St", "postcode": "CB1 1AA"}
+    answers = {"line_1": "1 Main St", "town": "Ely", "postcode": "CB1 1AA"}
     for step, data in [("address", answers), ("review", {})]:
         client.post(
             reverse(
@@ -84,7 +84,7 @@ def test_a_fresh_hub_lists_every_section_as_not_started(client):
     response = client.get(HUB_URL)
 
     assert response.status_code == HTTPStatus.OK
-    assertTemplateUsed(response, "testapp/hub.html")
+    assertTemplateUsed(response, "testapp/readme_hub.html")
     assert _statuses(response) == {"contact": NOT_STARTED, "address": NOT_STARTED}
     assertContains(response, ">Contact details</a>")
     assertContains(response, 'class="tag tag--not-started">Not started</strong>')
@@ -98,7 +98,7 @@ def test_a_section_left_half_answered_reads_as_incomplete(client):
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "name"},
         ),
-        {"name": "Ada"},
+        {"full_name": "Ada"},
         follow=True,
     )
 
@@ -212,7 +212,7 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "name"},
         ),
-        {"name": "Ada"},
+        {"full_name": "Ada"},
         follow=True,
     )
     client.post(
@@ -234,7 +234,7 @@ def test_finishing_a_section_stashes_its_answers_and_returns_to_the_hub(client):
 
     assertRedirects(response, HUB_URL)
     assert stored_section_stash(client, "contact")["state"] == [
-        {"step": {"name": "Ada"}},
+        {"step": {"full_name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
         {"step": {}},
     ]
@@ -252,7 +252,7 @@ def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client)
     seed_run(
         client,
         run_id,
-        {"state": [{"step": {"name": "Ada", "csrfmiddlewaretoken": "sekrit"}}]},
+        {"state": [{"step": {"full_name": "Ada", "csrfmiddlewaretoken": "sekrit"}}]},
     )
 
     for step, data in [("email", {"email": "ada@example.com"}), ("review", {})]:
@@ -266,7 +266,7 @@ def test_a_csrf_token_an_earlier_version_stored_does_not_reach_the_stash(client)
         )
 
     assert stored_section_stash(client, "contact")["state"][0] == {
-        "step": {"name": "Ada"}
+        "step": {"full_name": "Ada"}
     }
 
 
@@ -279,7 +279,7 @@ def test_sections_progress_independently_of_each_other(client):
             "readme-hub-address-step",
             kwargs={"run_id": address_run, "gandalf_step": "address"},
         ),
-        {"line_one": "1 Main St", "postcode": "SW1A 1AA"},
+        {"line_1": "1 Main St", "town": "Ely", "postcode": "SW1A 1AA"},
         follow=True,
     )
 
@@ -312,7 +312,7 @@ def test_entering_an_incomplete_section_resumes_its_own_run(client):
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "name"},
         ),
-        {"name": "Ada"},
+        {"full_name": "Ada"},
         follow=True,
     )
 
@@ -340,7 +340,7 @@ def test_reopening_a_completed_section_seeds_a_new_prefilled_run(client):
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     assertContains(response, "Ada")
     assert stored_section_stashes(client)["contact"]["state"][0] == {
-        "step": {"name": "Ada"}
+        "step": {"full_name": "Ada"}
     }
 
 
@@ -376,12 +376,12 @@ def test_one_edit_in_a_reopened_section_re_stashes_and_returns_to_the_hub(client
             "readme-hub-contact-step",
             kwargs={"run_id": run_id, "gandalf_step": "name"},
         ),
-        {"name": "Grace"},
+        {"full_name": "Grace"},
     )
 
     assertRedirects(response, HUB_URL)
     assert stored_section_stash(client, "contact")["state"][0] == {
-        "step": {"name": "Grace"}
+        "step": {"full_name": "Grace"}
     }
     assert _statuses(client.get(HUB_URL))["contact"] == COMPLETE
 
@@ -401,7 +401,7 @@ def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client)
 
     assertRedirects(response, HUB_URL)
     assert stored_section_stash(client, "contact")["state"][0] == {
-        "step": {"name": "Ada"}
+        "step": {"full_name": "Ada"}
     }
 
 
@@ -552,7 +552,11 @@ def test_a_row_reports_its_status_as_a_boolean_per_state(client):
     seed_run(
         client,
         "00000000-0000-0000-0000-000000000000",
-        {"state": [{"step": {"line_one": "1 Main St", "postcode": "SW1A 1AA"}}]},
+        {
+            "state": [
+                {"step": {"line_1": "1 Main St", "town": "Ely", "postcode": "SW1A 1AA"}}
+            ]
+        },
     )
     _complete_contact(client)
 

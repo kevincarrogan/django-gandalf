@@ -1,0 +1,36 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/budget.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if collection.is_empty %}
+            <h1>You have not added any budget lines</h1>
+        {% else %}
+            <h1>You have added {{ collection.count }} budget line{{ collection.count|pluralize }}</h1>
+            <p class="lede">
+                You have completed {{ collection.completed }} of {{ collection.count }}.
+            </p>
+            <ul class="task-list">
+                {% for row in collection.rows %}
+                    <li class="task-list__item">
+                        <span>{{ row.title }}</span>
+                        <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+                        <a href="{{ row.url }}">Change {{ row.title }}</a>
+                        <a href="{{ row.remove_url }}">Remove {{ row.title }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.errors.add_another }}
+            <button type="submit" name="add_another" value="yes">
+                Add {% if collection.is_empty %}a{% else %}another{% endif %} budget line
+            </button>
+            {% if not collection.is_empty %}
+                <button type="submit" name="add_another" value="no">Continue</button>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

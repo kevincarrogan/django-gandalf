@@ -1,6 +1,22 @@
 from django.urls import include, path
 
-from . import readme_examples, views
+from . import views
+from .readme import (
+    ch01_first_wizard,
+    ch02_branching,
+    ch03_switch,
+    ch04_expand,
+    ch05_funds,
+    ch06_review,
+    ch07_step_views,
+    ch08_uploads,
+    ch09_records,
+    ch10_stash,
+    ch11_hub,
+    ch12_budget,
+    ch13_gated,
+    ch14_journey,
+)
 
 
 urlpatterns = [
@@ -9,81 +25,97 @@ urlpatterns = [
         views.IndexView.as_view(),
         name="index",
     ),
-    # Runnable counterparts to the README's worked examples (see
-    # tests/testapp/readme_examples.py and tests/functional/test_readme_examples.py).
-    path("readme/signup/", include(readme_examples.SignupWizardViewSet.urls())),
-    path("readme/branching/", include(readme_examples.BranchingWizardViewSet.urls())),
+    # The README's worked example, chapter by chapter (tests/testapp/readme/,
+    # driven by tests/functional/test_readme_examples.py).
+    path("readme/first/", include(ch01_first_wizard.FirstApplicationViewSet.urls())),
     path(
-        "readme/onboarding/<slug:plan>/",
-        include(readme_examples.OnboardingWizardViewSet.urls()),
+        "readme/branching/", include(ch02_branching.BranchingApplicationViewSet.urls())
     ),
-    path("readme/expand/", include(readme_examples.ExpandWizardViewSet.urls())),
+    path("readme/switch/", include(ch03_switch.SwitchingApplicationViewSet.urls())),
+    path("readme/expand/", include(ch04_expand.ExpandingApplicationViewSet.urls())),
     path(
-        "readme/file-upload/",
-        include(readme_examples.FileUploadWizardViewSet.urls()),
+        "readme/funds/<slug:fund>/", include(ch05_funds.FundApplicationViewSet.urls())
     ),
+    path("readme/review/", include(ch06_review.ReviewedApplicationViewSet.urls())),
     path(
-        "readme/form-view/",
-        include(readme_examples.FormViewStepWizardViewSet.urls()),
+        "readme/step-view/", include(ch07_step_views.LookedUpApplicationViewSet.urls())
     ),
-    path("readme/escape/", include(readme_examples.EscapeWizardViewSet.urls())),
-    path("readme/editing/", include(readme_examples.EditingWizardViewSet.urls())),
-    path("readme/flip-flop/", include(readme_examples.FlipFlopWizardViewSet.urls())),
-    path("readme/summary/", include(readme_examples.SummaryWizardViewSet.urls())),
-    path("readme/stash/", include(readme_examples.ContactSectionWizardViewSet.urls())),
-    path("readme/hub/", include(readme_examples.ProfileHubView.urls())),
+    path("readme/login/", ch07_step_views.login_placeholder, name="readme-login"),
+    path("readme/upload/", include(ch08_uploads.DocumentedApplicationViewSet.urls())),
+    path("readme/record/", include(ch09_records.RecordedApplicationViewSet.urls())),
     path(
-        "readme/hub-contact/",
-        include(readme_examples.ContactSectionViewSet.urls()),
+        "readme/received/<int:pk>/",
+        ch09_records.application_received,
+        name="readme-received",
     ),
-    path(
-        "readme/hub-address/",
-        include(readme_examples.AddressSectionViewSet.urls()),
-    ),
-    # A hub, a collection page and an item wizard, all siblings: the hub's
-    # "<slug:section>/" door would swallow a collection mounted beneath it,
-    # and the item wizard's own "" start URL would collide with the
-    # collection's door for that item.
-    path("readme/party/", include(readme_examples.PartyHubView.urls())),
-    path("readme/party-venue/", include(readme_examples.VenueSectionViewSet.urls())),
-    path("readme/guests/", include(readme_examples.GuestCollectionView.urls())),
-    path(
-        "readme/guest/<uuid:item>/",
-        include(readme_examples.GuestItemViewSet.urls()),
-    ),
+    path("readme/stash/", include(ch10_stash.ContactDetailsViewSet.urls())),
     path(
         "readme/stash-reopen/",
-        readme_examples.reopen_contact,
+        ch10_stash.reopen_contact_details,
         name="readme-stash-reopen",
     ),
-    # A journey: the setup wizard mints an id, and the hub and every section
-    # are mounted under it as siblings — the hub's "<slug:section>/" door
-    # would swallow a section mounted beneath it. "new" is listed before the
-    # journey pattern so it is never read as an id.
-    path("readme/apply/new/", include(readme_examples.ApplicationStartViewSet.urls())),
+    # A hub and its sections are siblings: the hub's "<slug:section>/" door
+    # would swallow anything mounted beneath it.
+    path("readme/hub/", include(ch11_hub.GrantHubView.urls())),
+    path("readme/hub-contact/", include(ch11_hub.ContactSectionViewSet.urls())),
+    path("readme/hub-address/", include(ch11_hub.AddressSectionViewSet.urls())),
+    # A collection page and its item wizard are siblings of each other and of
+    # the hub, for the same reason.
+    path("readme/project/", include(ch12_budget.ProjectHubView.urls())),
+    path("readme/project-details/", include(ch12_budget.ProjectSectionViewSet.urls())),
+    path("readme/budget/", include(ch12_budget.BudgetCollectionView.urls())),
+    path(
+        "readme/budget-line/<uuid:item>/", include(ch12_budget.BudgetLineViewSet.urls())
+    ),
+    path("readme/gated/", include(ch13_gated.GatedHubView.urls())),
+    path(
+        "readme/gated-project/", include(ch13_gated.GatedProjectSectionViewSet.urls())
+    ),
+    path("readme/gated-referees/", include(ch13_gated.RefereesSectionViewSet.urls())),
+    path(
+        "readme/gated-match-funding/",
+        include(ch13_gated.MatchFundingSectionViewSet.urls()),
+    ),
+    # A journey: the setup wizard mints an id, and the hub, its sections, the
+    # budget page and the budget line wizard are all mounted under it as
+    # siblings. "new" is listed before the journey pattern so it is never
+    # read as an id.
+    path("readme/apply/new/", include(ch14_journey.ApplicationStartViewSet.urls())),
     path(
         "readme/apply/<slug:journey>/",
-        include(readme_examples.ApplicationHubView.urls()),
+        include(ch14_journey.GrantApplicationHubView.urls()),
     ),
     path(
         "readme/apply-setup/<slug:journey>/",
-        include(readme_examples.SetupSectionViewSet.urls()),
+        include(ch14_journey.SetupSectionViewSet.urls()),
     ),
     path(
         "readme/apply-contact/<slug:journey>/",
-        include(readme_examples.ApplyContactSectionViewSet.urls()),
+        include(ch14_journey.ContactSectionViewSet.urls()),
     ),
     path(
-        "readme/apply-employment/<slug:journey>/",
-        include(readme_examples.EmploymentSectionViewSet.urls()),
+        "readme/apply-project/<slug:journey>/",
+        include(ch14_journey.ProjectSectionViewSet.urls()),
     ),
     path(
-        "readme/apply-employer/<slug:journey>/",
-        include(readme_examples.EmployerSectionViewSet.urls()),
+        "readme/apply-budget/<slug:journey>/",
+        include(ch14_journey.BudgetCollectionView.urls()),
     ),
     path(
-        "readme/apply-references/<slug:journey>/",
-        include(readme_examples.ReferencesSectionViewSet.urls()),
+        "readme/apply-budget-line/<slug:journey>/<uuid:item>/",
+        include(ch14_journey.BudgetLineViewSet.urls()),
+    ),
+    path(
+        "readme/apply-match-funding/<slug:journey>/",
+        include(ch14_journey.MatchFundingSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-referees/<slug:journey>/",
+        include(ch14_journey.RefereesSectionViewSet.urls()),
+    ),
+    path(
+        "readme/apply-documents/<slug:journey>/",
+        include(ch14_journey.DocumentsSectionViewSet.urls()),
     ),
     path(
         "path-aware-walked-past-wizard/",

@@ -147,3 +147,24 @@ class CollectionItemRecord(models.Model):
                 name="unique_collection_item",
             ),
         ]
+
+
+class Application(models.Model):
+    """The README's grant application: the record a run opens when it starts
+    and submits when it finishes. Nobody typed the reference, no form
+    validates it, and allocating it twice is the bug — which is why it lives
+    in the run's metadata bag and not in its answers."""
+
+    reference = models.CharField(max_length=16, unique=True)
+    email = models.EmailField(blank=True)
+    submitted = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = f"GF-{Application.objects.count() + 1:05d}"
+        super().save(*args, **kwargs)
+
+    def submit(self, email):
+        self.email = email
+        self.submitted = True
+        self.save(update_fields=["email", "submitted"])

@@ -1326,11 +1326,11 @@ def test_a_hub_without_a_url_name_is_misconfigured(rf):
 
 def _profile_hub(rf, path, **kwargs):
     """The README's hub, dispatched directly — one view over two routes."""
-    from tests.testapp.readme_examples import ProfileHubView
+    from tests.testapp.readme.ch11_hub import GrantHubView
 
     request = rf.get(path)
     request.session = _session()
-    return ProfileHubView.as_view()(request, **kwargs)
+    return GrantHubView.as_view()(request, **kwargs)
 
 
 def test_the_hub_page_renders_the_section_rows(rf):
@@ -1756,23 +1756,37 @@ def test_a_hub_says_a_submitted_journey_is_gone_by_default(rf):
 
 def _apply(rf, method, path, session=None, **kwargs):
     """The README's journey hub, dispatched directly under a journey."""
-    from tests.testapp.readme_examples import ApplicationHubView
+    from tests.testapp.readme.ch14_journey import GrantApplicationHubView
 
     request = getattr(rf, method)(path)
     request.session = _session(session, journey="app-1")
-    return ApplicationHubView.as_view()(request, journey="app-1", **kwargs)
+    return GrantApplicationHubView.as_view()(request, journey="app-1", **kwargs)
 
 
+@pytest.mark.django_db
 def test_a_post_to_the_hub_page_submits_the_journey(rf):
+    line = "11111111-1111-1111-1111-111111111111"
     response = _apply(
         rf,
         "post",
         "/readme/apply/app-1/",
         {
             "stashes": {
-                key: _stash([{"step": {}}], label=key)
-                for key in ("setup", "contact", "employment", "references")
-            }
+                "setup": _stash([{"step": {"applying_as": "individual"}}], "setup"),
+                "contact": _stash(
+                    [{"step": {"full_name": "Ada"}}, {"step": {"email": "a@b.c"}}],
+                    "contact",
+                ),
+                "project": _stash([{"step": {}}], "project"),
+                "referees": _stash([{"step": {}}], "referees"),
+                f"budget:{line}": _stash([{"step": {}}], "budget"),
+            },
+            "collections": {
+                "budget": {
+                    "items": [{"id": line, "title": "Paint"}],
+                    "declared_done": True,
+                }
+            },
         },
     )
 
@@ -1814,12 +1828,12 @@ def test_a_submitted_journeys_door_is_refused(rf):
 
 def test_a_submitted_journeys_section_wizard_refuses_a_bookmarked_url(rf):
     """A stale step URL must not re-open a section into a tombstone."""
-    from tests.testapp.readme_examples import ApplyContactSectionViewSet
+    from tests.testapp.readme.ch14_journey import ContactSectionViewSet
 
     request = rf.get("/readme/apply-contact/app-1/")
     request.session = _session({"completed": True}, journey="app-1")
 
-    response = ApplyContactSectionViewSet.as_view()(request, journey="app-1")
+    response = ContactSectionViewSet.as_view()(request, journey="app-1")
 
     assert response.status_code == 302
     assert response["Location"] == "/readme/apply/app-1/"

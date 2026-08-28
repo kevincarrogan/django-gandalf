@@ -31,6 +31,11 @@ from gandalf.viewsets import WizardViewSet
 # is mount-prefix context that only the catalogue can supply.
 RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "section", "item"})
 
+#: The journey the README's chapter 14 examples are listed under. Any slug
+#: works — a journey is minted by the setup wizard, and the index only needs
+#: the URLs to reverse.
+JOURNEY = {"journey": "example"}
+
 
 @dataclass(frozen=True)
 class Example:
@@ -65,73 +70,106 @@ class Group:
 
 GROUPS = (
     Group(
-        "Start here — the README examples",
-        "The worked examples from README.md, running for real. Every one of "
-        "these is also driven by tests/functional/test_readme_examples.py, so "
-        "what you click through here is what the documentation promises.",
+        "Start here — the README, chapter by chapter",
+        "One grant application, built up a chapter at a time. Each entry is "
+        "the code its README chapter shows, running for real, and every one "
+        "is driven by tests/functional/test_readme_examples.py — so what you "
+        "click through here is what the documentation promises.",
         (
-            Example("readme-signup"),
-            Example("readme-branching"),
+            Example("readme-first", note="Chapter 1. Two steps, then done()."),
             Example(
-                "readme-onboarding",
-                url_kwargs={"plan": "solo"},
-                title="OnboardingWizardViewSet (solo plan)",
-                note="Two steps: the plan in the URL decides the shape.",
+                "readme-branching",
+                note="Chapter 2. Answer 'organisation' to take the other arm.",
             ),
             Example(
-                "readme-onboarding",
-                url_kwargs={"plan": "team"},
-                title="OnboardingWizardViewSet (team plan)",
-                note="The same viewset, three steps — compare with the solo "
-                "plan above.",
+                "readme-switch", note="Chapter 3. A case per kind of organisation."
             ),
-            Example("readme-expand"),
-            Example("readme-file-upload"),
-            Example("readme-form-view"),
+            Example("readme-expand", note="Chapter 4. One trustee step per trustee."),
             Example(
-                "readme-escape",
-                note="Answer existing@example.com to trigger the escape.",
+                "readme-fund",
+                url_kwargs={"fund": "sport"},
+                title="FundApplicationViewSet (sport fund)",
+                note="Chapter 5. The fund in the URL decides the shape.",
             ),
-            Example("readme-editing"),
             Example(
-                "readme-flip-flop",
-                note="Pick business, fill the name in, then go back and switch "
-                "to personal and back again — the business name is still there.",
+                "readme-fund",
+                url_kwargs={"fund": "arts"},
+                title="FundApplicationViewSet (arts fund)",
+                note="Chapter 5. The same viewset asks for a portfolio too.",
             ),
-            Example("readme-summary"),
-            Example("readme-stash", note="Finish this first; it fills the stash."),
+            Example(
+                "readme-review",
+                note="Chapter 6. Change an answer from the summary; flip the arm and back.",
+            ),
+            Example(
+                "readme-step-view",
+                note="Chapter 7. Answer existing@example.com to be parked at the login page.",
+            ),
+            Example(
+                "readme-upload",
+                note="Chapter 8. An organisation uploads its governing document.",
+            ),
+            Example(
+                "readme-record",
+                note="Chapter 9. A draft record opened at the start, submitted at the end.",
+            ),
+            Example(
+                "readme-stash",
+                note="Chapter 10. Finish this first; it fills the stash.",
+            ),
             Example(
                 "readme-stash-reopen",
-                title="reopen_contact",
-                description="Re-opens the stashed contact answers in a fresh run.",
-                note="Only works once the stashing wizard above has completed.",
+                title="reopen_contact_details",
+                description="Re-opens the stashed contact details in a fresh run.",
+                note="Chapter 10. Only works once the wizard above has completed.",
             ),
-            Example("readme-hub", note="The task list. Enter the sections from here."),
-            Example("readme-hub-contact", note="A hub section, reached from the hub."),
-            Example("readme-hub-address", note="A hub section, reached from the hub."),
             Example(
-                "readme-party-hub",
-                note="A task list whose second row is a collection.",
+                "readme-hub",
+                note="Chapter 11. The task list; enter the sections from here.",
             ),
-            Example("readme-party-venue", note="A plain section beside it."),
             Example(
-                "readme-guests",
-                note="Add another: add a few guests, then change and remove them.",
+                "readme-hub-contact",
+                note="Chapter 11. A section, reached from the task list.",
             ),
+            Example(
+                "readme-hub-address",
+                note="Chapter 11. A section, reached from the task list.",
+            ),
+            Example(
+                "readme-project-hub",
+                note="Chapter 12. A task list whose second row is a collection.",
+            ),
+            Example(
+                "readme-project",
+                note="Chapter 12. The project section beside the budget.",
+            ),
+            Example(
+                "readme-budget",
+                note="Chapter 12. Add a few budget lines, then change and remove them.",
+            ),
+            Example(
+                "readme-gated",
+                note="Chapter 13. Ask for over 10,000 and a section appears.",
+            ),
+            Example("readme-gated-project"),
+            Example("readme-gated-referees"),
+            Example("readme-gated-match-funding"),
             Example(
                 "readme-apply-start",
-                note="Journeys: start here — it mints an application and lands on its hub.",
+                note="Chapter 14. Start here — it mints an application and lands on its hub.",
             ),
             Example(
                 "readme-apply-hub",
-                url_kwargs={"journey": "example"},
-                note="The hub of one application. Reach it from the setup wizard.",
+                url_kwargs=JOURNEY,
+                note="Chapter 14. The hub of one application. Reach it from the setup wizard.",
             ),
-            Example("readme-apply-setup", url_kwargs={"journey": "example"}),
-            Example("readme-apply-contact", url_kwargs={"journey": "example"}),
-            Example("readme-apply-employment", url_kwargs={"journey": "example"}),
-            Example("readme-apply-employer", url_kwargs={"journey": "example"}),
-            Example("readme-apply-references", url_kwargs={"journey": "example"}),
+            Example("readme-apply-setup", url_kwargs=JOURNEY),
+            Example("readme-apply-contact", url_kwargs=JOURNEY),
+            Example("readme-apply-project", url_kwargs=JOURNEY),
+            Example("readme-apply-budget", url_kwargs=JOURNEY),
+            Example("readme-apply-match-funding", url_kwargs=JOURNEY),
+            Example("readme-apply-referees", url_kwargs=JOURNEY),
+            Example("readme-apply-documents", url_kwargs=JOURNEY),
         ),
     ),
     Group(

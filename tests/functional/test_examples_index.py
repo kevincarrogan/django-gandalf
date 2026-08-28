@@ -71,7 +71,7 @@ def test_index_page_links_to_examples_that_need_a_mount_kwarg(client):
     "url_name, expected",
     [
         ("linear-wizard", "LinearWizardViewSet"),
-        ("readme-signup", "SignupWizardViewSet"),
+        ("readme-first", "FirstApplicationViewSet"),
     ],
 )
 def test_a_wizard_page_names_the_example_it_is_running(client, url_name, expected):

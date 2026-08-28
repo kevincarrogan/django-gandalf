@@ -103,7 +103,7 @@ def test_a_wizard_describes_every_route_it_declares():
     """A description of the declaration, so it needs no run: every step,
     every fork with all of its possible routes, and a marker where the
     tree grows from an answer."""
-    from tests.testapp import readme_examples
+    from tests.testapp.readme import ch04_expand
 
     branching = _outline_of(views.BranchingWizardViewSet)
     [_, branch, _] = branching
@@ -111,8 +111,16 @@ def test_a_wizard_describes_every_route_it_declares():
     assert [step["name"] for step in branch["arms"][0]["steps"]] == ["business_name"]
     assert [step["name"] for step in branch["default"]] == ["preferred_name"]
 
-    growing = _outline_of(readme_examples.ExpandWizardViewSet)
-    assert [entry["kind"] for entry in growing] == ["step", "expand", "step"]
+    # The README's organisation arm ends in an expansion, inside a branch.
+    [_, branch, _] = _outline_of(ch04_expand.ExpandingApplicationViewSet)
+    organisation = branch["arms"][0]["steps"]
+    assert [entry["kind"] for entry in organisation] == [
+        "step",
+        "step",
+        "switch",
+        "step",
+        "expand",
+    ]
 
 
 def test_a_switch_on_an_answer_says_which_answer_decides_it():

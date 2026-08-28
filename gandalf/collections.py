@@ -699,6 +699,13 @@ class CollectionMixin(HubMixin):
         override to raise `Http404`."""
         return redirect(self.get_collection_url())
 
+    def journey_completed(self, store: SectionStore) -> HttpResponseBase:
+        """A collection page has no say in what a submitted journey looks
+        like; the hub above it does. So where a hub answers `Http404` until
+        told otherwise, a collection sends the user on to wherever *no more
+        to add* would have — the page that can say the journey is done."""
+        return redirect(self.get_continue_url())
+
     # --- reaching this collection from a hub above it ----------------------
 
     @classmethod

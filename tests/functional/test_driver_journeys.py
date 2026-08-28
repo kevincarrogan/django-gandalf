@@ -10,10 +10,8 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from gandalf.driver import ConfirmationRequired, RunDriver
-from tests.testapp.readme_examples import (
-    BranchingWizardViewSet,
-    SignupWizardViewSet,
-)
+from tests.testapp.readme.ch01_first_wizard import FirstApplicationViewSet
+from tests.testapp.readme.ch02_branching import BranchingApplicationViewSet
 from tests.testapp.views import FileUploadingWizardViewSet
 
 
@@ -37,8 +35,8 @@ def test_a_wizard_that_says_nothing_will_not_be_finished_without_a_person():
     """The default a wizard gets for free. Everything can be filled and the
     run still refuses to fire `done()`, because nothing declared that
     anything but a person may confirm it."""
-    driver = RunDriver.begin(SignupWizardViewSet)
-    driver.submit({"name": "Ada"})
+    driver = RunDriver.begin(FirstApplicationViewSet)
+    driver.submit({"full_name": "Ada"})
     result = driver.submit({"email": "ada@example.com"})
 
     assert result.status == "complete"
@@ -50,7 +48,7 @@ def test_what_was_recorded_about_a_placement_survives_a_stash(tmp_path):
     """A run can be lifted out of one store and put down in another. What
     was recorded about who answered what travels with it — otherwise every
     move would quietly relabel a person's answers as nobody's."""
-    driver = RunDriver.begin(SignupWizardViewSet)
+    driver = RunDriver.begin(FirstApplicationViewSet)
     driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
 
     payload = driver.bound_wizard.stash()
@@ -59,19 +57,21 @@ def test_what_was_recorded_about_a_placement_survives_a_stash(tmp_path):
 
 
 def test_an_agent_drives_the_signup_wizard_to_done():
-    driver = RunDriver.begin(SignupWizardViewSet, may_finish=True)
+    driver = RunDriver.begin(FirstApplicationViewSet, may_finish=True)
 
-    assert driver.describe().step == "name"
-    driver.submit({"name": "Ada"})
+    assert driver.describe().step == "applicant"
+    driver.submit({"full_name": "Ada"})
     result = driver.submit({"email": "ada@example.com"})
 
     assert result.status == "complete"
-    assert driver.finish().content == b"Signed up Ada <ada@example.com>"
+    assert driver.finish().content == (
+        b"Application received from Ada <ada@example.com>"
+    )
 
 
 def test_an_agent_sees_validation_errors_and_recovers():
-    driver = RunDriver.begin(SignupWizardViewSet, may_finish=True)
-    driver.submit({"name": "Ada"})
+    driver = RunDriver.begin(FirstApplicationViewSet, may_finish=True)
+    driver.submit({"full_name": "Ada"})
 
     rejected = driver.submit({"email": "not-an-email"})
     result = driver.submit({"email": "ada@example.com"})
@@ -86,51 +86,53 @@ def test_an_earlier_answer_can_be_corrected_and_the_walk_re_routes():
     which is what makes the retry loop work, since correcting a rejected
     answer is itself an edit. Flipping the answer that chose the arm sends
     the run down the other one."""
-    driver = RunDriver.begin(BranchingWizardViewSet, may_finish=True)
-    driver.submit({"account_type": "business"})
+    driver = RunDriver.begin(BranchingApplicationViewSet, may_finish=True)
+    driver.submit({"applying_as": "organisation"})
 
-    driver.submit({"account_type": "personal"}, step="account_type")
+    driver.submit({"applying_as": "individual"}, step="applying_as")
 
-    assert driver.describe().step == "personal"
+    assert driver.describe().step == "about_you"
 
 
 def test_a_driver_can_tell_its_own_answers_from_a_persons():
     """What the metadata is for. The driver marks its own placements, so a
     caller holding both kinds can tell them apart — which is what any
     "leave their answers alone" rule needs and could not have without it."""
-    driver = RunDriver.begin(SignupWizardViewSet)
-    driver.submit({"name": "Ada"})
+    driver = RunDriver.begin(FirstApplicationViewSet)
+    driver.submit({"full_name": "Ada"})
 
-    assert _is_the_drivers_own(driver, "name")
+    assert _is_the_drivers_own(driver, "applicant")
 
-    driver.submit({"name": "Grace"}, step="name", metadata={"placed_by": "person"})
+    driver.submit(
+        {"full_name": "Grace"}, step="applicant", metadata={"placed_by": "person"}
+    )
 
-    assert not _is_the_drivers_own(driver, "name")
+    assert not _is_the_drivers_own(driver, "applicant")
 
 
 def test_correcting_its_own_earlier_answer_is_never_refused():
     """Required rather than merely convenient: recovering from a rejected
     answer means replacing it, so a policy that refused every edit would
     break the retry loop it was never aimed at."""
-    driver = RunDriver.begin(SignupWizardViewSet)
-    driver.submit({"name": "Ada"})
+    driver = RunDriver.begin(FirstApplicationViewSet)
+    driver.submit({"full_name": "Ada"})
 
-    result = driver.submit({"name": "Grace"}, step="name")
+    result = driver.submit({"full_name": "Grace"}, step="applicant")
 
     assert result.status == "advanced"
-    assert driver.answers()["name"] == {"name": "Grace"}
+    assert driver.answers()["applicant"] == {"full_name": "Grace"}
 
 
-def test_an_agent_drives_the_branching_wizard_down_the_business_arm():
-    driver = RunDriver.begin(BranchingWizardViewSet, may_finish=True)
+def test_an_agent_drives_the_branching_wizard_down_the_organisation_arm():
+    driver = RunDriver.begin(BranchingApplicationViewSet, may_finish=True)
 
-    driver.submit({"account_type": "business"})
+    driver.submit({"applying_as": "organisation"})
 
-    assert driver.describe().step == "business"
-    driver.submit({"business_name": "Ada Ltd"})
-    result = driver.submit({"confirmed": "on"})
+    assert driver.describe().step == "organisation"
+    driver.submit({"organisation_name": "Ada Ltd"})
+    result = driver.submit({"email": "ada@example.com"})
     assert result.status == "complete"
-    assert driver.finish().content == b"Onboarded Ada Ltd"
+    assert driver.finish().content == b"Application from Ada Ltd <ada@example.com>"
 
 
 def test_a_driver_reads_a_run_whose_file_step_was_answered(

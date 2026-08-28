@@ -1,18 +1,18 @@
-"""Drive every README example through the Django test client.
+"""Drive every chapter of the README through the Django test client.
 
-Each example in ``README.md`` has a runnable counterpart in
-``tests/testapp/readme_examples.py`` mounted under ``readme/``. These tests
-exercise those counterparts end to end, so a README snippet that stops working
-(or a "Try it live" link that stops resolving) fails CI. The "Testing your
-wizards" README section is kept honest the same way: its snippets are these
-tests, driven through ``gandalf.testing``.
+Each chapter of ``README.md`` has a runnable counterpart in
+``tests/testapp/readme/`` mounted under ``readme/``. These tests exercise those
+counterparts end to end, so a README snippet that stops working (or a "Try it
+live" link that stops resolving) fails CI. The README's *Testing your wizards*
+appendix is kept honest the same way: its snippets are these tests, driven
+through ``gandalf.testing``.
 """
 
 from http import HTTPStatus
 
+import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
-import pytest
 from pytest_django.asserts import (
     assertContains,
     assertNotContains,
@@ -21,6 +21,7 @@ from pytest_django.asserts import (
 )
 
 from gandalf.testing import stored_section_stash, stored_stash
+from tests.testapp.models import Application
 
 
 ADDRESS = {
@@ -28,8 +29,18 @@ ADDRESS = {
     "line_2": "",
     "town": "Ely",
     "postcode": "CB7 4AA",
-    "uprn": "10009312345",
+    "lookup_token": "10009312345",
 }
+
+ORGANISATION = [
+    ("applying_as", {"applying_as": "organisation"}),
+    ("organisation", {"organisation_name": "Ely Rowing Club"}),
+    ("organisation_type", {"organisation_type": "charity"}),
+    ("charity_number", {"charity_number": "1234567"}),
+    ("trustees", {"trustees": "2"}),
+    ("trustee-0", {"name": "Ada"}),
+    ("trustee-1", {"name": "Grace"}),
+]
 
 
 # --- Every start URL reverses (the "Try it live" links resolve) -------------
@@ -38,20 +49,19 @@ ADDRESS = {
 @pytest.mark.parametrize(
     "name, url_kwargs",
     [
-        ("readme-signup", None),
+        ("readme-first", None),
         ("readme-branching", None),
-        ("readme-onboarding", {"plan": "solo"}),
+        ("readme-switch", None),
         ("readme-expand", None),
-        ("readme-file-upload", None),
-        ("readme-form-view", None),
-        ("readme-escape", None),
-        ("readme-editing", None),
-        ("readme-summary", None),
-        ("readme-flip-flop", None),
+        ("readme-fund", {"fund": "arts"}),
+        ("readme-review", None),
+        ("readme-step-view", None),
+        ("readme-upload", None),
         ("readme-stash", None),
+        ("readme-apply-start", None),
     ],
 )
-def test_readme_example_start_url_is_reachable(client, wizard_driver, name, url_kwargs):
+def test_readme_chapter_start_url_is_reachable(client, wizard_driver, name, url_kwargs):
     if url_kwargs is None:
         url_kwargs = {}
     driver = wizard_driver(name, **url_kwargs)
@@ -62,311 +72,411 @@ def test_readme_example_start_url_is_reachable(client, wizard_driver, name, url_
     assert response.status_code == HTTPStatus.FOUND
 
 
-def test_demo_index_page_lists_the_example_wizards(client):
-    # `just serve` lands on this page; it must render and link to the examples.
+def test_demo_index_page_lists_the_chapters(client):
+    # `just serve` lands on this page; it must render and link to the chapters.
     response = client.get(reverse("index"))
 
     assert response.status_code == HTTPStatus.OK
-    assertContains(response, reverse("readme-signup"))
-    assertContains(response, reverse("readme-flip-flop"))
+    assertContains(response, reverse("readme-first"))
+    assertContains(response, reverse("readme-apply-start"))
 
 
-# --- Quickstart: linear signup ----------------------------------------------
+# --- Chapter 1: a first wizard ----------------------------------------------
 
 
-def test_signup_wizard_collects_and_merges_both_steps(wizard_driver):
+def test_chapter_1_collects_both_steps_and_finishes_once(wizard_driver):
     # README "Testing your wizards" drive() snippet.
-    response, run = wizard_driver("readme-signup").drive(
+    response, run = wizard_driver("readme-first").drive(
         [
-            ("name", {"name": "Ada"}),
-            ("email", {"email": "ada@example.com"}),
+            ("applicant", {"full_name": "Ada"}),
+            ("contact", {"email": "ada@example.com"}),
         ]
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Signed up Ada <ada@example.com>"
+    assert response.content == b"Application received from Ada <ada@example.com>"
     assert run.is_completed
 
 
-def test_signup_first_answer_advances_and_stores(wizard_driver):
+def test_chapter_1_first_answer_advances_and_stores(wizard_driver):
     # README "Testing your wizards" step-at-a-time snippet.
-    run = wizard_driver("readme-signup").start()
+    run = wizard_driver("readme-first").start()
 
-    response = run.post_step("name", {"name": "Ada"})
+    response = run.post_step("applicant", {"full_name": "Ada"})
 
-    assert response["Location"] == run.step_url("email")
-    assert run.state == [{"step": {"name": "Ada"}}]
-
-
-# --- Branching --------------------------------------------------------------
+    assert response["Location"] == run.step_url("contact")
+    assert run.state == [{"step": {"full_name": "Ada"}}]
 
 
-def test_branching_wizard_takes_business_arm(wizard_driver):
+# --- Chapter 2: individuals and organisations -------------------------------
+
+
+def test_chapter_2_takes_the_organisation_arm(wizard_driver):
     response, _ = wizard_driver("readme-branching").drive(
         [
-            ("account_type", {"account_type": "business"}),
-            ("business", {"business_name": "Acme"}),
-            ("review", {"confirmed": "on"}),
+            ("applying_as", {"applying_as": "organisation"}),
+            ("organisation", {"organisation_name": "Ely Rowing Club"}),
+            ("contact", {"email": "club@example.com"}),
         ]
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Onboarded Acme"
+    assert response.content == b"Application from Ely Rowing Club <club@example.com>"
 
 
-def test_branching_wizard_takes_personal_arm(wizard_driver):
+def test_chapter_2_takes_the_individual_arm(wizard_driver):
     response, _ = wizard_driver("readme-branching").drive(
         [
-            ("account_type", {"account_type": "personal"}),
-            ("personal", {"preferred_name": "Ada"}),
-            ("review", {"confirmed": "on"}),
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("contact", {"email": "ada@example.com"}),
         ]
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Onboarded Ada"
+    assert response.content == b"Application from Sculptor <ada@example.com>"
 
 
-# --- Dynamic wizards: get_wizard() ------------------------------------------
+# --- Chapter 3: which kind of organisation ----------------------------------
 
 
-def test_onboarding_solo_plan_skips_the_company_step(wizard_driver):
-    response, _ = wizard_driver("readme-onboarding", plan="solo").drive(
-        [
-            ("name", {"name": "Ada"}),
-            ("email", {"email": "ada@example.com"}),
-        ]
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Onboarded Ada on the solo plan"
-
-
-def test_onboarding_team_plan_inserts_the_company_step(wizard_driver):
-    response, _ = wizard_driver("readme-onboarding", plan="team").drive(
-        [
-            ("name", {"name": "Ada"}),
-            ("company", {"business_name": "Acme"}),
-            ("email", {"email": "ada@example.com"}),
-        ]
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Onboarded Ada on the team plan"
-
-
-# --- .expand() --------------------------------------------------------------
-
-
-def test_expand_wizard_grows_item_steps_mid_walk(wizard_driver):
-    response, _ = wizard_driver("readme-expand").drive(
-        [
-            ("count", {"count": "2"}),
-            ("item-0", {"name": "x"}),
-            ("item-1", {"name": "y"}),
-            ("review", {"confirmed": "on"}),
-        ]
-    )
-
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Collected x, y"
-
-
-# --- File uploads -----------------------------------------------------------
-
-
-def test_file_upload_wizard_stores_and_reports_the_upload(
-    wizard_driver, isolated_media_root
+@pytest.mark.parametrize(
+    "organisation_type, number_step, number, expected",
+    [
+        ("charity", "charity_number", {"charity_number": "1234567"}, "(1234567)"),
+        ("company", "company_number", {"company_number": "09876543"}, "(09876543)"),
+    ],
+)
+def test_chapter_3_asks_the_number_the_kind_of_organisation_has(
+    wizard_driver, organisation_type, number_step, number, expected
 ):
-    run = wizard_driver("readme-file-upload").start()
+    response, _ = wizard_driver("readme-switch").drive(
+        [
+            ("applying_as", {"applying_as": "organisation"}),
+            ("organisation", {"organisation_name": "Ely Rowing Club"}),
+            ("organisation_type", {"organisation_type": organisation_type}),
+            (number_step, number),
+            ("contact", {"email": "club@example.com"}),
+        ]
+    )
+
+    assert response.content == f"Application from Ely Rowing Club {expected}".encode()
+
+
+def test_chapter_3_a_community_group_has_no_number_to_give(wizard_driver):
+    """No case names it and there is no default, so the walk goes straight
+    past the switch."""
+    run = wizard_driver("readme-switch").start()
 
     response = run.post_steps(
         [
-            (
-                "photo",
-                {
-                    "photo": SimpleUploadedFile(
-                        "avatar.png", b"bytes", content_type="image/png"
-                    )
-                },
-            ),
-            ("name", {"name": "Ada"}),
+            ("applying_as", {"applying_as": "organisation"}),
+            ("organisation", {"organisation_name": "Ely Allotments"}),
+            ("organisation_type", {"organisation_type": "community"}),
         ]
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Uploaded avatar.png"
+    assert response.context["form"].fields.keys() == {"email"}
 
 
-# --- Step views: bringing your own FormView ---------------------------------
+# --- Chapter 4: as many trustees as there are --------------------------------
 
 
-def test_form_view_step_uses_its_own_template(wizard_driver):
-    run = wizard_driver("readme-form-view").start()
-
-    response = run.post_step("account", {"email": "ada@example.com"}, follow=True)
-
-    # The step's own template wins over the viewset's.
-    assert response.status_code == HTTPStatus.OK
-    assertTemplateUsed(response, "testapp/other_linear_wizard.html")
-
-
-def test_form_view_step_prefills_from_a_prior_answer(wizard_driver):
-    run = wizard_driver("readme-form-view").start()
-
-    response = run.post_step("account", {"email": "ada@example.com"}, follow=True)
-
-    # get_initial() read the account step's answer off context.run.path.
-    assert response.context["form"]["company"].value() == "example.com"
-
-
-def test_form_view_step_survives_being_walked_past(wizard_driver):
-    # The step's get_initial() reads run state, and every later request
-    # replays the step — re-entering that read from inside the walk.
-    response, _ = wizard_driver("readme-form-view").drive(
-        [
-            ("account", {"email": "ada@example.com"}),
-            ("billing", {"company": "Acme", "country": "IE"}),
-            ("confirm", {"confirmed": "on"}),
-        ]
+def test_chapter_4_grows_one_step_per_trustee(wizard_driver):
+    response, _ = wizard_driver("readme-expand").drive(
+        ORGANISATION + [("contact", {"email": "club@example.com"})]
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Billing Acme (IE)"
+    assert response.content == b"Trustees: Ada, Grace"
 
 
-# --- Escaping the wizard ----------------------------------------------------
+# --- Chapter 5: different funds, different questions -------------------------
 
 
-def test_escape_wizard_parks_a_known_email(wizard_driver):
-    run = wizard_driver("readme-escape").start()
-
-    response = run.post_step("email", {"email": "existing@example.com"})
-
-    # Park redirects the user out (to the landing page) and does not store the
-    # answer, so the run keeps no stored steps and stays on the email step.
-    assertRedirects(response, reverse("escape-landing"), fetch_redirect_response=False)
-    assert run.state == []
-
-
-def test_escape_wizard_continues_for_a_new_email(wizard_driver):
-    response, run = wizard_driver("readme-escape").drive(
+def test_chapter_5_the_sport_fund_asks_no_portfolio(wizard_driver):
+    response, _ = wizard_driver("readme-fund", fund="sport").drive(
         [
-            ("email", {"email": "new@example.com"}),
-            ("name", {"name": "Ada"}),
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Coach"}),
+            ("contact", {"email": "ada@example.com"}),
         ]
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == f"Signed up {run.run_id}".encode()
+    assert response.content == b"Application to the sport fund from ada@example.com"
 
 
-# --- Back-navigation / editing ----------------------------------------------
-
-
-def test_editing_wizard_renders_a_completed_step_prefilled(wizard_driver):
-    run = wizard_driver("readme-editing").start()
-    run.post_step("account_type", {"account_type": "personal"}, follow=True)
-
-    # A completed step's own URL renders it again, pre-filled — this is the
-    # edit affordance the review template links to.
-    response = run.get_step("account_type", follow=True)
-
-    assert response.status_code == HTTPStatus.OK
-    assertContains(response, 'name="account_type"')
-
-
-# --- Summary: a check-your-answers step -------------------------------------
-
-
-def test_summary_wizard_lists_every_answer_with_a_change_link(wizard_driver):
-    run = wizard_driver("readme-summary").start()
-    run.post_steps(
+def test_chapter_5_the_arts_fund_inserts_a_portfolio_step(wizard_driver):
+    response, _ = wizard_driver("readme-fund", fund="arts").drive(
         [
-            ("name", {"name": "Ada"}),
-            ("delivery", {"method": "express", "leave_with_neighbour": "on"}),
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("portfolio", {"portfolio_url": "https://ada.example.com"}),
+            ("contact", {"email": "ada@example.com"}),
+        ]
+    )
+
+    assert response.content == b"Application to the arts fund from ada@example.com"
+
+
+# --- Chapter 6: check your answers -------------------------------------------
+
+
+def _individual(run):
+    return run.post_steps(
+        [
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("contact", {"email": "ada@example.com"}),
             ("address", ADDRESS),
         ]
     )
+
+
+def test_chapter_6_renders_a_completed_step_prefilled(wizard_driver):
+    run = wizard_driver("readme-review").start()
+    run.post_step("applying_as", {"applying_as": "individual"}, follow=True)
+
+    # A completed step's own URL renders it again, pre-filled — this is the
+    # edit affordance the summary links to.
+    response = run.get_step("applying_as", follow=True)
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'value="individual" selected')
+
+
+def test_chapter_6_lists_every_answer_with_a_change_link(wizard_driver):
+    run = wizard_driver("readme-review").start()
+    _individual(run)
 
     response = run.get_step("review")
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
     assert [(row.label, row.url) for row in rows] == [
-        ("Your name", run.step_url("name")),
-        ("Delivery", run.step_url("delivery")),
+        ("Applying as", run.step_url("applying_as")),
+        ("About you", run.step_url("about_you")),
+        ("Email", run.step_url("contact")),
         ("Address", run.step_url("address")),
     ]
     # The stored answers, as display text rather than raw values.
-    assert [field.value for field in rows[1].fields] == ["Express", "Yes"]
+    assert [field.value for field in rows[0].fields] == ["An individual"]
     assertContains(
-        response, f'<a href="{run.step_url("name")}">Change Your name</a>', html=True
+        response, f'<a href="{run.step_url("contact")}">Change Email</a>', html=True
     )
 
 
-def test_summary_page_reads_an_address_back_as_one_line(wizard_driver):
+def test_chapter_6_reads_an_address_back_as_one_line(wizard_driver):
     # README "Shaping a row" snippet: four fields grouped, the lookup's own
     # answer hidden, and the row still labelled by the step.
-    run = wizard_driver("readme-summary").start()
-    run.post_steps(
-        [
-            ("name", {"name": "Ada"}),
-            ("delivery", {"method": "express", "leave_with_neighbour": "on"}),
-            ("address", ADDRESS),
-        ]
-    )
+    run = wizard_driver("readme-review").start()
+    _individual(run)
 
     response = run.get_step("review")
 
-    address = response.context["summary"][2]
+    address = response.context["summary"][3]
     assert [(field.label, field.value) for field in address.fields] == [
         (None, "12 High Street, Ely, CB7 4AA"),
     ]
     assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 
-# --- Dormant memory: flipping a branch and back -----------------------------
+def test_chapter_6_restores_a_dormant_arm_answer(wizard_driver):
+    run = wizard_driver("readme-review").start()
 
-
-def test_flip_flop_wizard_restores_a_dormant_arm_answer(wizard_driver):
-    run = wizard_driver("readme-flip-flop").start()
-
-    # Business arm: answer the account type and the company name.
+    # Organisation arm: answer the type and the organisation's name.
     run.post_steps(
         [
-            ("account_type", {"account_type": "business"}),
-            ("business_name", {"business_name": "Acme"}),
+            ("applying_as", {"applying_as": "organisation"}),
+            ("organisation", {"organisation_name": "Ely Rowing Club"}),
         ]
     )
 
-    # Edit the account type to personal — the business arm goes dormant.
-    run.post_step("account_type", {"account_type": "personal"}, follow=True)
-    # Flip back to business — the dormant "Acme" is restored, not re-asked.
-    run.post_step("account_type", {"account_type": "business"}, follow=True)
+    # Edit the type to individual — the organisation arm goes dormant.
+    run.post_step("applying_as", {"applying_as": "individual"}, follow=True)
+    # Flip back — the dormant name is restored, not re-asked.
+    run.post_step("applying_as", {"applying_as": "organisation"}, follow=True)
 
-    # The company step is satisfied again from dormant memory: GETting it shows
-    # Acme pre-filled, and completing the run reports it without re-entry.
-    prefilled = run.get_step("business_name", follow=True)
-    assertContains(prefilled, "Acme")
+    prefilled = run.get_step("organisation", follow=True)
+    assertContains(prefilled, "Ely Rowing Club")
 
-    response = run.post_step("review", {"confirmed": "on"}, follow=True)
+
+def test_chapter_6_confirms_and_finishes(wizard_driver):
+    run = wizard_driver("readme-review").start()
+    _individual(run)
+
+    response = run.post_step("review", {}, follow=True)
 
     assert response.status_code == HTTPStatus.OK
-    assert response.content == b"Onboarded Acme"
+    assert response.content == b"Application from Sculptor confirmed"
 
 
-# --- Stashing and resurrecting runs -----------------------------------------
+# --- Chapter 7: a step with a view of its own -------------------------------
 
 
-def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(
+def _to_contact(run):
+    return run.post_steps(
+        [
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+        ]
+    )
+
+
+def test_chapter_7_the_website_step_uses_its_own_template(wizard_driver):
+    run = wizard_driver("readme-step-view").start()
+    _to_contact(run)
+
+    response = run.post_step("contact", {"email": "ada@example.com"}, follow=True)
+
+    # The step's own template wins over the viewset's.
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/other_linear_wizard.html")
+
+
+def test_chapter_7_the_website_step_prefills_from_the_email(wizard_driver):
+    run = wizard_driver("readme-step-view").start()
+    _to_contact(run)
+
+    response = run.post_step("contact", {"email": "ada@example.com"}, follow=True)
+
+    # get_initial() read the contact step's answer off request.wizard.path.
+    assert response.context["form"]["website"].value() == "https://example.com"
+
+
+def test_chapter_7_the_website_step_survives_being_walked_past(wizard_driver):
+    # The step's get_initial() reads run state, and every later request
+    # replays the step — re-entering that read from inside the walk.
+    run = wizard_driver("readme-step-view").start()
+    _to_contact(run)
+    response = run.post_steps(
+        [
+            ("contact", {"email": "ada@example.com"}),
+            ("website", {"website": "https://ada.example.com"}),
+            ("address", ADDRESS),
+            ("review", {}),
+        ]
+    )
+
+    assert (
+        response.content
+        == b"Application from ada@example.com (https://ada.example.com)"
+    )
+
+
+def test_chapter_7_parks_a_known_email_at_the_login_page(wizard_driver):
+    run = wizard_driver("readme-step-view").start()
+    _to_contact(run)
+
+    response = run.post_step("contact", {"email": "existing@example.com"})
+
+    # Park redirects the user out and does not store the answer, so the run
+    # keeps only the two answers before it and stays on the contact step.
+    assertRedirects(response, reverse("readme-login"), fetch_redirect_response=False)
+    assert len(run.state) == 2
+
+
+# --- Chapter 8: proof it exists ----------------------------------------------
+
+
+def _document():
+    return SimpleUploadedFile(
+        "constitution.pdf", b"bytes", content_type="application/pdf"
+    )
+
+
+def test_chapter_8_stores_and_reports_the_upload(wizard_driver, isolated_media_root):
+    run = wizard_driver("readme-upload").start()
+
+    response = run.post_steps(
+        ORGANISATION
+        + [
+            ("governing_document", {"document": _document()}),
+            ("contact", {"email": "club@example.com"}),
+            ("website", {"website": ""}),
+            ("address", ADDRESS),
+            ("review", {}),
+        ]
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.content == b"Received constitution.pdf"
+
+
+def test_chapter_8_an_individual_is_never_asked_for_a_document(wizard_driver):
+    response, _ = wizard_driver("readme-upload").drive(
+        [
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("contact", {"email": "ada@example.com"}),
+            ("website", {"website": ""}),
+            ("address", ADDRESS),
+            ("review", {}),
+        ]
+    )
+
+    assert response.content == b"Application received (no document needed)"
+
+
+# --- Chapter 9: finishing, and what it leaves behind -------------------------
+
+
+@pytest.mark.django_db
+def test_chapter_9_opens_a_record_at_the_start_and_submits_it_at_the_end(wizard_driver):
+    run = wizard_driver("readme-record").start()
+    application = Application.objects.get()
+    assert application.submitted is False
+
+    response = run.post_steps(
+        [
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("contact", {"email": "ada@example.com"}),
+            ("website", {"website": ""}),
+            ("address", ADDRESS),
+            ("review", {}),
+        ]
+    )
+
+    assertContains(response, application.reference)
+    application.refresh_from_db()
+    assert (application.submitted, application.email) == (True, "ada@example.com")
+    assert Application.objects.count() == 1
+    assert run.is_completed
+
+
+@pytest.mark.django_db
+def test_chapter_9_a_revisit_after_completion_still_names_the_record(wizard_driver):
+    run = wizard_driver("readme-record").start()
+    run.post_steps(
+        [
+            ("applying_as", {"applying_as": "individual"}),
+            ("about_you", {"occupation": "Sculptor"}),
+            ("contact", {"email": "ada@example.com"}),
+            ("website", {"website": ""}),
+            ("address", ADDRESS),
+            ("review", {}),
+        ]
+    )
+
+    # The answers are gone; the metadata bag on the tombstone is not.
+    response = run.get(follow=True)
+
+    assertContains(response, Application.objects.get().reference)
+    assert run.data == {"completed": True, "meta": {"run": {"application_id": 1}}}
+
+
+# --- Chapter 10: coming back later -------------------------------------------
+
+
+def test_chapter_10_completes_reopens_and_recompletes_with_an_edit(
     client, wizard_driver
 ):
     driver = wizard_driver("readme-stash")
     response, first_run = driver.drive(
         [
-            ("name", {"name": "Ada"}),
-            ("email", {"email": "ada@example.com"}),
+            ("applicant", {"full_name": "Ada"}),
+            ("contact", {"email": "ada@example.com"}),
         ]
     )
     assert response.content == b"Contact details saved."
@@ -382,14 +492,14 @@ def test_stash_wizard_completes_reopens_and_recompletes_with_an_edit(
 
     # One successful edit re-completes the wizard: done() fires again and the
     # stash now holds the edited answers.
-    response = new_run.post_step("name", {"name": "Grace"}, follow=True)
+    response = new_run.post_step("applicant", {"full_name": "Grace"}, follow=True)
 
     assert response.content == b"Contact details saved."
     payload = stored_stash(client, "contact")
-    assert payload["state"][0] == {"step": {"name": "Grace"}}
+    assert payload["state"][0] == {"step": {"full_name": "Grace"}}
 
 
-def test_stash_reopen_without_a_stash_starts_fresh(client, wizard_driver):
+def test_chapter_10_reopening_without_a_stash_starts_fresh(client, wizard_driver):
     response = client.get(reverse("readme-stash-reopen"))
 
     assertRedirects(
@@ -399,10 +509,10 @@ def test_stash_reopen_without_a_stash_starts_fresh(client, wizard_driver):
     )
 
 
-# --- Hub and spoke: parallel sections ---------------------------------------
+# --- Chapter 11: a task list --------------------------------------------------
 
 
-def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
+def test_chapter_11_lists_sections_and_drives_one_to_complete(client, wizard_driver):
     hub_url = reverse("readme-hub")
     response = client.get(hub_url)
 
@@ -419,7 +529,7 @@ def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
     run = driver.only_run()
 
     # Half-answered, the section reads as Incomplete on the hub.
-    run.post_step("name", {"name": "Ada"}, follow=True)
+    run.post_step("name", {"full_name": "Ada"}, follow=True)
     assertContains(client.get(hub_url), "Incomplete")
 
     # Finished, it stashes its answers and reads as Complete.
@@ -433,27 +543,24 @@ def test_hub_lists_sections_and_drives_one_to_complete(client, wizard_driver):
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Complete")
     assert stored_section_stash(client, "contact")["state"][0] == {
-        "step": {"name": "Ada"}
+        "step": {"full_name": "Ada"}
     }
 
 
-def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_driver):
+def test_chapter_11_reopens_a_completed_section_on_its_review_page(
+    client, wizard_driver
+):
     door = reverse("readme-hub-section", kwargs={"section": "address"})
     client.get(door, follow=True)
     driver = wizard_driver("readme-hub-address")
     run = driver.only_run()
-    run.post_steps(
-        [
-            ("address", {"line_one": "1 Main St", "postcode": "SW1A 1AA"}),
-            ("review", {}),
-        ]
-    )
+    run.post_steps([("address", ADDRESS), ("review", {})])
 
     response = client.get(door, follow=True)
 
     # `reopen_step="review"` lands the user on their answers, not step one.
     assert response.status_code == HTTPStatus.OK
-    assertContains(response, "1 Main St")
+    assertContains(response, "12 High Street")
     assertContains(response, "Check your answers")
     # A re-opened section arrives with every step answered, the review step
     # included, so the page has to drop itself from its own rows.
@@ -461,18 +568,21 @@ def test_hub_reopens_a_completed_section_on_its_review_page(client, wizard_drive
     assertNotContains(response, "Change Review")
 
 
-def test_a_collection_adds_changes_and_removes_items(client):
+# --- Chapter 12: budget lines -------------------------------------------------
+
+
+def test_chapter_12_adds_changes_and_removes_budget_lines(client):
     """The README's add-another example, driven the way the page drives it:
     every action is a POST to the collection, and every link it hands out is
     one of its own routes."""
-    page = reverse("readme-guests")
+    page = reverse("readme-budget")
 
-    # Empty, the page offers only the first item.
-    assertContains(client.get(page), "You have not added any guests")
+    # Empty, the page offers only the first line.
+    assertContains(client.get(page), "You have not added any budget lines")
 
-    # Adding registers the item, then lands on its first step.
+    # Adding registers the line, then lands on its first step.
     step_url = client.post(page, {"add_another": "yes"})["Location"]
-    client.post(step_url, {"name": "Ada", "dietary_requirements": ""})
+    client.post(step_url, {"item": "Paint", "cost": "120"})
     assertContains(client.get(page), "Incomplete")
 
     # Finishing caches the name the row goes by.
@@ -481,16 +591,16 @@ def test_a_collection_adds_changes_and_removes_items(client):
     listing = client.get(page)
     assert [
         (str(row.title), row.status) for row in listing.context["collection"].rows
-    ] == [("Ada", "complete")]
+    ] == [("Paint", "complete")]
 
-    # A second item, removed again, leaves the first untouched and un-renumbered.
+    # A second line, removed again, leaves the first untouched and un-renumbered.
     first = listing.context["collection"].rows[0].item_id
     client.post(
         client.post(page, {"add_another": "yes"})["Location"],
-        {"name": "Grace", "dietary_requirements": ""},
+        {"item": "Brushes", "cost": "30"},
     )
     second = client.get(page).context["collection"].rows[1].item_id
-    client.post(reverse("readme-guests-remove", kwargs={"item": second}))
+    client.post(reverse("readme-budget-remove", kwargs={"item": second}))
     assert [row.item_id for row in client.get(page).context["collection"].rows] == [
         first
     ]
@@ -498,11 +608,63 @@ def test_a_collection_adds_changes_and_removes_items(client):
     # Saying there are no more completes the collection, and the task list
     # above it reads that status without walking anything.
     assertRedirects(
-        client.post(page, {"add_another": "no"}), reverse("readme-party-hub")
+        client.post(page, {"add_another": "no"}), reverse("readme-project-hub")
     )
-    hub = client.get(reverse("readme-party-hub"))
+    hub = client.get(reverse("readme-project-hub"))
     assert [(row.title, row.status) for row in hub.context["hub"].rows] == [
-        ("Venue", "not-started"),
-        ("Guests", "complete"),
+        ("Project", "not-started"),
+        ("Budget", "complete"),
     ]
     assert hub.context["hub"].rows[1].url == page
+
+
+def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
+    """`min_items = 1`: saying "no more" with nothing added is not a budget."""
+    page = reverse("readme-budget")
+
+    client.post(page, {"add_another": "no"})
+
+    hub = client.get(reverse("readme-project-hub"))
+    assert hub.context["hub"].rows[1].status == "incomplete"
+
+
+# --- Chapter 13: locked and hidden -------------------------------------------
+
+
+def _finish_project(client, amount):
+    door = reverse("readme-gated-section", kwargs={"section": "project"})
+    step_url = client.get(door)["Location"]
+    client.post(step_url, {"title": "Boathouse roof", "amount": str(amount)})
+    return client.post(step_url.replace("/project/", "/review/"), {}, follow=True)
+
+
+def _gated_statuses(client):
+    response = client.get(reverse("readme-gated"))
+    return {row.key: row.status for row in response.context["hub"].rows}
+
+
+def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
+    assert _gated_statuses(client)["referees"] == "blocked"
+    door = reverse("readme-gated-section", kwargs={"section": "referees"})
+    assertRedirects(client.get(door), reverse("readme-gated"))
+
+    _finish_project(client, 5_000)
+
+    assert _gated_statuses(client)["referees"] == "not-started"
+
+
+def test_chapter_13_match_funding_appears_above_the_threshold(client):
+    assert "match_funding" not in _gated_statuses(client)
+
+    _finish_project(client, 25_000)
+
+    assert _gated_statuses(client)["match_funding"] == "not-started"
+    assertContains(client.get(reverse("readme-gated")), "Match funding")
+
+
+def test_chapter_13_match_funding_stays_hidden_below_it(client):
+    _finish_project(client, 5_000)
+
+    assert "match_funding" not in _gated_statuses(client)
+    door = reverse("readme-gated-section", kwargs={"section": "match_funding"})
+    assertRedirects(client.get(door), reverse("readme-gated"))

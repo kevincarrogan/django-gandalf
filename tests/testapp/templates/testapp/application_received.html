@@ -1,0 +1,14 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/application_received.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h1>Application received</h1>
+        <p class="lede">Your reference is <strong>{{ application.reference }}</strong>.</p>
+        <p class="lede">
+            Opened when the run started, submitted when it finished, and still
+            addressable from the run's tombstone — that is the metadata bag.
+        </p>
+    </div>
+{% endblock %}

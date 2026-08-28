@@ -1,0 +1,14 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/budget_remove.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h1>Are you sure you want to remove {{ row.title }}?</h1>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit">Remove {{ row.title }}</button>
+        </form>
+        <p><a href="{{ collection.url }}">Cancel</a></p>
+    </div>
+{% endblock %}
