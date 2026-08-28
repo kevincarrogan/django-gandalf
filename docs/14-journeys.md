@@ -1,9 +1,10 @@
 # Chapter 14 — Journeys: scope, memory, nesting and an ending
 
 Everything so far, put together. A hub's members add up to something — this
-application — and that something is a **journey**. It has three things a
-single hub does not: a scope, a memory, and an ending. And because a hub is
-itself a member, a journey's task lists nest.
+application — and that something is a **journey**. It has three things no
+single wizard has: a scope, a memory, and an ending. Every member of it gets
+the first two; the root hub — the one no hub lists — owns the third. And
+because a hub is itself a member, a journey's task lists nest.
 
 ### A scope
 
@@ -26,6 +27,7 @@ urlpatterns = [
     path("readme/apply-match-funding/<slug:journey>/", include(MatchFundingMemberViewSet.urls())),
     path("readme/apply-referees/<slug:journey>/", include(RefereesMemberViewSet.urls())),
     path("readme/apply-documents/<slug:journey>/", include(DocumentsMemberViewSet.urls())),
+    path("readme/apply-supporting/<slug:journey>/", include(SupportingHubView.urls())),
 ]
 ```
 
@@ -105,7 +107,10 @@ class DocumentsMemberViewSet(RunMemberMixin, WizardViewSet):
 ```
 
 The project member writes the amount and match funding reads it, exactly as
-in chapter 13; referees lock on `has_stash("contact")`. It is the bargain a
+in chapter 13; referees lock on `has_stash("contact")`; contact writes the
+email address, which is how `journey_done()` below can submit without
+reading a stash's positional state — a stash is for re-opening, `data` is
+for reading back. It is the bargain a
 collection strikes to name its rows — one walk at completion, none per render
 — generalised from one cached title to the whole journey.
 
@@ -129,9 +134,8 @@ class GrantApplicationHubView(HubView):
     ]
 
     def journey_done(self, hub, store):
-        contact = store.get_stash("contact")
         application = Application.objects.create()
-        application.submit(contact["state"][1]["step"]["email"])
+        application.submit(store.data["email"])
         store.data["reference"] = application.reference
         return redirect(self.get_page_url())
 

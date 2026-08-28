@@ -1791,7 +1791,7 @@ def test_a_post_to_the_hub_page_submits_the_journey(rf):
                     "contact",
                 ),
                 "project": _stash([{"step": {}}], "project"),
-                "referees": _stash([{"step": {}}], "referees"),
+                "supporting:referees": _stash([{"step": {}}], "supporting:referees"),
                 f"budget:{line}": _stash([{"step": {}}], "budget"),
             },
             "collections": {
@@ -1800,11 +1800,16 @@ def test_a_post_to_the_hub_page_submits_the_journey(rf):
                     "declared_done": True,
                 }
             },
+            "data": {"journey": {"email": "a@b.c"}},
         },
     )
 
     assert response.status_code == 302
     assert response["Location"] == "/readme/apply/app-1/"
+    # The refusal redirects to the same page, so prove the work happened.
+    from tests.testapp.models import Application
+
+    assert Application.objects.get().email == "a@b.c"
 
 
 def test_a_post_to_the_door_submits_nothing(rf):

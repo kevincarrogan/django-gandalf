@@ -145,7 +145,7 @@ def _seed_journey(
 
 
 def stored_member_runs(client: Client, journey: str = "default") -> dict[str, str]:
-    """The hub's member-to-run mapping, or an empty dict before any member
+    """The journey's member-to-run mapping, or an empty dict before any member
     has been entered."""
     runs: dict[str, str] = stored_journey(client, journey).get("runs", {})
     return runs

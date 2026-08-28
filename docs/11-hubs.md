@@ -67,7 +67,7 @@ urlpatterns = [
 ```
 
 ```django
-<p>You have completed {{ hub.completed }} of {{ hub.count }} members.</p>
+<p>You have completed {{ hub.completed }} of {{ hub.count }} sections.</p>
 
 {% for row in hub.rows %}
   <li>
@@ -76,6 +76,9 @@ urlpatterns = [
   </li>
 {% endfor %}
 ```
+
+The word on the page is yours — a task list says *sections* to the person
+filling it in, whatever the code calls a member.
 
 `hub.count`, `hub.completed` and `hub.remaining` are the task list heading;
 `hub.status` is derived for the set — **Complete** when every row is, **Not
@@ -153,7 +156,10 @@ not hold the whole page back — `get_member_title()` names it,
 `reopen_member()` / `start_member()` each own one way into a run.
 `stash_unusable()` handles a payload whose `label` no longer matches — it
 re-raises by default, because silently starting over looks to the user
-exactly like their answers vanishing.
+exactly like their answers vanishing. Two URLs to keep apart: `get_page_url()`
+is this hub's own page, where its refusals land; `get_hub_url()` — on a
+member wizard, a collection, or a hub listed by another — is the hub *above*,
+where finishing returns to.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`ch11_hub.py`](../tests/testapp/readme/ch11_hub.py)
 

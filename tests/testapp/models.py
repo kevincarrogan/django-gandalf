@@ -38,7 +38,7 @@ class WizardRun(models.Model):
 
 
 class JourneyRecord(models.Model):
-    """One journey of one user: what its sections decided between them, and
+    """One journey of one user: what its members decided between them, and
     whether it has been submitted.
 
     The session store keeps this on the journey's record beside the runs
@@ -63,10 +63,10 @@ class JourneyRecord(models.Model):
 
 
 class SectionRecord(models.Model):
-    """A hub's bookkeeping for one section of one user's journey.
+    """A hub's bookkeeping for one member of one user's journey.
 
     The unique constraint is what a session-backed store cannot offer: two
-    tabs entering the same section race to register a run, and the database
+    tabs entering the same member race to register a run, and the database
     settles it rather than last-write-wins.
     """
 
@@ -77,9 +77,9 @@ class SectionRecord(models.Model):
     )
     journey = models.CharField(max_length=100, default="default")
     key = models.CharField(max_length=100)
-    # Where an unfinished section is picked up; cleared when it finishes.
+    # Where an unfinished member is picked up; cleared when it finishes.
     run = models.ForeignKey(WizardRun, on_delete=models.SET_NULL, null=True, blank=True)
-    # `BoundWizard.stash()` output, and the section's completion record.
+    # `BoundWizard.stash()` output, and the member's completion record.
     stash = models.JSONField(null=True, blank=True)
 
     class Meta:

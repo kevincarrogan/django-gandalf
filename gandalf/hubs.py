@@ -21,7 +21,7 @@ how far they have got between them, `get_member_title()` names it,
 defaults suit a plain task list; override what your domain needs.
 
 Whether a member is open to the user yet is the one question the member
-answers rather than the hub: `RunMemberMixin.blocked()` on its own viewset, so
+answers rather than the hub: `JourneyMemberMixin.blocked()` on its own viewset, so
 the rule lives with the wizard it gates instead of as an arm of a hub method
 with a key in scope. `hidden()` is its sibling for a member that should not
 be listed at all yet. `member_blocked()` and `member_hidden()` remain for
@@ -1002,7 +1002,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
     def member_blocked(self, member: Member, store: JourneyStore) -> bool:
         """Whether this member is visible but not open to the user yet.
 
-        Asks the member itself — `RunMemberMixin.blocked()` on its own viewset
+        Asks the member itself — `JourneyMemberMixin.blocked()` on its own viewset
         — because that is where a rule about one member belongs, and a hub
         method taking a `member` is a method with a key in scope. Override
         here only for what a member cannot answer alone: a rule spanning
@@ -1019,7 +1019,7 @@ class HubMixin(JourneyMemberMixin, _HubMixinBase):
     def member_hidden(self, member: Member, store: JourneyStore) -> bool:
         """Whether this member should not be listed for this request.
 
-        The exact mirror of `member_blocked()`: asks `RunMemberMixin.hidden()`
+        The exact mirror of `member_blocked()`: asks `JourneyMemberMixin.hidden()`
         on the member's own viewset, and is the hub's hook for what one
         member cannot answer alone — a collection hiding every item at once.
         A member with no viewset is never hidden from here; a hub that wants

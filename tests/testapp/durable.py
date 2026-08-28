@@ -22,11 +22,11 @@ Four contracts are easy to miss and matter more than the rest:
 
 A durable hub needs **both** stores swapped: `storage_class` on every member
 viewset, and `journey_store_class` on the hub and on each `RunMemberMixin`. A
-member store is built with the journey as well as the context, and its
+journey store is built with the journey as well as the context, and its
 `data` and `complete()` are the journey's own — kept on a row that survives
 the members being deleted at submission. A
 durable *collection* needs the same two, with `ModelCollectionStore` in place
-of `ModelJourneyStore` — it is the member store plus an ordered registry, so
+of `ModelJourneyStore` — it is the journey store plus an ordered registry, so
 one swap covers both halves. Swapping only one gives you durable answers
 nobody can find, or a durable index into runs that have expired.
 """

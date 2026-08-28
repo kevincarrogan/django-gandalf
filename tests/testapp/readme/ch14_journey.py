@@ -108,6 +108,13 @@ class ContactMemberViewSet(RunMemberMixin, WizardViewSet):
         .step(ReviewStepView, name="review")
     )
 
+    def run_done(self, bound_wizard):
+        # What submitting needs, written once here rather than read out of
+        # the stash's positional state at journey_done().
+        email = bound_wizard.path.find_step(name="email")
+        self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
+        return super().run_done(bound_wizard)
+
 
 class ProjectMemberViewSet(RunMemberMixin, WizardViewSet):
     description = "Chapter 14: the project, whose amount reveals match funding."
@@ -250,11 +257,11 @@ class GrantApplicationHubView(HubView):
     ]
 
     def journey_done(self, hub, store):
-        # The stashes are still readable here; the tombstone keeps only
-        # `store.data`, so whatever the done page needs goes there.
-        contact = store.get_stash("contact")
+        # The stashes are still readable here, but `data` is what the
+        # members wrote for reading back; the tombstone keeps only `data`,
+        # so whatever the done page needs goes there too.
         application = Application.objects.create()
-        application.submit(contact["state"][1]["step"]["email"])
+        application.submit(store.data["email"])
         store.data["reference"] = application.reference
         return redirect(self.get_page_url())
 

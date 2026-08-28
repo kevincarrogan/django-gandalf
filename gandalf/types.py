@@ -141,7 +141,7 @@ class WizardStorage(Protocol):
 
 
 class JourneyStore(Protocol):
-    """What a hub's `journey_store_class` has to provide.
+    """What a journey member's `journey_store_class` has to provide.
 
     Structural, like `WizardStorage`: `SessionJourneyStore` satisfies it
     without inheriting anything, and so does a store of your own that keeps
@@ -180,7 +180,7 @@ class JourneyStore(Protocol):
 
 
 class CollectionStore(JourneyStore, Protocol):
-    """What a collection's `journey_store_class` has to provide: a member
+    """What a collection's `journey_store_class` has to provide: a journey
     store, plus the ordered registry of items per collection and the user's
     answer to *add another*."""
 
