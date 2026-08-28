@@ -225,7 +225,7 @@ class SessionStashStore:
 
 #: The two buckets a journey's data is kept in — see `JourneyData`.
 JOURNEY_BUCKET = "journey"
-SECTION_BUCKET = "members"
+MEMBER_BUCKET = "members"
 
 
 class JourneyData(MetadataBag):
@@ -268,7 +268,7 @@ class JourneyData(MetadataBag):
     def for_member(self, key: str) -> JourneyData:
         """This journey's data for the member `key` names. Addressed from
         the root whichever bag it is called on."""
-        return type(self)(self._read, self._write_envelope, (SECTION_BUCKET, key))
+        return type(self)(self._read, self._write_envelope, (MEMBER_BUCKET, key))
 
 
 class SessionJourneyStore:

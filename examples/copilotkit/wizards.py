@@ -110,7 +110,7 @@ def fleet_values(context):
     store = page.get_collection_store()
     values = []
     for item_id in page.get_item_ids():
-        stash = store.get_stash(page.item_member_key(item_id))
+        stash = store.get_stash(page.full_key(page.get_item_member(item_id)))
         if not stash:
             continue
         for entry in stash.get("state", []):

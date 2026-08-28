@@ -2414,7 +2414,7 @@ class DurableGuestCollectionView(GuestCollectionView):
 # --- Journeys ----------------------------------------------------------------
 
 
-class ShortMemorySectionStore(SessionJourneyStore):
+class ShortMemoryJourneyStore(SessionJourneyStore):
     """A session store that keeps one completed journey, so pruning can be
     watched without submitting eleven applications."""
 
@@ -2427,7 +2427,7 @@ class SubmitFirstMemberViewSet(RunMemberMixin, WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     member_key = "first"
     hub_url_name = "submit-hub"
-    journey_store_class = ShortMemorySectionStore
+    journey_store_class = ShortMemoryJourneyStore
     wizard = Wizard().step(FirstStepForm, name="first")
 
 
@@ -2447,7 +2447,7 @@ class SubmitHubView(HubView):
     template_name = "testapp/journey_hub.html"
     url_name = "submit-hub"
     member_url_name = "submit-hub-member"
-    journey_store_class = ShortMemorySectionStore
+    journey_store_class = ShortMemoryJourneyStore
     members = [
         Member("first", SubmitFirstMemberViewSet, title="First"),
         Member("second", SubmitSecondMemberViewSet, title="Second"),
