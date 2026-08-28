@@ -2173,7 +2173,7 @@ class GuestItemViewSet(ItemSectionMixin, WizardViewSet):
     url_name = "party-guest"
     template_name = "testapp/linear_wizard.html"
     collection_key = "guests"
-    collection_url_name = "party-guests"
+    hub_url_name = "party-guests"
     item_title_step = "guest"
     item_title_field = "name"
     wizard = Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review")
@@ -2184,10 +2184,10 @@ class GuestCollectionView(CollectionView):
     template_name = "testapp/collection.html"
     remove_template_name = "testapp/collection_remove.html"
     url_name = "party-guests"
-    collection_key = "guests"
+    section_key = "guests"
     item_viewset = GuestItemViewSet
     item_name = "Guest"
-    continue_url_name = "party-hub"
+    hub_url_name = "party-hub"
 
 
 class GatedFirstSectionViewSet(SectionMixin, WizardViewSet):
@@ -2245,14 +2245,14 @@ class PartyHubView(HubView):
     section_url_name = "party-hub-section"
     sections = [
         Section("venue", PartyVenueSectionViewSet, title="Venue"),
-        GuestCollectionView.as_section("guests", title="Guests"),
+        Section("guests", GuestCollectionView, title="Guests"),
     ]
 
 
 class LockedGuestItemViewSet(GuestItemViewSet):
     url_name = "locked-guest"
     collection_key = "locked-guests"
-    collection_url_name = "locked-guests"
+    hub_url_name = "locked-guests"
 
 
 class LockedGuestCollectionView(GuestCollectionView):
@@ -2261,7 +2261,7 @@ class LockedGuestCollectionView(GuestCollectionView):
 
     description = "A collection whose items are all locked."
     url_name = "locked-guests"
-    collection_key = "locked-guests"
+    section_key = "locked-guests"
     item_viewset = LockedGuestItemViewSet
 
     def section_blocked(self, section, store):
@@ -2271,7 +2271,7 @@ class LockedGuestCollectionView(GuestCollectionView):
 class MinimumGuestItemViewSet(GuestItemViewSet):
     url_name = "minimum-guest"
     collection_key = "minimum-guests"
-    collection_url_name = "minimum-guests"
+    hub_url_name = "minimum-guests"
 
 
 class MinimumGuestCollectionView(GuestCollectionView):
@@ -2279,7 +2279,7 @@ class MinimumGuestCollectionView(GuestCollectionView):
 
     description = "A collection that needs at least one item to be complete."
     url_name = "minimum-guests"
-    collection_key = "minimum-guests"
+    section_key = "minimum-guests"
     item_viewset = MinimumGuestItemViewSet
     min_items = 1
 
@@ -2290,14 +2290,14 @@ class DriftedGuestItemViewSet(GuestItemViewSet):
 
     url_name = "drifted-guest"
     collection_key = "drifted-guests"
-    collection_url_name = "drifted-guests"
+    hub_url_name = "drifted-guests"
     section_label = "guests-v2"
 
 
 class DriftedGuestCollectionView(GuestCollectionView):
     description = "A collection whose item label drifts from its own."
     url_name = "drifted-guests"
-    collection_key = "drifted-guests"
+    section_key = "drifted-guests"
     item_viewset = DriftedGuestItemViewSet
 
 
@@ -2310,7 +2310,7 @@ class AdvancingGuestItemViewSet(GuestItemViewSet):
     description = "Collection item escaping with Advance, so its run never completes."
     url_name = "advancing-guest"
     collection_key = "advancing-guests"
-    collection_url_name = "advancing-guests"
+    hub_url_name = "advancing-guests"
     item_title_step = "newsletter"
     item_title_field = "email"
     wizard = Wizard().step(NewsletterForm, name="newsletter")
@@ -2319,22 +2319,22 @@ class AdvancingGuestItemViewSet(GuestItemViewSet):
 class AdvancingGuestCollectionView(GuestCollectionView):
     description = "A collection over items that park rather than complete."
     url_name = "advancing-guests"
-    collection_key = "advancing-guests"
+    section_key = "advancing-guests"
     item_viewset = AdvancingGuestItemViewSet
 
 
 class OrgGuestItemViewSet(GuestItemViewSet):
     url_name = "org-guest"
     collection_key = "org-guests"
-    collection_url_name = "org-guests"
+    hub_url_name = "org-guests"
 
 
 class OrgGuestCollectionView(GuestCollectionView):
     description = "A collection mounted under an org prefix."
     url_name = "org-guests"
-    collection_key = "org-guests"
+    section_key = "org-guests"
     item_viewset = OrgGuestItemViewSet
-    continue_url_name = "org-hub"
+    hub_url_name = "org-hub"
 
 
 class AnonymousGuestItemViewSet(GuestItemViewSet):
@@ -2343,14 +2343,14 @@ class AnonymousGuestItemViewSet(GuestItemViewSet):
     description = "ImproperlyConfigured: an item wizard that cannot name its items."
     url_name = "anonymous-guest"
     collection_key = "anonymous-guests"
-    collection_url_name = "anonymous-guests"
+    hub_url_name = "anonymous-guests"
     item_title_step = None
 
 
 class AnonymousGuestCollectionView(GuestCollectionView):
     description = "A collection whose items cannot name themselves."
     url_name = "anonymous-guests"
-    collection_key = "anonymous-guests"
+    section_key = "anonymous-guests"
     item_viewset = AnonymousGuestItemViewSet
 
 
@@ -2361,14 +2361,14 @@ class OffRouteGuestItemViewSet(GuestItemViewSet):
     description = "A collection item whose naming step is off its own route."
     url_name = "off-route-guest"
     collection_key = "off-route-guests"
-    collection_url_name = "off-route-guests"
+    hub_url_name = "off-route-guests"
     item_title_step = "not-on-this-route"
 
 
 class OffRouteGuestCollectionView(GuestCollectionView):
     description = "A collection whose items answer nothing that names them."
     url_name = "off-route-guests"
-    collection_key = "off-route-guests"
+    section_key = "off-route-guests"
     item_viewset = OffRouteGuestItemViewSet
 
 
@@ -2377,14 +2377,14 @@ class ReshapedGuestItemViewSet(GuestItemViewSet):
 
     url_name = "reshaped-guest"
     collection_key = "reshaped-guests"
-    collection_url_name = "reshaped-guests"
+    hub_url_name = "reshaped-guests"
     section_label = "guests-v2"
 
 
 class ReshapedGuestCollectionView(GuestCollectionView):
     description = "A collection whose item shape was reshaped and re-labelled."
     url_name = "reshaped-guests"
-    collection_key = "reshaped-guests"
+    section_key = "reshaped-guests"
     item_viewset = ReshapedGuestItemViewSet
     item_label = "guests-v2"
     item_name = None
@@ -2397,7 +2397,7 @@ class DurableGuestItemViewSet(GuestItemViewSet):
     description = "A collection item whose runs and registry live in the database."
     url_name = "durable-guest"
     collection_key = "durable-guests"
-    collection_url_name = "durable-guests"
+    hub_url_name = "durable-guests"
     storage_class = ModelStorage
     section_store_class = ModelCollectionStore
 
@@ -2405,10 +2405,10 @@ class DurableGuestItemViewSet(GuestItemViewSet):
 class DurableGuestCollectionView(GuestCollectionView):
     description = "A collection whose items and registry outlive the session."
     url_name = "durable-guests"
-    collection_key = "durable-guests"
+    section_key = "durable-guests"
     item_viewset = DurableGuestItemViewSet
     section_store_class = ModelCollectionStore
-    continue_url_name = "durable-hub"
+    hub_url_name = "durable-hub"
 
 
 # --- Journeys ----------------------------------------------------------------

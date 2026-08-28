@@ -91,7 +91,7 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
             "count": collection.count,
             # Theirs to answer, so it is reported and never set here.
             "they_have_said_that_is_all": collection.is_complete,
-            "fleet_page": page.get_collection_url(),
+            "fleet_page": page.get_page_url(),
         }
 
     @toolset.tool

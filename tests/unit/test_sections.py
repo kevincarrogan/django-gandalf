@@ -151,10 +151,23 @@ def gated_hub(rf):
 # --- Section ---------------------------------------------------------------
 
 
-def test_a_sections_stash_label_defaults_to_its_key():
-    assert Section("contact", _SectionViewSet).stash_label == "contact"
-    assert Section("contact", _SectionViewSet, label="contact-v2").stash_label == (
+def test_a_sections_stash_label_defaults_to_its_full_key(rf):
+    """What the hub expects a stash to carry: the declared label, else the
+    key as the store sees it — prefixed under a nested hub, since that is
+    what the section's own viewset stamps by default."""
+    request = rf.get("/readme/hub/")
+    request.session = _session()
+    hub = _ReversingHub(request)
+
+    class _Nested(_ReversingHub):
+        section_key = "about"
+
+    assert hub.stash_label(Section("contact", _SectionViewSet)) == "contact"
+    assert hub.stash_label(Section("contact", _SectionViewSet, label="contact-v2")) == (
         "contact-v2"
+    )
+    assert _Nested(request).stash_label(Section("contact", _SectionViewSet)) == (
+        "about:contact"
     )
 
 
@@ -1210,7 +1223,7 @@ def test_the_hub_url_is_reversed_from_its_own_url_name(rf):
     request = rf.get("/readme/hub/")
     request.session = _session()
 
-    assert _ReversingHub(request).get_hub_url() == "/readme/hub/"
+    assert _ReversingHub(request).get_page_url() == "/readme/hub/"
 
 
 def test_an_unknown_section_is_sent_back_to_the_hub(rf):
@@ -1315,7 +1328,7 @@ def test_a_hub_without_a_url_name_is_misconfigured(rf):
     request.session = _session()
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
-        _Nameless(request).get_hub_url()
+        _Nameless(request).get_page_url()
     with pytest.raises(ImproperlyConfigured, match="url_name"):
 
         class _NamelessView(HubView):
@@ -1667,7 +1680,7 @@ def test_finishing_a_section_writes_what_it_decided_where_the_hub_reads_it(rf):
 
 
 class _SubmittableHub(_PairHub):
-    def get_hub_url(self):
+    def get_page_url(self):
         return "/hub/"
 
     def journey_done(self, hub, store):

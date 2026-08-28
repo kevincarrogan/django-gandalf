@@ -15,7 +15,7 @@ class BudgetLineViewSet(ItemSectionMixin, WizardViewSet):
     url_name = "readme-budget-line"
     template_name = "testapp/linear_wizard.html"
     collection_key = "budget"
-    collection_url_name = "readme-budget"
+    hub_url_name = "readme-budget"
     # The answer that names a row. Cached when the line finishes, so the
     # page reads a string and a row still costs no walk.
     item_title_step = "line"
@@ -32,12 +32,12 @@ class BudgetCollectionView(CollectionView):
     template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"
     url_name = "readme-budget"
-    collection_key = "budget"
+    section_key = "budget"
     item_viewset = BudgetLineViewSet
     item_name = "Budget line"
     item_reopen_step = "review"
     min_items = 1
-    continue_url_name = "readme-project-hub"
+    hub_url_name = "readme-project-hub"
 
 
 class ProjectSectionViewSet(SectionMixin, WizardViewSet):
@@ -64,5 +64,5 @@ class ProjectHubView(HubView):
         ),
         # A collection page is not a wizard, so the row links straight at it
         # and answers for its own status.
-        BudgetCollectionView.as_section("budget", title="Budget"),
+        Section("budget", BudgetCollectionView, title="Budget"),
     ]

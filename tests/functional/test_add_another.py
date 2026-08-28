@@ -431,11 +431,12 @@ def test_a_task_list_reports_the_collections_own_status(client):
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 
-def test_the_hub_door_refuses_a_row_that_is_not_a_wizard(client):
-    """Rows never point there, so arriving is a hand-typed or stale URL."""
+def test_the_hub_door_sends_a_collection_row_on_to_its_page(client):
+    """Rows never point there — they link straight at the page — but a typed
+    or stale door URL should land where the row would have."""
     response = client.get(reverse("party-hub-section", kwargs={"section": "guests"}))
 
-    assertRedirects(response, "/party/")
+    assertRedirects(response, "/party-guests/")
 
 
 # --- the invariants ---------------------------------------------------------
@@ -663,9 +664,9 @@ def _dispatch(rf, client, view, path=PAGE, method="get", data=None, **kwargs):
 
 def test_a_collection_with_no_key_is_misconfigured(rf, client):
     class _Keyless(GuestCollectionView):
-        collection_key = None
+        section_key = None
 
-    with pytest.raises(ImproperlyConfigured, match="collection_key"):
+    with pytest.raises(ImproperlyConfigured, match="section_key"):
         _dispatch(rf, client, _Keyless)
 
 
@@ -679,9 +680,9 @@ def test_a_collection_with_no_item_wizard_is_misconfigured(rf, client):
 
 def test_a_collection_with_nowhere_to_continue_to_is_misconfigured(rf, client):
     class _Endless(GuestCollectionView):
-        continue_url_name = None
+        hub_url_name = None
 
-    with pytest.raises(ImproperlyConfigured, match="continue_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
         _dispatch(rf, client, _Endless, method="post", data={"add_another": "no"})
 
 
@@ -697,7 +698,7 @@ def test_a_collection_without_a_url_name_cannot_reverse_an_items_links(rf, clien
     class _Nameless(GuestCollectionView):
         url_name = None
 
-        def get_collection_url(self):
+        def get_page_url(self):
             return PAGE
 
     seed_collection_item(client, "guests", ITEM)
@@ -750,14 +751,14 @@ def test_an_item_wizard_with_no_collection_key_is_misconfigured(rf, client):
 
 def test_an_item_wizard_with_no_collection_url_is_misconfigured(rf, client):
     class _Adrift(GuestItemViewSet):
-        collection_url_name = None
+        hub_url_name = None
 
     request = rf.get(f"/party-guest/{ITEM}/")
     request.session = client.session
     view = _Adrift()
     view.setup(request, item=ITEM)
 
-    with pytest.raises(ImproperlyConfigured, match="collection_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
         view.get_hub_url()
 
 

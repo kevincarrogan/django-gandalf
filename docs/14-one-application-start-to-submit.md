@@ -122,7 +122,7 @@ class GrantApplicationHubView(HubView):
         Section("setup", SetupSectionViewSet, title="Applying as"),
         Section("contact", ContactSectionViewSet, title="Contact details", reopen_step="review"),
         Section("project", ProjectSectionViewSet, title="Project", reopen_step="review"),
-        BudgetCollectionView.as_section("budget", title="Budget"),
+        Section("budget", BudgetCollectionView, title="Budget"),
         Section("match_funding", MatchFundingSectionViewSet, title="Match funding"),
         Section("referees", RefereesSectionViewSet, title="Referees"),
         Section("documents", DocumentsSectionViewSet, title="Governing document"),
@@ -133,7 +133,7 @@ class GrantApplicationHubView(HubView):
         application = Application.objects.create()
         application.submit(contact["state"][1]["step"]["email"])
         store.data["reference"] = application.reference
-        return redirect(self.get_hub_url())
+        return redirect(self.get_page_url())
 
     def journey_completed(self, store):
         return render(

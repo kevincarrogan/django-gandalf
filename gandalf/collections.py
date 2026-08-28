@@ -185,7 +185,8 @@ class ItemSectionMixin(SectionMixin):
     one thing to keep straight: it belongs in every URL this wizard builds for
     itself (`get_url_kwargs()` forwards it for free, since it is not among
     `reserved_url_kwargs`) and in none of the collection's, which is why
-    `get_hub_url()` drops it.
+    `get_hub_url_kwargs()` drops it. The collection page is this wizard's hub:
+    `hub_url_name` names it, as it would for a plain section.
 
     **Items override `section_done()`, never `done()`** — `SectionMixin`'s rule
     holds here for its own reason, with one more on top: `done()` is also where
@@ -196,10 +197,10 @@ class ItemSectionMixin(SectionMixin):
     dynamic_section_key = True
     section_store_class = SessionCollectionStore
 
+    #: The collection this item belongs to — its page's `section_key`, which
+    #: is the full key when the collection is itself nested under a hub.
     collection_key: str | None = None
-    collection_url_name: str | None = None
     item_url_kwarg = "item"
-    item_key_separator = ":"
     #: The step and field whose answer names an item on the collection page.
     #: Override `get_item_title()` instead when the name is not one field.
     item_title_step: str | None = None
@@ -229,9 +230,7 @@ class ItemSectionMixin(SectionMixin):
 
     def get_section_key(self) -> str:
         """This item's key in the shared section key space."""
-        return (
-            f"{self.get_collection_key()}{self.item_key_separator}{self.get_item_id()}"
-        )
+        return f"{self.get_collection_key()}{self.key_separator}{self.get_item_id()}"
 
     def get_section_label(self) -> str:
         """The *collection's* label, not this item's key.
@@ -285,24 +284,16 @@ class ItemSectionMixin(SectionMixin):
             self.get_collection_key(), self.get_item_id(), title or None
         )
 
-    def get_hub_url(self) -> str:
-        """The collection page this item belongs to.
-
-        Drops the item segment: it is this wizard's own mount, and the
-        collection's URL has no place for it. Forwards everything else, so a
-        collection under a tenant prefix is reached under the same one.
-        """
-        if self.collection_url_name is None:
-            name = self.__class__.__name__
-            raise ImproperlyConfigured(
-                f"Set collection_url_name (or override get_hub_url) on {name}."
-            )
-        url_kwargs = {
+    def get_hub_url_kwargs(self) -> dict[str, Any]:
+        """The collection page is reversed without the item segment: it is
+        this wizard's own mount, and the collection's URL has no place for it.
+        Everything else is forwarded, so a collection under a tenant prefix is
+        reached under the same one."""
+        return {
             key: value
             for key, value in self.get_url_kwargs().items()
             if key != self.item_url_kwarg
         }
-        return reverse(self.collection_url_name, kwargs=url_kwargs)
 
     def run_unavailable(
         self, bound_wizard: BoundWizard, reason: str
@@ -354,9 +345,7 @@ class CollectionMixin(HubMixin):
     #: page, so the hub's own context object is suppressed.
     hub_context_name: str | None = None
     item_viewset: type[WizardViewSet] | None = None
-    collection_key: str | None = None
     item_url_kwarg = "item"
-    item_key_separator = ":"
     item_label: str | None = None
     item_reopen_step: str | None = None
     item_name: StrOrPromise | None = None
@@ -366,18 +355,22 @@ class CollectionMixin(HubMixin):
     collection_context_name = "collection"
     form_class = AddAnotherForm
     remove_template_name: str | None = None
-    continue_url_name: str | None = None
 
     # --- the items ---------------------------------------------------------
 
-    def get_collection_key(self) -> str:
-        if self.collection_key is None:
+    def get_section_key(self) -> str:
+        """A collection's key is never `None`: it is the prefix its items are
+        registered and keyed under, whether or not a hub above lists it."""
+        if self.section_key is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"{name} has no collection to list. Set {name}.collection_key "
+                f"{name} has no collection to list. Set {name}.section_key "
                 f"to the key its items are registered under."
             )
-        return self.collection_key
+        return self.section_key
+
+    def get_collection_key(self) -> str:
+        return self.get_section_key()
 
     def get_collection_store(self) -> CollectionStore:
         return cast(CollectionStore, self.get_section_store())
@@ -402,16 +395,20 @@ class CollectionMixin(HubMixin):
         return self.item_label
 
     def item_section_key(self, item_id: str) -> str:
-        return f"{self.get_collection_key()}{self.item_key_separator}{item_id}"
+        """An item's key in the journey's store — what `full_key()` composes
+        for its section, and what its own wizard composes for itself."""
+        return f"{self.get_collection_key()}{self.key_separator}{item_id}"
 
     def get_item_section(self, item_id: str) -> Section:
         """One item, as the `Section` the hub machinery already understands.
 
         This is the piece the reuse rests on: past here, resuming, re-opening
-        and starting an item are `HubMixin`'s, unchanged.
+        and starting an item are `HubMixin`'s, unchanged. The section's key is
+        the item's id, and the collection's own key is the prefix `full_key()`
+        puts in front of it — exactly as a nested hub prefixes its sections.
         """
         return Section(
-            key=self.item_section_key(item_id),
+            key=item_id,
             viewset=self.get_item_viewset(),
             label=self.get_item_label(),
             reopen_step=self.item_reopen_step,
@@ -438,14 +435,25 @@ class CollectionMixin(HubMixin):
         return self.get_item_section(item_id)
 
     def _validate_sections(self, sections: list[Section]) -> list[Section]:
-        """The hub's checks, plus the collection's own drift check.
+        """The hub's checks, plus the collection's own two drift checks.
 
-        An item viewset whose label disagrees with the collection's writes
-        stashes that the door will refuse on the way back in, so a completed
-        item could never be changed — the same quiet failure the hub's key
-        drift check exists to catch, one level down.
+        An item viewset whose `collection_key` is not this page's
+        `section_key` registers under one prefix and stashes under another,
+        so a finished item never shows as complete. One whose label disagrees
+        with the collection's writes stashes that the door will refuse on the
+        way back in, so a completed item could never be changed. Both are the
+        quiet failure the hub's key drift check exists to catch, one level
+        down.
         """
         viewset = self.get_item_viewset()
+        key = getattr(viewset, "collection_key", None)
+        if key is not None and key != self.get_collection_key():
+            raise ImproperlyConfigured(
+                "A collection's item viewset must name the collection it "
+                "belongs to, or its items stash under a key this page never "
+                f"reads. {self.__class__.__name__} is {self.get_collection_key()!r} "
+                f"and {viewset.__name__} declares collection_key={key!r}."
+            )
         declared = getattr(viewset, "section_label", None)
         expected = self.get_item_label()
         if declared is not None and declared != expected:
@@ -456,6 +464,15 @@ class CollectionMixin(HubMixin):
                 f"and {viewset.__name__} stamps {declared!r}."
             )
         return super()._validate_sections(sections)
+
+    @classmethod
+    def status_for(cls, request: HttpRequest, url_kwargs: dict[str, Any]) -> str:
+        """A collection's status on the hub above it is its own — declared by
+        the user, not derived from the rows alone — so it answers with the
+        `Collection`'s, which no stash key could express."""
+        view = cls()
+        view.setup(request, **url_kwargs)
+        return view.get_collection().status
 
     # --- the page ----------------------------------------------------------
 
@@ -480,7 +497,7 @@ class CollectionMixin(HubMixin):
         status = self.get_collection_status(rows, store)
         return Collection(
             key=key,
-            url=self.get_collection_url(),
+            url=self.get_page_url(),
             rows=rows,
             status=status,
             status_label=self.get_status_label(status),
@@ -561,13 +578,17 @@ class CollectionMixin(HubMixin):
             if key != self.item_url_kwarg
         }
 
-    def get_collection_url(self) -> str:
+    def get_page_url(self) -> str:
+        """This collection's own page, reversed without the item segment."""
         if self.url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"Set url_name (or override get_collection_url) on {name}."
+                f"Set url_name (or override get_page_url) on {name}."
             )
         return reverse(self.url_name, kwargs=self.get_collection_url_kwargs())
+
+    def get_hub_url_kwargs(self) -> dict[str, Any]:
+        return self.get_collection_url_kwargs()
 
     def get_section_url(self, section: Section) -> str:
         """The hub's own hook: a row links to this page's door for its item."""
@@ -595,16 +616,6 @@ class CollectionMixin(HubMixin):
                 self.item_url_kwarg: item_id,
             },
         )
-
-    def get_continue_url(self) -> str:
-        """Where the user goes once they have said there are no more to add.
-        For a collection under a task list, that is the task list."""
-        if self.continue_url_name is None:
-            name = self.__class__.__name__
-            raise ImproperlyConfigured(
-                f"Set continue_url_name (or override get_continue_url) on {name}."
-            )
-        return reverse(self.continue_url_name, kwargs=self.get_collection_url_kwargs())
 
     def get_form_class(self) -> type[AddAnotherForm]:
         return self.form_class
@@ -642,15 +653,16 @@ class CollectionMixin(HubMixin):
         store.set_declared_done(key, False)
         return self.enter(self.get_item_section(item_id))
 
-    def declare_done(self) -> HttpResponse:
+    def declare_done(self) -> HttpResponseBase:
         """Record that the user has nothing more to add, and move them on."""
         self.get_collection_store().set_declared_done(self.get_collection_key(), True)
         return self.collection_done()
 
-    def collection_done(self) -> HttpResponse:
+    def collection_done(self) -> HttpResponseBase:
         """What the collection does once the user says that is all. The
-        default moves them on to whatever comes next."""
-        return redirect(self.get_continue_url())
+        default sends them up to the hub that lists this collection — the
+        collection's `hub_done()`, in effect, without a submit of its own."""
+        return redirect(self.get_hub_url())
 
     def remove_item(self, item_id: str) -> HttpResponse:
         """Destroy an item, pointer last.
@@ -665,17 +677,17 @@ class CollectionMixin(HubMixin):
         key = self.get_collection_key()
         section = self.get_item_section(item_id)
         self.discard_item_run(section, store)
-        store.clear_run(section.key)
-        store.delete_stash(section.key)
+        store.clear_run(self.full_key(section))
+        store.delete_stash(self.full_key(section))
         store.set_item_title(key, item_id, None)
         self.item_removed(item_id, section, store)
         store.remove_item(key, item_id)
-        return redirect(self.get_collection_url())
+        return redirect(self.get_page_url())
 
     def discard_item_run(self, section: Section, store: CollectionStore) -> None:
         """Forget an item's live run and reclaim anything it uploaded. A run
         the storage no longer holds has already answered the question."""
-        run_id = store.get_run(section.key)
+        run_id = store.get_run(self.full_key(section))
         if run_id is None:
             return
         try:
@@ -697,43 +709,7 @@ class CollectionMixin(HubMixin):
         """Response for an id this collection lists no item for — a removed
         item, a stale link. The default sends the user back to the page;
         override to raise `Http404`."""
-        return redirect(self.get_collection_url())
-
-    def journey_completed(self, store: SectionStore) -> HttpResponseBase:
-        """A collection page has no say in what a submitted journey looks
-        like; the hub above it does. So where a hub answers `Http404` until
-        told otherwise, a collection sends the user on to wherever *no more
-        to add* would have — the page that can say the journey is done."""
-        return redirect(self.get_continue_url())
-
-    # --- reaching this collection from a hub above it ----------------------
-
-    @classmethod
-    def as_section(
-        cls, key: str, title: StrOrPromise | None = None, **url_kwargs: Any
-    ) -> Section:
-        """This collection as a row on a parent task list.
-
-        A collection page is not a wizard, so the row links straight at it
-        rather than through the hub's door — there is no run for the door to
-        walk — and reports the status the page itself would, which no stash
-        key could express. The hub hands the status callable the URL kwargs
-        it would run the page with — its journey under these `url_kwargs` —
-        so the collection reads the same journey the hub is on.
-        """
-
-        def status(request: HttpRequest, hub_url_kwargs: dict[str, Any]) -> str:
-            view = cls()
-            view.setup(request, **hub_url_kwargs)
-            return view.get_collection().status
-
-        return Section(
-            key=key,
-            title=title,
-            url_name=cls.url_name,
-            url_kwargs=url_kwargs,
-            status=status,
-        )
+        return redirect(self.get_page_url())
 
 
 class CollectionView(CollectionMixin, TemplateView):
@@ -748,9 +724,9 @@ class CollectionView(CollectionMixin, TemplateView):
             template_name = "party/guests.html"
             remove_template_name = "party/remove_guest.html"
             url_name = "party-guests"
-            collection_key = "guests"
+            section_key = "guests"
             item_viewset = GuestItemViewSet
-            continue_url_name = "party-hub"
+            hub_url_name = "party-hub"
 
     Mount it beside its item wizard, never above it:
 
@@ -850,7 +826,7 @@ class CollectionView(CollectionMixin, TemplateView):
             # strikes with an entry that raises.
             url = self.add_item()
             if url is None:
-                return redirect(self.get_collection_url())
+                return redirect(self.get_page_url())
             return redirect(url)
         return self.declare_done()
 

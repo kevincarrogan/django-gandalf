@@ -319,7 +319,7 @@ class VehicleItemViewSet(ItemSectionMixin, WizardViewSet):
     url_name = "vehicle"
     template_name = "hybrid/step.html"
     collection_key = "vehicles"
-    collection_url_name = "vehicles"
+    hub_url_name = "vehicles"
     item_title_step = "vehicle"
     item_title_field = "registration"
     wizard = (
@@ -339,11 +339,11 @@ class VehicleCollectionView(CollectionView):
     template_name = "hybrid/collection.html"
     remove_template_name = "hybrid/remove_item.html"
     url_name = "vehicles"
-    collection_key = "vehicles"
+    section_key = "vehicles"
     item_viewset = VehicleItemViewSet
     item_name = "Vehicle"
     item_reopen_step = "review"
-    continue_url_name = "quote"
+    hub_url_name = "quote"
 
     def item_removed(self, item_id):
         forget_vehicle(self.request, item_id)

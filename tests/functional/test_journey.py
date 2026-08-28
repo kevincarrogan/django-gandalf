@@ -49,21 +49,24 @@ def _hub(journey):
     return reverse("readme-apply-hub", kwargs={"journey": journey})
 
 
-def _door(journey, section):
-    return reverse(
-        "readme-apply-hub-section", kwargs={"journey": journey, "section": section}
-    )
+def _door(journey, section, hub="readme-apply-hub"):
+    return reverse(f"{hub}-section", kwargs={"journey": journey, "section": section})
 
 
-def _statuses(client, journey):
-    response = client.get(_hub(journey))
+def _supporting(journey):
+    return reverse("readme-apply-supporting", kwargs={"journey": journey})
+
+
+def _statuses(client, journey, hub="readme-apply-hub"):
+    response = client.get(reverse(hub, kwargs={"journey": journey}))
     return {row.key: row.status for row in response.context["hub"].rows}
 
 
-def _finish(client, journey, section, url_name, steps):
-    """Enter a section from the hub and drive it to its end."""
-    client.get(_door(journey, section), follow=True)
-    run_id = stored_section_run(client, section, journey=journey)
+def _finish(client, journey, section, url_name, steps, hub="readme-apply-hub"):
+    """Enter a section from its hub and drive it to its end."""
+    client.get(_door(journey, section, hub), follow=True)
+    key = section if hub == "readme-apply-hub" else f"supporting:{section}"
+    run_id = stored_section_run(client, key, journey=journey)
     response = None
     for step, data in steps:
         response = client.post(
@@ -107,6 +110,18 @@ def _finish_referees(client, journey):
         "referees",
         "readme-apply-referees",
         [("referee", {"referee_name": "Grace", "referee_email": "grace@example.com"})],
+        hub="readme-apply-supporting",
+    )
+
+
+def _finish_documents(client, journey):
+    return _finish(
+        client,
+        journey,
+        "documents",
+        "readme-apply-documents",
+        [("document", {"document": SimpleUploadedFile("constitution.pdf", b"bytes")})],
+        hub="readme-apply-supporting",
     )
 
 
@@ -153,29 +168,33 @@ def test_two_journeys_in_one_session_never_see_each_other(client):
 def test_a_section_that_does_not_apply_is_not_on_the_page(client):
     journey = _start(client, "individual")
 
-    statuses = _statuses(client, journey)
-
-    assert "documents" not in statuses
-    assert "match_funding" not in statuses
-    response = client.get(_hub(journey))
+    assert "match_funding" not in _statuses(client, journey)
+    assertContains(client.get(_hub(journey)), "of 5 sections")
+    nested = _statuses(client, journey, "readme-apply-supporting")
+    assert "documents" not in nested
+    response = client.get(_supporting(journey))
     assertNotContains(response, "Governing document")
-    assertContains(response, "of 5 sections")
+    assertContains(response, "of 1 section")
 
 
 def test_a_section_that_applies_from_the_start_is_listed(client):
+    """`hidden()` on a section two hubs down reads what the setup section
+    wrote at the root: one journey, one record."""
     journey = _start(client, "organisation")
 
-    assert _statuses(client, journey)["documents"] == NOT_STARTED
-    assertContains(client.get(_hub(journey)), "of 6 sections")
+    nested = _statuses(client, journey, "readme-apply-supporting")
+
+    assert nested["documents"] == NOT_STARTED
+    assertContains(client.get(_supporting(journey)), "of 2 sections")
 
 
 def test_a_hidden_sections_door_is_refused(client):
     journey = _start(client, "individual")
 
-    response = client.get(_door(journey, "documents"))
+    response = client.get(_door(journey, "documents", "readme-apply-supporting"))
 
-    assertRedirects(response, _hub(journey))
-    assert stored_section_run(client, "documents", journey=journey) is None
+    assertRedirects(response, _supporting(journey))
+    assert stored_section_run(client, "supporting:documents", journey=journey) is None
 
 
 def test_a_section_appears_once_another_sections_answer_reveals_it(client):
@@ -201,22 +220,69 @@ def test_a_section_disappears_again_when_the_answer_is_withdrawn(client):
 def test_a_section_waiting_on_another_is_listed_but_cannot_start(client):
     journey = _start(client)
 
-    response = client.get(_hub(journey))
+    response = client.get(_supporting(journey))
 
-    assert _statuses(client, journey)["referees"] == BLOCKED
+    assert _statuses(client, journey, "readme-apply-supporting")["referees"] == BLOCKED
     assertContains(response, "Cannot start yet")
-    assertRedirects(client.get(_door(journey, "referees")), _hub(journey))
+    door = _door(journey, "referees", "readme-apply-supporting")
+    assertRedirects(client.get(door), _supporting(journey))
 
 
 def test_a_locked_section_unlocks_when_the_one_it_waits_on_finishes(client):
+    """`blocked()` reads `contact` — a root key — from inside a nested hub."""
     journey = _start(client)
 
     _finish_contact(client, journey)
 
-    assert _statuses(client, journey)["referees"] == NOT_STARTED
-    response = client.get(_door(journey, "referees"))
+    nested = _statuses(client, journey, "readme-apply-supporting")
+    assert nested["referees"] == NOT_STARTED
+    response = client.get(_door(journey, "referees", "readme-apply-supporting"))
     assert response.status_code == HTTPStatus.FOUND
     assert f"/readme/apply-referees/{journey}/" in response["Location"]
+
+
+# --- a hub under the journey's hub -------------------------------------------
+
+
+def test_a_nested_hubs_row_reads_its_own_rows(client):
+    """The parent never reads a stash for a hub: the row's status is the
+    nested hub's, derived from its sections the same way its page derives
+    it."""
+    journey = _start(client)
+    assert _statuses(client, journey)["supporting"] == NOT_STARTED
+
+    _finish_contact(client, journey)
+    assert _statuses(client, journey)["supporting"] == NOT_STARTED
+
+    _finish_referees(client, journey)
+
+    assert _statuses(client, journey)["supporting"] == COMPLETE
+    assert stored_section_stashes(client, journey)["supporting:referees"]["label"] == (
+        "supporting:referees"
+    )
+
+
+def test_a_nested_hubs_row_and_door_both_land_on_its_page(client):
+    journey = _start(client)
+
+    response = client.get(_hub(journey))
+    rows = {row.key: row for row in response.context["hub"].rows}
+
+    assert rows["supporting"].url == _supporting(journey)
+    assertRedirects(client.get(_door(journey, "supporting")), _supporting(journey))
+
+
+def test_a_nested_hubs_submit_returns_to_the_parent_and_tombstones_nothing(client):
+    journey = _start(client)
+    _finish_contact(client, journey)
+    assertRedirects(client.post(_supporting(journey)), _supporting(journey))
+    _finish_referees(client, journey)
+
+    response = client.post(_supporting(journey))
+
+    assertRedirects(response, _hub(journey))
+    assert not stored_journey(client, journey).get("completed")
+    assert _statuses(client, journey, "readme-apply-supporting")["referees"] == COMPLETE
 
 
 # --- a collection under the journey -----------------------------------------
@@ -271,13 +337,7 @@ def test_an_organisation_has_to_upload_its_document_too(client, isolated_media_r
     _complete_everything(client, journey)
     assert not client.get(_hub(journey)).context["hub"].is_complete
 
-    _finish(
-        client,
-        journey,
-        "documents",
-        "readme-apply-documents",
-        [("document", {"document": SimpleUploadedFile("constitution.pdf", b"bytes")})],
-    )
+    _finish_documents(client, journey)
 
     assert client.get(_hub(journey)).context["hub"].is_complete
 
@@ -322,6 +382,14 @@ def test_a_submitted_journey_refuses_every_way_back_in(client):
     assertRedirects(client.get(budget), _hub(journey), target_status_code=HTTPStatus.OK)
     response = client.get(reverse("readme-apply-contact", kwargs={"journey": journey}))
     assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
+    # A nested hub sends the user up, and its sections send them to it.
+    assertRedirects(
+        client.get(_supporting(journey)),
+        _hub(journey),
+        target_status_code=HTTPStatus.OK,
+    )
+    response = client.get(reverse("readme-apply-referees", kwargs={"journey": journey}))
+    assertRedirects(response, _supporting(journey), target_status_code=HTTPStatus.FOUND)
 
 
 def test_submitting_one_journey_leaves_another_untouched(client):

@@ -117,6 +117,12 @@ urlpatterns = [
         "readme/apply-documents/<slug:journey>/",
         include(ch14_journey.DocumentsSectionViewSet.urls()),
     ),
+    # A hub that is a section of the hub above: a sibling too, under the
+    # same journey segment.
+    path(
+        "readme/apply-supporting/<slug:journey>/",
+        include(ch14_journey.SupportingHubView.urls()),
+    ),
     path(
         "path-aware-walked-past-wizard/",
         include(views.PathAwareWalkedPastWizardViewSet.urls()),

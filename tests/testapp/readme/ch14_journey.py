@@ -134,7 +134,7 @@ class BudgetLineViewSet(ItemSectionMixin, WizardViewSet):
     url_name = "readme-apply-budget-line"
     template_name = "testapp/linear_wizard.html"
     collection_key = "budget"
-    collection_url_name = "readme-apply-budget"
+    hub_url_name = "readme-apply-budget"
     item_title_step = "line"
     item_title_field = "item"
     wizard = (
@@ -149,12 +149,12 @@ class BudgetCollectionView(CollectionView):
     template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"
     url_name = "readme-apply-budget"
-    collection_key = "budget"
+    section_key = "budget"
     item_viewset = BudgetLineViewSet
     item_name = "Budget line"
     item_reopen_step = "review"
     min_items = 1
-    continue_url_name = "readme-apply-hub"
+    hub_url_name = "readme-apply-hub"
 
 
 class MatchFundingSectionViewSet(SectionMixin, WizardViewSet):
@@ -170,12 +170,19 @@ class MatchFundingSectionViewSet(SectionMixin, WizardViewSet):
         return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
 
 
+# --- a task list within the task list -------------------------------------------
+
+
 class RefereesSectionViewSet(SectionMixin, WizardViewSet):
+    """Listed by the supporting-information hub, not the application's: its
+    key carries that hub's prefix, and it returns there when it finishes.
+    The record it reads is still the journey's — `contact` is a root key."""
+
     description = "Chapter 14: locked until contact details are finished."
     url_name = "readme-apply-referees"
     template_name = "testapp/linear_wizard.html"
-    section_key = "referees"
-    hub_url_name = "readme-apply-hub"
+    section_key = "supporting:referees"
+    hub_url_name = "readme-apply-supporting"
     wizard = Wizard().step(RefereeForm, name="referee", label="Referee")
 
     @classmethod
@@ -187,13 +194,33 @@ class DocumentsSectionViewSet(SectionMixin, WizardViewSet):
     description = "Chapter 14: the governing document, only for organisations."
     url_name = "readme-apply-documents"
     template_name = "testapp/file_upload_wizard.html"
-    section_key = "documents"
-    hub_url_name = "readme-apply-hub"
+    section_key = "supporting:documents"
+    hub_url_name = "readme-apply-supporting"
     wizard = Wizard().step(GoverningDocumentForm, name="document", label="Document")
 
     @classmethod
     def hidden(cls, request, section, store):
+        # Written by the setup section at the root; one record, so a section
+        # two hubs down reads it without being handed anything.
         return store.data.get("applying_as") != "organisation"
+
+
+class SupportingHubView(HubView):
+    """A hub that is a section of the application's hub. `section_key` is the
+    prefix its own sections are keyed under; `hub_url_name` is where its
+    Continue returns to. Its row on the parent reads its own rows' status,
+    and its submit tombstones nothing — only the application's does."""
+
+    description = "Chapter 14: a task list within the application's task list."
+    template_name = "testapp/nested_hub.html"
+    url_name = "readme-apply-supporting"
+    section_url_name = "readme-apply-supporting-section"
+    section_key = "supporting"
+    hub_url_name = "readme-apply-hub"
+    sections = [
+        Section("referees", RefereesSectionViewSet, title="Referees"),
+        Section("documents", DocumentsSectionViewSet, title="Governing document"),
+    ]
 
 
 # --- the hub -------------------------------------------------------------------
@@ -219,10 +246,9 @@ class GrantApplicationHubView(HubView):
         Section(
             "project", ProjectSectionViewSet, title="Project", reopen_step="review"
         ),
-        BudgetCollectionView.as_section("budget", title="Budget"),
+        Section("budget", BudgetCollectionView, title="Budget"),
         Section("match_funding", MatchFundingSectionViewSet, title="Match funding"),
-        Section("referees", RefereesSectionViewSet, title="Referees"),
-        Section("documents", DocumentsSectionViewSet, title="Governing document"),
+        Section("supporting", SupportingHubView, title="Supporting information"),
     ]
 
     def journey_done(self, hub, store):
@@ -232,7 +258,7 @@ class GrantApplicationHubView(HubView):
         application = Application.objects.create()
         application.submit(contact["state"][1]["step"]["email"])
         store.data["reference"] = application.reference
-        return redirect(self.get_hub_url())
+        return redirect(self.get_page_url())
 
     def journey_completed(self, store):
         return render(

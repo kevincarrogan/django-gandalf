@@ -170,6 +170,7 @@ GROUPS = (
             Example("readme-apply-match-funding", url_kwargs=JOURNEY),
             Example("readme-apply-referees", url_kwargs=JOURNEY),
             Example("readme-apply-documents", url_kwargs=JOURNEY),
+            Example("readme-apply-supporting", url_kwargs=JOURNEY),
         ),
     ),
     Group(
