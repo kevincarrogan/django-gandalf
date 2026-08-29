@@ -8,70 +8,55 @@ row, an **Add another** question, and one item wizard behind all of them.
 A collection is a hub whose members are *built* rather than declared: one
 per id in an ordered registry the user grows. Everything the hub does — the
 status derivation, the resume-before-reopen door, the no-bare-run-URL
-guarantee — applies unchanged.
+guarantee — applies unchanged. It is declared as a value, like a hub, and
+listed on one like any other member.
 
 ```python
-from gandalf.collections import CollectionView, ItemMemberMixin
+from gandalf.collections import Collection
+from gandalf.hubs import Hub, HubViewSet
 
 
-class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
-    url_name = "readme-budget-line"
-    template_name = "testapp/linear_wizard.html"
-    collection_key = "budget"
-    hub_url_name = "readme-budget"
+project = (
+    Wizard()
+    .step(ProjectForm, name="project", label="Project")
+    .step(ReviewStepView, name="review")
+)
+
+budget = Collection(
+    Wizard()
+    .step(BudgetLineForm, name="line", label="Budget line")
+    .step(ReviewStepView, name="review"),
+    item_name="Budget line",
     # The answer that names a row, cached when the line finishes.
-    item_title_step = "line"
-    item_title_field = "item"
-    wizard = (
-        Wizard()
-        .step(BudgetLineForm, name="line", label="Budget line")
-        .step(ReviewStepView, name="review")
-    )
+    item_title=("line", "item"),
+    min_items=1,
+    reopen="review",
+    template_name="testapp/budget.html",
+    remove_template_name="testapp/budget_remove.html",
+)
 
 
-class BudgetCollectionView(CollectionView):
-    template_name = "testapp/budget.html"
-    remove_template_name = "testapp/budget_remove.html"
-    url_name = "readme-budget"
-    member_key = "budget"
-    item_viewset = BudgetLineViewSet
-    item_name = "Budget line"
-    item_reopen_step = "review"
-    min_items = 1
-    hub_url_name = "readme-project-hub"
-
-
-class ProjectHubView(HubView):
+class ProjectHubViewSet(HubViewSet):
     template_name = "testapp/readme_hub.html"
-    url_name = "readme-project-hub"
-    member_url_name = "readme-project-hub-member"
-    members = [
-        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
-        # A collection is a hub, and a hub is a member: the row links
-        # straight at its page and reads its own status.
-        Member("budget", BudgetCollectionView, title="Budget"),
-    ]
+    member_template_name = "testapp/linear_wizard.html"
+    url_name = "readme-project"
+    hub = (
+        Hub()
+        .member("project", project, title="Project", reopen="review")
+        # A collection is a member like any other: the row links straight
+        # at its page and reads its own status.
+        .collection("budget", budget, title="Budget")
+    )
 ```
 
-### Mount the three as siblings, never nested
-
-This is the one thing that will bite you, and it fails silently:
+One mount, as before. The hub puts the budget page at `readme/project/budget/`,
+and each line's wizard beneath the door for that line.
 
 ```python
 urlpatterns = [
-    path("readme/project/", include(ProjectHubView.urls())),
-    path("readme/project-details/", include(ProjectMemberViewSet.urls())),
-    path("readme/budget/", include(BudgetCollectionView.urls())),
-    path("readme/budget-line/<uuid:item>/", include(BudgetLineViewSet.urls())),
+    path("readme/project/", include(ProjectHubViewSet.urls())),
 ]
 ```
-
-A hub's door matches **any** single segment, so a collection mounted at
-`project/budget/` is swallowed by the hub's own door for a member named
-`budget`. And a wizard's start URL is `""`, so an item wizard mounted at
-`budget/<uuid:item>/` sits on the exact path of the collection's door for
-that item. Either way the symptom is "Change stopped working", not anything
-that looks like a URL conflict.
 
 ```django
 {% if collection.is_empty %}
@@ -114,11 +99,10 @@ mind later".
 
 ### A row costs no walk
 
-An item is titled by the answer named in `item_title_step` /
-`item_title_field`, worked out once, when the item finishes, and cached. The
-page reads a string. An item that has never finished falls back to a
-positional name (`Budget line 2`), which is honest: nothing it has answered
-is known to name it.
+An item is titled by the answer named in `item_title`, worked out once,
+when the item finishes, and cached. The page reads a string. An item that
+has never finished falls back to a positional name (`Budget line 2`), which
+is honest: nothing it has answered is known to name it.
 
 ### Completeness is declared, not derived
 
@@ -130,8 +114,9 @@ that *is* the user changing their mind. *Continue* is the collection's
 submit: with an item half-done or `min_items` unmet it is refused and the
 page shows why; otherwise it goes up to the hub that lists the collection.
 
-The three URLs a collection publishes, the exact order a removal takes, and
-every hook are in the [Collections reference](../reference/collections.md).
+The three URLs a collection publishes, the exact order a removal takes, how
+to mount one on its own, and every hook are in the
+[Collections reference](../reference/collections.md).
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch12_budget.py`](../../tests/testapp/readme/ch12_budget.py)
 

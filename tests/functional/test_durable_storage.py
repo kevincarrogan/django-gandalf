@@ -54,7 +54,7 @@ def logged_in(client, user):
 
 def _step_url(run_id, step):
     return reverse(
-        "durable-member-step", kwargs={"run_id": run_id, "gandalf_step": step}
+        "durable-hub-durable-step", kwargs={"run_id": run_id, "gandalf_step": step}
     )
 
 
@@ -172,7 +172,7 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
 
     # Not this session's run, so the wizard answers exactly as it would for a
     # run that never existed: back to the start.
-    assertRedirects(response, "/durable-member/", fetch_redirect_response=False)
+    assertRedirects(response, DOOR_URL, fetch_redirect_response=False)
     assert client.get(HUB_URL).context["hub"].rows[0].status == NOT_STARTED
 
 

@@ -17,7 +17,7 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.context import WizardContext
-from gandalf.hubs import BLOCKED, COMPLETE, INCOMPLETE, NOT_STARTED, Member
+from gandalf.hubs import BLOCKED, COMPLETE, INCOMPLETE, NOT_STARTED, Hub, HubViewSet
 from gandalf.testing import (
     seed_run,
     seed_member_run,
@@ -26,7 +26,10 @@ from gandalf.testing import (
     stored_member_stash,
     stored_member_stashes,
 )
-from tests.testapp.readme.ch11_hub import ContactMemberViewSet
+from tests.testapp.readme.ch11_hub import GrantHubViewSet, contact
+
+
+ContactMemberViewSet = GrantHubViewSet.viewset_for("contact")
 
 
 HUB_URL = "/readme/hub/"
@@ -139,7 +142,9 @@ def _complete_gated_first(client):
     client.get("/gated-hub/first/", follow=True)
     run_id = stored_member_run(client, "first")
     client.post(
-        reverse("gated-first-step", kwargs={"run_id": run_id, "gandalf_step": "first"}),
+        reverse(
+            "gated-hub-first-step", kwargs={"run_id": run_id, "gandalf_step": "first"}
+        ),
         {"name": "Ada"},
         follow=True,
     )
@@ -486,7 +491,7 @@ def test_a_member_that_advances_out_of_its_final_step_never_yields_a_run_url(
     run_id = stored_member_run(client, "advancing")
     client.post(
         reverse(
-            "hub-advancing-member-step",
+            "scenario-hub-advancing-step",
             kwargs={"run_id": run_id, "gandalf_step": "newsletter"},
         ),
         {"email": "ada@example.com", "subscribe": "on"},
@@ -500,7 +505,7 @@ def test_a_member_that_advances_out_of_its_final_step_never_yields_a_run_url(
     assertRedirects(
         response,
         reverse(
-            "hub-advancing-member-step",
+            "scenario-hub-advancing-step",
             kwargs={"run_id": run_id, "gandalf_step": "newsletter"},
         ),
     )
@@ -517,7 +522,7 @@ def test_no_hub_link_is_ever_a_bare_run_url(client, member):
 
     run_id = stored_member_run(client, member)
     assert response["Location"] != reverse(
-        f"hub-{member}-member-run", kwargs={"run_id": run_id}
+        f"scenario-hub-{member}-run", kwargs={"run_id": run_id}
     )
     assert response["Location"].rstrip("/").rsplit("/", 1)[-1] in {
         "first",
@@ -529,25 +534,26 @@ def test_no_hub_link_is_ever_a_bare_run_url(client, member):
 
 
 def test_a_hub_forwards_its_mount_prefix_into_every_url_it_builds(client):
-    """A wizard member and a hub member under the prefix are reversed the
-    same way: with the journey and whatever `Member.url_kwargs` declares."""
+    """Every member is mounted beneath the hub, so the slug the request came
+    in through reaches every URL the hub builds without being declared."""
     response = client.get("/org/acme/hub/")
 
     assert response.status_code == HTTPStatus.OK
     rows = {row.key: row for row in response.context["hub"].rows}
     assert rows["details"].url == "/org/acme/hub/details/"
     assert (rows["org-guests"].url, rows["org-guests"].status) == (
-        "/org/acme/guests/",
+        "/org/acme/hub/org-guests/",
         NOT_STARTED,
     )
-    assertRedirects(client.get("/org/acme/hub/org-guests/"), "/org/acme/guests/")
+    # A collection's segment under the hub is its own page, not a door.
+    assert client.get("/org/acme/hub/org-guests/").status_code == HTTPStatus.OK
 
 
 def test_entering_a_prefixed_member_keeps_the_prefix(client):
     response = client.get("/org/acme/hub/details/")
 
     run_id = stored_member_run(client, "details")
-    assertRedirects(response, f"/org/acme/hub-details/{run_id}/first/")
+    assertRedirects(response, f"/org/acme/hub/details/{run_id}/first/")
 
 
 # --- rows a template can branch on ------------------------------------------
@@ -578,9 +584,15 @@ def test_a_row_reports_its_status_as_a_boolean_per_state(client):
 
 
 def _hub_view(**attributes):
-    from gandalf.hubs import HubView
-
-    return type("_Hub", (HubView,), {"template_name": "testapp/hub.html", **attributes})
+    return type(
+        "_Hub",
+        (HubViewSet,),
+        {
+            "template_name": "testapp/hub.html",
+            "member_template_name": "testapp/linear_wizard.html",
+            **attributes,
+        },
+    )
 
 
 def _dispatch(rf, client, view, path="/readme/hub/", **kwargs):
@@ -592,84 +604,28 @@ def _dispatch(rf, client, view, path="/readme/hub/", **kwargs):
     return view.as_view()(request, **kwargs)
 
 
-def test_a_hub_with_no_members_declared_is_misconfigured(rf, client):
-    view = _hub_view(url_name="readme-hub", member_url_name="readme-hub-member")
+def test_a_hub_with_no_declaration_is_misconfigured(rf, client):
+    view = _hub_view(url_name="readme-hub")
 
-    with pytest.raises(ImproperlyConfigured, match="members"):
+    with pytest.raises(ImproperlyConfigured, match="hub"):
         _dispatch(rf, client, view)
 
 
-def test_a_hub_with_duplicate_member_keys_is_misconfigured(rf, client):
-    view = _hub_view(
-        url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[
-            Member("contact", ContactMemberViewSet),
-            Member("contact", ContactMemberViewSet),
-        ],
-    )
-
+def test_a_hub_with_duplicate_member_keys_is_misconfigured():
     with pytest.raises(ImproperlyConfigured, match="unique"):
-        _dispatch(rf, client, view)
-
-
-def test_a_member_key_that_drifts_from_its_viewsets_own_key_is_misconfigured(
-    rf, client
-):
-    """The hub would read a stash key the member never writes, so the
-    member could complete and still render as not started, forever."""
-    view = _hub_view(
-        url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[Member("billing", ContactMemberViewSet)],
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="member_key"):
-        _dispatch(rf, client, view)
-
-
-def test_a_member_that_returns_to_another_hub_is_misconfigured(rf, client):
-    """The member finishes, and deposits the user on a page that does not
-    list it."""
-
-    class _Elsewhere(ContactMemberViewSet):
-        hub_url_name = "readme-party-hub"
-
-    view = _hub_view(
-        url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[Member("contact", _Elsewhere)],
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="Mispointed"):
-        _dispatch(rf, client, view)
+        Hub().member("contact", contact).member("contact", contact)
 
 
 def test_a_hub_without_a_url_name_cannot_publish_urls():
-    from gandalf.hubs import HubView
-
-    class _Nameless(HubView):
-        pass
+    class _Nameless(HubViewSet):
+        hub = Hub().member("contact", contact)
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
         _Nameless.urls()
 
 
-def test_a_hub_without_a_member_url_name_is_misconfigured(rf, client):
-    view = _hub_view(
-        url_name="readme-hub",
-        members=[Member("contact", ContactMemberViewSet)],
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="member_url_name"):
-        _dispatch(rf, client, view)
-
-
 def test_a_hub_without_a_url_name_cannot_reverse_itself(rf, client):
-    view = _hub_view(
-        member_url_name="readme-hub-member",
-        members=[Member("contact", ContactMemberViewSet)],
-    )
+    view = _hub_view(hub=Hub().member("contact", contact))
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
         _dispatch(rf, client, view, path="/readme/hub/nope/", member="nope")
@@ -682,7 +638,7 @@ def test_a_member_without_a_key_cannot_register_as_finished(rf, client):
     class _Keyless(ContactMemberViewSet):
         member_key = None
 
-    request = rf.get("/readme/hub-contact/")
+    request = rf.get("/readme/hub/contact/")
     request.session = client.session
     view = _Keyless()
     view.setup(request)
@@ -694,58 +650,24 @@ def test_a_member_without_a_key_cannot_register_as_finished(rf, client):
         view.done(bound_wizard)
 
 
-def test_a_dynamic_member_that_derives_no_key_is_misconfigured(rf, client):
-    """`WizardMemberMixin`'s usual advice — set the class attribute — is wrong for
-    a member that deliberately has none, so it is told something else."""
-    from gandalf.runtime import BoundWizard
-    from gandalf.storage import SessionStorage
-
-    class _Undecided(ContactMemberViewSet):
-        member_key = None
-        dynamic_member_key = True
-
-    request = rf.get("/readme/hub-contact/")
-    request.session = client.session
-    view = _Undecided()
-    view.setup(request)
-    context = WizardContext.from_request(request)
-    bound_wizard = BoundWizard(context, SessionStorage(context))
-    bound_wizard.initialise()
-
-    with pytest.raises(ImproperlyConfigured, match="get_member_key"):
-        view.done(bound_wizard)
+def test_a_link_must_say_how_far_it_has_got():
+    """A member with no viewset answers for itself: without a `status` the
+    hub would derive one from a stash key nothing writes."""
+    with pytest.raises(ImproperlyConfigured, match="status"):
+        Hub().link("elsewhere", "readme-hub")
 
 
-def test_a_row_that_is_not_a_wizard_must_say_where_and_how_far(rf, client):
-    """A member with no viewset answers for itself. Without a `url_name` the
-    hub builds a door it cannot open; without a `status` it derives one from a
-    stash key nothing writes."""
+def test_a_link_row_links_past_the_door_and_answers_for_itself(rf, client):
+    """A payment redirect, a page in another app: there is no run for the
+    door to walk, so the row addresses it directly."""
     view = _hub_view(
         url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[Member("elsewhere", url_name="readme-hub")],
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="url_name and status"):
-        _dispatch(rf, client, view)
-
-
-def test_a_row_that_is_not_a_wizard_links_past_the_door_and_answers_for_itself(
-    rf, client
-):
-    """A collection page, a payment redirect, a page in another app: there is
-    no run for the door to walk, so the row addresses it directly."""
-    view = _hub_view(
-        url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[
-            Member(
-                "elsewhere",
-                title="Elsewhere",
-                url_name="readme-hub",
-                status=lambda request, url_kwargs: COMPLETE,
-            )
-        ],
+        hub=Hub().link(
+            "elsewhere",
+            "readme-hub",
+            title="Elsewhere",
+            status=lambda request, url_kwargs: COMPLETE,
+        ),
     )
 
     response = _dispatch(rf, client, view)
@@ -758,10 +680,7 @@ def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
     """Rows never point there, so arriving is a hand-typed or stale URL."""
     view = _hub_view(
         url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[
-            Member("elsewhere", url_name="readme-hub", status=lambda r, k: COMPLETE)
-        ],
+        hub=Hub().link("elsewhere", "readme-hub", status=lambda r, k: COMPLETE),
     )
 
     response = _dispatch(
@@ -779,7 +698,7 @@ def test_a_member_without_a_hub_url_name_cannot_send_the_user_back(rf):
         hub_url_name = None
 
     view = _Homeless()
-    view.setup(rf.get("/readme/hub-contact/"))
+    view.setup(rf.get("/readme/hub/contact/"))
 
     with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
         view.get_hub_url()
@@ -794,10 +713,7 @@ def test_a_member_can_bump_its_stash_label_without_renaming_itself(rf, client):
     _complete_contact(client)
     view = _hub_view(
         url_name="readme-hub",
-        member_url_name="readme-hub-member",
-        members=[
-            Member("contact", ContactMemberViewSet, label="contact-v2"),
-        ],
+        hub=Hub().member("contact", contact, label="contact-v2"),
     )
 
     with pytest.raises(InvalidStash):
@@ -809,9 +725,11 @@ def test_stash_unusable_can_be_overridden_to_start_the_member_over(rf, client):
     lose the old answers than 500."""
     _complete_contact(client)
 
-    class _Forgiving(_hub_view(url_name="readme-hub")):
-        member_url_name = "readme-hub-member"
-        members = [Member("contact", ContactMemberViewSet, label="contact-v2")]
+    class _Forgiving(HubViewSet):
+        template_name = "testapp/hub.html"
+        member_template_name = "testapp/linear_wizard.html"
+        url_name = "readme-hub"
+        hub = Hub().member("contact", contact, label="contact-v2")
 
         def stash_unusable(self, member, error):
             self.get_journey_store().delete_stash(member.key)
@@ -834,17 +752,19 @@ def test_a_member_without_a_title_is_named_from_its_key(client):
 
 
 def test_a_member_stamps_its_declared_label_into_the_stash(rf, client):
-    """`member_label` is the *shape's* identity — bumped when a deploy
-    reshapes the wizard, without renaming the member."""
+    """`label` is the *shape's* identity — bumped when a deploy reshapes the
+    wizard, without renaming the member — and the member's own viewset is
+    what stamps it."""
     from gandalf.runtime import BoundWizard
     from gandalf.storage import SessionStorage
 
-    class _Reshaped(ContactMemberViewSet):
-        member_label = "contact-v2"
-
-    request = rf.get("/readme/hub-contact/")
+    view_class = _hub_view(
+        url_name="readme-hub",
+        hub=Hub().member("contact", contact, label="contact-v2"),
+    ).viewset_for("contact")
+    request = rf.get("/readme/hub/contact/")
     request.session = client.session
-    view = _Reshaped()
+    view = view_class()
     view.setup(request)
     context = WizardContext.from_request(request)
     bound_wizard = BoundWizard(context, SessionStorage(context))
@@ -856,17 +776,20 @@ def test_a_member_stamps_its_declared_label_into_the_stash(rf, client):
     assert stashes["contact"]["label"] == "contact-v2"
 
 
-def test_a_hubs_declaration_is_vetted_once_per_request(rf, client):
+def test_a_hubs_members_are_chosen_once_per_request(rf, client):
     """Both halves of the hub ask for the members — the rows and the door —
-    and the checks are properties of the declaration, not of either use."""
+    and `get_members()` is a per-request choice, so it is asked once."""
     calls = []
 
-    class _Counting(_hub_view(url_name="readme-hub")):
-        member_url_name = "readme-hub-member"
+    class _Counting(HubViewSet):
+        template_name = "testapp/hub.html"
+        member_template_name = "testapp/linear_wizard.html"
+        url_name = "readme-hub"
+        hub = Hub().member("contact", contact)
 
         def get_members(self):
             calls.append(1)
-            return [Member("contact", ContactMemberViewSet)]
+            return super().get_members()
 
     request = rf.get(HUB_URL)
     request.session = client.session

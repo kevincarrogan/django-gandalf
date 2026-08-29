@@ -22,8 +22,7 @@ from functools import lru_cache
 
 from django.urls import NoReverseMatch, get_resolver, reverse
 
-from gandalf.collections import CollectionView
-from gandalf.hubs import HubView
+from gandalf.hubs import HubViewSet
 from gandalf.viewsets import WizardViewSet
 
 
@@ -136,15 +135,15 @@ GROUPS = (
                 note="Chapter 11. A member, reached from the task list.",
             ),
             Example(
-                "readme-project-hub",
+                "readme-project",
                 note="Chapter 12. A task list whose second row is a collection.",
             ),
             Example(
-                "readme-project",
+                "readme-project-project",
                 note="Chapter 12. The project member beside the budget.",
             ),
             Example(
-                "readme-budget",
+                "readme-project-budget",
                 note="Chapter 12. Add a few budget lines, then change and remove them.",
             ),
             Example(
@@ -153,13 +152,13 @@ GROUPS = (
             ),
             Example("readme-gated-project"),
             Example("readme-gated-referees"),
-            Example("readme-gated-match-funding"),
+            Example("readme-gated-match_funding"),
             Example(
                 "readme-apply-start",
                 note="Chapter 14. Start here — it mints an application and lands on its hub.",
             ),
             Example(
-                "readme-apply-hub",
+                "readme-apply",
                 url_kwargs=JOURNEY,
                 note="Chapter 14. The hub of one application. Reach it from the setup wizard.",
             ),
@@ -167,9 +166,9 @@ GROUPS = (
             Example("readme-apply-contact", url_kwargs=JOURNEY),
             Example("readme-apply-project", url_kwargs=JOURNEY),
             Example("readme-apply-budget", url_kwargs=JOURNEY),
-            Example("readme-apply-match-funding", url_kwargs=JOURNEY),
-            Example("readme-apply-referees", url_kwargs=JOURNEY),
-            Example("readme-apply-documents", url_kwargs=JOURNEY),
+            Example("readme-apply-match_funding", url_kwargs=JOURNEY),
+            Example("readme-apply-supporting-referees", url_kwargs=JOURNEY),
+            Example("readme-apply-supporting-documents", url_kwargs=JOURNEY),
             Example("readme-apply-supporting", url_kwargs=JOURNEY),
         ),
     ),
@@ -390,24 +389,24 @@ GROUPS = (
         "their hub — a member's own URL starts a run the hub is not tracking.",
         (
             Example("scenario-hub", note="Start here."),
-            Example("hub-plain-member"),
-            Example("hub-advancing-member"),
+            Example("scenario-hub-plain"),
+            Example("scenario-hub-advancing"),
             Example(
                 "org-hub",
                 url_kwargs={"org": "acme"},
                 note="A hub whose members carry the tenant slug.",
             ),
-            Example("org-hub-member-wizard", url_kwargs={"org": "acme"}),
+            Example("org-hub-details", url_kwargs={"org": "acme"}),
             Example("counting-hub", note="Start here."),
-            Example("counting-hub-member-wizard"),
-            Example("other-counting-hub-member-wizard"),
+            Example("counting-hub-counting"),
+            Example("counting-hub-other"),
             Example(
                 "gated-hub",
                 note="The second row waits on the first: Cannot start yet, "
                 "and the door turns you away until it unlocks.",
             ),
-            Example("gated-first"),
-            Example("gated-second"),
+            Example("gated-hub-first"),
+            Example("gated-hub-second"),
         ),
     ),
     Group(
@@ -423,12 +422,16 @@ GROUPS = (
                 url_kwargs={"journey": "example"},
                 note="A hub under a journey segment; finish both rows, then submit.",
             ),
-            Example("submit-first", url_kwargs={"journey": "example"}),
-            Example("submit-second", url_kwargs={"journey": "example"}),
+            Example("submit-hub-first", url_kwargs={"journey": "example"}),
+            Example("submit-hub-second", url_kwargs={"journey": "example"}),
             Example("party-hub", note="Start here — a task list with a collection."),
-            Example("party-venue", note="A plain member beside the collection."),
             Example(
-                "party-guests",
+                "standalone-guests",
+                note="The same collection mounted on its own, returning to the party hub.",
+            ),
+            Example("party-hub-venue", note="A plain member beside the collection."),
+            Example(
+                "party-hub-guests",
                 note="The collection page. Add a few, then change and remove them.",
             ),
             Example(
@@ -447,7 +450,7 @@ GROUPS = (
                 "bare run URL would complete on a GET.",
             ),
             Example(
-                "org-guests",
+                "org-hub-org-guests",
                 url_kwargs={"org": "acme"},
                 note="A collection whose items carry the tenant slug.",
             ),
@@ -471,7 +474,7 @@ GROUPS = (
         "cannot fire twice, and the tombstones are eventually pruned.",
         (
             Example("durable-hub", note="Start here; its runs survive a restart."),
-            Example("durable-member"),
+            Example("durable-hub-durable"),
             Example(
                 "durable-guests",
                 note="A collection whose registry is a table, so two tabs "
@@ -517,11 +520,6 @@ GROUPS = (
             Example(
                 "duplicate-context-wizard",
                 note="ImproperlyConfigured: two steps claim one URL segment.",
-            ),
-            Example(
-                "drifted-guests",
-                note="ImproperlyConfigured: a collection's item label drifts "
-                "from its own, so a finished item could never be re-opened.",
             ),
             Example(
                 "anonymous-guests",
@@ -589,7 +587,7 @@ def published_url_names():
         view_class = getattr(pattern.callback, "view_class", None)
         if view_class is None:
             continue
-        if not issubclass(view_class, (WizardViewSet, HubView, CollectionView)):
+        if not issubclass(view_class, (WizardViewSet, HubViewSet)):
             continue
         names.add(pattern.name)
     return names

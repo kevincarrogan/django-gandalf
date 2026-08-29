@@ -575,7 +575,7 @@ def test_chapter_12_adds_changes_and_removes_budget_lines(client):
     """The README's add-another example, driven the way the page drives it:
     every action is a POST to the collection, and every link it hands out is
     one of its own routes."""
-    page = reverse("readme-budget")
+    page = reverse("readme-project-budget")
 
     # Empty, the page offers only the first line.
     assertContains(client.get(page), "You have not added any budget lines")
@@ -600,17 +600,15 @@ def test_chapter_12_adds_changes_and_removes_budget_lines(client):
         {"item": "Brushes", "cost": "30"},
     )
     second = client.get(page).context["collection"].rows[1].item_id
-    client.post(reverse("readme-budget-remove", kwargs={"item": second}))
+    client.post(reverse("readme-project-budget-remove", kwargs={"item": second}))
     assert [row.item_id for row in client.get(page).context["collection"].rows] == [
         first
     ]
 
     # Saying there are no more completes the collection, and the task list
     # above it reads that status without walking anything.
-    assertRedirects(
-        client.post(page, {"add_another": "no"}), reverse("readme-project-hub")
-    )
-    hub = client.get(reverse("readme-project-hub"))
+    assertRedirects(client.post(page, {"add_another": "no"}), reverse("readme-project"))
+    hub = client.get(reverse("readme-project"))
     assert [(row.title, row.status) for row in hub.context["hub"].rows] == [
         ("Project", "not-started"),
         ("Budget", "complete"),
@@ -620,11 +618,11 @@ def test_chapter_12_adds_changes_and_removes_budget_lines(client):
 
 def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
     """`min_items = 1`: saying "no more" with nothing added is not a budget."""
-    page = reverse("readme-budget")
+    page = reverse("readme-project-budget")
 
     client.post(page, {"add_another": "no"})
 
-    hub = client.get(reverse("readme-project-hub"))
+    hub = client.get(reverse("readme-project"))
     assert hub.context["hub"].rows[1].status == "incomplete"
 
 
@@ -635,7 +633,8 @@ def _finish_project(client, amount):
     door = reverse("readme-gated-member", kwargs={"member": "project"})
     step_url = client.get(door)["Location"]
     client.post(step_url, {"title": "Boathouse roof", "amount": str(amount)})
-    return client.post(step_url.replace("/project/", "/review/"), {}, follow=True)
+    review_url = step_url.rsplit("/project/", 1)[0] + "/review/"
+    return client.post(review_url, {}, follow=True)
 
 
 def _gated_statuses(client):

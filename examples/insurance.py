@@ -16,7 +16,7 @@ from django import forms
 from django.http import HttpResponse
 
 from examples.eventlog import log_event
-from gandalf.collections import CollectionView, ItemMemberMixin
+from gandalf.collections import Collection, CollectionViewSet
 from gandalf.contrib.agent import AgentProfile
 from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
@@ -312,39 +312,36 @@ class VehicleReviewStepView(SummaryMixin, StepFormView):
     template_name = "hybrid/summary.html"
 
 
-class VehicleItemViewSet(ItemMemberMixin, WizardViewSet):
-    """One vehicle. Mounted under an item id, so the same wizard serves every
-    row of the collection."""
-
-    url_name = "vehicle"
-    template_name = "hybrid/step.html"
-    collection_key = "vehicles"
-    hub_url_name = "vehicles"
-    item_title_step = "vehicle"
-    item_title_field = "registration"
-    wizard = (
-        Wizard()
-        .step(VehicleForm, name="vehicle", label="Vehicle")
-        .step(VehicleReviewStepView, name="review")
-    )
-
-    def run_done(self, bound_wizard):
-        save_vehicle(self.request, self.get_item_id(), bound_wizard)
-        return super().run_done(bound_wizard)
+def save_vehicle_item(store, bound_wizard):
+    """`Collection.done`: the run's context knows which item it is."""
+    context = bound_wizard.context
+    save_vehicle(context.request, context.url_kwargs["item"], bound_wizard)
 
 
-class VehicleCollectionView(CollectionView):
-    """The fleet page: what has been added, and whether there is more."""
+vehicles = Collection(
+    Wizard()
+    .step(VehicleForm, name="vehicle", label="Vehicle")
+    .step(VehicleReviewStepView, name="review")
+    .configure(template_name="hybrid/step.html"),
+    item_name="Vehicle",
+    item_title=("vehicle", "registration"),
+    reopen="review",
+    done=save_vehicle_item,
+    template_name="hybrid/collection.html",
+    remove_template_name="hybrid/remove_item.html",
+)
 
-    template_name = "hybrid/collection.html"
-    remove_template_name = "hybrid/remove_item.html"
+
+class VehicleCollectionViewSet(CollectionViewSet):
+    """The fleet page: what has been added, and whether there is more. One
+    item wizard, mounted under an item id beneath the page, serves every
+    row."""
+
     url_name = "vehicles"
     member_key = "vehicles"
-    item_viewset = VehicleItemViewSet
-    item_name = "Vehicle"
-    item_reopen_step = "review"
+    collection = vehicles
     hub_url_name = "quote"
 
-    def item_removed(self, item_id):
+    def item_removed(self, item_id, member, store):
         forget_vehicle(self.request, item_id)
-        return super().item_removed(item_id)
+        return super().item_removed(item_id, member, store)

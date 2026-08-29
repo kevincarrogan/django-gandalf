@@ -13,6 +13,8 @@ from gandalf.viewsets import WizardViewSet
 
 from http import HTTPStatus
 
+from dataclasses import replace
+
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
@@ -24,8 +26,8 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
-from gandalf.collections import CollectionView, ItemMemberMixin
-from gandalf.hubs import HubView, Member, WizardMemberMixin
+from gandalf.collections import Collection, CollectionViewSet
+from gandalf.hubs import Hub, HubViewSet
 from gandalf.storage import (
     SessionJourneyStore,
     SessionStashStore,
@@ -2013,114 +2015,73 @@ class ExpandedSummaryWizardViewSet(WizardViewSet):
 # --- Hub and spoke scenarios -------------------------------------------------
 
 
-class AdvancingMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """A member whose only step escapes with `Advance`.
-
-    `Advance` persists the answer and redirects out without reaching
-    `_finish`, so the run stays live and non-tombstoned with every stored
-    answer validating — the exact state in which a bare run URL fires
-    `done()` on a GET. The hub must never hand one out.
-    """
-
-    description = "Hub member escaping with Advance, so its run never completes."
-    url_name = "hub-advancing-member"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "advancing"
-    hub_url_name = "scenario-hub"
-    wizard = Wizard().step(NewsletterForm, name="newsletter")
+FIRST_STEP = Wizard().step(FirstStepForm, name="first")
 
 
-class PlainMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Hub member with no review step."
-    url_name = "hub-plain-member"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "plain"
-    hub_url_name = "scenario-hub"
-    wizard = Wizard().step(FirstStepForm, name="first")
-
-
-class ScenarioHubView(HubView):
+class ScenarioHubViewSet(HubViewSet):
     description = "Hub over members that exercise the awkward run states."
     template_name = "testapp/hub.html"
+    member_template_name = "testapp/linear_wizard.html"
     url_name = "scenario-hub"
-    member_url_name = "scenario-hub-member"
-    members = [
-        Member("plain", PlainMemberViewSet, title="Plain"),
-        Member("advancing", AdvancingMemberViewSet, title="Advancing"),
-    ]
-
-
-class OrgMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Hub member mounted under an org prefix."
-    url_name = "org-hub-member-wizard"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "details"
-    hub_url_name = "org-hub"
-    wizard = Wizard().step(FirstStepForm, name="first")
-
-
-class OrgHubView(HubView):
-    description = "Hub whose members carry mount-prefix URL kwargs."
-    template_name = "testapp/hub.html"
-    url_name = "org-hub"
-    member_url_name = "org-hub-member"
-
-    def get_members(self):
-        # The member's wizard is mounted under the same org prefix, so the
-        # slug this request came in through has to reach every URL the hub
-        # builds for it.
-        return [
-            Member(
-                "details",
-                OrgMemberViewSet,
-                title="Details",
-                url_kwargs={"org": self.kwargs["org"]},
-            ),
-            # A hub child under the same prefix declares it the same way:
-            # nothing about being a hub forwards the parent's mount.
-            Member(
-                "org-guests",
-                OrgGuestCollectionView,
-                title="Guests",
-                url_kwargs={"org": self.kwargs["org"]},
-            ),
-        ]
-
-
-class CountingMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """A hub member wired to the counting walker, so tests can assert that
-    a hub row costs no walk at all."""
-
-    description = "Hub member wired to counting walker/dispatcher classes."
-    url_name = "counting-hub-member-wizard"
-    member_key = "counting"
-    hub_url_name = "counting-hub"
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
+    hub = (
+        Hub()
+        # No review step: one valid answer walks straight to done().
+        .member("plain", FIRST_STEP, title="Plain")
+        # Escapes with Advance, so its run never completes.
+        .member(
+            "advancing",
+            Wizard().step(NewsletterForm, name="newsletter"),
+            title="Advancing",
         )
     )
 
 
-class OtherCountingMemberViewSet(CountingMemberViewSet):
-    url_name = "other-counting-hub-member-wizard"
-    member_key = "other"
+GUESTS = Collection(
+    Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review"),
+    item_name="Guest",
+    item_title=("guest", "name"),
+    template_name="testapp/collection.html",
+    remove_template_name="testapp/collection_remove.html",
+)
 
 
-class CountingHubView(HubView):
+class OrgHubViewSet(HubViewSet):
+    """Mounted under an org prefix. Nothing here forwards the slug: every
+    member is mounted beneath the hub, so the request's own kwargs reach
+    every URL the hub builds."""
+
+    description = "Hub whose members carry mount-prefix URL kwargs."
+    template_name = "testapp/hub.html"
+    member_template_name = "testapp/linear_wizard.html"
+    url_name = "org-hub"
+    hub = (
+        Hub()
+        .member("details", FIRST_STEP, title="Details")
+        .collection("org-guests", GUESTS, title="Guests")
+    )
+
+
+COUNTING = (
+    Wizard()
+    .step(FirstStepForm, name="first")
+    .step(SecondStepForm, name="second")
+    .configure(
+        template_name="testapp/linear_wizard.html",
+        step_dispatcher_class=CountingStepDispatcher,
+        cursor_walker_class=CountingCursorWalker,
+    )
+)
+
+
+class CountingHubViewSet(HubViewSet):
     description = "Hub over counting members, for asserting a row's cost."
     template_name = "testapp/hub.html"
     url_name = "counting-hub"
-    member_url_name = "counting-hub-member"
-    members = [
-        Member("counting", CountingMemberViewSet, title="Counting"),
-        Member("other", OtherCountingMemberViewSet, title="Other"),
-    ]
+    hub = (
+        Hub()
+        .member("counting", COUNTING, title="Counting")
+        .member("other", COUNTING, title="Other")
+    )
     builds = 0
 
     def build_member_rows(self):
@@ -2128,8 +2089,8 @@ class CountingHubView(HubView):
         return super().build_member_rows()
 
     def get_context_data(self, **kwargs):
-        """An app wanting something the `Hub` does not offer asks for the rows
-        again — which is the pattern that used to cost a second build."""
+        """An app wanting something the `HubPage` does not offer asks for the
+        rows a second time — and gets the ones already built."""
         context = super().get_context_data(**kwargs)
         context["first_unfinished"] = next(
             (row for row in self.get_member_rows() if not row.is_complete), None
@@ -2141,280 +2102,130 @@ class CountingHubView(HubView):
 # --- Storage that outlives a session -----------------------------------------
 
 
-class DurableMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """A member on model-backed storage — both stores swapped, which is what
-    a hub spanning days needs."""
+class DurableHubViewSet(HubViewSet):
+    """Both stores swapped once, on the root, and every member gets them."""
 
-    description = "Hub member whose runs and bookkeeping live in the database."
-    url_name = "durable-member"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "durable"
-    hub_url_name = "durable-hub"
-    storage_class = ModelStorage
-    journey_store_class = ModelJourneyStore
-    wizard = (
-        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
-    )
-
-
-class DurableHubView(HubView):
     description = "Hub whose members and bookkeeping outlive the session."
     template_name = "testapp/hub.html"
+    member_template_name = "testapp/linear_wizard.html"
     url_name = "durable-hub"
-    member_url_name = "durable-hub-member"
+    storage_class = ModelStorage
     journey_store_class = ModelJourneyStore
-    members = [Member("durable", DurableMemberViewSet, title="Durable")]
+    hub = Hub().member(
+        "durable",
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        title="Durable",
+    )
 
 
 # --- Collections: the add-another pattern ------------------------------------
 
 
-class GuestItemViewSet(ItemMemberMixin, WizardViewSet):
-    """One guest, collected by its own run.
-
-    Mounted under an item segment beside the collection page, never under it —
-    `WizardViewSet.urls()` publishes `""`, which would collide with the
-    collection's own door for that item.
-    """
-
-    description = "One item of an add-another collection."
-    url_name = "party-guest"
-    template_name = "testapp/linear_wizard.html"
-    collection_key = "guests"
-    hub_url_name = "party-guests"
-    item_title_step = "guest"
-    item_title_field = "name"
-    wizard = Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review")
-
-
-class GuestCollectionView(CollectionView):
-    description = "Add another: a collection of items with full CRUD."
-    template_name = "testapp/collection.html"
-    remove_template_name = "testapp/collection_remove.html"
-    url_name = "party-guests"
-    member_key = "guests"
-    item_viewset = GuestItemViewSet
-    item_name = "Guest"
-    hub_url_name = "party-hub"
-
-
-class GatedFirstMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "The member a gated task list unlocks the next one with."
-    url_name = "gated-first"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "first"
-    hub_url_name = "gated-hub"
-    wizard = Wizard().step(FirstStepForm, name="first")
-
-
-class GatedSecondMemberViewSet(GatedFirstMemberViewSet):
-    """The member a gated task list keeps locked until then — and it says so
-    itself, rather than the hub saying it on its behalf."""
-
-    description = "The member a gated task list keeps locked until then."
-    url_name = "gated-second"
-    member_key = "second"
-
-    @classmethod
-    def blocked(cls, request, member, store):
-        return not store.has_stash("first")
-
-
-class GatedHubView(HubView):
-    """A task list whose second row waits on its first — the shape of every
-    "Cannot start yet". The hub declares nothing about it: the rule is the
-    member's own."""
-
+class GatedHubViewSet(HubViewSet):
     description = "Task list whose second member unlocks when the first ends."
     template_name = "testapp/hub.html"
+    member_template_name = "testapp/linear_wizard.html"
     url_name = "gated-hub"
-    member_url_name = "gated-hub-member"
-    members = [
-        Member("first", GatedFirstMemberViewSet, title="First"),
-        Member("second", GatedSecondMemberViewSet, title="Second"),
-    ]
+    hub = (
+        Hub()
+        .member("first", FIRST_STEP, title="First")
+        .member(
+            "second",
+            FIRST_STEP,
+            title="Second",
+            blocked=lambda store: not store.has_stash("first"),
+        )
+    )
 
 
-class PartyVenueMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "A plain member beside a collection on the same task list."
-    url_name = "party-venue"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "venue"
-    hub_url_name = "party-hub"
-    wizard = Wizard().step(FirstStepForm, name="first")
-
-
-class PartyHubView(HubView):
-    """A task list whose second row is a collection rather than a wizard."""
-
+class PartyHubViewSet(HubViewSet):
     description = "Task list with a collection row beside a plain member."
     template_name = "testapp/hub.html"
+    member_template_name = "testapp/linear_wizard.html"
     url_name = "party-hub"
-    member_url_name = "party-hub-member"
-    members = [
-        Member("venue", PartyVenueMemberViewSet, title="Venue"),
-        Member("guests", GuestCollectionView, title="Guests"),
-    ]
+    hub = (
+        Hub()
+        .member("venue", FIRST_STEP, title="Venue")
+        .collection("guests", GUESTS, title="Guests")
+    )
 
 
-class LockedGuestItemViewSet(GuestItemViewSet):
-    url_name = "locked-guest"
-    collection_key = "locked-guests"
-    hub_url_name = "locked-guests"
+class GuestCollectionViewSet(CollectionViewSet):
+    """A collection mounted on its own, returning to a page it is not
+    listed by — the shape `examples/insurance.py` uses."""
+
+    description = "Add another: a collection of items with full CRUD."
+    member_template_name = "testapp/linear_wizard.html"
+    url_name = "standalone-guests"
+    member_key = "standalone-guests"
+    collection = GUESTS
+    hub_url_name = "party-hub"
 
 
-class LockedGuestCollectionView(GuestCollectionView):
-    """An app may gate its items too, and then the item door has to decline
-    rather than hand back a URL it never built."""
-
+class LockedGuestCollectionViewSet(GuestCollectionViewSet):
     description = "A collection whose items are all locked."
     url_name = "locked-guests"
     member_key = "locked-guests"
-    item_viewset = LockedGuestItemViewSet
 
     def member_blocked(self, member, store):
         return True
 
 
-class MinimumGuestItemViewSet(GuestItemViewSet):
-    url_name = "minimum-guest"
-    collection_key = "minimum-guests"
-    hub_url_name = "minimum-guests"
-
-
-class MinimumGuestCollectionView(GuestCollectionView):
-    """Declaring "no more" is not enough when the list may not be empty."""
-
+class MinimumGuestCollectionViewSet(GuestCollectionViewSet):
     description = "A collection that needs at least one item to be complete."
     url_name = "minimum-guests"
     member_key = "minimum-guests"
-    item_viewset = MinimumGuestItemViewSet
-    min_items = 1
+    collection = replace(GUESTS, min_items=1)
 
 
-class DriftedGuestItemViewSet(GuestItemViewSet):
-    """An item whose stash label disagrees with its collection's, so a
-    completed item is refused on the way back in."""
-
-    url_name = "drifted-guest"
-    collection_key = "drifted-guests"
-    hub_url_name = "drifted-guests"
-    member_label = "guests-v2"
-
-
-class DriftedGuestCollectionView(GuestCollectionView):
-    description = "A collection whose item label drifts from its own."
-    url_name = "drifted-guests"
-    member_key = "drifted-guests"
-    item_viewset = DriftedGuestItemViewSet
-
-
-class AdvancingGuestItemViewSet(GuestItemViewSet):
-    """An item whose only step escapes with `Advance`, leaving a live run
-    whose every answer validates — the state in which a bare run URL fires
-    `done()` on a GET. No collection link may ever hand one out.
-    """
-
-    description = "Collection item escaping with Advance, so its run never completes."
-    url_name = "advancing-guest"
-    collection_key = "advancing-guests"
-    hub_url_name = "advancing-guests"
-    item_title_step = "newsletter"
-    item_title_field = "email"
-    wizard = Wizard().step(NewsletterForm, name="newsletter")
-
-
-class AdvancingGuestCollectionView(GuestCollectionView):
+class AdvancingGuestCollectionViewSet(GuestCollectionViewSet):
     description = "A collection over items that park rather than complete."
     url_name = "advancing-guests"
     member_key = "advancing-guests"
-    item_viewset = AdvancingGuestItemViewSet
+    collection = replace(
+        GUESTS,
+        wizard=Wizard().step(NewsletterForm, name="newsletter"),
+        item_title=("newsletter", "email"),
+    )
 
 
-class OrgGuestItemViewSet(GuestItemViewSet):
-    url_name = "org-guest"
-    collection_key = "org-guests"
-    hub_url_name = "org-guests"
-
-
-class OrgGuestCollectionView(GuestCollectionView):
-    description = "A collection mounted under an org prefix."
-    url_name = "org-guests"
-    member_key = "org-guests"
-    item_viewset = OrgGuestItemViewSet
-    hub_url_name = "org-hub"
-
-
-class AnonymousGuestItemViewSet(GuestItemViewSet):
-    """An item wizard that cannot name what it collects."""
-
-    description = "ImproperlyConfigured: an item wizard that cannot name its items."
-    url_name = "anonymous-guest"
-    collection_key = "anonymous-guests"
-    hub_url_name = "anonymous-guests"
-    item_title_step = None
-
-
-class AnonymousGuestCollectionView(GuestCollectionView):
-    description = "A collection whose items cannot name themselves."
+class AnonymousGuestCollectionViewSet(GuestCollectionViewSet):
+    description = (
+        "ImproperlyConfigured: a collection whose items cannot name themselves."
+    )
     url_name = "anonymous-guests"
     member_key = "anonymous-guests"
-    item_viewset = AnonymousGuestItemViewSet
+    collection = replace(GUESTS, item_title=None)
 
 
-class OffRouteGuestItemViewSet(GuestItemViewSet):
-    """An item named by a step that is not on the route the user took, so the
+class OffRouteGuestCollectionViewSet(GuestCollectionViewSet):
+    """Items named by a step that is not on the route the user took, so the
     row falls back to a positional name rather than inventing one."""
 
-    description = "A collection item whose naming step is off its own route."
-    url_name = "off-route-guest"
-    collection_key = "off-route-guests"
-    hub_url_name = "off-route-guests"
-    item_title_step = "not-on-this-route"
-
-
-class OffRouteGuestCollectionView(GuestCollectionView):
     description = "A collection whose items answer nothing that names them."
     url_name = "off-route-guests"
     member_key = "off-route-guests"
-    item_viewset = OffRouteGuestItemViewSet
+    collection = replace(GUESTS, item_title=("not-on-this-route", "name"))
 
 
-class ReshapedGuestItemViewSet(GuestItemViewSet):
-    """A deploy reshaped this item, so both halves of the label moved."""
+class ReshapedGuestCollectionViewSet(GuestCollectionViewSet):
+    """A deploy reshaped the item, so the label moved — once, for both the
+    stamp and the check."""
 
-    url_name = "reshaped-guest"
-    collection_key = "reshaped-guests"
-    hub_url_name = "reshaped-guests"
-    member_label = "guests-v2"
-
-
-class ReshapedGuestCollectionView(GuestCollectionView):
     description = "A collection whose item shape was reshaped and re-labelled."
     url_name = "reshaped-guests"
     member_key = "reshaped-guests"
-    item_viewset = ReshapedGuestItemViewSet
-    item_label = "guests-v2"
-    item_name = None
+    collection = replace(GUESTS, label="guests-v2", item_name=None)
 
 
-class DurableGuestItemViewSet(GuestItemViewSet):
-    """A collection item on model-backed storage — both stores swapped, which
-    is what a list the user grows over days needs."""
+class DurableGuestCollectionViewSet(GuestCollectionViewSet):
+    """A collection on model-backed storage — both stores swapped, which is
+    what a list the user grows over days needs."""
 
-    description = "A collection item whose runs and registry live in the database."
-    url_name = "durable-guest"
-    collection_key = "durable-guests"
-    hub_url_name = "durable-guests"
-    storage_class = ModelStorage
-    journey_store_class = ModelCollectionStore
-
-
-class DurableGuestCollectionView(GuestCollectionView):
     description = "A collection whose items and registry outlive the session."
     url_name = "durable-guests"
     member_key = "durable-guests"
-    item_viewset = DurableGuestItemViewSet
+    storage_class = ModelStorage
     journey_store_class = ModelCollectionStore
     hub_url_name = "durable-hub"
 
@@ -2429,22 +2240,7 @@ class ShortMemoryJourneyStore(SessionJourneyStore):
     max_completed_journeys = 1
 
 
-class SubmitFirstMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Journeys: a member of a hub that submits with nothing to say."
-    url_name = "submit-first"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "first"
-    hub_url_name = "submit-hub"
-    journey_store_class = ShortMemoryJourneyStore
-    wizard = Wizard().step(FirstStepForm, name="first")
-
-
-class SubmitSecondMemberViewSet(SubmitFirstMemberViewSet):
-    url_name = "submit-second"
-    member_key = "second"
-
-
-class SubmitHubView(HubView):
+class SubmitHubViewSet(HubViewSet):
     """A journey-mounted hub whose submit records nothing: the tombstone it
     leaves is the bare one, and its default `journey_completed()` is the
     404 the library ships."""
@@ -2453,13 +2249,14 @@ class SubmitHubView(HubView):
         "Journeys: a hub under a journey segment, submitting to a bare tombstone."
     )
     template_name = "testapp/journey_hub.html"
+    member_template_name = "testapp/linear_wizard.html"
     url_name = "submit-hub"
-    member_url_name = "submit-hub-member"
     journey_store_class = ShortMemoryJourneyStore
-    members = [
-        Member("first", SubmitFirstMemberViewSet, title="First"),
-        Member("second", SubmitSecondMemberViewSet, title="Second"),
-    ]
+    hub = (
+        Hub()
+        .member("first", FIRST_STEP, title="First")
+        .member("second", FIRST_STEP, title="Second")
+    )
 
     def journey_done(self, hub, store):
         return HttpResponse(f"submitted {self.get_journey()}")

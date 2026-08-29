@@ -20,15 +20,16 @@ Four contracts are easy to miss and matter more than the rest:
   places that never persist state — `run_started()`, a GET that only
   replays. A backend that batched it would lose the record it names.
 
-A durable hub needs **both** stores swapped: `storage_class` on every member
-viewset, and `journey_store_class` on the hub and on each `WizardMemberMixin`. A
-journey store is built with the journey as well as the context, and its
-`data` and `complete()` are the journey's own — kept on a row that survives
-the members being deleted at submission. A
-durable *collection* needs the same two, with `ModelCollectionStore` in place
-of `ModelJourneyStore` — it is the journey store plus an ordered registry, so
-one swap covers both halves. Swapping only one gives you durable answers
-nobody can find, or a durable index into runs that have expired.
+A durable hub needs **both** stores swapped, once, on the root viewset:
+`storage_class` for the runs and `journey_store_class` for the bookkeeping,
+and every member the hub builds gets the same two. A journey store is built
+with the journey as well as the context, and its `data` and `complete()`
+are the journey's own — kept on a row that survives the members being
+deleted at submission. A durable *collection* needs `ModelCollectionStore`
+in place of `ModelJourneyStore` — it is the journey store plus an ordered
+registry, so one swap covers both halves. Swapping only one gives you
+durable answers nobody can find, or a durable index into runs that have
+expired.
 """
 
 import uuid

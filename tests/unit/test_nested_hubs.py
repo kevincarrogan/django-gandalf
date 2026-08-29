@@ -3,14 +3,13 @@
 Nesting is a key namespace over one journey record: a nested hub prefixes its
 `member_key` onto every member it lists, its row on the parent reads its own
 rows, and its submit returns to the parent without tombstoning anything. The
-load-bearing claims are the ones that keep a nested hub honest — the same
-three drift checks a wizard member gets, and the same door and ending shape.
+load-bearing claims are the ones that keep a nested hub honest — its keys
+and its return are composed by the parent rather than typed, it is a
+subclass of its root so the root's hooks reach it, and it has the same door
+and ending shape as any member.
 """
 
 from http import HTTPStatus
-
-import pytest
-from django.core.exceptions import ImproperlyConfigured
 
 from gandalf.runtime import STASH_VERSION
 from gandalf.hubs import (
@@ -18,15 +17,16 @@ from gandalf.hubs import (
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
-    HubMixin,
+    Hub,
+    HubViewSet,
     Member,
 )
-from tests.testapp.readme.ch14_journey import (
-    ContactMemberViewSet,
-    GrantApplicationHubView,
-    RefereesMemberViewSet,
-    SupportingHubView,
-)
+from tests.testapp.readme.ch14_journey import GrantApplicationViewSet, supporting
+
+
+SupportingHubViewSet = GrantApplicationViewSet.viewset_for("supporting")
+ContactMemberViewSet = GrantApplicationViewSet.viewset_for("contact")
+RefereesMemberViewSet = SupportingHubViewSet.viewset_for("referees")
 
 
 class _Session(dict):
@@ -44,8 +44,8 @@ def _stash(label):
     return {"version": STASH_VERSION, "label": label, "state": [{"step": {}}]}
 
 
-#: Referees is `blocked()` until contact details are stashed, so a record
-#: that wants the supporting hub to be startable carries them.
+#: Referees is blocked until contact details are stashed, so a record that
+#: wants the supporting hub to be startable carries them.
 CONTACT = {"contact": _stash("contact")}
 
 
@@ -61,100 +61,101 @@ def _view(cls, request, **kwargs):
     return view
 
 
+def _parent(**attributes):
+    """The README's root, re-declared."""
+    return type("_Parent", (GrantApplicationViewSet,), attributes)
+
+
 # --- keys --------------------------------------------------------------------
 
 
 def test_a_root_hub_keys_its_members_as_declared(rf):
-    hub = _view(GrantApplicationHubView, _request(rf))
+    hub = _view(GrantApplicationViewSet, _request(rf))
 
     assert hub.get_member_key() is None
-    assert hub.full_key(Member("contact", ContactMemberViewSet)) == "contact"
+    assert hub.full_key(Member("contact")) == "contact"
+    assert ContactMemberViewSet.member_key == "contact"
 
 
-def test_a_nested_hub_prefixes_its_own_key(rf):
-    hub = _view(SupportingHubView, _request(rf))
+def test_a_nested_hub_prefixes_its_own_key_without_anyone_typing_it(rf):
+    hub = _view(SupportingHubViewSet, _request(rf))
 
     assert hub.get_member_key() == "supporting"
-    assert hub.full_key(Member("referees", RefereesMemberViewSet)) == (
-        "supporting:referees"
-    )
+    assert hub.full_key(Member("referees")) == "supporting:referees"
+    assert RefereesMemberViewSet.member_key == "supporting:referees"
 
 
-def test_nesting_composes_to_any_depth(rf):
-    class _Deeper(SupportingHubView):
-        member_key = "supporting:more"
+def test_nesting_composes_to_any_depth():
+    class _Root(HubViewSet):
+        url_name = "readme-apply"
+        hub = Hub().hub(
+            "supporting",
+            Hub().hub("more", Hub().member("x", supporting.members[0].wizard)),
+        )
 
-    assert _view(_Deeper, _request(rf)).full_key(Member("x")) == "supporting:more:x"
+    more = _Root.viewset_for("supporting").viewset_for("more")
+
+    assert more.member_key == "supporting:more"
+    assert more.viewset_for("x").member_key == "supporting:more:x"
+    assert more.url_name == "readme-apply-supporting-more"
+    assert more.hub_url_name == "readme-apply-supporting"
 
 
 def test_a_hub_knows_a_member_that_is_a_hub():
-    assert HubMixin.is_hub(Member("supporting", SupportingHubView))
-    assert not HubMixin.is_hub(Member("contact", ContactMemberViewSet))
-    assert not HubMixin.is_hub(Member("elsewhere", url_name="x", status=lambda r, k: 1))
+    assert HubViewSet.is_hub(Member("supporting", SupportingHubViewSet))
+    assert not HubViewSet.is_hub(Member("contact", ContactMemberViewSet))
+    assert not HubViewSet.is_hub(
+        Member("elsewhere", url_name="x", status=lambda r, k: 1)
+    )
 
 
-# --- the drift checks, one level up ------------------------------------------
+# --- what the parent composes ----------------------------------------------------
 
 
-def _validate(rf, **attributes):
-    hub = _view(type("_Hub", (GrantApplicationHubView,), attributes), _request(rf))
-    return hub._validate_members(hub.get_members())
+def test_a_nested_hub_returns_to_the_hub_that_lists_it():
+    assert SupportingHubViewSet.hub_url_name == "readme-apply"
+    assert SupportingHubViewSet.url_name == "readme-apply-supporting"
+    assert RefereesMemberViewSet.hub_url_name == "readme-apply-supporting"
 
 
-def test_a_nested_hub_must_key_itself_as_its_parent_lists_it(rf):
-    class _Elsewhere(SupportingHubView):
-        member_key = "extras"
-
-    with pytest.raises(ImproperlyConfigured, match="expected 'supporting'.*'extras'"):
-        _validate(rf, members=[Member("supporting", _Elsewhere)])
-
-
-def test_a_nested_hub_may_not_leave_its_key_unset(rf):
-    """A wizard member declaring no key does its own bookkeeping; a hub
-    declaring none would file its members at the root beside the parent's."""
-
-    class _Unkeyed(SupportingHubView):
-        member_key = None
-
-    with pytest.raises(ImproperlyConfigured, match="leaves member_key unset"):
-        _validate(rf, members=[Member("supporting", _Unkeyed)])
-
-
-def test_a_nested_hub_must_return_to_the_hub_that_lists_it(rf):
-    class _Astray(SupportingHubView):
-        hub_url_name = "readme-hub"
-
-    with pytest.raises(ImproperlyConfigured, match="must return to the hub"):
-        _validate(rf, members=[Member("supporting", _Astray)])
-
-    class _Rootless(SupportingHubView):
-        hub_url_name = None
-
-    with pytest.raises(ImproperlyConfigured, match="leaves hub_url_name unset"):
-        _validate(rf, members=[Member("supporting", _Rootless)])
-
-
-def test_a_nested_hub_must_be_mounted(rf):
-    class _Unmounted(SupportingHubView):
-        url_name = None
-
-    with pytest.raises(ImproperlyConfigured, match="Unmounted: supporting"):
-        _validate(rf, members=[Member("supporting", _Unmounted)])
-
-
-def test_a_nested_hub_must_share_its_parents_journey(rf):
-    class _Other(SupportingHubView):
+def test_a_nested_hub_shares_its_parents_journey_and_stores():
+    class _Profiled(GrantApplicationViewSet):
+        journey = "profile"
         journey_url_kwarg = "application"
 
-    with pytest.raises(ImproperlyConfigured, match="Astray: supporting"):
-        _validate(rf, members=[Member("supporting", _Other)])
+    nested = _Profiled.viewset_for("supporting")
+
+    assert (nested.journey, nested.journey_url_kwarg) == ("profile", "application")
+    assert nested.journey_store_class is _Profiled.journey_store_class
+    assert nested.viewset_for("referees").journey == "profile"
+
+
+def test_a_nested_hub_takes_its_page_from_its_declaration():
+    assert SupportingHubViewSet.template_name == "testapp/nested_hub.html"
+    assert GrantApplicationViewSet.template_name == "testapp/journey_hub.html"
+
+
+def test_a_nested_hub_inherits_its_parents_member_template():
+    assert RefereesMemberViewSet.template_name == "testapp/linear_wizard.html"
+
+
+def test_a_nested_hub_is_a_subclass_of_its_root_so_the_roots_hooks_reach_it(rf):
+    class _Worded(GrantApplicationViewSet):
+        def get_status_label(self, status):
+            return f"[{status}]"
+
+    nested = _Worded.viewset_for("supporting")
+    assert issubclass(nested, _Worded)
+
+    hub = _view(nested, _request(rf)).get_hub()
+    assert [str(row.status_label) for row in hub.rows] == ["[blocked]"]
 
 
 # --- the row -------------------------------------------------------------------
 
 
 def _statuses(rf, record):
-    hub = _view(GrantApplicationHubView, _request(rf, record=record))
+    hub = _view(GrantApplicationViewSet, _request(rf, record=record))
     return {row.key: row.status for row in hub.get_hub().rows}
 
 
@@ -170,36 +171,22 @@ def test_a_nested_hubs_status_is_its_own_rows(rf):
     assert _statuses(rf, {"stashes": stashes})["supporting"] == COMPLETE
 
 
-def test_a_nested_hub_answers_blocked_and_hidden_for_itself(rf):
-    class _Locked(SupportingHubView):
-        @classmethod
-        def blocked(cls, request, member, store):
-            return True
+def test_a_nested_hub_can_be_blocked_and_hidden_by_its_row(rf):
+    locked = _parent(hub=Hub().hub("supporting", supporting, blocked=lambda s: True))
+    gone = _parent(hub=Hub().hub("supporting", supporting, hidden=lambda s: True))
 
-    class _Gone(SupportingHubView):
-        @classmethod
-        def hidden(cls, request, member, store):
-            return True
-
-    class _LockedParent(GrantApplicationHubView):
-        members = [Member("supporting", _Locked)]
-
-    class _GoneParent(GrantApplicationHubView):
-        members = [Member("supporting", _Gone)]
-
-    locked = _view(_LockedParent, _request(rf)).get_hub()
-    gone = _view(_GoneParent, _request(rf)).get_hub()
-
-    assert [row.status for row in locked.rows] == [BLOCKED]
-    assert gone.rows == ()
+    assert [row.status for row in _view(locked, _request(rf)).get_hub().rows] == [
+        BLOCKED
+    ]
+    assert _view(gone, _request(rf)).get_hub().rows == ()
 
 
 def test_a_nested_hubs_members_read_the_journeys_own_data(rf):
-    """`hidden()` on the governing document reads `applying_as`, which the
+    """`hidden` on the governing document reads `applying_as`, which the
     setup member wrote at the root — one record, whatever the depth."""
-    individual = _view(SupportingHubView, _request(rf, record={}))
+    individual = _view(SupportingHubViewSet, _request(rf, record={}))
     organisation = _view(
-        SupportingHubView,
+        SupportingHubViewSet,
         _request(rf, record={"data": {"journey": {"applying_as": "organisation"}}}),
     )
 
@@ -211,41 +198,47 @@ def test_a_nested_hubs_members_read_the_journeys_own_data(rf):
 
 
 def test_a_nested_hubs_row_links_at_its_page_and_so_does_the_door(rf):
-    hub = _view(GrantApplicationHubView, _request(rf))
+    hub = _view(GrantApplicationViewSet, _request(rf))
     member = hub.get_member("supporting")
 
-    assert hub.get_member_url(member) == "/readme/apply-supporting/app-1/"
-    assert hub.enter(member) == "/readme/apply-supporting/app-1/"
+    assert hub.get_member_url(member) == "/readme/apply/app-1/supporting/"
+    assert hub.enter(member) == "/readme/apply/app-1/supporting/"
 
 
 def test_the_door_refuses_a_nested_hub_the_user_cannot_start_yet(rf):
-    class _Locked(SupportingHubView):
-        @classmethod
-        def blocked(cls, request, member, store):
-            return True
+    locked = _parent(hub=Hub().hub("supporting", supporting, blocked=lambda s: True))
 
-    class _Parent(GrantApplicationHubView):
-        members = [Member("supporting", _Locked)]
-
-    hub = _view(_Parent, _request(rf))
+    hub = _view(locked, _request(rf))
 
     assert hub.enter(hub.get_member("supporting")) is None
+
+
+def test_a_nested_hub_is_mounted_beneath_its_parent_before_the_door():
+    patterns = GrantApplicationViewSet.urls()
+    segments = [str(pattern.pattern) for pattern in patterns]
+
+    assert segments[0] == ""
+    assert "supporting/" in segments
+    assert segments.index("supporting/") < segments.index("<slug:member>/")
+    nested = patterns[segments.index("supporting/")].url_patterns
+    assert [str(p.pattern) for p in nested][0] == ""
+    assert [str(p.pattern) for p in nested][-1] == "<slug:member>/"
 
 
 # --- the ending ------------------------------------------------------------------
 
 
 def test_a_nested_hub_is_nested_and_a_root_hub_is_not(rf):
-    assert _view(SupportingHubView, _request(rf)).is_nested is True
-    assert _view(GrantApplicationHubView, _request(rf)).is_nested is False
+    assert _view(SupportingHubViewSet, _request(rf)).is_nested is True
+    assert _view(GrantApplicationViewSet, _request(rf)).is_nested is False
 
 
 def test_a_nested_hubs_submit_returns_to_its_parent_and_keeps_the_record(rf):
     stashes = CONTACT | {"supporting:referees": _stash("supporting:referees")}
     request = _request(
-        rf, "/readme/apply-supporting/app-1/", "post", {"stashes": stashes}
+        rf, "/readme/apply/app-1/supporting/", "post", {"stashes": stashes}
     )
-    hub = _view(SupportingHubView, request)
+    hub = _view(SupportingHubViewSet, request)
 
     response = hub.submit()
 
@@ -256,15 +249,15 @@ def test_a_nested_hubs_submit_returns_to_its_parent_and_keeps_the_record(rf):
 
 
 def test_a_nested_hubs_submit_is_refused_while_incomplete(rf):
-    request = _request(rf, "/readme/apply-supporting/app-1/", "post")
+    request = _request(rf, "/readme/apply/app-1/supporting/", "post")
 
-    response = _view(SupportingHubView, request).submit()
+    response = _view(SupportingHubViewSet, request).submit()
 
-    assert response["Location"] == "/readme/apply-supporting/app-1/"
+    assert response["Location"] == "/readme/apply/app-1/supporting/"
 
 
 def test_hub_done_is_the_nested_hubs_hook(rf):
-    class _Recording(SupportingHubView):
+    class _Recording(SupportingHubViewSet):
         def hub_done(self, hub, store):
             store.data["supporting_done"] = hub.completed
             return super().hub_done(hub, store)
@@ -272,7 +265,7 @@ def test_hub_done_is_the_nested_hubs_hook(rf):
     stashes = CONTACT | {"supporting:referees": _stash("supporting:referees")}
     hub = _view(
         _Recording,
-        _request(rf, "/readme/apply-supporting/app-1/", "post", {"stashes": stashes}),
+        _request(rf, "/readme/apply/app-1/supporting/", "post", {"stashes": stashes}),
     )
 
     hub.submit()
@@ -281,10 +274,16 @@ def test_hub_done_is_the_nested_hubs_hook(rf):
 
 
 def test_a_nested_hub_under_a_submitted_journey_sends_the_user_up(rf):
-    hub = _view(SupportingHubView, _request(rf, record={"completed": True}))
+    """The root's `journey_completed()` renders the done page; a nested hub
+    inherits that method but never fires it — dispatch sends the user up
+    to the root, which is the page that can say what submitted looks like."""
+    request = _request(
+        rf, "/readme/apply/app-1/supporting/", record={"completed": True}
+    )
 
-    response = hub.journey_completed(hub.get_journey_store())
+    response = SupportingHubViewSet.as_view()(request, journey=JOURNEY)
 
+    assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == "/readme/apply/app-1/"
 
 

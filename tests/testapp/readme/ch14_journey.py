@@ -5,16 +5,16 @@ import uuid
 
 from django.shortcuts import redirect, render
 
-from gandalf.collections import CollectionView, ItemMemberMixin
+from gandalf.collections import Collection
+from gandalf.hubs import Hub, HubViewSet
 from gandalf.observers import WizardObserver
-from gandalf.hubs import HubView, Member, WizardMemberMixin
 from gandalf.storage import SessionJourneyStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 from ..models import Application
 from .ch06_review import ReviewStepView
-from .ch13_gated import MATCH_FUNDING_THRESHOLD
+from .ch13_gated import MATCH_FUNDING_THRESHOLD, record_amount
 from .forms import (
     ApplicantForm,
     ApplyingAsForm,
@@ -43,7 +43,7 @@ class CountRejections(WizardObserver):
             rejections.append(step.context["name"])
 
 
-# --- minting -----------------------------------------------------------------
+# --- what the members decide ---------------------------------------------------
 
 
 def record_applying_as(store, bound_wizard):
@@ -53,208 +53,117 @@ def record_applying_as(store, bound_wizard):
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 
 
-class ApplicationStartViewSet(WizardViewSet):
-    """The first wizard. There is no journey yet, so `done()` mints one,
-    stashes these answers as its first member, and sends the applicant to
-    the hub under the new id."""
+def record_email(store, bound_wizard):
+    """What submitting needs, written once here rather than read out of the
+    stash's positional state at journey_done()."""
+    step = bound_wizard.path.find_step(name="email")
+    store.data["email"] = step.form.cleaned_data["email"]
 
-    description = "Chapter 14: the setup wizard that mints an application."
-    url_name = "readme-apply-start"
-    wizard = (
-        Wizard()
-        .step(ApplyingAsForm, name="applying_as", label="Applying as")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            observer_class=CountRejections,
-        )
+
+# --- the wizards ---------------------------------------------------------------
+
+
+setup = (
+    Wizard()
+    .step(ApplyingAsForm, name="applying_as", label="Applying as")
+    .configure(
+        template_name="testapp/linear_wizard.html",
+        observer_class=CountRejections,
     )
+)
 
-    def done(self, bound_wizard):
-        journey = uuid.uuid4().hex
-        store = SessionJourneyStore(self.context_for(self.request), journey)
-        store.put_stash("setup", bound_wizard.stash(label="setup"))
-        record_applying_as(store, bound_wizard)
-        return redirect("readme-apply-hub", journey=journey)
+contact = (
+    Wizard()
+    .step(ApplicantForm, name="name", label="Your name")
+    .step(EmailForm, name="email", label="Email")
+    .step(ReviewStepView, name="review")
+)
 
+project = (
+    Wizard()
+    .step(ProjectForm, name="project", label="Project")
+    .step(ReviewStepView, name="review")
+)
 
-class SetupMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """The same wizard, once a journey exists: re-openable from the hub like
-    any other member, and re-recording its answer when it is re-saved."""
+budget = Collection(
+    Wizard()
+    .step(BudgetLineForm, name="line", label="Budget line")
+    .step(ReviewStepView, name="review"),
+    item_name="Budget line",
+    item_title=("line", "item"),
+    min_items=1,
+    reopen="review",
+    template_name="testapp/budget.html",
+    remove_template_name="testapp/budget_remove.html",
+)
 
-    description = "Chapter 14: the setup answers, re-openable from the hub."
-    url_name = "readme-apply-setup"
-    member_key = "setup"
-    hub_url_name = "readme-apply-hub"
-    wizard = ApplicationStartViewSet.wizard
+match_funding = Wizard().step(MatchFundingForm, name="source", label="Match funding")
 
-    def run_done(self, bound_wizard):
-        record_applying_as(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+referees = Wizard().step(RefereeForm, name="referee", label="Referee")
 
-
-# --- the members --------------------------------------------------------------
-
-
-class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Chapter 14: a plain member of the application."
-    url_name = "readme-apply-contact"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "contact"
-    hub_url_name = "readme-apply-hub"
-    wizard = (
-        Wizard()
-        .step(ApplicantForm, name="name", label="Your name")
-        .step(EmailForm, name="email", label="Email")
-        .step(ReviewStepView, name="review")
-    )
-
-    def run_done(self, bound_wizard):
-        # What submitting needs, written once here rather than read out of
-        # the stash's positional state at journey_done().
-        email = bound_wizard.path.find_step(name="email")
-        self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
-        return super().run_done(bound_wizard)
-
-
-class ProjectMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Chapter 14: the project, whose amount reveals match funding."
-    url_name = "readme-apply-project"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "project"
-    hub_url_name = "readme-apply-hub"
-    wizard = (
-        Wizard()
-        .step(ProjectForm, name="project", label="Project")
-        .step(ReviewStepView, name="review")
-    )
-
-    def run_done(self, bound_wizard):
-        project = bound_wizard.path.find_step(name="project")
-        self.get_journey_store().data["amount"] = int(
-            project.form.cleaned_data["amount"]
-        )
-        return super().run_done(bound_wizard)
-
-
-class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
-    description = "Chapter 14: one budget line, under the application's journey."
-    url_name = "readme-apply-budget-line"
-    template_name = "testapp/linear_wizard.html"
-    collection_key = "budget"
-    hub_url_name = "readme-apply-budget"
-    item_title_step = "line"
-    item_title_field = "item"
-    wizard = (
-        Wizard()
-        .step(BudgetLineForm, name="line", label="Budget line")
-        .step(ReviewStepView, name="review")
-    )
-
-
-class BudgetCollectionView(CollectionView):
-    description = "Chapter 14: the budget, under the application's journey."
-    template_name = "testapp/budget.html"
-    remove_template_name = "testapp/budget_remove.html"
-    url_name = "readme-apply-budget"
-    member_key = "budget"
-    item_viewset = BudgetLineViewSet
-    item_name = "Budget line"
-    item_reopen_step = "review"
-    min_items = 1
-    hub_url_name = "readme-apply-hub"
-
-
-class MatchFundingMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Chapter 14: hidden until the amount crosses the threshold."
-    url_name = "readme-apply-match-funding"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "match_funding"
-    hub_url_name = "readme-apply-hub"
-    wizard = Wizard().step(MatchFundingForm, name="source", label="Match funding")
-
-    @classmethod
-    def hidden(cls, request, member, store):
-        return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
+documents = (
+    Wizard()
+    .step(GoverningDocumentForm, name="document", label="Document")
+    .configure(template_name="testapp/file_upload_wizard.html")
+)
 
 
 # --- a task list within the task list -------------------------------------------
 
 
-class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """Listed by the supporting-information hub, not the application's: its
-    key carries that hub's prefix, and it returns there when it finishes.
-    The record it reads is still the journey's — `contact` is a root key."""
-
-    description = "Chapter 14: locked until contact details are finished."
-    url_name = "readme-apply-referees"
-    template_name = "testapp/linear_wizard.html"
-    member_key = "supporting:referees"
-    hub_url_name = "readme-apply-supporting"
-    wizard = Wizard().step(RefereeForm, name="referee", label="Referee")
-
-    @classmethod
-    def blocked(cls, request, member, store):
-        return not store.has_stash("contact")
-
-
-class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
-    description = "Chapter 14: the governing document, only for organisations."
-    url_name = "readme-apply-documents"
-    template_name = "testapp/file_upload_wizard.html"
-    member_key = "supporting:documents"
-    hub_url_name = "readme-apply-supporting"
-    wizard = Wizard().step(GoverningDocumentForm, name="document", label="Document")
-
-    @classmethod
-    def hidden(cls, request, member, store):
-        # Written by the setup member at the root; one record, so a member
-        # two hubs down reads it without being handed anything.
-        return store.data.get("applying_as") != "organisation"
+supporting = (
+    Hub()
+    # Locked until contact details are finished. `contact` is a root key:
+    # the record is the journey's, whichever hub reads it.
+    .member(
+        "referees",
+        referees,
+        title="Referees",
+        blocked=lambda store: not store.has_stash("contact"),
+    )
+    # Written by the setup member at the root; one record, so a member two
+    # hubs down reads it without being handed anything.
+    .member(
+        "documents",
+        documents,
+        title="Governing document",
+        hidden=lambda store: store.data.get("applying_as") != "organisation",
+    )
+    .configure(template_name="testapp/nested_hub.html")
+)
 
 
-class SupportingHubView(HubView):
-    """A hub that is a member of the application's hub. `member_key` is the
-    prefix its own members are keyed under; `hub_url_name` is where its
-    Continue returns to. Its row on the parent reads its own rows' status,
-    and its submit tombstones nothing — only the application's does."""
-
-    description = "Chapter 14: a task list within the application's task list."
-    template_name = "testapp/nested_hub.html"
-    url_name = "readme-apply-supporting"
-    member_url_name = "readme-apply-supporting-member"
-    member_key = "supporting"
-    hub_url_name = "readme-apply-hub"
-    members = [
-        Member("referees", RefereesMemberViewSet, title="Referees"),
-        Member("documents", DocumentsMemberViewSet, title="Governing document"),
-    ]
+# --- the journey ---------------------------------------------------------------
 
 
-# --- the hub -------------------------------------------------------------------
+application = (
+    Hub()
+    .member("setup", setup, title="Applying as", done=record_applying_as)
+    .member(
+        "contact", contact, title="Contact details", reopen="review", done=record_email
+    )
+    .member("project", project, title="Project", reopen="review", done=record_amount)
+    .collection("budget", budget, title="Budget")
+    .member(
+        "match_funding",
+        match_funding,
+        title="Match funding",
+        hidden=lambda store: store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD,
+    )
+    .hub("supporting", supporting, title="Supporting information")
+)
 
 
-class GrantApplicationHubView(HubView):
+class GrantApplicationViewSet(HubViewSet):
     """Mounted under `apply/<journey>/`, so every request — the page, the
-    doors, and each member's own wizard under the same segment — reads the
-    same journey, and two applications are two URLs."""
+    doors, and each member's own wizard beneath it — reads the same journey,
+    and two applications are two URLs."""
 
     description = "Chapter 14: the application's task list, with a submit."
     template_name = "testapp/journey_hub.html"
-    url_name = "readme-apply-hub"
-    member_url_name = "readme-apply-hub-member"
-    members = [
-        Member("setup", SetupMemberViewSet, title="Applying as"),
-        Member(
-            "contact",
-            ContactMemberViewSet,
-            title="Contact details",
-            reopen_step="review",
-        ),
-        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
-        Member("budget", BudgetCollectionView, title="Budget"),
-        Member("match_funding", MatchFundingMemberViewSet, title="Match funding"),
-        Member("supporting", SupportingHubView, title="Supporting information"),
-    ]
+    member_template_name = "testapp/linear_wizard.html"
+    url_name = "readme-apply"
+    hub = application
 
     def journey_done(self, hub, store):
         # The stashes are still readable here, but `data` is what the
@@ -271,3 +180,23 @@ class GrantApplicationHubView(HubView):
             "testapp/journey_done.html",
             {"reference": store.data["reference"]},
         )
+
+
+# --- minting -----------------------------------------------------------------
+
+
+class ApplicationStartViewSet(WizardViewSet):
+    """The first wizard. There is no journey yet, so `done()` mints one,
+    stashes these answers as its first member, and sends the applicant to
+    the hub under the new id."""
+
+    description = "Chapter 14: the setup wizard that mints an application."
+    url_name = "readme-apply-start"
+    wizard = setup
+
+    def done(self, bound_wizard):
+        journey = uuid.uuid4().hex
+        store = SessionJourneyStore(self.context_for(self.request), journey)
+        store.put_stash("setup", bound_wizard.stash(label="setup"))
+        record_applying_as(store, bound_wizard)
+        return redirect("readme-apply", journey=journey)

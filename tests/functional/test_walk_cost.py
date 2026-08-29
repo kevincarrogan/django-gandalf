@@ -204,7 +204,7 @@ def counting_hub(client):
     from gandalf.testing import stored_member_run
 
     run_id = stored_member_run(client, "counting")
-    client.post(f"/counting-hub-member/{run_id}/first/", {"name": "Ada"}, follow=True)
+    client.post(f"/counting-hub/counting/{run_id}/first/", {"name": "Ada"}, follow=True)
     return client
 
 

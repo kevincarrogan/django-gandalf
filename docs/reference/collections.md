@@ -11,20 +11,20 @@ from gandalf.collections import (
     NOT_STARTED,
     AddAnotherForm,
     Collection,
-    CollectionMixin,
+    CollectionPage,
     CollectionRow,
-    CollectionView,
-    ItemMemberMixin,
+    CollectionViewSet,
     ItemNotFound,
+    ItemViewSet,
 )
 ```
 
 A collection is a [hub](hubs.md) whose members are *built* rather than
-declared: one `Member` per id in an ordered registry. The status derivation,
-the row building, the resume-before-reopen door and the
-never-a-bare-run-URL guarantee are `HubMixin`'s, unchanged. What a collection
-adds is the two things a hub has no notion of: completeness is *declared* by
-the user rather than derived from storage, and a row is a thing that can be
+declared: one per id in an ordered registry. The status derivation, the
+row building, the resume-before-reopen door and the never-a-bare-run-URL
+guarantee are `HubViewSet`'s, unchanged. What a collection adds is the two
+things a hub has no notion of: completeness is *declared* by the user
+rather than derived from storage, and a row is a thing that can be
 *destroyed*.
 
 `COMPLETE`, `INCOMPLETE` and `NOT_STARTED` are re-exported from
@@ -34,97 +34,105 @@ the user rather than derived from storage, and a row is a thing that can be
 
 ## Reference
 
-### `CollectionView`
+### `Collection(wizard, *, item_name=None, item_title=None, min_items=0, reopen=None, label=None, done=None, template_name=None, remove_template_name=None)`
 
-`CollectionMixin` over `django.views.generic.TemplateView`, with the three URL
-patterns published. `HubView` is deliberately not in its ancestry: the hub's
-two patterns and its GET-only door are precisely what a collection replaces.
+The declaration: a frozen dataclass describing one *add another* list.
+Listed on a hub with `Hub().collection(key, collection, title=...)`, which
+mounts it beneath the hub, or set on a root `CollectionViewSet`.
+
+- `wizard` — runs one item: a `Wizard` or `ConfiguredWizard`, or a
+  `WizardViewSet` subclass for an item that needs a hook of its own.
+- `item_name` — what an unfinished item is called in a positional title
+  (`Budget line 2`). `None` derives it from the key: underscores and
+  hyphens to spaces, a trailing `s` dropped, first letter capitalised
+  (`budget_lines` → `Budget line`).
+- `item_title` — what names a finished item on the page: a
+  `(step, field)` pair, read off the finished run, or
+  `callable(bound_wizard) -> str`. Return `""` and the row keeps its
+  positional name. Required by the time an item finishes.
+- `min_items` — items required before *no more to add* counts as complete.
+  Zero is right for "any other income?"; one for "add at least one".
+- `reopen` — the step a finished item re-opens at (its review step,
+  usually). `None` re-opens at the first step.
+- `label` — the stash label every item stamps and the page expects; one
+  value for both halves. `None` uses the collection key. Bump it when a
+  deploy reshapes the item wizard.
+- `done` — `callable(store, bound_wizard)`, run when an item finishes,
+  after its stash and title are written. The item's id is
+  `bound_wizard.context.url_kwargs["item"]`.
+- `template_name` / `remove_template_name` — the page and the confirmation
+  page. A root viewset that sets either on the class keeps its own.
+
+### `CollectionViewSet`
+
+A `HubViewSet` whose members are the registry's items, with the three URL
+patterns published and the item wizard mounted beneath the door.
 
 ```python
-class BudgetCollectionView(CollectionView):
+class BudgetViewSet(CollectionViewSet):
     url_name = "budget"
     member_key = "budget"
-    item_viewset = BudgetLineViewSet
-    template_name = "grants/budget.html"
-    remove_template_name = "grants/budget_remove.html"
-    hub_url_name = "application-hub"
+    collection = budget
+    hub_url_name = "apply"      # where Continue goes
 ```
 
-**Attributes** — all of `CollectionMixin`'s (below), plus `template_name`
-from `TemplateView`.
+A collection listed by a hub is built by the hub, which sets all four. A
+root collection sets them itself: `hub_url_name` is where *Continue*
+returns to — a hub, or any page — and leaving it `None` makes the
+collection end the journey, which requires `journey_done()`.
 
-**Methods**
+**Attributes** — everything `HubViewSet` declares, with these defaults and
+additions:
 
-- `urls()` *(classmethod)* — the three patterns, derived from `url_name`.
-  Raises `ImproperlyConfigured` when `url_name` is `None`.
-- `get(request, ...)` — the page with no item kwarg; the door or the
-  confirmation page with one.
-- `post(request, ...)` — answers *add another* on the page; removes on the
-  remove route; `405` on the door.
-- `get_template_names()` — `[remove_template_name]` on the remove route
-  (raising `ImproperlyConfigured` if it is `None`), else `TemplateView`'s.
-- `row(item_id)` — the one `CollectionRow` a confirmation page is about.
-  Assumes `get_item()` has already vouched for the id.
+| Attribute | Default | Meaning |
+| --- | --- | --- |
+| `collection` | `None` | The declaration. Required. |
+| `url_name` | `None` | Name of the page pattern; `-item`, `-remove`, `-item-run` and `-item-step` are derived from it. Required. |
+| `member_key` | `None` | The key items are registered and keyed under, and the key a parent hub lists this collection by. **Required** — a collection's key is never `None`, whether or not a hub above lists it. |
+| `item_viewset` | generated | The `ItemViewSet` subclass built from `collection.wizard`, for a driver that addresses an item. |
+| `hub_url_name` | `None` | Where *Continue* goes. `None` makes the collection a *root*: `submit()` then ends the journey. |
+| `template_name` / `remove_template_name` | from the `Collection` | The page and the confirmation page. |
+| `member_template_name` | `None` | The template the item wizard renders with when its `Wizard` carries none. |
+| `form_class` | `AddAnotherForm` | The form the page POST is validated with. |
+| `collection_context_name` | `"collection"` | Where the `CollectionPage` lands in the template context. |
+| `hub_context_name` | `None` | Suppresses the hub's `hub` context object: one page, one status. |
+| `member_url_kwarg` | `"item"` | The URL kwarg carrying the item id on the door and remove routes. |
+| `journey_store_class` | `SessionCollectionStore` | Must satisfy `gandalf.types.CollectionStore`. |
 
-#### The three routes
+#### The routes
 
 | Pattern | Name | Kwargs | GET | POST |
 | --- | --- | --- | --- | --- |
 | `""` | `<url_name>` | mount prefix | renders the page with `collection` and `form` in context | validates `AddAnotherForm`: `yes` → `add_item()` and redirect into the new item; `no` → `declare_done()`; invalid → re-render with `form` errors |
 | `<uuid:item>/` | `<url_name>-item` | `item` | the door: `enter()` the item and redirect to its step URL | `405 Method Not Allowed` (`Allow: GET`) |
 | `<uuid:item>/remove/` | `<url_name>-remove` | `item` | renders `remove_template_name` with `collection`, `form` and `row` in context | `remove_item()` and redirect to the page |
+| `<uuid:item>/<uuid:run_id>/…` | `<url_name>-item-run`, `<url_name>-item-step` | `item`, `run_id`, `gandalf_step` | the item wizard's own routes | |
 
 The item kwarg is a `uuid`, never a slug — that is what lets `remove/` be a
-safe sibling of the door. A slug would swallow it and every verb after it.
+safe sibling of the door. The item wizard's bare start URL is not
+published: the door *is* the item's URL, so there is no bare run URL to
+link.
 
 On either item route, an id the collection does not list
 (`ItemNotFound`) is answered by `member_unavailable(item_id)` — a redirect
 to the page by default. A door whose `enter()` returns `None` (a
-`member_blocked()` item) is answered the same way. The view tells the
-door from the remove route by `request.resolver_match.url_name`, so it has
-to be reached through the URLconf.
+`member_blocked()` item) is answered the same way. The view tells the door
+from the remove route by `request.resolver_match.url_name`, so it has to be
+reached through the URLconf.
 
-#### `CollectionMixin` attributes
-
-Everything `HubMixin` declares, with these defaults and additions:
-
-| Attribute | Default | Meaning |
-| --- | --- | --- |
-| `url_name` | `None` | Name of the page pattern; `-item` and `-remove` are derived from it. Required for `urls()`, `get_page_url()` and every row link. |
-| `member_key` | `None` | The key items are registered and keyed under, and the key a parent hub lists this collection by. **Required** — a collection's key is never `None`, whether or not a hub above lists it. |
-| `item_viewset` | `None` | The `ItemMemberMixin` viewset that collects one item. **Required.** |
-| `item_name` | `None` | What one item is called in a positional title (`Budget line 2`). `None` derives it from the key: underscores and hyphens to spaces, a trailing `s` dropped, first letter capitalised (`budget_lines` → `Budget line`). |
-| `item_label` | `None` | The stash label every item stamps. `None` uses the collection key. Must agree with the item viewset's `member_label`, if declared. |
-| `item_reopen_step` | `None` | The step a finished item re-opens at (its review step, usually). `None` re-opens at the first step. |
-| `min_items` | `0` | Items required before *no more to add* counts as complete. |
-| `hub_url_name` | `None` | The `url_name` of the hub that lists this collection. `None` makes the collection a *root*: `submit()` then ends the journey and requires `journey_done()`. |
-| `template_name` | — | The page (from `TemplateView`). |
-| `remove_template_name` | `None` | The confirmation page. Required on the remove route. |
-| `form_class` | `AddAnotherForm` | The form the page POST is validated with. |
-| `collection_context_name` | `"collection"` | Where the `Collection` lands in the template context. |
-| `hub_context_name` | `None` | Suppresses `HubMixin`'s `hub` context object: one page, one status. |
-| `member_url_kwarg` | `"item"` | The URL kwarg carrying the item id on the door and remove routes. |
-| `journey_store_class` | `SessionCollectionStore` | Must satisfy `gandalf.types.CollectionStore`. |
-| `journey` | `"default"` | The journey this collection belongs to when not mounted under a `<journey>` segment. |
-| `journey_url_kwarg` | `"journey"` | The URL kwarg read for the journey when present. |
-| `key_separator` | `":"` | Joins the collection key to an item id: `budget:<uuid>`. |
-| `members` | `None` | Unused — `get_members()` answers from the registry. |
-| `member_url_name` | `None` | Unused — `get_member_url()` answers with the door. |
-
-#### `CollectionMixin` hooks
+#### Hooks
 
 Items and identity:
 
 | Hook | Default | Override to |
 | --- | --- | --- |
-| `get_member_key()` | `member_key`, or `ImproperlyConfigured` | — |
-| `get_collection_key()` | `get_member_key()` | — |
+| `get_collection_key()` | `member_key` | — |
 | `get_collection_store()` | `get_journey_store()` cast to `CollectionStore` | — |
-| `get_item_viewset()` | `item_viewset`, or `ImproperlyConfigured` | choose the wizard per request |
+| `get_item_viewset()` | `item_viewset` | — |
 | `get_item_ids()` | `store.item_ids(key)` | build the list from your own records instead of the registry; `get_item()` and `get_members()` both read it |
 | `new_item_id()` | `str(uuid.uuid4())` | mint identity yourself. Must be opaque and unique; a positional id would renumber survivors on removal, and the routes match `<uuid:item>` |
-| `get_item_label()` | `item_label`, else the collection key | — |
-| `get_item_member(item_id)` | a `Member(key=item_id, viewset=item_viewset, label=item_label, reopen_step=item_reopen_step, url_kwargs={**page kwargs, "item": item_id})` | — |
+| `get_item_label()` | `collection.label`, else the collection key | — |
+| `get_item_member(item_id)` | a `Member(key=item_id, viewset=item_viewset, label=..., reopen_step=collection.reopen, url_kwargs={"item": item_id})` | — |
 | `get_members()` | one `get_item_member()` per `get_item_ids()` | — |
 | `get_item(item_id)` | the member, or `ItemNotFound` if `get_item_ids()` does not list it | — |
 | `item_id_for(member)` | `member.url_kwargs["item"]` | — |
@@ -133,23 +141,23 @@ The page:
 
 | Hook | Default | Override to |
 | --- | --- | --- |
-| `get_collection()` | builds the `Collection` from `get_member_rows()`, `get_collection_status()`, `store.is_declared_done()` and `min_items` | — |
-| `get_hub()` | `get_collection()` — a collection's `Hub` *is* its `Collection`, so a parent hub's `status_for()` and `submit()` read the declared status | — |
+| `get_collection()` | builds the `CollectionPage` from `get_member_rows()`, `get_collection_status()`, `store.is_declared_done()` and `min_items` | — |
+| `get_hub()` | `get_collection()` — a collection's `HubPage` *is* its `CollectionPage`, so a parent hub's `status_for()` and `submit()` read the declared status | — |
 | `build_member_rows()` | one `build_collection_row()` per vetted member, in registry order | — |
 | `build_collection_row(member, store, position)` | a `CollectionRow` | add fields on a `CollectionRow` subclass |
 | `get_item_title(item_id, store, position)` | the cached title, else `get_placeholder_title(position)` | — |
 | `get_placeholder_title(position)` | `"<item name> <position + 1>"` | other wording |
-| `get_item_name()` | `item_name`, else derived from the key | — |
+| `get_item_name()` | `collection.item_name`, else derived from the key | — |
 | `get_collection_status(rows, store)` | the table below | another rule |
 | `get_status_label(status)` | *Not started* / *Incomplete* / *Complete* / *Cannot start yet* | your own wording |
-| `get_member_url(member)` | `get_item_url()` — the door, never the wizard's own URL | — |
+| `get_member_url(member)` | `get_item_url()` — the door | — |
 | `get_item_url(item_id)` | `reverse("<url_name>-item", kwargs={**page kwargs, "item": item_id})` | — |
 | `get_item_remove_url(item_id)` | `reverse("<url_name>-remove", ...)` | — |
 | `get_form_class()` | `form_class` | — |
 | `get_form(data=None)` | `get_form_class()(data=data)` | — |
 | `get_context_data(**kwargs)` | adds `collection` and, unless given, `form` | — |
-| `member_blocked(member, store)` | asks `item_viewset.blocked()` | gate every item at once; call `super()` where the items should still get their say |
-| `member_hidden(member, store)` | asks `item_viewset.hidden()` | hide every item at once |
+| `member_blocked(member, store)` | `False` — items declare no rules | gate every item at once |
+| `member_hidden(member, store)` | `False` | hide items |
 
 The actions:
 
@@ -159,14 +167,19 @@ The actions:
 | `declare_done()` | record *declared done*, then `submit()` | — |
 | `remove_item(item_id)` | destroy the item in the order below; redirect to the page | — |
 | `discard_item_run(member, store)` | `inspect()` the item's recorded run and `obliterate()` it; a run the storage has forgotten is not an error | — |
-| `item_removed(item_id, member, store)` | nothing | delete whatever the item's `run_done()` saved. Runs while the item is still listed |
+| `item_removed(item_id, member, store)` | nothing | delete whatever the item's `done` saved. Runs while the item is still listed |
 | `submit()` | `hub_incomplete()` unless `collection.is_complete`; else `hub_done()` when nested, `journey_done()` then `store.complete()` at a root | — |
 | `hub_done(hub, store)` | redirect to `get_hub_url()` | work that runs once per submit of this part |
 | `hub_incomplete(hub)` | redirect to `get_page_url()` | render the page with an error |
 | `journey_done(hub, store)` | `ImproperlyConfigured` | required on a root collection |
-| `journey_completed(store)` | nested: redirect up; root: `Http404` | a done page |
+| `journey_completed(store)` | root: `Http404`; nested: redirect up | a done page |
 | `member_unavailable(key)` | redirect to `get_page_url()` | raise `Http404` |
-| `enter(member)` / `resume_member()` / `reopen_member()` / `start_member()` / `stash_unusable()` | `HubMixin`'s | see [Hubs](hubs.md) |
+| `enter(member)` / `resume_member()` / `reopen_member()` / `start_member()` / `stash_unusable()` | `HubViewSet`'s | see [Hubs](hubs.md) |
+
+A collection listed by a hub is built on the hub's
+`collection_viewset_class`, so a hook a whole tree's collections share —
+`item_removed()`, `get_placeholder_title()` — goes on a `CollectionViewSet`
+subclass set there.
 
 #### The add order
 
@@ -213,17 +226,17 @@ user can answer *no more* while an item sits half-finished — the page only
 shows the question beside the rows — and the honest report is then
 *Incomplete*, not *Complete* over answers nobody gave.
 
-Each row's status is `HubMixin.get_member_status()`: `BLOCKED` if
+Each row's status is `HubViewSet.get_member_status()`: `BLOCKED` if
 `member_blocked()`, else `COMPLETE` if a stash exists under the item's full
 key, else `INCOMPLETE` if a recorded run holds at least one submission, else
 `NOT_STARTED`. A seeded item whose run the storage has forgotten reads as
 not started — it still has a row, because a row exists from the moment the
 item is registered.
 
-### `Collection`
+### `CollectionPage`
 
-A frozen dataclass and a `gandalf.hubs.Hub`. What the page and a parent
-hub's row both read.
+A frozen dataclass and a `gandalf.hubs.HubPage`. What the page and a
+parent hub's row both read.
 
 **Attributes**
 
@@ -235,7 +248,7 @@ hub's row both read.
 | `key` | `str` | the collection key |
 | `url` | `str` | the page's own URL |
 | `declared_done` | `bool` | whether the user has said there are no more to add |
-| `min_items` | `int` | the view's `min_items` |
+| `min_items` | `int` | the declaration's `min_items` |
 | `count` | `int` | `len(rows)` |
 | `completed` | `int` | rows that `is_complete` |
 | `remaining` | `int` | `count - completed`, blocked rows included |
@@ -281,35 +294,17 @@ Two submit buttons named `add_another` with values `yes` and `no` carry the
 answer without a widget on the page. Swap the form with `form_class`; the view
 only reads `is_valid()` and `wants_another`.
 
-### `ItemMemberMixin`
+### `ItemViewSet`
 
-Mix into the `WizardViewSet` that collects one item. Everything
-[`WizardMemberMixin`](hubs.md) does, keyed per item instead of per class: the
-key comes from the URL, so the wizard must be mounted under an item segment.
+The viewset a collection runs one item with. Built by `CollectionViewSet`
+from `collection.wizard` and mounted under `<uuid:item>/` beneath the
+page, so one class serves every row; reach it as `item_viewset`. Everything
+[`MemberViewSet`](hubs.md) does, keyed per item: the key comes from the
+URL.
 
-```python
-class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
-    url_name = "budget-line"
-    collection_key = "budget"
-    hub_url_name = "budget"
-    item_title_step = "line"
-    item_title_field = "item"
-    wizard = Wizard().step(BudgetLineForm, name="line").step(ReviewStepView, name="review")
-```
-
-**Attributes**
-
-| Attribute | Default | Meaning |
-| --- | --- | --- |
-| `collection_key` | `None` | The collection page's `member_key` — the full key when the collection is itself nested under a hub. **Required.** |
-| `hub_url_name` | `None` | The collection page's `url_name`. **Required** — it is where a finished or unavailable item returns to. |
-| `item_url_kwarg` | `"item"` | The URL kwarg carrying the item id. |
-| `item_title_step` / `item_title_field` | `None` | The step and field whose answer names the item on the page. Both required unless `get_item_title()` is overridden. |
-| `dynamic_member_key` | `True` | Declares that `member_key` is derived per request. |
-| `journey_store_class` | `SessionCollectionStore` | |
-| `member_label` | `None` | Bump to refuse stashes from an older shape; must match the collection's `item_label`. |
-
-**What it adds over `WizardMemberMixin`**
+**Attributes** — `collection_key` (the page's `member_key`),
+`item_url_kwarg` (`"item"`), `item_title` (the declaration's), and the
+journey and store attributes of the page.
 
 | Hook | Behaviour |
 | --- | --- |
@@ -317,72 +312,32 @@ class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
 | `get_item_id()` | `self.kwargs["item"]` as a string, or `ImproperlyConfigured` when not mounted under an item segment |
 | `get_member_key()` | `"<collection_key>:<item_id>"` — the same string the page's `full_key()` composes |
 | `default_member_label()` | the *collection's* key, not the item's, so every item stamps one label |
-| `get_item_title(bound_wizard)` | `str(cleaned_data.get(item_title_field, ""))` from the step named `item_title_step`; `""` when that step is not on the route taken. `ImproperlyConfigured` (*"cannot name its items"*) when either attribute is `None`. Costs one walk, once, at completion |
+| `get_item_title(bound_wizard)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
 | `run_recorded(bound_wizard, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
+| `run_done(bound_wizard)` | the declared `done`, then back to the collection page |
 | `get_hub_url_kwargs()` | `get_url_kwargs()` without `item` — the collection page has no place for the item segment; a journey or tenant prefix is forwarded |
-| `run_unavailable(bound_wizard, reason)` | redirect to the collection page rather than this wizard's start URL, which would mint a run for an item that may no longer exist |
+| `run_unavailable(bound_wizard, reason)` | redirect to the collection page rather than mint a run for an item that may no longer exist |
 | `dispatch()` | refuses any request for an item the registry does not list, before `WizardViewSet` sees it, with `item_unavailable()` |
 | `item_unavailable()` | redirect to the collection page; override to raise `Http404` |
 
-**Caveats**
-
-- Override `run_done()`, never `done()`: `done()` is also where the title is
-  cached, and an item that never caches one leaves a page that can only ever
-  say *Budget line 1*, *Budget line 2*.
-- Every item runs through the same viewset, so `blocked()` and `hidden()`
-  tell items apart by `member.url_kwargs["item"]`.
-
 ### `ItemNotFound(LookupError)`
 
-Raised by `CollectionMixin.get_item(item_id)` when the id names no item that
+Raised by `get_item(item_id)` when the id names no item that
 `get_item_ids()` lists — a removed item, a stale link, a URL typed by hand.
-`CollectionView` catches it on both item routes and answers
-`member_unavailable()`.
+Caught on both item routes and answered with `member_unavailable()`.
 
 ### Mounting
 
-A collection page, its item wizard, the hub that lists the collection and
-the hub's other members are **four siblings**:
+A collection listed by a hub is mounted by the hub, at `<key>/` beneath
+the hub's page. A root collection is mounted by itself, and its item wizard
+is beneath its door:
 
 ```python
-urlpatterns = [
-    path("apply/", include(ApplicationHubView.urls())),
-    path("apply-project/", include(ProjectMemberViewSet.urls())),
-    path("apply-budget/", include(BudgetCollectionView.urls())),
-    path("apply-budget-line/<uuid:item>/", include(BudgetLineViewSet.urls())),
-]
+urlpatterns = [path("vehicles/", include(VehiclesViewSet.urls()))]
 ```
 
-Nesting fails silently, both ways:
-
-- `HubView` publishes `<slug:member>/`, which matches any single segment. A
-  collection mounted at `apply/budget/` occupies the exact path of the hub's
-  door for a member named `budget`.
-- `WizardViewSet.urls()` publishes `""` as its start URL. An item wizard
-  mounted at `apply-budget/<uuid:item>/` occupies the exact path of the
-  collection's door for that item.
-
-Whichever `include()` is listed first wins, and the symptom is *Change
-stopped working* rather than anything that looks like a URL conflict. Under a
-journey the same four are mounted under `<slug:journey>/` each, with the
-item wizard's segment last: `apply-budget-line/<slug:journey>/<uuid:item>/`.
-
-### Configuration checks
-
-`get_collection()` (and so every render, door and submit) raises
-`ImproperlyConfigured` when:
-
-- `member_key` is `None` — *"has no collection to list"*;
-- `item_viewset` is `None` — *"has no wizard to collect an item with"*;
-- the item viewset's `collection_key` is set and is not this page's key —
-  its items would register under one prefix and stash under another, so a
-  finished item never shows as complete;
-- the item viewset's `member_label` is set and is not `get_item_label()` —
-  a re-opened item would be refused at the door and could never be changed.
-
-`declare_done()` on a complete collection with no `hub_url_name` raises
-*"has nothing to do when its journey is submitted"* unless `journey_done()`
-is overridden.
+Under a journey, the whole tree sits under the one `<slug:journey>/`
+segment and every item URL carries it.
 
 ### Storage
 
@@ -436,50 +391,38 @@ its own run, separately resumable, completable and destroyable. Use
 ### A budget the applicant grows
 
 ```python
-from gandalf.collections import CollectionView, ItemMemberMixin
-from gandalf.hubs import HubView, Member, WizardMemberMixin
-from gandalf.viewsets import WizardViewSet
+from gandalf.collections import Collection
+from gandalf.hubs import Hub, HubViewSet
 from gandalf.wizard import Wizard
 
 
-class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
-    url_name = "budget-line"
-    template_name = "grants/step.html"
-    collection_key = "budget"
-    hub_url_name = "budget"
-    item_title_step = "line"
-    item_title_field = "item"
-    wizard = (
-        Wizard()
-        .step(BudgetLineForm, name="line", label="Budget line")
-        .step(ReviewStepView, name="review")
-    )
+budget = Collection(
+    Wizard()
+    .step(BudgetLineForm, name="line", label="Budget line")
+    .step(ReviewStepView, name="review"),
+    item_name="Budget line",
+    item_title=("line", "item"),
+    min_items=1,
+    reopen="review",
+    template_name="grants/budget.html",
+    remove_template_name="grants/budget_remove.html",
+)
 
 
-class BudgetCollectionView(CollectionView):
-    template_name = "grants/budget.html"
-    remove_template_name = "grants/budget_remove.html"
-    url_name = "budget"
-    member_key = "budget"
-    item_viewset = BudgetLineViewSet
-    item_name = "Budget line"
-    item_reopen_step = "review"
-    min_items = 1
-    hub_url_name = "application-hub"
-
-
-class ApplicationHubView(HubView):
+class ApplicationViewSet(HubViewSet):
     template_name = "grants/hub.html"
-    url_name = "application-hub"
-    member_url_name = "application-hub-member"
-    members = [
-        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
-        Member("budget", BudgetCollectionView, title="Budget"),
-    ]
+    member_template_name = "grants/step.html"
+    url_name = "apply"
+    hub = (
+        Hub()
+        .member("project", project, title="Project", reopen="review")
+        .collection("budget", budget, title="Budget")
+    )
 ```
 
-The hub's `Budget` row links straight at the collection page and reads the
-collection's own declared status.
+The hub's `Budget` row links straight at the collection page
+(`apply/budget/`, named `apply-budget`) and reads the collection's own
+declared status.
 
 ### The page template
 
@@ -524,47 +467,61 @@ The confirmation page gets `row` as well:
 ### Saving each line, and deleting it on removal
 
 ```python
-from django.shortcuts import redirect
-
-from gandalf.collections import CollectionView, ItemMemberMixin
-from gandalf.viewsets import WizardViewSet
+from gandalf.collections import Collection, CollectionViewSet
 
 
-class BudgetLineViewSet(ItemMemberMixin, WizardViewSet):
-    ...
-
-    def run_done(self, bound_wizard):
-        line = bound_wizard.path.find_step(name="line").form.cleaned_data
-        BudgetLine.objects.update_or_create(
-            item_id=self.get_item_id(),
-            defaults={"item": line["item"], "cost": line["cost"]},
-        )
-        return super().run_done(bound_wizard)
+def save_line(store, bound_wizard):
+    line = bound_wizard.path.find_step(name="line").form.cleaned_data
+    BudgetLine.objects.update_or_create(
+        item_id=bound_wizard.context.url_kwargs["item"],
+        defaults={"item": line["item"], "cost": line["cost"]},
+    )
 
 
-class BudgetCollectionView(CollectionView):
-    ...
+budget = Collection(budget_line, item_title=("line", "item"), done=save_line, ...)
 
+
+class BudgetCollectionViewSet(CollectionViewSet):
     def item_removed(self, item_id, member, store):
         BudgetLine.objects.filter(item_id=item_id).delete()
+
+
+class ApplicationViewSet(HubViewSet):
+    collection_viewset_class = BudgetCollectionViewSet
+    ...
 ```
 
 `item_removed()` runs before the registry entry goes, so a delete that
 raises leaves the line listed and removable.
 
+### A collection mounted on its own
+
+```python
+class VehiclesViewSet(CollectionViewSet):
+    url_name = "vehicles"
+    member_key = "vehicles"
+    collection = vehicles
+    hub_url_name = "quote"          # Continue returns to the quote wizard
+
+    def item_removed(self, item_id, member, store):
+        forget_vehicle(self.request, item_id)
+
+
+urlpatterns = [path("vehicles/", include(VehiclesViewSet.urls()))]
+```
+
 ### Naming an item from more than one field
 
 ```python
-class TrusteeViewSet(ItemMemberMixin, WizardViewSet):
-    collection_key = "trustees"
-    hub_url_name = "trustees"
+def trustee_name(bound_wizard):
+    step = bound_wizard.path.find_step(name="name")
+    if step is None:
+        return ""
+    data = step.form.cleaned_data
+    return f"{data['first_name']} {data['last_name']}"
 
-    def get_item_title(self, bound_wizard):
-        step = bound_wizard.path.find_step(name="name")
-        if step is None:
-            return ""
-        data = step.form.cleaned_data
-        return f"{data['first_name']} {data['last_name']}"
+
+trustees = Collection(trustee, item_title=trustee_name)
 ```
 
 Returning `""` lets the row fall back to `Trustee 2` rather than inventing a
@@ -573,11 +530,9 @@ name.
 ### Gating every item until the project is described
 
 ```python
-class BudgetCollectionView(CollectionView):
-    ...
-
+class GatedCollectionViewSet(CollectionViewSet):
     def member_blocked(self, member, store):
-        return not store.has_stash("project") or super().member_blocked(member, store)
+        return not store.has_stash("project")
 ```
 
 Blocked rows read *Cannot start yet*, the door refuses them, and *Add
@@ -587,26 +542,6 @@ listed, removable, not-started item.
 ---
 
 ## Troubleshooting
-
-### Clicking Change lands on the wizard's start page, or on the wrong item's step
-
-The item wizard is mounted under the collection's prefix
-(`budget/<uuid:item>/`), so its start URL and the collection's door share a
-path, and whichever `include()` came first is answering. Mount the wizard
-beside the collection: `budget-line/<uuid:item>/`.
-
-### The hub's Budget row links to a member door, not the collection page
-
-The collection is mounted under the hub (`apply/budget/`), where the hub's
-`<slug:member>/` door matches first. Mount it as a sibling.
-
-### A finished item stays Incomplete
-
-`collection_key` on the item viewset disagrees with the page's `member_key`,
-so the item stashed under one prefix and the page reads another. The check
-in `_validate_members()` raises `ImproperlyConfigured` for this when
-`collection_key` is set; it cannot catch a viewset that leaves it `None` and
-overrides `get_collection_key()`.
 
 ### I said No and the page came straight back instead of continuing
 
@@ -619,8 +554,13 @@ explanation instead of a bare redirect.
 ### `ImproperlyConfigured: ... has nothing to do when its journey is submitted`
 
 The collection has no `hub_url_name`, so it is a root and *Continue* ends
-the journey. Either set `hub_url_name` to the hub that lists it, or override
-`journey_done(hub, store)`.
+the journey. Either set `hub_url_name` to where *Continue* should go, or
+override `journey_done(hub, store)`.
+
+### `ImproperlyConfigured: ... has no collection to list`
+
+A root `CollectionViewSet` without `member_key`. Set it beside `collection`
+and `url_name`.
 
 ### A POST to `<url_name>-item` returns 405
 
@@ -630,26 +570,19 @@ row links to cannot remove the item it meant to open. Removal is
 
 ### `ImproperlyConfigured: ... cannot name its items`
 
-The item finished and `run_recorded()` asked for a title, but neither
-`item_title_step`/`item_title_field` nor a `get_item_title()` override is in
-place. Set both attributes, or override the method.
+The item finished and `run_recorded()` asked for a title, but the
+`Collection` has no `item_title`. Give it the `(step, field)` pair, or a
+callable of the finished run.
 
 ### `ImproperlyConfigured: ... is not mounted under an item segment`
 
-The item wizard is mounted without `<uuid:item>/` in its path, so no request
-can say which item it is answering.
+The item viewset was dispatched without an `item` kwarg. It is only ever
+reached through the routes its collection publishes.
 
-### Removing an item took the user to the page, but its wizard URL still works
-
-It should not: `ItemMemberMixin.dispatch()` refuses any request for an
-unregistered item with `item_unavailable()`. If the wizard is reachable,
-it is a `WizardViewSet` without `ItemMemberMixin`, or its `collection_key`
-names a different collection.
-
-### `ImproperlyConfigured: Set ... remove_template_name`
+### `ImproperlyConfigured: Set remove_template_name ...`
 
 The remove route was reached and there is no confirmation page to render.
-Set `remove_template_name`.
+Set `remove_template_name` on the `Collection`, or on a root viewset.
 
 ---
 

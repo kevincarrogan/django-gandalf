@@ -14,8 +14,7 @@ from examples.eventlog import DemoObserver, log_event
 from gandalf.contrib.agent import AgentProfile
 from examples.insurance import (
     InsuranceQuoteViewSet,
-    VehicleCollectionView,
-    VehicleItemViewSet,
+    VehicleCollectionViewSet,
     quote_for,
 )
 from examples.identity import IdentityCheckViewSet
@@ -70,21 +69,14 @@ class AdaptiveQuoteViewSet(HybridQuoteViewSet):
     )
 
 
-class HybridVehicleItemViewSet(VehicleItemViewSet):
-    """One vehicle, kept where somebody other than this browser can find it.
+class HybridVehicleCollectionViewSet(VehicleCollectionViewSet):
+    """The fleet page, over the same two stores.
 
     Both stores are swapped, which is what a durable collection needs:
-    `storage_class` for the run itself and `journey_store_class` for the
-    registry that says the run exists. Swapping one gives you durable
-    answers nobody can find, or an index into runs that have expired.
-    """
-
-    storage_class = ModelStorage
-    journey_store_class = ModelCollectionStore
-
-
-class HybridVehicleCollectionView(VehicleCollectionView):
-    """The fleet page, over the same two stores.
+    `storage_class` for the runs themselves and `journey_store_class` for
+    the registry that says they exist. Swapping one gives you durable
+    answers nobody can find, or an index into runs that have expired. Set
+    once here, they reach the item wizard the page builds.
 
     This is what lets an agent add a vehicle at all. It drives a fabricated
     request — no browser, no session, and this demo's sessions live in a
@@ -92,8 +84,12 @@ class HybridVehicleCollectionView(VehicleCollectionView):
     Scoped to the *user* instead, both sides see one fleet.
     """
 
+    storage_class = ModelStorage
     journey_store_class = ModelCollectionStore
-    item_viewset = HybridVehicleItemViewSet
+
+
+#: The item wizard the page built, for the driver to address directly.
+HybridVehicleItemViewSet = HybridVehicleCollectionViewSet.item_viewset
 
 
 def fleet_values(context):
@@ -105,7 +101,7 @@ def fleet_values(context):
     answers durably — a finished member stashes its own state — so this
     reads them from there and there is no second copy to disagree.
     """
-    page = HybridVehicleCollectionView()
+    page = HybridVehicleCollectionViewSet()
     page.setup(context.http_request())
     store = page.get_collection_store()
     values = []

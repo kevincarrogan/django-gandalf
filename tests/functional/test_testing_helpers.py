@@ -282,4 +282,4 @@ def test_a_seeded_item_is_listed_in_the_order_it_was_seeded(client):
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
     ]
-    assert client.get("/party-guests/").context["collection"].rows[1].title == "Ada"
+    assert client.get("/party/guests/").context["collection"].rows[1].title == "Ada"

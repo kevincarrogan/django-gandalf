@@ -15,10 +15,10 @@ from gandalf.types import CollectionStore, JourneyStore
 ```
 
 A *journey* is what a hub's members add up to — one application, one
-claim. Every hub, member wizard, collection page and item wizard on it
-builds a store from `journey_store_class` with the journey's identity, and
-reads the same record. Nesting and collections are a key namespace over
-that record, not a second store.
+claim. The root hub's `journey_store_class` is handed to every member
+wizard, collection page and item wizard it builds; each builds a store from
+it with the journey's identity and reads the same record. Nesting and
+collections are a key namespace over that record, not a second store.
 
 ---
 
@@ -77,7 +77,7 @@ modified; the first write does.
 | `keys()` | Keys holding a stash, in insertion order. A collection's items appear here under their composed keys (`"budget:<id>"`) beside the declared members |
 
 A payload is `BoundWizard.stash()` output — see [Stashing](stashing.md).
-The run id and the stash outlive each other: `WizardMemberMixin.done()`
+The run id and the stash outlive each other: `MemberViewSet.done()`
 writes the stash and then clears the run, so a completed member survives
 its run being pruned.
 
@@ -121,9 +121,9 @@ the journey rather than one run; the bag semantics are in
   the root whichever bag it is called on: a member can keep its own notes
   without treading on the journey or on another member.
 
-Write here from `run_done()` (the run is still readable) and read back from
-`blocked()` / `hidden()` / `journey_done()` / `journey_completed()`. The
-tombstone keeps it.
+Write here from a member's `done` (the run is still readable) and read
+back from `blocked` / `hidden` rules, `journey_done()` and
+`journey_completed()`. The tombstone keeps it.
 
 ### `SessionCollectionStore(context, journey)`
 
@@ -156,9 +156,8 @@ or lost with the session.
 
 ### `gandalf.types.JourneyStore`
 
-The protocol a `journey_store_class` on a hub or a `WizardMemberMixin`
-viewset has to satisfy. Structural: `SessionJourneyStore` inherits nothing
-to meet it.
+The protocol a `HubViewSet`'s `journey_store_class` has to satisfy.
+Structural: `SessionJourneyStore` inherits nothing to meet it.
 
 ```python
 class JourneyStore(Protocol):
@@ -192,16 +191,19 @@ Contracts a backend must keep:
 ### `gandalf.types.CollectionStore`
 
 `JourneyStore` plus the eight registry methods of `SessionCollectionStore`
-above. What a collection's `journey_store_class` has to satisfy.
+above. What the `journey_store_class` of a tree with a collection in it has
+to satisfy — which is why `HubViewSet`'s default is `SessionCollectionStore`
+rather than `SessionJourneyStore`: one class serves a hub with no
+collections just as well, and one class means every member of the tree
+reads the same record.
 
 ### The default journey
 
-`JourneyMemberMixin.journey = "default"` and `journey_url_kwarg = "journey"`.
-A hub or member mounted under a `<slug:journey>` segment reads its journey
-off the URL; one mounted under none uses `"default"` — one journey per
-session, which is what a profile task list is. Every member's viewset must
-declare the same pair as its hub, and the hub refuses one that does not
-(see [Hubs](hubs.md)).
+`HubViewSet.journey = "default"` and `journey_url_kwarg = "journey"`. A
+hub mounted under a `<slug:journey>` segment reads its journey off the URL;
+one mounted under none uses `"default"` — one journey per session, which is
+what a profile task list is. Every member is mounted beneath the hub and
+built with the same pair, so all of them read the same segment.
 
 ### The durable swap
 
@@ -213,10 +215,11 @@ on a row of their own that survives `complete()` deleting the members;
 `ModelCollectionStore` adds the registry with an explicit `position` and a
 uniqueness constraint. Both are scoped by `context.actor` and `journey`.
 
-A durable hub needs **both** seams swapped: `storage_class` on every member
-viewset ([Storage](storage.md)) and `journey_store_class` on the hub and on
-each `WizardMemberMixin` viewset. Swapping only one gives durable answers
-nobody can find, or a durable index into runs that have expired.
+A durable hub needs **both** seams swapped, once, on the root viewset:
+`storage_class` for the runs ([Storage](storage.md)) and
+`journey_store_class` for the bookkeeping, and every member the hub builds
+gets the same two. Swapping only one gives durable answers nobody can find,
+or a durable index into runs that have expired.
 
 ---
 
@@ -225,29 +228,21 @@ nobody can find, or a durable index into runs that have expired.
 ### Writing a decided fact at completion and reading it back
 
 ```python
-from gandalf.hubs import WizardMemberMixin
-from gandalf.viewsets import WizardViewSet
+def record_email(store, bound_wizard):
+    email = bound_wizard.path.find_step(name="email")
+    store.data["email"] = email.form.cleaned_data["email"]
 
 
-class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
-    member_key = "contact"
-    hub_url_name = "grant-hub"
-    wizard = ...
-
-    def run_done(self, bound_wizard):
-        email = bound_wizard.path.find_step(name="email")
-        self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
-        return super().run_done(bound_wizard)
-
-
-class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
-    member_key = "referees"
-    hub_url_name = "grant-hub"
-    wizard = ...
-
-    @classmethod
-    def blocked(cls, request, member, store):
-        return not store.has_stash("contact")
+hub = (
+    Hub()
+    .member("contact", contact, title="Contact details", done=record_email)
+    .member(
+        "referees",
+        referees,
+        title="Referees",
+        blocked=lambda store: not store.has_stash("contact"),
+    )
+)
 ```
 
 ### Minting a journey from a wizard that has none yet
@@ -271,7 +266,7 @@ class ApplicationStartViewSet(WizardViewSet):
         store.put_stash("setup", bound_wizard.stash(label="setup"))
         step = bound_wizard.path.find_step(name="applying_as")
         store.data["applying_as"] = step.form.cleaned_data["applying_as"]
-        return redirect("grant-hub", journey=journey)
+        return redirect("apply", journey=journey)
 ```
 
 ### Keeping per-member notes apart
@@ -286,22 +281,19 @@ store.data.get("total")                       # None — a different bucket
 ### Swapping in a durable store
 
 ```python
-from gandalf.hubs import HubView, WizardMemberMixin
-from gandalf.viewsets import WizardViewSet
+from gandalf.hubs import HubViewSet
 
 from myapp.durable import ModelJourneyStore, ModelStorage
 
 
-class ContactMemberViewSet(WizardMemberMixin, WizardViewSet):
+class GrantApplicationViewSet(HubViewSet):
     storage_class = ModelStorage
     journey_store_class = ModelJourneyStore
     ...
-
-
-class GrantHubView(HubView):
-    journey_store_class = ModelJourneyStore
-    ...
 ```
+
+Every member the hub builds — wizard, collection, item, nested hub — gets
+both.
 
 ---
 
@@ -318,13 +310,6 @@ finished" is an ordinary answer.
 Reads are deep copies: `store.data["budget"]["total"] = 1` changes the copy.
 Assign the whole value back — `store.data["budget"] = {**budget, "total": 1}`
 — or use `for_member()` / `update()`.
-
-### A member finishes but the hub on another journey does not see it
-
-The two are on different journeys. Both must read the same
-`journey_url_kwarg` from the same URL segment, or both declare the same
-`journey`; the hub raises `ImproperlyConfigured` ("Astray") when the
-declarations differ, but cannot see a mismatch in the URLconf.
 
 ### An older submitted application's done page now 404s
 

@@ -41,7 +41,7 @@ from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
 from examples.copilotkit.wizards import (
-    HybridVehicleCollectionView,
+    HybridVehicleCollectionViewSet,
     HybridVehicleItemViewSet,
 )
 from gandalf.contrib.agent import WizardDeps
@@ -67,16 +67,16 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
     """The collection verbs an agent is allowed."""
     toolset: FunctionToolset[WizardDeps] = FunctionToolset()
 
-    def _page(ctx: RunContext[WizardDeps]) -> HybridVehicleCollectionView:
+    def _page(ctx: RunContext[WizardDeps]) -> HybridVehicleCollectionViewSet:
         # A collection page is a Django view and still wants a request; the
         # context makes one on demand, which is the point of it — the walk
         # no longer needs a browser but a `TemplateView` never stopped being
         # one.
-        page = HybridVehicleCollectionView()
+        page = HybridVehicleCollectionViewSet()
         page.setup(ctx.deps.context.http_request())
         return page
 
-    def _fleet(page: HybridVehicleCollectionView) -> dict[str, Any]:
+    def _fleet(page: HybridVehicleCollectionViewSet) -> dict[str, Any]:
         collection = page.get_collection()
         return {
             "vehicles": [

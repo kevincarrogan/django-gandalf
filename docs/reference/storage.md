@@ -141,12 +141,12 @@ The worked example is
 [`tests/functional/test_durable_storage.py`](../../tests/functional/test_durable_storage.py)
 with the session holding nothing but the login.
 
-A durable **hub** or **collection** needs both seams swapped:
-`storage_class` on every member viewset, and `journey_store_class` on the
-hub and on each `WizardMemberMixin` (a `ModelJourneyStore` and
-`ModelCollectionStore` are in the same module). Swapping only one gives
-durable answers nobody can find, or a durable index into runs that have
-expired. See [Journey store](journey-store.md).
+A durable **hub** or **collection** needs both seams swapped, once, on
+the root viewset: `storage_class` for the runs and `journey_store_class`
+for the bookkeeping (a `ModelJourneyStore` and `ModelCollectionStore` are
+in the same module), and every member the root builds gets the same two.
+Swapping only one gives durable answers nobody can find, or a durable index
+into runs that have expired. See [Journey store](journey-store.md).
 
 ---
 

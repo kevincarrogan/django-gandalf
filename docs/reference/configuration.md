@@ -183,15 +183,15 @@ See [Storage](storage.md).
 
 Hubs and their members keep journey state — which run each member is on,
 its stash, the journey's decided data — in a store separate from run
-storage. It is a class attribute of the hub and member viewsets, not a
-configure key:
+storage. It is a class attribute of the root hub viewset, handed to every
+member it builds, not a configure key:
 
 ```python
-class SupportingDetailsHub(HubView):
+class GrantApplicationViewSet(HubViewSet):
     journey_store_class = DurableJourneyStore
 ```
 
-Default `gandalf.storage.SessionJourneyStore`. Built per request as
+Default `gandalf.storage.SessionCollectionStore`. Built per request as
 `cls(WizardContext.from_request(request), journey)`.
 
 **Contract** — the `gandalf.types.JourneyStore` protocol (`get_run`,

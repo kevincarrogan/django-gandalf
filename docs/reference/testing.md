@@ -299,7 +299,7 @@ The session key `SessionJourneyStore.SESSION_KEY` (`"gandalf_journeys"`)
 holds one record per journey — its member runs, its stashes, its
 collections, its data, and the tombstone a submitted journey leaves. Every
 helper below takes `journey="default"`: the fixed journey a hub not mounted
-under a `<journey>` URL segment uses (`HubView.journey`). For a hub mounted
+under a `<journey>` URL segment uses (`HubViewSet.journey`). For a hub mounted
 under one, pass the segment's value.
 
 | Record key | Written by | Read with |

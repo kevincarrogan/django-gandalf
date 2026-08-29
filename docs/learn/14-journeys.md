@@ -4,34 +4,26 @@ Everything so far, put together. A hub's members add up to something — this
 application — and that something is a **journey**. It has three things no
 single wizard has: a scope, a memory, and an ending. Every member of it gets
 the first two; the root hub — the one no hub lists — owns the third. And
-because a hub is itself a member, a journey's task lists nest.
+because a hub is a member like any other, a task list can hold a task list.
 
 ### A scope
 
-Everything a hub keeps — which run each member is being answered in, the
-stash a finished one left, a collection's items, what the members decided —
-lives in one record per journey. A hub mounted under a `<journey>` segment
-reads its journey off the URL, and so does every member mounted under the
-same segment, so two applications in two tabs are two URLs and two records
-in one session that never see each other:
+One session can hold two applications in two tabs, and they must never see
+each other. Mount the hub under a journey segment, and everything beneath it
+— the page, every door, every member's run, the budget and its lines —
+reads the same one:
 
 ```python
 urlpatterns = [
     path("readme/apply/new/", include(ApplicationStartViewSet.urls())),
-    path("readme/apply/<slug:journey>/", include(GrantApplicationHubView.urls())),
-    path("readme/apply-setup/<slug:journey>/", include(SetupMemberViewSet.urls())),
-    path("readme/apply-contact/<slug:journey>/", include(ContactMemberViewSet.urls())),
-    path("readme/apply-project/<slug:journey>/", include(ProjectMemberViewSet.urls())),
-    path("readme/apply-budget/<slug:journey>/", include(BudgetCollectionView.urls())),
-    path("readme/apply-budget-line/<slug:journey>/<uuid:item>/", include(BudgetLineViewSet.urls())),
-    path("readme/apply-match-funding/<slug:journey>/", include(MatchFundingMemberViewSet.urls())),
-    path("readme/apply-referees/<slug:journey>/", include(RefereesMemberViewSet.urls())),
-    path("readme/apply-documents/<slug:journey>/", include(DocumentsMemberViewSet.urls())),
-    path("readme/apply-supporting/<slug:journey>/", include(SupportingHubView.urls())),
+    path(
+        "readme/apply/<slug:journey>/",
+        include(GrantApplicationViewSet.urls()),
+    ),
 ]
 ```
 
-Siblings, as always. A hub not mounted under a journey uses the one it
+One pattern, as always. A hub not mounted under a journey uses the one it
 declares, `journey = "default"` — one per session, which is what chapters
 11 to 13 were.
 
@@ -43,64 +35,62 @@ journey's first member, and sends the applicant to the hub under the new id:
 
 ```python
 def record_applying_as(store, bound_wizard):
+    """Read the one answer the rest of the journey turns on, once, and write
+    it where every other member can read it without a walk."""
     step = bound_wizard.path.find_step(name="applying_as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
+```
 
+```python
+setup = (
+    Wizard()
+    .step(ApplyingAsForm, name="applying_as", label="Applying as")
+    .configure(
+        template_name="testapp/linear_wizard.html",
+        observer_class=CountRejections,
+    )
+)
+```
 
+```python
 class ApplicationStartViewSet(WizardViewSet):
     url_name = "readme-apply-start"
-    wizard = (
-        Wizard()
-        .step(ApplyingAsForm, name="applying_as", label="Applying as")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            observer_class=CountRejections,      # chapter 15
-        )
-    )
+    wizard = setup
 
     def done(self, bound_wizard):
         journey = uuid.uuid4().hex
         store = SessionJourneyStore(self.context_for(self.request), journey)
         store.put_stash("setup", bound_wizard.stash(label="setup"))
         record_applying_as(store, bound_wizard)
-        return redirect("readme-apply-hub", journey=journey)
-
-
-class SetupMemberViewSet(WizardMemberMixin, WizardViewSet):
-    """The same wizard, once a journey exists."""
-
-    url_name = "readme-apply-setup"
-    member_key = "setup"
-    hub_url_name = "readme-apply-hub"
-    wizard = ApplicationStartViewSet.wizard
-
-    def run_done(self, bound_wizard):
-        record_applying_as(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+        return redirect("readme-apply", journey=journey)
 ```
 
-The hub then lists `Member("setup", SetupMemberViewSet, title="Applying
-as")` — the same wizard as a member mounted under the journey — so the setup
-answers are re-openable like any other member.
+The same wizard is then the journey's first member — re-openable from the
+hub like any other, and re-recording its answer when it is re-saved:
+
+```python
+    .member("setup", setup, title="Applying as", done=record_applying_as)
+```
 
 ### A memory
 
-`store.data` is the journey's record of what its members decided: a
-JSON-safe mapping written through on every assignment, with
-`for_member(key)` sub-bags so members cannot tread on each other. It is the
-same bag chapter 9's `bound_wizard.metadata` is, kept for the journey rather
-than for one run. `record_applying_as` writes *individual* or *organisation*
-there, and the governing document member reads it back:
+`store.data` is the journey's record of what its members decided — the
+facts the rest of the journey turns on, kept where every member reads them
+without a walk. It is the same bag chapter 9's `bound_wizard.metadata` is,
+kept for the journey rather than for one run, with per-member sub-bags so
+members cannot tread on each other. `record_applying_as` writes
+*individual* or *organisation* there, and the governing document member
+reads it back:
 
 ```python
-class DocumentsMemberViewSet(WizardMemberMixin, WizardViewSet):
-    member_key = "documents"
-    hub_url_name = "readme-apply-hub"
-    wizard = Wizard().step(GoverningDocumentForm, name="document", label="Document")
-
-    @classmethod
-    def hidden(cls, request, member, store):
-        return store.data.get("applying_as") != "organisation"
+    # Written by the setup member at the root; one record, so a member two
+    # hubs down reads it without being handed anything.
+    .member(
+        "documents",
+        documents,
+        title="Governing document",
+        hidden=lambda store: store.data.get("applying_as") != "organisation",
+    )
 ```
 
 The project member writes the amount and match funding reads it, exactly as
@@ -114,18 +104,29 @@ re-opening; `data` is for reading back.
 presses it:
 
 ```python
-class GrantApplicationHubView(HubView):
+application = (
+    Hub()
+    .member("setup", setup, title="Applying as", done=record_applying_as)
+    .member(
+        "contact", contact, title="Contact details", reopen="review", done=record_email
+    )
+    .member("project", project, title="Project", reopen="review", done=record_amount)
+    .collection("budget", budget, title="Budget")
+    .member(
+        "match_funding",
+        match_funding,
+        title="Match funding",
+        hidden=lambda store: store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD,
+    )
+    .hub("supporting", supporting, title="Supporting information")
+)
+
+
+class GrantApplicationViewSet(HubViewSet):
     template_name = "testapp/journey_hub.html"
-    url_name = "readme-apply-hub"
-    member_url_name = "readme-apply-hub-member"
-    members = [
-        Member("setup", SetupMemberViewSet, title="Applying as"),
-        Member("contact", ContactMemberViewSet, title="Contact details", reopen_step="review"),
-        Member("project", ProjectMemberViewSet, title="Project", reopen_step="review"),
-        Member("budget", BudgetCollectionView, title="Budget"),
-        Member("match_funding", MatchFundingMemberViewSet, title="Match funding"),
-        Member("supporting", SupportingHubView, title="Supporting information"),
-    ]
+    member_template_name = "testapp/linear_wizard.html"
+    url_name = "readme-apply"
+    hub = application
 
     def journey_done(self, hub, store):
         application = Application.objects.create()
@@ -162,42 +163,49 @@ goes in `store.data`, which the tombstone keeps.
 
 Referees and the governing document are supporting information, and a page
 of their own reads better than two more rows on the application. A hub is a
-member like any other, so it is listed like any other — and it declares the
-same two things a wizard member does: the key it sits under, and the hub it
-returns to.
+member like any other, so it is listed like any other: a `Hub` inside a
+`Hub`.
 
 ```python
-class RefereesMemberViewSet(WizardMemberMixin, WizardViewSet):
-    member_key = "supporting:referees"
-    hub_url_name = "readme-apply-supporting"
-    ...
-
-
-class SupportingHubView(HubView):
-    url_name = "readme-apply-supporting"
-    member_url_name = "readme-apply-supporting-member"
-    member_key = "supporting"
-    hub_url_name = "readme-apply-hub"
-    members = [
-        Member("referees", RefereesMemberViewSet, title="Referees"),
-        Member("documents", DocumentsMemberViewSet, title="Governing document"),
-    ]
+supporting = (
+    Hub()
+    # Locked until contact details are finished. `contact` is a root key:
+    # the record is the journey's, whichever hub reads it.
+    .member(
+        "referees",
+        referees,
+        title="Referees",
+        blocked=lambda store: not store.has_stash("contact"),
+    )
+    # Written by the setup member at the root; one record, so a member two
+    # hubs down reads it without being handed anything.
+    .member(
+        "documents",
+        documents,
+        title="Governing document",
+        hidden=lambda store: store.data.get("applying_as") != "organisation",
+    )
+    .configure(template_name="testapp/nested_hub.html")
+)
 ```
 
-Nesting is a key namespace, not a second record: a nested hub's
-`member_key` is the prefix every member it lists is keyed under, so a wizard
-two hubs down declares its full key, `"supporting:referees"`. Everything
-still lives in the one journey record — the governing document's `hidden()`
-reads `store.data["applying_as"]`, written by the setup wizard at the root.
-A hub's row is its own rows' status, and only the root ends the journey: a
-POST to the supporting hub goes back up to the application.
+Nesting is a key namespace, not a second record: the nested hub's key is
+the prefix every member it lists is keyed under, so the referees member
+lives at `supporting:referees` in the journey's store — composed by the
+hub, never typed. Everything still lives in the one journey record — the
+governing document's `hidden` reads `store.data["applying_as"]`, written by
+the setup wizard at the root. A nested hub has no viewset of its own, so
+its page template comes from `configure()`; its row on the parent is its
+own rows' status; and only the root ends the journey: a POST to the
+supporting hub goes back up to the application.
 
 ### Beyond the session
 
-The store behind all of this is `SessionJourneyStore(context, journey)`, and
-the contract it satisfies is written down as a protocol. The day an
+The store behind all of this is `SessionCollectionStore(context, journey)`,
+and the contract it satisfies is written down as a protocol. The day an
 application outgrows the session, a store that keeps the same things in a
-table drops in by `journey_store_class` alone. The
+table drops in by `journey_store_class` on the root alone — every member
+beneath it gets the same one. The
 [Journey store reference](../reference/journey-store.md) has the contract
 and points at the worked durable store in the test app.
 

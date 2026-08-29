@@ -22,10 +22,10 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import resolve, reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from gandalf.collections import COMPLETE, INCOMPLETE, NOT_STARTED, CollectionView
+from gandalf.collections import COMPLETE, INCOMPLETE, NOT_STARTED, CollectionViewSet
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
-from tests.testapp.views import GuestCollectionView, GuestItemViewSet
+from tests.testapp.views import GuestCollectionViewSet, PartyHubViewSet
 from gandalf.testing import (
     seed_collection_item,
     stored_collection_items,
@@ -34,16 +34,18 @@ from gandalf.testing import (
 )
 
 
-PAGE = "/party-guests/"
+PAGE = "/party/guests/"
+#: The same collection mounted on its own, for tests that subclass its viewset.
+STANDALONE = "/standalone-guests/"
 ITEM = "11111111-1111-1111-1111-111111111111"
 
 
 def _door(item_id):
-    return reverse("party-guests-item", kwargs={"item": item_id})
+    return reverse("party-hub-guests-item", kwargs={"item": item_id})
 
 
 def _remove(item_id):
-    return reverse("party-guests-remove", kwargs={"item": item_id})
+    return reverse("party-hub-guests-remove", kwargs={"item": item_id})
 
 
 def _statuses(response):
@@ -93,7 +95,7 @@ def test_adding_an_item_lands_the_user_on_its_first_step(client):
     assertRedirects(
         response,
         reverse(
-            "party-guest-step",
+            "party-hub-guests-item-step",
             kwargs={
                 "item": item_id,
                 "run_id": stored_member_run(client, f"guests:{item_id}"),
@@ -288,7 +290,7 @@ def test_a_removed_items_own_wizard_url_is_refused(client):
     (item_id,) = stored_collection_items(client, "guests")
     run_id = stored_member_run(client, f"guests:{item_id}")
     step_url = reverse(
-        "party-guest-step",
+        "party-hub-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
     )
     client.post(_remove(item_id))
@@ -433,12 +435,13 @@ def test_a_task_list_reports_the_collections_own_status(client):
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 
-def test_the_hub_door_sends_a_collection_row_on_to_its_page(client):
-    """Rows never point there — they link straight at the page — but a typed
-    or stale door URL should land where the row would have."""
-    response = client.get(reverse("party-hub-member", kwargs={"member": "guests"}))
+def test_the_hub_door_for_a_collection_is_its_page(client):
+    """A collection is mounted at its own segment beneath the hub, so the
+    URL the hub's door would answer for it is the page itself."""
+    door = reverse("party-hub-member", kwargs={"member": "guests"})
 
-    assertRedirects(response, "/party-guests/")
+    assert door == PAGE
+    assert client.get(door).status_code == HTTPStatus.OK
 
 
 # --- the invariants ---------------------------------------------------------
@@ -454,7 +457,7 @@ def test_a_collection_door_hands_out_a_step_url_not_a_bare_run_url(client):
     response = client.get(_door(item_id))
 
     assert response["Location"] != reverse(
-        "party-guest-run", kwargs={"item": item_id, "run_id": run_id}
+        "party-hub-guests-item-run", kwargs={"item": item_id, "run_id": run_id}
     )
     assert response["Location"].endswith("/review/")
 
@@ -472,25 +475,20 @@ def test_an_item_parked_with_every_answer_valid_still_gets_a_step_url(client):
 
     run_id = stored_member_run(client, f"advancing-guests:{item_id}")
     assert response["Location"] != reverse(
-        "advancing-guest-run", kwargs={"item": item_id, "run_id": run_id}
+        "advancing-guests-item-run", kwargs={"item": item_id, "run_id": run_id}
     )
     assert response["Location"].endswith("/newsletter/")
 
 
-def test_the_collection_door_and_the_item_wizard_do_not_share_a_url():
-    """A wizard mounted under the collection's own prefix would publish its
-    start URL at the exact path of the door for that item, and whichever
-    `include()` came first would silently win."""
+def test_the_item_wizards_bare_url_is_the_collections_door():
+    """The item wizard is mounted beneath the door for its item, and its
+    start URL — the one that would complete a valid run on a GET — is the
+    door itself, so there is no bare run URL to publish."""
     item_id = "11111111-1111-1111-1111-111111111111"
 
-    assert _door(item_id) != reverse("party-guest", kwargs={"item": item_id})
-
-
-def test_the_hub_door_and_the_collection_page_do_not_share_a_url():
-    """`HubView` publishes `<slug:member>/`, which matches any single
-    segment — so a collection mounted beneath a hub would be swallowed by the
-    hub's own door for a member of that name."""
-    assert PAGE != reverse("party-hub-member", kwargs={"member": "guests"})
+    match = resolve(_door(item_id))
+    assert match.func.view_class is PartyHubViewSet.viewset_for("guests")
+    assert match.url_name == "party-hub-guests-item"
 
 
 def test_building_the_rows_never_walks_an_item(client, monkeypatch):
@@ -515,44 +513,34 @@ def test_building_the_rows_never_walks_an_item(client, monkeypatch):
 
 
 def test_a_collection_forwards_its_mount_prefix_into_every_url_it_builds(client):
-    page = "/org/acme/guests/"
+    page = "/org/acme/hub/org-guests/"
     _add(client, page)
     (item_id,) = stored_collection_items(client, "org-guests")
 
     response = client.get(page)
 
     (row,) = response.context["collection"].rows
-    assert row.url == f"/org/acme/guests/{item_id}/"
-    assert row.remove_url == f"/org/acme/guests/{item_id}/remove/"
+    assert row.url == f"{page}{item_id}/"
+    assert row.remove_url == f"{page}{item_id}/remove/"
 
 
 def test_an_item_wizard_carries_the_prefix_and_its_item_id_end_to_end(client):
-    page = "/org/acme/guests/"
+    page = "/org/acme/hub/org-guests/"
 
     step_url = _add(client, page)
 
     (item_id,) = stored_collection_items(client, "org-guests")
-    assert step_url.startswith(f"/org/acme/guest/{item_id}/")
+    assert step_url.startswith(f"{page}{item_id}/")
 
 
 def test_a_finished_item_returns_to_its_collection_not_to_its_own_item_url(client):
     """`get_hub_url()` drops the item segment: it is the wizard's own mount,
     and the collection's URL has no place for it."""
-    page = "/org/acme/guests/"
+    page = "/org/acme/hub/org-guests/"
 
     response = _complete(client, "Ada", page=page)
 
     assertRedirects(response, page)
-
-
-# --- misconfiguration -------------------------------------------------------
-
-
-def test_an_item_label_that_drifts_from_its_collections_is_rejected(client):
-    """A re-opened item would be refused at the door and could never be
-    changed — the hub's key drift check, one level down."""
-    with pytest.raises(ImproperlyConfigured, match="item label must match"):
-        client.get("/drifted-guests/")
 
 
 def test_a_seeded_item_with_no_run_reads_as_not_started(client):
@@ -582,7 +570,9 @@ def test_every_item_url_the_page_hands_out_is_one_of_its_own_routes(client):
 
     body = client.get(PAGE).content.decode()
 
-    assert not re.search(r'href="/party-guest/', body)
+    # A run URL is an item id followed by a run id.
+    uuid = "[0-9a-f-]{36}"
+    assert not re.search(rf'href="[^"]*/{uuid}/{uuid}/', body)
 
 
 # --- naming an item when nothing names it -----------------------------------
@@ -634,7 +624,7 @@ def test_a_listed_item_whose_run_the_storage_forgot_returns_to_the_page(client):
     (item_id,) = stored_collection_items(client, "guests")
     run_id = stored_member_run(client, f"guests:{item_id}")
     step_url = reverse(
-        "party-guest-step",
+        "party-hub-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
     )
     session = client.session
@@ -664,66 +654,30 @@ def _dispatch(rf, client, view, path=PAGE, method="get", data=None, **kwargs):
     return view.as_view()(request, **kwargs)
 
 
-def test_a_collection_with_no_key_is_misconfigured(rf, client):
-    class _Keyless(GuestCollectionView):
-        member_key = None
-
+def test_a_collection_with_no_key_is_misconfigured():
     with pytest.raises(ImproperlyConfigured, match="member_key"):
-        _dispatch(rf, client, _Keyless)
+        type("_Keyless", (GuestCollectionViewSet,), {"member_key": None})
 
 
-def test_a_collection_whose_item_wizard_names_another_collection_is_misconfigured(
-    rf, client
-):
-    class _Elsewhere(GuestItemViewSet):
-        collection_key = "gatecrashers"
+def test_a_collection_with_no_declaration_is_misconfigured(rf, client):
+    class _Undeclared(CollectionViewSet):
+        url_name = "standalone-guests"
+        member_key = "guests"
 
-    class _Mismatched(GuestCollectionView):
-        item_viewset = _Elsewhere
-
-    with pytest.raises(ImproperlyConfigured, match="must name the collection"):
-        _dispatch(rf, client, _Mismatched)
-
-
-def test_a_collection_with_no_item_wizard_is_misconfigured(rf, client):
-    class _Wizardless(GuestCollectionView):
-        item_viewset = None
-
-    with pytest.raises(ImproperlyConfigured, match="item_viewset"):
-        _dispatch(rf, client, _Wizardless)
+    with pytest.raises(ImproperlyConfigured, match="collection"):
+        _dispatch(rf, client, _Undeclared)
 
 
 def test_a_collection_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
-    class _Endless(GuestCollectionView):
+    class _Endless(GuestCollectionViewSet):
         hub_url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _dispatch(rf, client, _Endless, method="post", data={"add_another": "no"})
 
 
-def test_a_collection_without_a_url_name_cannot_reverse_its_own_pages(rf, client):
-    class _Nameless(GuestCollectionView):
-        url_name = None
-
-    with pytest.raises(ImproperlyConfigured, match="url_name"):
-        _dispatch(rf, client, _Nameless)
-
-
-def test_a_collection_without_a_url_name_cannot_reverse_an_items_links(rf, client):
-    class _Nameless(GuestCollectionView):
-        url_name = None
-
-        def get_page_url(self):
-            return PAGE
-
-    seed_collection_item(client, "guests", ITEM)
-
-    with pytest.raises(ImproperlyConfigured, match="url_name"):
-        _dispatch(rf, client, _Nameless)
-
-
 def test_a_collection_without_a_url_name_cannot_publish_urls():
-    class _Nameless(CollectionView):
+    class _Nameless(CollectionViewSet):
         url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
@@ -731,14 +685,16 @@ def test_a_collection_without_a_url_name_cannot_publish_urls():
 
 
 def test_a_collection_with_no_confirmation_page_is_misconfigured(rf, client):
-    class _Blunt(GuestCollectionView):
+    class _Blunt(GuestCollectionViewSet):
         remove_template_name = None
 
-    _add(client)
-    (item_id,) = stored_collection_items(client, "guests")
-    request = rf.get(f"{PAGE}{item_id}/remove/")
+    _add(client, STANDALONE)
+    (item_id,) = stored_collection_items(client, "standalone-guests")
+    request = rf.get(f"{STANDALONE}{item_id}/remove/")
     request.session = client.session
-    request.resolver_match = type("_Match", (), {"url_name": "party-guests-remove"})()
+    request.resolver_match = type(
+        "_Match", (), {"url_name": "standalone-guests-remove"}
+    )()
 
     with pytest.raises(ImproperlyConfigured, match="remove_template_name"):
         _Blunt.as_view()(request, item=item_id)
@@ -749,42 +705,43 @@ def test_an_item_wizard_that_cannot_name_its_items_says_so_at_completion(client)
     page = "/anonymous-guests/"
     response = _answer(client, _add(client, page), "Ada")
 
-    with pytest.raises(ImproperlyConfigured, match="item_title_step"):
+    with pytest.raises(ImproperlyConfigured, match="item_title"):
         client.post(response["Location"], {})
 
 
 def test_an_item_wizard_with_no_collection_key_is_misconfigured(rf, client):
-    class _Homeless(GuestItemViewSet):
+    class _Homeless(GuestCollectionViewSet.item_viewset):
         collection_key = None
 
-    request = rf.get(f"/party-guest/{ITEM}/")
+    request = rf.get(f"/standalone-guests/{ITEM}/")
     request.session = client.session
 
-    with pytest.raises(ImproperlyConfigured, match="collection_key"):
+    with pytest.raises(ImproperlyConfigured, match="collection"):
         _Homeless.as_view()(request, item=ITEM)
 
 
-def test_an_item_wizard_with_no_collection_url_is_misconfigured(rf, client):
-    class _Adrift(GuestItemViewSet):
-        hub_url_name = None
-
-    request = rf.get(f"/party-guest/{ITEM}/")
+def test_an_item_wizard_not_mounted_under_an_item_is_misconfigured(rf, client):
+    request = rf.get("/standalone-guests/")
     request.session = client.session
-    view = _Adrift()
-    view.setup(request, item=ITEM)
-
-    with pytest.raises(ImproperlyConfigured, match="hub_url_name"):
-        view.get_hub_url()
-
-
-def test_an_item_wizard_with_no_item_segment_is_misconfigured(rf, client):
-    request = rf.get("/party-guest/")
-    request.session = client.session
-    view = GuestItemViewSet()
-    view.setup(request)
 
     with pytest.raises(ImproperlyConfigured, match="item segment"):
-        view.get_item_id()
+        GuestCollectionViewSet.item_viewset.as_view()(request)
+
+
+def test_a_driver_can_address_one_item_of_a_collection(client):
+    """The generated item viewset is public, for a script or an agent that
+    adds an item without a browser."""
+    _add(client)
+    (item_id,) = stored_collection_items(client, "guests")
+    context = WizardContext(session=client.session)
+
+    driver = RunDriver.begin(
+        PartyHubViewSet.viewset_for("guests").item_viewset,
+        item=item_id,
+        context=context,
+    )
+
+    assert driver.bound_wizard.context.url_kwargs == {"item": item_id}
 
 
 # --- the registry's edges ---------------------------------------------------
@@ -796,7 +753,7 @@ def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, 
 
     from gandalf.storage import SessionCollectionStore
 
-    class _Fixed(GuestCollectionView):
+    class _Fixed(GuestCollectionViewSet):
         def new_item_id(self):
             return ITEM
 
@@ -807,7 +764,7 @@ def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, 
         _Fixed.as_view()(request)
 
     store = SessionCollectionStore(WizardContext.from_request(request), "default")
-    assert store.item_ids("guests") == [ITEM]
+    assert store.item_ids("standalone-guests") == [ITEM]
 
 
 def test_an_item_a_collection_lists_but_never_registered_is_named_by_position(
@@ -816,7 +773,7 @@ def test_an_item_a_collection_lists_but_never_registered_is_named_by_position(
     """The seam for a collection built from the application's own records
     rather than the registry: there is no cached title to read."""
 
-    class _FromElsewhere(GuestCollectionView):
+    class _FromElsewhere(GuestCollectionViewSet):
         def get_item_ids(self):
             return [ITEM]
 
@@ -828,7 +785,7 @@ def test_an_item_a_collection_lists_but_never_registered_is_named_by_position(
 
 
 def test_removing_an_item_that_was_never_registered_is_not_an_error(rf, client):
-    class _FromElsewhere(GuestCollectionView):
+    class _FromElsewhere(GuestCollectionViewSet):
         def get_item_ids(self):
             return [ITEM]
 
@@ -837,11 +794,11 @@ def test_removing_an_item_that_was_never_registered_is_not_an_error(rf, client):
         client,
         _FromElsewhere,
         method="post",
-        path=f"{PAGE}{ITEM}/remove/",
+        path=f"{STANDALONE}{ITEM}/remove/",
         item=ITEM,
     )
 
-    assert response["Location"] == PAGE
+    assert response["Location"] == STANDALONE
 
 
 def test_removing_an_item_whose_run_the_storage_forgot_is_not_an_error(client):
@@ -905,19 +862,22 @@ def test_a_driver_fills_one_item_of_a_collection():
     whichever door it was reached through.
     """
     context = WizardContext()
-    page = GuestCollectionView()
+    page = GuestCollectionViewSet()
     page.setup(context.http_request())
     page.add_item()
     item_id = page.get_item_ids()[-1]
 
     driver = RunDriver.begin(
-        GuestItemViewSet, item=item_id, context=context, may_finish=True
+        GuestCollectionViewSet.item_viewset,
+        item=item_id,
+        context=context,
+        may_finish=True,
     )
     driver.prefill({"guest": {"name": "Ada Lovelace"}})
     driver.submit({"confirmed": True}, step="review")
     driver.finish()
 
-    seen = GuestCollectionView()
+    seen = GuestCollectionViewSet()
     seen.setup(context.http_request())
     assert [str(row.title) for row in seen.get_member_rows()] == ["Ada Lovelace"]
 
@@ -927,8 +887,12 @@ def test_addressing_a_second_item_does_not_disturb_the_first():
     naming it must not hand the second run the first one's identity."""
     context = WizardContext()
 
-    first = RunDriver.begin(GuestItemViewSet, item="one", context=context)
-    second = RunDriver.begin(GuestItemViewSet, item="two", context=context)
+    first = RunDriver.begin(
+        GuestCollectionViewSet.item_viewset, item="one", context=context
+    )
+    second = RunDriver.begin(
+        GuestCollectionViewSet.item_viewset, item="two", context=context
+    )
 
     assert first.view.kwargs == {"item": "one"}
     assert second.view.kwargs == {"item": "two"}

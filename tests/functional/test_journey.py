@@ -18,7 +18,7 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertNotContains, assertRedirects
 
 from gandalf.context import WizardContext
-from gandalf.hubs import BLOCKED, COMPLETE, NOT_STARTED, Member
+from gandalf.hubs import BLOCKED, COMPLETE, NOT_STARTED
 from gandalf.storage import SessionJourneyStore
 from gandalf.testing import (
     seed_journey_complete,
@@ -46,10 +46,10 @@ def _start(client, applying_as="individual"):
 
 
 def _hub(journey):
-    return reverse("readme-apply-hub", kwargs={"journey": journey})
+    return reverse("readme-apply", kwargs={"journey": journey})
 
 
-def _door(journey, member, hub="readme-apply-hub"):
+def _door(journey, member, hub="readme-apply"):
     return reverse(f"{hub}-member", kwargs={"journey": journey, "member": member})
 
 
@@ -57,15 +57,15 @@ def _supporting(journey):
     return reverse("readme-apply-supporting", kwargs={"journey": journey})
 
 
-def _statuses(client, journey, hub="readme-apply-hub"):
+def _statuses(client, journey, hub="readme-apply"):
     response = client.get(reverse(hub, kwargs={"journey": journey}))
     return {row.key: row.status for row in response.context["hub"].rows}
 
 
-def _finish(client, journey, member, url_name, steps, hub="readme-apply-hub"):
+def _finish(client, journey, member, url_name, steps, hub="readme-apply"):
     """Enter a member from its hub and drive it to its end."""
     client.get(_door(journey, member, hub), follow=True)
-    key = member if hub == "readme-apply-hub" else f"supporting:{member}"
+    key = member if hub == "readme-apply" else f"supporting:{member}"
     run_id = stored_member_run(client, key, journey=journey)
     response = None
     for step, data in steps:
@@ -108,7 +108,7 @@ def _finish_referees(client, journey):
         client,
         journey,
         "referees",
-        "readme-apply-referees",
+        "readme-apply-supporting-referees",
         [("referee", {"referee_name": "Grace", "referee_email": "grace@example.com"})],
         hub="readme-apply-supporting",
     )
@@ -119,7 +119,7 @@ def _finish_documents(client, journey):
         client,
         journey,
         "documents",
-        "readme-apply-documents",
+        "readme-apply-supporting-documents",
         [("document", {"document": SimpleUploadedFile("constitution.pdf", b"bytes")})],
         hub="readme-apply-supporting",
     )
@@ -238,7 +238,7 @@ def test_a_locked_member_unlocks_when_the_one_it_waits_on_finishes(client):
     assert nested["referees"] == NOT_STARTED
     response = client.get(_door(journey, "referees", "readme-apply-supporting"))
     assert response.status_code == HTTPStatus.FOUND
-    assert f"/readme/apply-referees/{journey}/" in response["Location"]
+    assert f"/readme/apply/{journey}/supporting/referees/" in response["Location"]
 
 
 # --- a hub under the journey's hub -------------------------------------------
@@ -269,7 +269,9 @@ def test_a_nested_hubs_row_and_door_both_land_on_its_page(client):
     rows = {row.key: row for row in response.context["hub"].rows}
 
     assert rows["supporting"].url == _supporting(journey)
-    assertRedirects(client.get(_door(journey, "supporting")), _supporting(journey))
+    # A nested hub's segment under its parent *is* its page.
+    assert _door(journey, "supporting") == _supporting(journey)
+    assert client.get(_door(journey, "supporting")).status_code == HTTPStatus.OK
 
 
 def test_a_nested_hubs_submit_returns_to_the_parent_and_tombstones_nothing(client):
@@ -380,16 +382,25 @@ def test_a_submitted_journey_refuses_every_way_back_in(client):
     assertContains(client.get(_door(journey, "contact")), "Application submitted")
     budget = reverse("readme-apply-budget", kwargs={"journey": journey})
     assertRedirects(client.get(budget), _hub(journey), target_status_code=HTTPStatus.OK)
+    # A member's bare URL is its door, so it answers as the hub does; a
+    # bookmarked run URL inside the member still sends the user back.
     response = client.get(reverse("readme-apply-contact", kwargs={"journey": journey}))
+    assertContains(response, "Application submitted")
+    run = "11111111-1111-1111-1111-111111111111"
+    response = client.get(
+        reverse("readme-apply-contact-run", kwargs={"journey": journey, "run_id": run})
+    )
     assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
-    # A nested hub sends the user up, and its members send them to it.
+    # A nested hub sends the user up, and so do its members' doors.
     assertRedirects(
         client.get(_supporting(journey)),
         _hub(journey),
         target_status_code=HTTPStatus.OK,
     )
-    response = client.get(reverse("readme-apply-referees", kwargs={"journey": journey}))
-    assertRedirects(response, _supporting(journey), target_status_code=HTTPStatus.FOUND)
+    response = client.get(
+        reverse("readme-apply-supporting-referees", kwargs={"journey": journey})
+    )
+    assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
 
 
 def test_submitting_one_journey_leaves_another_untouched(client):
@@ -429,8 +440,8 @@ def _submit_hub(journey):
 
 def _submit_everything(client, journey):
     for member, url_name, data in [
-        ("first", "submit-first", {"name": "Ada"}),
-        ("second", "submit-second", {"name": "Grace"}),
+        ("first", "submit-hub-first", {"name": "Ada"}),
+        ("second", "submit-hub-second", {"name": "Grace"}),
     ]:
         client.get(
             reverse("submit-hub-member", kwargs={"journey": journey, "member": member}),
@@ -499,50 +510,6 @@ def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         client.post(reverse("readme-hub"))
-
-
-def test_a_nested_hub_that_declares_no_key_is_told_so_not_that_it_drifted(rf, client):
-    class _Unkeyed(ch14_journey.SupportingHubView):
-        member_key = None
-
-    class _Parent(ch14_journey.GrantApplicationHubView):
-        members = [Member("supporting", _Unkeyed)]
-
-    request = rf.get("/readme/apply/app-1/")
-    request.session = client.session
-
-    with pytest.raises(ImproperlyConfigured, match="leaves member_key unset"):
-        _Parent.as_view()(request, journey="app-1")
-
-
-def test_a_nested_hub_with_no_url_name_is_misconfigured(rf, client):
-    """A hub listed as a member is reached by its page, so it has to have one."""
-
-    class _Unmounted(ch14_journey.SupportingHubView):
-        url_name = None
-
-    class _Parent(ch14_journey.GrantApplicationHubView):
-        members = [Member("supporting", _Unmounted)]
-
-    request = rf.get("/readme/apply/app-1/")
-    request.session = client.session
-
-    with pytest.raises(ImproperlyConfigured, match="Unmounted: supporting"):
-        _Parent.as_view()(request, journey="app-1")
-
-
-def test_a_member_on_another_journey_than_its_hub_is_misconfigured(rf, client):
-    class _Astray(ch14_journey.ContactMemberViewSet):
-        journey_url_kwarg = "application"
-
-    class _Mismatched(ch14_journey.GrantApplicationHubView):
-        members = [Member("contact", _Astray)]
-
-    request = rf.get("/readme/apply/app-1/")
-    request.session = client.session
-
-    with pytest.raises(ImproperlyConfigured, match="Astray"):
-        _Mismatched.as_view()(request, journey="app-1")
 
 
 # --- arranging a journey from a test ----------------------------------------
