@@ -93,7 +93,12 @@ def _view(tasklist, **attributes):
             "template_name": "testapp/hub.html",
             "section_template_name": "testapp/linear_wizard.html",
             "url_name": "readme-hub",
-            "tasklist": tasklist,
+            # Each throwaway page gets its own list: one list, one page.
+            "tasklist": (
+                tasklist
+                if tasklist is None or tasklist.viewset is None
+                else type(tasklist.__name__, (tasklist,), {})
+            ),
             **attributes,
         },
     )
@@ -325,14 +330,11 @@ def test_a_generated_class_is_named_for_its_key():
 
 
 def test_mounting_a_list_registers_the_way_into_it():
-    """The most recent root to mount a list is its way in: a subclass that
-    re-mounts it (swapping stores, say) takes over."""
+    """The first root to mount a list is its way in."""
     solo = _list(contact=Section(CONTACT))
     first = _view(solo)
-    assert solo.viewset is first
 
-    second = _view(solo, url_name="readme-apply")
-    assert solo.viewset is second
+    assert solo.viewset is first
 
 
 def test_a_list_begins_a_journey_through_the_page_that_mounts_it(rf):
@@ -1240,7 +1242,7 @@ def test_a_page_without_a_url_name_is_misconfigured(page):
     with pytest.raises(ImproperlyConfigured, match="url_name"):
 
         class _Nameless(TaskListViewSet):
-            tasklist = _Contact
+            tasklist = type("_Contact", (_Contact,), {})
 
         _Nameless.urls()
 
@@ -1800,3 +1802,39 @@ def test_a_link_replaced_keeps_its_target():
 
     assert link.replace(title="Pay now").url_name == "readme-hub"
     assert link.bound("pay").status is link.status
+
+
+def test_a_list_mounted_twice_by_unrelated_pages_is_refused():
+    class _Twice(TaskList):
+        only = Section(CONTACT)
+
+    class _First(TaskListViewSet):
+        url_name = "readme-hub"
+        template_name = "testapp/hub.html"
+        tasklist = _Twice
+
+    with pytest.raises(ImproperlyConfigured, match="already mounted by _First"):
+
+        class _Second(TaskListViewSet):
+            url_name = "readme-apply"
+            template_name = "testapp/hub.html"
+            tasklist = _Twice
+
+
+def test_a_subclass_of_the_mounting_page_is_the_same_page():
+    """A store-swapping refinement, a test's subclass: the same page, so the
+    first mount stands."""
+
+    class _Once(TaskList):
+        only = Section(CONTACT)
+
+    class _Page(TaskListViewSet):
+        url_name = "readme-hub"
+        template_name = "testapp/hub.html"
+        tasklist = _Once
+
+    class _Refined(_Page):
+        url_name = "readme-apply"
+
+    assert _Once.viewset is _Page
+    assert issubclass(_Refined, _Page)

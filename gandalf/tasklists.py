@@ -403,6 +403,21 @@ class TaskList:
         cls.viewset = None
 
     @classmethod
+    def mount(cls, viewset: type[TaskListViewSet]) -> None:
+        """Record the viewset that mounts this list — the first one. A
+        subclass of it (one that swaps a store, a test's refinement) is the
+        same page and changes nothing; a second, unrelated viewset would
+        leave `begin()` with two pages to choose from, so it is refused."""
+        if cls.viewset is None:
+            cls.viewset = viewset
+        elif not issubclass(viewset, cls.viewset):
+            raise ImproperlyConfigured(
+                f"{cls.__name__} is already mounted by {cls.viewset.__name__}; "
+                f"{viewset.__name__} cannot mount it too. One list, one page — "
+                "declare a second TaskList for a second page."
+            )
+
+    @classmethod
     def mounted(cls) -> type[TaskListViewSet]:
         if cls.viewset is None:
             raise ImproperlyConfigured(
@@ -755,7 +770,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         # A root viewset is the list's way into a journey; a group's page
         # (built below, with a key) is reached only through its root.
         if cls.tasklist is not None and cls.key is None:
-            cls.tasklist.viewset = cls
+            cls.tasklist.mount(cls)
 
     @classmethod
     def declared_entries(cls) -> dict[str, Entry] | None:

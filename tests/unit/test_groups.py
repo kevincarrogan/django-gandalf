@@ -160,7 +160,7 @@ def test_a_group_without_a_page_of_its_own_renders_with_its_roots():
     class _RootViewSet(TaskListViewSet):
         url_name = "readme-apply"
         template_name = "testapp/hub.html"
-        tasklist = _Root
+        tasklist = type("_Root", (_Root,), {})
 
     assert _RootViewSet.viewset_for("inner").template_name == "testapp/hub.html"
 
