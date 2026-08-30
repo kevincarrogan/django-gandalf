@@ -6,8 +6,8 @@ design.
 
 **No collection link is ever a bare run URL.** A run whose every stored answer
 validates completes on a GET, so a row pointing at one would fire `done()` on a
-click. Inherited from the hub, and asserted here again because a collection
-reaches states a hub cannot.
+click. Inherited from the task list, and asserted here again because an
+add-another list reaches states a plain section cannot.
 
 **Removing from the middle renumbers nothing.** Identity is opaque, so the
 survivors keep their ids and their URLs, and a link the user already has still
@@ -50,11 +50,11 @@ ITEM = "11111111-1111-1111-1111-111111111111"
 
 
 def _door(item_id):
-    return reverse("party-hub-guests-item", kwargs={"item": item_id})
+    return reverse("party-task-list-guests-item", kwargs={"item": item_id})
 
 
 def _remove(item_id):
-    return reverse("party-hub-guests-remove", kwargs={"item": item_id})
+    return reverse("party-task-list-guests-remove", kwargs={"item": item_id})
 
 
 def _statuses(response):
@@ -104,7 +104,7 @@ def test_adding_an_item_lands_the_user_on_its_first_step(client):
     assertRedirects(
         response,
         reverse(
-            "party-hub-guests-item-step",
+            "party-task-list-guests-item-step",
             kwargs={
                 "item": item_id,
                 "run_id": stored_section_run(client, f"guests:{item_id}"),
@@ -247,7 +247,7 @@ def test_removing_an_item_asks_first(client):
     response = client.get(_remove(item_id))
 
     assert response.status_code == HTTPStatus.OK
-    assertTemplateUsed(response, "testapp/collection_remove.html")
+    assertTemplateUsed(response, "testapp/items_remove.html")
     assertContains(response, "Are you sure you want to remove Ada?")
     assert stored_items(client, "guests") == [item_id]
 
@@ -299,7 +299,7 @@ def test_a_removed_items_own_wizard_url_is_refused(client):
     (item_id,) = stored_items(client, "guests")
     run_id = stored_section_run(client, f"guests:{item_id}")
     step_url = reverse(
-        "party-hub-guests-item-step",
+        "party-task-list-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
     )
     client.post(_remove(item_id))
@@ -373,7 +373,7 @@ def test_declaring_no_more_over_a_half_finished_item_is_still_incomplete(client)
     response = client.post(PAGE, {"add_another": "no"})
 
     # The answer stands, but Continue is a submit and an incomplete one is
-    # refused: back to the page, not up to the hub.
+    # refused: back to the page, not up to the page.
     assertRedirects(response, PAGE)
     assert client.get(PAGE).context["items"].declared_done is True
     assert client.get(PAGE).context["items"].status == INCOMPLETE
@@ -425,13 +425,15 @@ def test_a_list_that_needs_an_item_completes_once_it_has_one(client):
 
 
 def test_a_task_list_links_straight_at_a_list_page(client):
-    """A collection page is not a wizard, so the row links past the hub's own
+    """A collection page is not a wizard, so the row links past the page's own
     door — there is no run for the door to walk."""
     response = client.get("/party/")
 
     rows = {row.key: row for row in response.context["task_list"].rows}
     assert rows["guests"].url == PAGE
-    assert rows["venue"].url == reverse("party-hub-entry", kwargs={"entry": "venue"})
+    assert rows["venue"].url == reverse(
+        "party-task-list-entry", kwargs={"entry": "venue"}
+    )
 
 
 def test_a_task_list_reports_the_lists_own_status(client):
@@ -444,10 +446,10 @@ def test_a_task_list_reports_the_lists_own_status(client):
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 
-def test_the_hub_door_for_a_list_is_its_page(client):
-    """A collection is mounted at its own segment beneath the hub, so the
-    URL the hub's door would answer for it is the page itself."""
-    door = reverse("party-hub-entry", kwargs={"entry": "guests"})
+def test_the_page_door_for_a_list_is_its_page(client):
+    """A collection is mounted at its own segment beneath the page, so the
+    URL the page's door would answer for it is the page itself."""
+    door = reverse("party-task-list-entry", kwargs={"entry": "guests"})
 
     assert door == PAGE
     assert client.get(door).status_code == HTTPStatus.OK
@@ -466,7 +468,7 @@ def test_a_list_door_hands_out_a_step_url_not_a_bare_run_url(client):
     response = client.get(_door(item_id))
 
     assert response["Location"] != reverse(
-        "party-hub-guests-item-run", kwargs={"item": item_id, "run_id": run_id}
+        "party-task-list-guests-item-run", kwargs={"item": item_id, "run_id": run_id}
     )
     assert response["Location"].endswith("/review/")
 
@@ -497,7 +499,7 @@ def test_the_item_wizards_bare_url_is_the_lists_door():
 
     match = resolve(_door(item_id))
     assert match.func.view_class is PartyViewSet.viewset_for("guests")
-    assert match.url_name == "party-hub-guests-item"
+    assert match.url_name == "party-task-list-guests-item"
 
 
 def test_building_the_rows_never_walks_an_item(client, monkeypatch):
@@ -522,7 +524,7 @@ def test_building_the_rows_never_walks_an_item(client, monkeypatch):
 
 
 def test_a_list_forwards_its_mount_prefix_into_every_url_it_builds(client):
-    page = "/org/acme/hub/org_guests/"
+    page = "/org/acme/task-list/org_guests/"
     _add(client, page)
     (item_id,) = stored_items(client, "org_guests")
 
@@ -534,7 +536,7 @@ def test_a_list_forwards_its_mount_prefix_into_every_url_it_builds(client):
 
 
 def test_an_item_wizard_carries_the_prefix_and_its_item_id_end_to_end(client):
-    page = "/org/acme/hub/org_guests/"
+    page = "/org/acme/task-list/org_guests/"
 
     step_url = _add(client, page)
 
@@ -545,7 +547,7 @@ def test_an_item_wizard_carries_the_prefix_and_its_item_id_end_to_end(client):
 def test_a_finished_item_returns_to_its_list_not_to_its_own_item_url(client):
     """`get_hub_url()` drops the item segment: it is the wizard's own mount,
     and the collection's URL has no place for it."""
-    page = "/org/acme/hub/org_guests/"
+    page = "/org/acme/task-list/org_guests/"
 
     response = _complete(client, "Ada", page=page)
 
@@ -631,7 +633,7 @@ def test_a_listed_item_whose_run_the_storage_forgot_returns_to_the_page(client):
     (item_id,) = stored_items(client, "guests")
     run_id = stored_section_run(client, f"guests:{item_id}")
     step_url = reverse(
-        "party-hub-guests-item-step",
+        "party-task-list-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
     )
     session = client.session
@@ -675,7 +677,7 @@ def test_a_list_with_no_declaration_is_misconfigured(rf, client):
         _dispatch(rf, client, _Undeclared)
 
 
-def test_a_list_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
+def test_a_list_listed_by_no_page_is_a_root_and_needs_a_journey_done(rf, client):
     class _Endless(GuestsViewSet):
         task_list_url_name = None
 
@@ -761,8 +763,7 @@ def test_an_add_another_base_that_names_its_own_pages_keeps_them():
 
     assert _Party.viewset_for("guests").template_name == "testapp/task_list.html"
     assert (
-        _Party.viewset_for("guests").remove_template_name
-        == "testapp/collection_remove.html"
+        _Party.viewset_for("guests").remove_template_name == "testapp/items_remove.html"
     )
 
 

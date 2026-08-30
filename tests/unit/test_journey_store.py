@@ -1,10 +1,10 @@
 """Unit coverage for `SessionJourneyStore` — one journey's bookkeeping.
 
-Two mappings per member, because they answer different questions and outlive
-each other: a run id says where an unfinished member can be picked up and is
-forgotten the moment it finishes; a stash payload *is* the member's
-completion, and a hub reads it with no run involved at all. Then what the
-journey itself keeps: the facts its members decided, and its own completion.
+Two mappings per section, because they answer different questions and outlive
+each other: a run id says where an unfinished section can be picked up and is
+forgotten the moment it finishes; a stash payload *is* the section's
+completion, and a page reads it with no run involved at all. Then what the
+journey itself keeps: the facts its sections decided, and its own completion.
 Everything sits under the journey's key, so two journeys in one session never
 see each other.
 """
@@ -48,7 +48,7 @@ def _seeded(record, journey="default"):
 # --- the run registry ------------------------------------------------------
 
 
-def test_member_store_remembers_the_run_a_member_is_answered_in():
+def test_section_store_remembers_the_run_a_section_is_answered_in():
     context = _Context()
     store = SessionJourneyStore(context, "default")
 
@@ -61,13 +61,13 @@ def test_member_store_remembers_the_run_a_member_is_answered_in():
     assert context.session.modified is True
 
 
-def test_member_store_has_no_run_for_a_member_never_entered():
+def test_section_store_has_no_run_for_a_section_never_entered():
     store = SessionJourneyStore(_Context(), "default")
 
     assert store.get_run("contact") is None
 
 
-def test_member_store_set_run_replaces_the_recorded_run():
+def test_section_store_set_run_replaces_the_recorded_run():
     store = SessionJourneyStore(_seeded({"runs": {"c": "run-1"}}), "default")
 
     store.set_run("c", "run-2")
@@ -75,7 +75,7 @@ def test_member_store_set_run_replaces_the_recorded_run():
     assert store.get_run("c") == "run-2"
 
 
-def test_member_store_clear_run_forgets_an_unknown_member_without_error():
+def test_section_store_clear_run_forgets_an_unknown_section_without_error():
     """Idempotent, like `delete_run`: callers need not check first."""
     context = _seeded({"runs": {"contact": "run-1"}})
     store = SessionJourneyStore(context, "default")
@@ -90,7 +90,7 @@ def test_member_store_clear_run_forgets_an_unknown_member_without_error():
 # --- the completion record -------------------------------------------------
 
 
-def test_member_store_keeps_a_finished_members_stash():
+def test_section_store_keeps_a_finished_sections_stash():
     context = _Context()
     store = SessionJourneyStore(context, "default")
 
@@ -100,8 +100,8 @@ def test_member_store_keeps_a_finished_members_stash():
     assert store.has_stash("contact") is True
 
 
-def test_member_store_has_stash_answers_without_raising():
-    """What a hub row asks — the raising `get_stash` is for the entry path."""
+def test_section_store_has_stash_answers_without_raising():
+    """What a page row asks — the raising `get_stash` is for the entry path."""
     store = SessionJourneyStore(_Context(), "default")
 
     assert store.has_stash("contact") is False
@@ -109,7 +109,7 @@ def test_member_store_has_stash_answers_without_raising():
         store.get_stash("contact")
 
 
-def test_member_store_delete_stash_forgets_an_unknown_key_without_error():
+def test_section_store_delete_stash_forgets_an_unknown_key_without_error():
     store = SessionJourneyStore(_seeded({"stashes": {"contact": _PAYLOAD}}), "default")
 
     store.delete_stash("contact")
@@ -118,7 +118,7 @@ def test_member_store_delete_stash_forgets_an_unknown_key_without_error():
     assert store.has_stash("contact") is False
 
 
-def test_member_store_keys_are_the_members_holding_a_stash():
+def test_section_store_keys_are_the_sections_holding_a_stash():
     store = SessionJourneyStore(_Context(), "default")
     store.put_stash("contact", _PAYLOAD)
     store.put_stash("address", _PAYLOAD)
@@ -145,8 +145,8 @@ def test_a_journeys_stashes_are_a_stash_store_kept_in_its_record():
 
 
 def test_a_run_and_a_stash_under_one_key_are_independent():
-    """Re-opening a completed member gives it a live run again, and the
-    stash it was re-opened from stays put until the member completes anew."""
+    """Re-opening a completed section gives it a live run again, and the
+    stash it was re-opened from stays put until the section completes anew."""
     store = SessionJourneyStore(_Context(), "default")
     store.put_stash("contact", _PAYLOAD)
 
@@ -176,7 +176,7 @@ def test_reading_a_journey_never_written_does_not_dirty_the_session():
 
 
 def test_journeys_keep_their_own_bookkeeping():
-    """Two applications in two tabs are two records: a member key means the
+    """Two applications in two tabs are two records: a section key means the
     same thing in each and nothing leaks between them."""
     context = _Context()
     first = SessionJourneyStore(context, "app-1")
@@ -204,7 +204,7 @@ def test_a_journeys_identity_is_a_string_whatever_it_was_given():
     assert SessionJourneyStore(context, str(journey)).get_run("contact") == "run-1"
 
 
-# --- what the members decided ---------------------------------------------
+# --- what the sections decided ---------------------------------------------
 
 
 def test_journey_data_is_written_through_to_the_session():
@@ -229,15 +229,15 @@ def test_journey_data_is_read_back_by_a_fresh_handle():
     assert SessionJourneyStore(context, "default").data["a"] == 1
 
 
-def test_a_members_own_data_cannot_tread_on_the_journeys():
+def test_a_sections_own_data_cannot_tread_on_the_journeys():
     store = SessionJourneyStore(_Context(), "default")
 
     store.data["status"] = "journey"
-    store.data.for_member("employment")["status"] = "member"
+    store.data.for_member("employment")["status"] = "section"
     store.data.for_member("contact")["status"] = "other"
 
     assert store.data["status"] == "journey"
-    assert store.data.for_member("employment")["status"] == "member"
+    assert store.data.for_member("employment")["status"] == "section"
     assert store.data.for_member("contact")["status"] == "other"
 
 
@@ -268,7 +268,7 @@ def test_journey_data_hands_back_a_copy():
 # --- the journey's own completion ------------------------------------------
 
 
-def test_completing_a_journey_discards_its_members_and_keeps_its_data():
+def test_completing_a_journey_discards_its_sections_and_keeps_its_data():
     """The counterpart of `complete_run`: the answers go, what they decided
     stays, and the tombstone makes a revisit answerable."""
     context = _Context()

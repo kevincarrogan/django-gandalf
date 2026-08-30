@@ -13,7 +13,7 @@ from .readme import (
     ch09_uploads,
     ch10_records,
     ch11_stash,
-    ch12_hub,
+    ch12_task_list,
     ch13_budget,
     ch14_gated,
     ch15_journey,
@@ -70,7 +70,7 @@ urlpatterns = [
     ),
     # A task list owns every URL beneath it: its page, a door per entry, and
     # the entries themselves.
-    path("readme/hub/", include(ch12_hub.GrantApplicationViewSet.urls())),
+    path("readme/task-list/", include(ch12_task_list.GrantApplicationViewSet.urls())),
     path("readme/project/", include(ch13_budget.ProjectViewSet.urls())),
     path("readme/gated/", include(ch14_gated.GatedViewSet.urls())),
     # A journey: the setup wizard mints an id, and the whole application is
@@ -303,12 +303,12 @@ urlpatterns = [
         "escape-park-file-wizard/",
         include(views.EscapeParkFileWizardViewSet.urls()),
     ),
-    path("scenario-hub/", include(views.ScenarioViewSet.urls())),
-    path("durable-hub/", include(views.DurableViewSet.urls())),
-    path("counting-hub/", include(views.CountingViewSet.urls())),
+    path("scenario-task-list/", include(views.ScenarioViewSet.urls())),
+    path("durable-task-list/", include(views.DurableViewSet.urls())),
+    path("counting-task-list/", include(views.CountingViewSet.urls())),
     # A hub under an org prefix: the slug reaches every URL beneath it.
-    path("org/<slug:org>/hub/", include(views.OrgViewSet.urls())),
-    path("gated-hub/", include(views.GatedViewSet.urls())),
+    path("org/<slug:org>/task-list/", include(views.OrgViewSet.urls())),
+    path("gated-task-list/", include(views.GatedViewSet.urls())),
     # A hub under a journey segment, its members beneath it under the same.
     path("submit/<slug:journey>/", include(views.SubmitViewSet.urls())),
     path("party/", include(views.PartyViewSet.urls())),

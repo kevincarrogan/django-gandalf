@@ -144,17 +144,17 @@ class SessionStorage:
 
 class SessionStashStore:
     """Keyed stash payloads in the session — where a journey keeps its
-    members' finished answers, and the shipped home for a stash a caller
+    sections' finished answers, and the shipped home for a stash a caller
     keeps by hand.
 
     A stash is caller-owned — `Run.stash()` hands back a payload and
     the application decides where it lives. Built with nothing but a context,
     this store keeps payloads under its own session key, server-side so they
     cannot be tampered with in transit: the arrangement for one wizard that
-    wants to be re-openable and has no hub above it.
+    wants to be re-openable and has no task list above it.
 
     Built with a `home`, it keeps them wherever it is told. `SessionJourneyStore`
-    hands it the stash mapping inside a journey's record, so a hub's stashes
+    hands it the stash mapping inside a journey's record, so a task list's stashes
     are this class too — scoped to the journey, torn down with it — and the
     two arrangements share one implementation and one `StashNotFound`.
 
@@ -201,7 +201,7 @@ class SessionStashStore:
 
     def has(self, key: str) -> bool:
         """Whether a stash is held under `key` — answered without an
-        exception to catch, which is what a hub row asks."""
+        exception to catch, which is what a task list row asks."""
         return key in self._read()
 
     def pop(self, key: str) -> Stash:
@@ -229,26 +229,26 @@ MEMBER_BUCKET = "members"
 
 
 class JourneyData(MetadataBag):
-    """A journey's record of what its members decided — the facts a hub and
+    """A journey's record of what its sections decided — the facts a task list and
     its doors read without walking anything.
 
-    A member's answers live in its stash, and a stash's state is positional
+    A section's answers live in its stash, and a stash's state is positional
     against a tree whose shape may depend on a branch predicate nobody has
-    evaluated — so no hub, and no other member, can read an answer out of
+    evaluated — so no task list, and no other section, can read an answer out of
     one without paying a walk. This is where the *decided* version goes:
     `run_done()` reads its own answers, once, inside the window where
     the run is still readable, and writes what the rest of the journey needs
     to know. `blocked()` and `hidden()` read it back for free.
 
-        # in a member's run_done()
+        # in a section's run_done()
         store.data["employment_status"] = step.form.cleaned_data["status"]
 
-        # in another member's blocked()
+        # in another section's blocked()
         return store.data.get("employment_status") != "employed"
 
     Two buckets, as a run's metadata has: the journey's own keys, and one
     sub-bag per member under `for_member(key)`, so a member can keep its
-    own notes without treading on the journey or on another member. The
+    own notes without treading on the journey or on another section. The
     mapping itself is `MetadataBag`'s — JSON-safe values, deep-copied reads,
     one write per assignment, `update()` for several at once.
 
@@ -266,30 +266,30 @@ class JourneyData(MetadataBag):
         super().__init__(read, write, path)
 
     def for_member(self, key: str) -> JourneyData:
-        """This journey's data for the member `key` names. Addressed from
+        """This journey's data for the section `key` names. Addressed from
         the root whichever bag it is called on."""
         return type(self)(self._read, self._write_envelope, (MEMBER_BUCKET, key))
 
 
 class SessionJourneyStore:
     """Session-backed home for one journey's bookkeeping: which run each
-    member is currently being answered in, the stash a finished one left
-    behind, and what the members decided between them.
+    section is currently being answered in, the stash a finished one left
+    behind, and what the sections decided between them.
 
-    A *journey* is the whole thing the members add up to — an application,
+    A *journey* is the whole thing the sections add up to — an application,
     a profile, a claim — and the store is scoped to one. Every mapping here
     sits under the journey's record, so two applications in two tabs are two
-    records in one session, and a member key means the same thing in each.
-    The journey's identity is the caller's: a hub reads it off a URL kwarg or
+    records in one session, and a section key means the same thing in each.
+    The journey's identity is the caller's: a task list reads it off a URL kwarg or
     declares one, and hands it here.
 
-    Two mappings for a member, because they answer different questions and
-    outlive each other. A run id says where an unfinished member can be
-    picked up, and is forgotten the moment the member finishes. A payload is
-    `Run.stash()` output and *is* the member's completion — a hub
-    reads it and needs no run at all, which is what lets a completed member
+    Two mappings for a section, because they answer different questions and
+    outlive each other. A run id says where an unfinished section can be
+    picked up, and is forgotten the moment the section finishes. A payload is
+    `Run.stash()` output and *is* the section's completion — a task list
+    reads it and needs no run at all, which is what lets a completed section
     survive its run being pruned by `max_completed_runs`. The payload half is
-    a `SessionStashStore` pointed at the journey's record, so a hub's stashes
+    a `SessionStashStore` pointed at the journey's record, so a task list's stashes
     and a hand-kept one are the same thing in two homes.
 
     Then `data`, the journey's decided facts (see `JourneyData`), and the
@@ -353,19 +353,19 @@ class SessionJourneyStore:
     # --- the run registry --------------------------------------------------
 
     def get_run(self, key: str) -> str | None:
-        """The run this member is being answered in, or None when it is not
+        """The run this section is being answered in, or None when it is not
         being answered at all."""
         return cast("str | None", self._read().get("runs", {}).get(key))
 
     def set_run(self, key: str, run_id: str) -> None:
-        """Record `run_id` as where this member is answered, replacing any
+        """Record `run_id` as where this section is answered, replacing any
         run already recorded for it."""
         self._mapping("runs")[key] = str(run_id)
         self.context.session_changed()
 
     def clear_run(self, key: str) -> None:
-        """Forget where this member was being answered. Idempotent: clearing
-        a member with no run is not an error, so callers need not check
+        """Forget where this section was being answered. Idempotent: clearing
+        a section with no run is not an error, so callers need not check
         first."""
         self._read().get("runs", {}).pop(key, None)
         self.context.session_changed()
@@ -373,33 +373,33 @@ class SessionJourneyStore:
     # --- the completion record ---------------------------------------------
 
     def get_stash(self, key: str) -> Stash:
-        """The finished member's stash, raising `StashNotFound` without
+        """The finished section's stash, raising `StashNotFound` without
         one."""
         return self.stashes.get(key)
 
     def has_stash(self, key: str) -> bool:
-        """Whether this member has finished — what a hub row asks, answered
+        """Whether this section has finished — what a task list row asks, answered
         without an exception to catch."""
         return self.stashes.has(key)
 
     def put_stash(self, key: str, payload: Stash) -> None:
-        """Record this member as finished, replacing any earlier answers."""
+        """Record this section as finished, replacing any earlier answers."""
         self.stashes.put(key, payload)
 
     def delete_stash(self, key: str) -> None:
-        """Forget that this member ever finished. Idempotent."""
+        """Forget that this section ever finished. Idempotent."""
         self.stashes.delete(key)
 
     def keys(self) -> list[str]:
-        """The members holding a stash, in insertion order.
+        """The sections holding a stash, in insertion order.
 
         Note that a collection's items stash under composed keys of their own
-        (`"guests:<id>"`), so a hub sharing its store with one will see them
-        here alongside the members it declared.
+        (`"guests:<id>"`), so a task list sharing its store with one will see them
+        here alongside the sections it declared.
         """
         return self.stashes.keys()
 
-    # --- what the members decided -----------------------------------------
+    # --- what the sections decided -----------------------------------------
 
     @property
     def data(self) -> JourneyData:
@@ -454,7 +454,7 @@ class SessionJourneyStore:
 class SessionCollectionStore(SessionJourneyStore):
     """A collection's registry, on top of a journey's bookkeeping.
 
-    A hub's members are declared, so the store never has to enumerate them. A
+    A task list's sections are declared, so the store never has to enumerate them. A
     collection's items are not: the user grows them, and there is no reading of
     runs or stashes that can hand back the list — `keys()` is the stash key
     space, which holds only the items that have *finished*, in the order they
@@ -469,8 +469,8 @@ class SessionCollectionStore(SessionJourneyStore):
     cannot orphan one.
 
     Nothing here touches the methods above it. An item's run and stash live
-    under an ordinary member key the *view* composes — the store never
-    learns the scheme — so a hub store and a collection store share one key
+    under an ordinary section key the *view* composes — the store never
+    learns the scheme — so a task list store and a collection store share one key
     space and one contract.
     """
 
@@ -502,7 +502,7 @@ class SessionCollectionStore(SessionJourneyStore):
 
     def add_item(self, key: str, item_id: str) -> None:
         """Append an item to the collection. Adding an id already listed is a
-        no-op rather than a duplicate, so a hub's uniqueness rule holds by
+        no-op rather than a duplicate, so a task list's uniqueness rule holds by
         construction."""
         if self.has_item(key, item_id):
             return

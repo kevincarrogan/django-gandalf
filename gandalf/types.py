@@ -70,7 +70,7 @@ Stash: TypeAlias = dict[str, Any]
 #: A step lookup: context keys matched against a step's declared context.
 Context: TypeAlias = dict[str, Any]
 
-#: One item of a collection: its opaque id, and the title its own member
+#: One item of a collection: its opaque id, and the title its own section
 #: cached the last time it finished (`None` until it has).
 CollectionItem: TypeAlias = dict[str, Any]
 
@@ -78,7 +78,7 @@ CollectionItem: TypeAlias = dict[str, Any]
 #: user added them, and whether the user has said there are no more to add.
 CollectionData: TypeAlias = dict[str, Any]
 
-#: Everything a session keeps about one journey — its members' runs and
+#: Everything a session keeps about one journey — its sections' runs and
 #: stashes, its collections, its decided data, or the tombstone a submitted
 #: journey leaves behind. See `SessionJourneyStore` for the layout.
 JourneyRecord: TypeAlias = dict[str, Any]
@@ -141,7 +141,7 @@ class WizardStorage(Protocol):
 
 
 class JourneyStore(Protocol):
-    """What a journey member's `journey_store_class` has to provide.
+    """What a journey section's `journey_store_class` has to provide.
 
     Structural, like `WizardStorage`: `SessionJourneyStore` satisfies it
     without inheriting anything, and so does a store of your own that keeps
@@ -149,7 +149,7 @@ class JourneyStore(Protocol):
     journey's `WizardContext` and the journey's identity — a durable backend
     scopes by both, `context.actor` saying whose and `journey` saying which.
 
-    Every method the hub, the door and a member call is here, so a backend
+    Every method the task list, the door and a section call is here, so a backend
     that satisfies this needs no reading of the views to know it is whole.
     """
 

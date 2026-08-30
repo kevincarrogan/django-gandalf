@@ -37,7 +37,7 @@ class Project(TaskList):
 
 class ProjectViewSet(TaskListViewSet):
     description = "Chapter 13: a task list whose second row is an add-another."
-    template_name = "testapp/readme_hub.html"
+    template_name = "testapp/readme_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     add_another_template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"

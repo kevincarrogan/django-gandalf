@@ -7,7 +7,7 @@ caller ever touching the session keys directly. The module-level functions
 peek at (and seed) the session stores for tests that arrange or assert on
 raw run and stash payloads, and a journey's record — its section runs and
 stashes, its collections, its data, its tombstone — under one journey key,
-`"default"` unless the hub is mounted under a journey segment.
+`"default"` unless the task list is mounted under a journey segment.
 
 Wizards mounted with a custom URL scheme (overriding `get_wizard_url` /
 `get_step_url`) fall outside the driver's contract; drive those with the
@@ -169,7 +169,7 @@ def seed_section_run(
     """Record `run_id` as where section `key` is being answered.
 
     Creates the journey's record when the session has never held one. For
-    arranging the states a hub reaches only after several requests: a
+    arranging the states a task list reaches only after several requests: a
     section left half-answered, or one pointing at a run the storage no
     longer holds.
     """
@@ -194,7 +194,7 @@ def stored_section_stash(client: Client, key: str, journey: str = "default") -> 
 def seed_section_stash(
     client: Client, key: str, payload: Stash, journey: str = "default"
 ) -> None:
-    """Record section `key` as finished with `payload`. For arranging a hub
+    """Record section `key` as finished with `payload`. For arranging a task list
     with sections already done, or a hand-built or tampered stash."""
     _seed_journey(client, journey, "stashes", key, payload)
 
@@ -209,7 +209,7 @@ def stored_journey_data(client: Client, journey: str = "default") -> Metadata:
 def seed_journey_data(client: Client, data: Metadata, journey: str = "default") -> None:
     """Merge `data` into the journey's own decided facts (the top-level
     bucket `store.data` reads), keeping what is already there. For arranging
-    a hub whose sections have already decided something — an answer that
+    a task list whose sections have already decided something — an answer that
     hides or unlocks another section."""
     session = client.session
     journeys = session.setdefault(SessionJourneyStore.SESSION_KEY, {})

@@ -766,7 +766,7 @@ class Run:
         }
         # Unlike the file refs, the metadata rides. A ref names bytes that
         # completion deletes; a record id names something that outlives the
-        # run entirely — and a member re-opened from its stash that had
+        # run entirely — and a section re-opened from its stash that had
         # forgotten it would raise a second invoice on the way back in.
         metadata = self.storage.get_run_metadata(self.run_id)
         if metadata:
@@ -979,7 +979,7 @@ class Run:
     def entry_url(self, step: str | None = None) -> str | None:
         """A step URL for this run — never the bare run URL.
 
-        The link *into* a run from outside it: a hub row resuming a member,
+        The link *into* a run from outside it: a task list row resuming a section,
         a resurrected stash, a link in an email. The bare run URL redirects
         to wherever the cursor is, and when every stored answer validates
         that is completion, so a GET there fires `done()` before the user has

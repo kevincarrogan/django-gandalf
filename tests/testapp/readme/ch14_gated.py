@@ -65,7 +65,7 @@ class Gated(TaskList):
 
 class GatedViewSet(TaskListViewSet):
     description = "Chapter 14: a task list with a locked row and a hidden one."
-    template_name = "testapp/readme_hub.html"
+    template_name = "testapp/readme_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-gated"
     task_list = Gated

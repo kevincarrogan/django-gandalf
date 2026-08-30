@@ -193,28 +193,30 @@ def test_a_summary_render_validates_each_answer_twice(run_at_summary):
     assert counts.form_rebuilds == 3 + 1
 
 
-# --- a hub of members ------------------------------------------------------
+# --- a page of sections ------------------------------------------------------
 
 
 @pytest.fixture
-def counting_hub(client):
-    """A hub whose two members are wired to the counting classes: one left
+def counting_page(client):
+    """A page whose two sections are wired to the counting classes: one left
     half-answered, one untouched."""
-    client.get("/counting-hub/counting/", follow=True)
+    client.get("/counting-task-list/counting/", follow=True)
     from gandalf.testing import stored_section_run
 
     run_id = stored_section_run(client, "counting")
-    client.post(f"/counting-hub/counting/{run_id}/first/", {"name": "Ada"}, follow=True)
+    client.post(
+        f"/counting-task-list/counting/{run_id}/first/", {"name": "Ada"}, follow=True
+    )
     return client
 
 
-def test_rendering_a_hub_walks_nothing(counting_hub):
-    """The claim the hub's design rests on: status comes from the shape of
+def test_rendering_a_page_walks_nothing(counting_page):
+    """The claim the page's design rests on: status comes from the shape of
     stored state, so a row costs storage reads and no form validation —
-    however many members the page lists and however far each has got.
+    however many sections the page lists and however far each has got.
     """
     with counting_walks() as counts:
-        response = counting_hub.get("/counting-hub/")
+        response = counting_page.get("/counting-task-list/")
 
     assert response.status_code == HTTPStatus.OK
     assert counts.walks == 0
@@ -222,27 +224,27 @@ def test_rendering_a_hub_walks_nothing(counting_hub):
     assert counts.form_rebuilds == 0
 
 
-def test_a_hub_asked_for_its_rows_twice_builds_them_once(counting_hub):
+def test_a_page_asked_for_its_rows_twice_builds_them_once(counting_page):
     """The page counts them and the view asks again for the first unfinished
     one. A row is two storage reads and a `reverse()`, and a whole
     add-another page for an entry that is one, so the second ask is cached."""
-    response = counting_hub.get("/counting-hub/")
+    response = counting_page.get("/counting-task-list/")
 
     assert response.context["builds"] == 1
     assert response.context["first_unfinished"].key == "counting"
 
 
-def test_entering_a_member_walks_once_in_the_door_and_once_in_the_wizard(
-    counting_hub,
+def test_entering_a_section_walks_once_in_the_door_and_once_in_the_wizard(
+    counting_page,
 ):
-    """The one walk a hub cannot avoid, paid once for the member clicked.
+    """The one walk a page cannot avoid, paid once for the section clicked.
 
     The door walks to turn "this run exists" into "this step URL"; the
     wizard walks again to render it. Two walks for the redirect-and-render,
-    exactly like the POST-redirect-GET cycle above — not one per member.
+    exactly like the POST-redirect-GET cycle above — not one per section.
     """
     with counting_walks() as counts:
-        response = counting_hub.get("/counting-hub/counting/", follow=True)
+        response = counting_page.get("/counting-task-list/counting/", follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assert counts.walks == 2

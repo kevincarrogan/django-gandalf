@@ -33,9 +33,9 @@ class GrantApplication(TaskList):
 
 
 class GrantApplicationViewSet(TaskListViewSet):
-    template_name = "testapp/readme_hub.html"
+    template_name = "testapp/readme_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "readme-hub"
+    url_name = "readme-task-list"
     task_list = GrantApplication
 ```
 
@@ -55,7 +55,7 @@ own run URLs beneath it.
 
 ```python
 urlpatterns = [
-    path("readme/hub/", include(GrantApplicationViewSet.urls())),
+    path("readme/task-list/", include(GrantApplicationViewSet.urls())),
 ]
 ```
 
@@ -86,7 +86,7 @@ tried *before* re-opening, so a section already being edited continues
 that edit rather than resurrecting a second run beside it.
 
 Because the page mounts its sections itself, it goes one further: a
-section's URL *is* its door. `readme/hub/contact/` opens the contact
+section's URL *is* its door. `readme/task-list/contact/` opens the contact
 section through the page — there is no bare start URL for a link to reach
 by mistake.
 
@@ -107,7 +107,7 @@ the classmethods the page uses to bind a wizard from outside its own
 request (`begin()`, `inspect()`, `reopen()`) are public in their own
 right. All of it is in the [Task lists reference](../reference/tasklists.md).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`ch12_hub.py`](../../tests/testapp/readme/ch12_hub.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/task-list/ &nbsp;·&nbsp; **Source:** [`ch12_task_list.py`](../../tests/testapp/readme/ch12_task_list.py)
 
 ---
 

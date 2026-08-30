@@ -2095,7 +2095,7 @@ class ScenarioViewSet(TaskListViewSet):
     description = "Task list over sections that exercise the awkward run states."
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "scenario-hub"
+    url_name = "scenario-task-list"
     task_list = Scenario
 
 
@@ -2120,8 +2120,8 @@ class OrgViewSet(TaskListViewSet):
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     add_another_template_name = "testapp/items.html"
-    remove_template_name = "testapp/collection_remove.html"
-    url_name = "org-hub"
+    remove_template_name = "testapp/items_remove.html"
+    url_name = "org-task-list"
     task_list = Org
 
 
@@ -2145,7 +2145,7 @@ class Counting(TaskList):
 class CountingViewSet(TaskListViewSet):
     description = "Task list over counting sections, for asserting a row's cost."
     template_name = "testapp/task_list.html"
-    url_name = "counting-hub"
+    url_name = "counting-task-list"
     task_list = Counting
     builds = 0
 
@@ -2180,7 +2180,7 @@ class DurableViewSet(TaskListViewSet):
     description = "Task list whose sections and bookkeeping outlive the session."
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "durable-hub"
+    url_name = "durable-task-list"
     storage_class = ModelStorage
     journey_store_class = ModelJourneyStore
     task_list = Durable
@@ -2206,7 +2206,7 @@ class GatedViewSet(TaskListViewSet):
     description = "Task list whose second section unlocks when the first ends."
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "gated-hub"
+    url_name = "gated-task-list"
     task_list = Gated
 
 
@@ -2220,8 +2220,8 @@ class PartyViewSet(TaskListViewSet):
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     add_another_template_name = "testapp/items.html"
-    remove_template_name = "testapp/collection_remove.html"
-    url_name = "party-hub"
+    remove_template_name = "testapp/items_remove.html"
+    url_name = "party-task-list"
     task_list = Party
 
 
@@ -2234,12 +2234,12 @@ class GuestsViewSet(AddAnotherViewSet):
 
     description = "Add another: a list of items with full CRUD."
     template_name = "testapp/items.html"
-    remove_template_name = "testapp/collection_remove.html"
+    remove_template_name = "testapp/items_remove.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "standalone-guests"
     key = "standalone-guests"
     add_another = GUESTS
-    task_list_url_name = "party-hub"
+    task_list_url_name = "party-task-list"
 
 
 class LockedGuestsViewSet(GuestsViewSet):
@@ -2327,7 +2327,7 @@ class DurableGuestsViewSet(GuestsViewSet):
     key = "durable-guests"
     storage_class = ModelStorage
     journey_store_class = ModelCollectionStore
-    task_list_url_name = "durable-hub"
+    task_list_url_name = "durable-task-list"
 
 
 # --- Journeys ----------------------------------------------------------------
@@ -2353,9 +2353,9 @@ class SubmitViewSet(TaskListViewSet):
     description = (
         "Journeys: a task list under a journey segment, submitting to a bare tombstone."
     )
-    template_name = "testapp/journey_hub.html"
+    template_name = "testapp/journey_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "submit-hub"
+    url_name = "submit-task-list"
     journey_store_class = ShortMemoryJourneyStore
     task_list = Submit
 

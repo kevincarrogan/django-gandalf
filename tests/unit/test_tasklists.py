@@ -74,7 +74,7 @@ class _Page(TaskListViewSet):
 
     template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "readme-hub"
+    url_name = "readme-task-list"
     task_list = _Contact
 
 
@@ -92,7 +92,7 @@ def _view(task_list, **attributes):
         {
             "template_name": "testapp/task_list.html",
             "section_template_name": "testapp/linear_wizard.html",
-            "url_name": "readme-hub",
+            "url_name": "readme-task-list",
             # Each throwaway page gets its own list: one list, one page.
             "task_list": (
                 task_list
@@ -104,7 +104,7 @@ def _view(task_list, **attributes):
     )
 
 
-def _page(cls, rf, session=None, path="/readme/hub/", method="get", **kwargs):
+def _page(cls, rf, session=None, path="/readme/task-list/", method="get", **kwargs):
     request = getattr(rf, method)(path)
     request.session = _session(session or {})
     view = cls()
@@ -163,7 +163,9 @@ def gated_page(rf):
     return build
 
 
-def _section_view(cls, rf, session=None, path="/readme/hub/contact/run-1/", **kwargs):
+def _section_view(
+    cls, rf, session=None, path="/readme/task-list/contact/run-1/", **kwargs
+):
     request = rf.get(path)
     request.session = _session(session or {})
     view = cls()
@@ -191,8 +193,8 @@ def test_the_entries_become_the_pages_entries_in_body_order():
     assert entries["contact"].title == "Contact details"
     assert issubclass(entries["contact"].viewset, SectionViewSet)
     assert entries["contact"].viewset.key == "contact"
-    assert entries["contact"].viewset.task_list_url_name == "readme-hub"
-    assert entries["contact"].viewset.url_name == "readme-hub-contact"
+    assert entries["contact"].viewset.task_list_url_name == "readme-task-list"
+    assert entries["contact"].viewset.url_name == "readme-task-list-contact"
     assert entries["contact"].viewset.template_name == "testapp/linear_wizard.html"
 
 
@@ -308,11 +310,11 @@ def test_a_link_must_say_how_far_it_has_got():
 
 def test_a_link_binds_to_a_key_and_keeps_where_it_points():
     status = lambda request, kwargs: COMPLETE  # noqa: E731
-    link = Link("readme-hub", title="Pay", status=status).bound("payment")
+    link = Link("readme-task-list", title="Pay", status=status).bound("payment")
 
     assert (link.key, link.url_name, link.status, link.title) == (
         "payment",
-        "readme-hub",
+        "readme-task-list",
         status,
         "Pay",
     )
@@ -518,7 +520,7 @@ def test_a_row_carries_its_title_status_label_and_url(page):
     assert isinstance(row, Row)
     assert row.title == "Contact details"
     assert row.status_label == "Not started"
-    assert row.url == "/readme/hub/contact/"
+    assert row.url == "/readme/task-list/contact/"
     assert row.key == "contact"
 
 
@@ -587,7 +589,7 @@ def test_a_link_reporting_blocked_under_its_own_steam_is_refused_too(rf):
     """A link's `status` answers for itself, so the door asks the status
     rather than the hook — otherwise the two could disagree."""
     gated = _list(
-        contact=Link("readme-hub", status=lambda request, url_kwargs: BLOCKED)
+        contact=Link("readme-task-list", status=lambda request, url_kwargs: BLOCKED)
     )
     view = _page(_view(gated), rf)
 
@@ -599,7 +601,9 @@ def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf):
     """A link's status is arbitrary code, and the page renders a label for
     every row — so a status outside the four is refused by name rather than
     taking the whole page down with a KeyError."""
-    odd = _list(contact=Link("readme-hub", status=lambda request, kwargs: "half-done"))
+    odd = _list(
+        contact=Link("readme-task-list", status=lambda request, kwargs: "half-done")
+    )
     view = _page(_view(odd), rf)
 
     with pytest.raises(ImproperlyConfigured, match="half-done"):
@@ -713,7 +717,7 @@ def test_a_link_is_never_asked(rf):
     door reads — and which may itself be `BLOCKED`."""
     linked = _list(
         payment=Link(
-            "readme-hub",
+            "readme-task-list",
             title="Payment",
             status=lambda request, url_kwargs: NOT_STARTED,
         )
@@ -875,7 +879,7 @@ def test_the_entries_are_chosen_once_per_request(rf):
 def test_a_page_without_a_task_list_is_misconfigured(rf):
     class _Bare(TaskListViewSet):
         template_name = "testapp/task_list.html"
-        url_name = "readme-hub"
+        url_name = "readme-task-list"
 
     with pytest.raises(ImproperlyConfigured, match="task_list"):
         _page(_Bare, rf).get_rows()
@@ -911,7 +915,7 @@ def test_entering_a_not_started_section_begins_a_run_and_records_it(page):
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
     assert run_id is not None
-    assert url == f"/readme/hub/contact/{run_id}/first/"
+    assert url == f"/readme/task-list/contact/{run_id}/first/"
 
 
 def test_entering_an_incomplete_section_resumes_its_own_run(page):
@@ -924,7 +928,7 @@ def test_entering_an_incomplete_section_resumes_its_own_run(page):
 
     url = _entered(view)
 
-    assert url == f"/readme/hub/contact/{RUN}/second/"
+    assert url == f"/readme/task-list/contact/{RUN}/second/"
     assert SessionJourneyStore(view.request, "default").get_run("contact") == RUN
 
 
@@ -944,7 +948,7 @@ def test_entering_a_completed_section_reopens_its_stash_at_the_first_step(page):
     url = _entered(view)
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
-    assert url == f"/readme/hub/contact/{run_id}/first/"
+    assert url == f"/readme/task-list/contact/{run_id}/first/"
     assert view.request.session["gandalf_runs"][run_id]["state"] == [
         {"step": {"name": "Ada"}},
         {"step": {"email": "ada@example.com"}},
@@ -975,7 +979,7 @@ def test_a_completed_section_already_being_edited_resumes_that_edit(page):
 
     url = _entered(view)
 
-    assert url == f"/readme/hub/contact/{RUN}/second/"
+    assert url == f"/readme/task-list/contact/{RUN}/second/"
 
 
 def test_a_section_whose_recorded_run_was_tombstoned_starts_again(page):
@@ -990,7 +994,7 @@ def test_a_section_whose_recorded_run_was_tombstoned_starts_again(page):
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
     assert run_id != "run-1"
-    assert url == f"/readme/hub/contact/{run_id}/first/"
+    assert url == f"/readme/task-list/contact/{run_id}/first/"
 
 
 def test_a_section_whose_recorded_run_is_gone_starts_again(page):
@@ -1000,7 +1004,7 @@ def test_a_section_whose_recorded_run_is_gone_starts_again(page):
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
     assert run_id != "gone"
-    assert url == f"/readme/hub/contact/{run_id}/first/"
+    assert url == f"/readme/task-list/contact/{run_id}/first/"
 
 
 def test_a_section_can_name_the_step_a_reopened_stash_lands_on(rf):
@@ -1012,7 +1016,7 @@ def test_a_section_can_name_the_step_a_reopened_stash_lands_on(rf):
     url = view.enter(view.get_entry("contact"))
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
-    assert url == f"/readme/hub/contact/{run_id}/second/"
+    assert url == f"/readme/task-list/contact/{run_id}/second/"
 
 
 def test_a_stash_whose_label_no_longer_matches_is_refused_loudly(rf):
@@ -1043,7 +1047,7 @@ def test_stash_unusable_can_be_overridden_to_start_over(rf):
     url = view.enter(view.get_entry("contact"))
 
     run_id = SessionJourneyStore(view.request, "default").get_run("contact")
-    assert url == f"/readme/hub/contact/{run_id}/first/"
+    assert url == f"/readme/task-list/contact/{run_id}/first/"
 
 
 # --- SectionViewSet ---------------------------------------------------------
@@ -1083,7 +1087,7 @@ def test_a_finished_section_sends_the_user_back_to_its_page(rf):
     response = view.done(_retrieved(view))
 
     assert response.status_code == 302
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
 
 
 def test_run_done_runs_between_the_stash_and_the_redirect(rf):
@@ -1108,7 +1112,7 @@ def test_run_done_runs_between_the_stash_and_the_redirect(rf):
     response = view.done(_retrieved(view))
 
     assert events == [([{"step": {"name": "Ada"}}], [{"step": {"name": "Ada"}}])]
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
 
 
 def test_a_run_done_that_raises_leaves_the_section_resumable(rf):
@@ -1248,11 +1252,13 @@ def test_a_section_without_a_page_to_return_to_is_misconfigured(rf):
 def test_a_row_links_to_the_pages_own_door_not_the_wizards_urls(page):
     url = page().get_entry_url(Section(CONTACT).bound("contact"))
 
-    assert url == "/readme/hub/contact/"
+    assert url == "/readme/task-list/contact/"
 
 
 def test_a_page_forwards_its_mount_prefix_and_drops_the_entry_kwarg(rf):
-    view = _page(_Page, rf, path="/org/acme/hub/details/", org="acme", entry="details")
+    view = _page(
+        _Page, rf, path="/org/acme/task-list/details/", org="acme", entry="details"
+    )
 
     assert view.get_page_url_kwargs() == {"org": "acme"}
     assert view.entry_url_kwargs(
@@ -1261,35 +1267,35 @@ def test_a_page_forwards_its_mount_prefix_and_drops_the_entry_kwarg(rf):
 
 
 def test_the_page_url_is_reversed_from_its_own_url_name(page):
-    assert page().get_page_url() == "/readme/hub/"
+    assert page().get_page_url() == "/readme/task-list/"
 
 
 def test_an_unknown_entry_is_sent_back_to_the_page(rf):
-    view = _page(_Page, rf, path="/readme/hub/nope/")
+    view = _page(_Page, rf, path="/readme/task-list/nope/")
 
     response = view.entry_unavailable("nope")
 
     assert response.status_code == 302
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
 
 
 def test_a_row_can_point_at_something_that_is_not_a_wizard(rf):
     """A payment redirect, a page in another app. The door exists to walk a
     run and pick a step; something with no run to walk has nothing for it to
     do, so the row addresses it directly."""
-    linked = _list(guests=Link("readme-hub", status=lambda r, k: COMPLETE))
+    linked = _list(guests=Link("readme-task-list", status=lambda r, k: COMPLETE))
 
     (row,) = _page(_view(linked), rf).get_rows()
 
     assert row.status == COMPLETE
     assert row.status_label == "Complete"
-    assert row.url == "/readme/hub/"
+    assert row.url == "/readme/task-list/"
 
 
 def test_the_door_refuses_an_entry_it_cannot_walk(rf):
     """Rows never point there, so arriving is a hand-typed or stale URL."""
-    linked = _list(guests=Link("readme-hub", status=lambda r, k: COMPLETE))
-    view = _page(_view(linked), rf, path="/readme/hub/guests/")
+    linked = _list(guests=Link("readme-task-list", status=lambda r, k: COMPLETE))
+    view = _page(_view(linked), rf, path="/readme/task-list/guests/")
 
     assert view.enter(view.get_entry("guests")) is None
 
@@ -1321,10 +1327,10 @@ def test_a_page_publishes_itself_its_entries_and_then_its_door():
     add-another page — is reached directly."""
     root, contact, address, door = _PairPage.urls()
 
-    assert root.name == "readme-hub"
+    assert root.name == "readme-task-list"
     assert str(contact.pattern) == "contact/"
     assert str(address.pattern) == "address/"
-    assert door.name == "readme-hub-entry"
+    assert door.name == "readme-task-list-entry"
     assert str(door.pattern) == "<slug:entry>/"
 
 
@@ -1335,29 +1341,29 @@ def test_a_sections_bare_url_is_the_pages_door():
     _root, contact, *_ = _PairPage.urls()
     start, run, step = contact.url_patterns
 
-    assert start.name == "readme-hub-contact"
+    assert start.name == "readme-task-list-contact"
     assert str(start.pattern) == ""
     assert start.default_args == {"entry": "contact"}
     assert start.callback.view_class is _PairPage
     assert (run.name, step.name) == (
-        "readme-hub-contact-run",
-        "readme-hub-contact-step",
+        "readme-task-list-contact-run",
+        "readme-task-list-contact-step",
     )
     assert step.callback.view_class is _PairPage.viewset_for("contact")
 
 
 def test_a_link_publishes_no_routes():
-    linked = _view(_list(pay=Link("readme-hub", status=lambda r, k: COMPLETE)))
+    linked = _view(_list(pay=Link("readme-task-list", status=lambda r, k: COMPLETE)))
 
     root, door = linked.urls()
 
-    assert (root.name, door.name) == ("readme-hub", "readme-hub-entry")
+    assert (root.name, door.name) == ("readme-task-list", "readme-task-list-entry")
 
 
 def _readme_page(rf, path, **kwargs):
     """The README's task list, dispatched directly — one view over two
     routes."""
-    from tests.testapp.readme.ch12_hub import GrantApplicationViewSet
+    from tests.testapp.readme.ch12_task_list import GrantApplicationViewSet
 
     request = rf.get(path)
     request.session = _session()
@@ -1365,7 +1371,7 @@ def _readme_page(rf, path, **kwargs):
 
 
 def test_the_page_renders_the_rows(rf):
-    response = _readme_page(rf, "/readme/hub/")
+    response = _readme_page(rf, "/readme/task-list/")
 
     assert response.status_code == 200
     assert [row.key for row in response.context_data["task_list"].rows] == [
@@ -1375,31 +1381,33 @@ def test_the_page_renders_the_rows(rf):
 
 
 def test_the_door_redirects_into_the_section_it_names(rf):
-    response = _readme_page(rf, "/readme/hub/contact/", entry="contact")
+    response = _readme_page(rf, "/readme/task-list/contact/", entry="contact")
 
     assert response.status_code == 302
-    assert response["Location"].startswith("/readme/hub/contact/")
+    assert response["Location"].startswith("/readme/task-list/contact/")
     assert response["Location"].endswith("/name/")
 
 
 def test_the_door_sends_an_entry_it_cannot_walk_back_to_the_page(rf):
     """A link links past the door anyway — so arriving here is a hand-typed
     or stale URL."""
-    linked = _view(_list(elsewhere=Link("readme-hub", status=lambda r, k: COMPLETE)))
-    request = rf.get("/readme/hub/elsewhere/")
+    linked = _view(
+        _list(elsewhere=Link("readme-task-list", status=lambda r, k: COMPLETE))
+    )
+    request = rf.get("/readme/task-list/elsewhere/")
     request.session = _session()
 
     response = linked.as_view()(request, entry="elsewhere")
 
     assert response.status_code == 302
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
 
 
 def test_the_door_sends_an_unknown_entry_back_to_the_page(rf):
-    response = _readme_page(rf, "/readme/hub/nope/", entry="nope")
+    response = _readme_page(rf, "/readme/task-list/nope/", entry="nope")
 
     assert response.status_code == 302
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
 
 
 # --- a section that is hidden -----------------------------------------------
@@ -1537,7 +1545,7 @@ def test_the_door_hands_every_section_view_the_journey(rf):
             seen.append(url_kwargs)
             return super().begin(request)
 
-    view = _page(_Page, rf, path="/apply/app-1/hub/", journey="app-1", org="acme")
+    view = _page(_Page, rf, path="/apply/app-1/task-list/", journey="app-1", org="acme")
     view.entries = [view.get_entry("contact").bound("contact", _Recording)]
     del view._entries_cache
 
@@ -1559,7 +1567,7 @@ def test_a_status_callable_is_handed_the_journey_too(rf):
         ),
         url_name="readme-apply",
     )
-    view = _page(linked, rf, path="/apply/app-1/hub/", journey="app-1")
+    view = _page(linked, rf, path="/apply/app-1/task-list/", journey="app-1")
 
     view.get_rows()
 
@@ -1627,7 +1635,7 @@ def test_beginning_can_be_given_the_journey(rf):
 
 def test_beginning_a_journey_for_a_page_not_under_one_lands_on_its_one_page(rf):
     """One journey per session: there is no segment to put the id in."""
-    assert _Page.begin(_page(_Page, rf).request).url == "/readme/hub/"
+    assert _Page.begin(_page(_Page, rf).request).url == "/readme/task-list/"
 
 
 def test_finishing_a_section_records_the_run_as_the_page_would(rf):
@@ -1693,7 +1701,7 @@ def test_submitting_an_incomplete_journey_is_refused(rf):
     response = view.submit()
 
     assert response.status_code == 302
-    assert response["Location"] == "/readme/hub/"
+    assert response["Location"] == "/readme/task-list/"
     assert SessionJourneyStore(view.request, "default").is_complete() is False
 
 
@@ -1829,12 +1837,14 @@ def test_an_add_another_entry_is_a_page_beneath_the_list():
     from gandalf.add_another import AddAnotherViewSet
 
     guests = AddAnother(CONTACT, item_name="Guest", item_title="name")
-    viewset = _view(_list(guests=guests), url_name="party-hub").viewset_for("guests")
+    viewset = _view(_list(guests=guests), url_name="party-task-list").viewset_for(
+        "guests"
+    )
 
     assert issubclass(viewset, AddAnotherViewSet)
     assert viewset.key == "guests"
-    assert viewset.url_name == "party-hub-guests"
-    assert viewset.task_list_url_name == "party-hub"
+    assert viewset.url_name == "party-task-list-guests"
+    assert viewset.task_list_url_name == "party-task-list"
     assert viewset.item_viewset.list_key == "guests"
 
 
@@ -1843,13 +1853,13 @@ def test_a_group_entry_is_a_page_beneath_the_list():
         x = Section(CONTACT)
 
     viewset = _view(
-        _list(inner=Group(_Inner, template_name="testapp/nested_hub.html"))
+        _list(inner=Group(_Inner, template_name="testapp/nested_task_list.html"))
     ).viewset_for("inner")
 
     assert issubclass(viewset, TaskListViewSet)
     assert viewset.task_list is _Inner
     assert viewset.key == "inner"
-    assert viewset.template_name == "testapp/nested_hub.html"
+    assert viewset.template_name == "testapp/nested_task_list.html"
 
 
 # --- an entry as a value ---------------------------------------------------------
@@ -1860,16 +1870,16 @@ def test_entries_compare_by_their_facts_and_key():
     with the same facts is not the same entry."""
     assert Section(CONTACT, title="A") == Section(CONTACT, title="A")
     assert Section(CONTACT).bound("a") != Section(CONTACT).bound("b")
-    assert Section(CONTACT) != Link("readme-hub", status=lambda r, k: COMPLETE)
+    assert Section(CONTACT) != Link("readme-task-list", status=lambda r, k: COMPLETE)
     assert (Section(CONTACT) == "not an entry") is False
     assert len({Section(CONTACT).bound("a"), Section(CONTACT).bound("a")}) == 1
     assert repr(Section(CONTACT, title="A").bound("a")).startswith("Section(title='A'")
 
 
 def test_a_link_replaced_keeps_its_target():
-    link = Link("readme-hub", title="Pay", status=lambda r, k: COMPLETE)
+    link = Link("readme-task-list", title="Pay", status=lambda r, k: COMPLETE)
 
-    assert link.replace(title="Pay now").url_name == "readme-hub"
+    assert link.replace(title="Pay now").url_name == "readme-task-list"
     assert link.bound("pay").status is link.status
 
 
@@ -1878,7 +1888,7 @@ def test_a_list_mounted_twice_by_unrelated_pages_is_refused():
         only = Section(CONTACT)
 
     class _First(TaskListViewSet):
-        url_name = "readme-hub"
+        url_name = "readme-task-list"
         template_name = "testapp/task_list.html"
         task_list = _Twice
 
@@ -1898,7 +1908,7 @@ def test_a_subclass_of_the_mounting_page_is_the_same_page():
         only = Section(CONTACT)
 
     class _Page(TaskListViewSet):
-        url_name = "readme-hub"
+        url_name = "readme-task-list"
         template_name = "testapp/task_list.html"
         task_list = _Once
 

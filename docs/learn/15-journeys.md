@@ -37,7 +37,7 @@ come back to:
 ```python
 def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
-    it where every other member can read it without a walk."""
+    it where every other section can read it without a walk."""
     step = run.path.find_step(name="applying-as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 ```
@@ -135,7 +135,7 @@ class GrantApplication(TaskList):
     supporting = Group(
         SupportingInformation,
         title="Supporting information",
-        template_name="testapp/nested_hub.html",
+        template_name="testapp/nested_task_list.html",
     )
 
 
@@ -146,7 +146,7 @@ class GrantApplicationViewSet(TaskListViewSet):
 
     description = "Chapter 15: the application's task list, with a submit."
     url_name = "readme-apply"
-    template_name = "testapp/journey_hub.html"
+    template_name = "testapp/journey_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     task_list = GrantApplication
 

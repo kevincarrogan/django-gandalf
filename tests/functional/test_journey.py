@@ -1,10 +1,10 @@
 """A whole journey over HTTP: the README's grant application, start to
 submit.
 
-A journey is what a hub's members add up to. The load-bearing claims here
-are the ones a single hub cannot make: two journeys in one session never see
-each other; a member that does not apply yet is not there, while one that
-waits on another is there but locked; what a member decided reaches the
+A journey is what a page's sections add up to. The load-bearing claims here
+are the ones a single page cannot make: two journeys in one session never see
+each other; a section that does not apply yet is not there, while one that
+waits on another is there but locked; what a section decided reaches the
 rest of the journey without a walk; and submitting is a thing that happens
 exactly once, after which nothing can be re-opened.
 """
@@ -41,31 +41,31 @@ def _start(client, applying_as="individual"):
     response = client.get(reverse("readme-apply-start"), follow=True)
     run_url = response.redirect_chain[-1][0]
     response = client.post(run_url, {"applying_as": applying_as})
-    hub_url = response["Location"]
-    return hub_url.rstrip("/").rsplit("/", 1)[-1]
+    page_url = response["Location"]
+    return page_url.rstrip("/").rsplit("/", 1)[-1]
 
 
-def _hub(journey):
+def _page(journey):
     return reverse("readme-apply", kwargs={"journey": journey})
 
 
-def _door(journey, member, hub="readme-apply"):
-    return reverse(f"{hub}-entry", kwargs={"journey": journey, "entry": member})
+def _door(journey, section, page="readme-apply"):
+    return reverse(f"{page}-entry", kwargs={"journey": journey, "entry": section})
 
 
 def _supporting(journey):
     return reverse("readme-apply-supporting", kwargs={"journey": journey})
 
 
-def _statuses(client, journey, hub="readme-apply"):
-    response = client.get(reverse(hub, kwargs={"journey": journey}))
+def _statuses(client, journey, page="readme-apply"):
+    response = client.get(reverse(page, kwargs={"journey": journey}))
     return {row.key: row.status for row in response.context["task_list"].rows}
 
 
-def _finish(client, journey, member, url_name, steps, hub="readme-apply"):
-    """Enter a member from its hub and drive it to its end."""
-    client.get(_door(journey, member, hub), follow=True)
-    key = member if hub == "readme-apply" else f"supporting:{member}"
+def _finish(client, journey, section, url_name, steps, page="readme-apply"):
+    """Enter a section from its page and drive it to its end."""
+    client.get(_door(journey, section, page), follow=True)
+    key = section if page == "readme-apply" else f"supporting:{section}"
     run_id = stored_section_run(client, key, journey=journey)
     response = None
     for step, data in steps:
@@ -110,7 +110,7 @@ def _finish_referees(client, journey):
         "referees",
         "readme-apply-supporting-referees",
         [("referee", {"referee_name": "Grace", "referee_email": "grace@example.com"})],
-        hub="readme-apply-supporting",
+        page="readme-apply-supporting",
     )
 
 
@@ -121,7 +121,7 @@ def _finish_documents(client, journey):
         "documents",
         "readme-apply-supporting-documents",
         [("document", {"document": SimpleUploadedFile("constitution.pdf", b"bytes")})],
-        hub="readme-apply-supporting",
+        page="readme-apply-supporting",
     )
 
 
@@ -137,13 +137,13 @@ def _finish_budget(client, journey):
 # --- minting ---------------------------------------------------------------
 
 
-def test_the_setup_wizard_mints_a_journey_and_lands_on_its_hub(client):
+def test_the_setup_wizard_mints_a_journey_and_lands_on_its_page(client):
     journey = _start(client, "organisation")
 
-    response = client.get(_hub(journey))
+    response = client.get(_page(journey))
 
     assert response.status_code == HTTPStatus.OK
-    # The setup answers are the journey's first member, already complete,
+    # The setup answers are the journey's first section, already complete,
     # and the answer the journey turns on is in its data.
     assert _statuses(client, journey)["setup"] == COMPLETE
     assert stored_journey_data(client, journey) == {
@@ -165,11 +165,11 @@ def test_two_journeys_in_one_session_never_see_each_other(client):
 # --- hidden and locked -----------------------------------------------------
 
 
-def test_a_member_that_does_not_apply_is_not_on_the_page(client):
+def test_a_section_that_does_not_apply_is_not_on_the_page(client):
     journey = _start(client, "individual")
 
     assert "match-funding" not in _statuses(client, journey)
-    assertContains(client.get(_hub(journey)), "of 5 sections")
+    assertContains(client.get(_page(journey)), "of 5 sections")
     nested = _statuses(client, journey, "readme-apply-supporting")
     assert "documents" not in nested
     response = client.get(_supporting(journey))
@@ -177,8 +177,8 @@ def test_a_member_that_does_not_apply_is_not_on_the_page(client):
     assertContains(response, "of 1 section")
 
 
-def test_a_member_that_applies_from_the_start_is_listed(client):
-    """`hidden()` on a member two hubs down reads what the setup member
+def test_a_section_that_applies_from_the_start_is_listed(client):
+    """`hidden()` on a section two pages down reads what the setup section
     wrote at the root: one journey, one record."""
     journey = _start(client, "organisation")
 
@@ -188,7 +188,7 @@ def test_a_member_that_applies_from_the_start_is_listed(client):
     assertContains(client.get(_supporting(journey)), "of 2 sections")
 
 
-def test_a_hidden_members_door_is_refused(client):
+def test_a_hidden_sections_door_is_refused(client):
     journey = _start(client, "individual")
 
     response = client.get(_door(journey, "documents", "readme-apply-supporting"))
@@ -197,7 +197,7 @@ def test_a_hidden_members_door_is_refused(client):
     assert stored_section_run(client, "supporting:documents", journey=journey) is None
 
 
-def test_a_member_appears_once_another_members_answer_reveals_it(client):
+def test_a_section_appears_once_another_sections_answer_reveals_it(client):
     journey = _start(client)
 
     _finish_project(client, journey, 25_000)
@@ -206,7 +206,7 @@ def test_a_member_appears_once_another_members_answer_reveals_it(client):
     assert stored_journey_data(client, journey)["journey"]["amount"] == 25_000
 
 
-def test_a_member_disappears_again_when_the_answer_is_withdrawn(client):
+def test_a_section_disappears_again_when_the_answer_is_withdrawn(client):
     journey = _start(client)
     _finish_project(client, journey, 25_000)
     assert "match-funding" in _statuses(client, journey)
@@ -217,7 +217,7 @@ def test_a_member_disappears_again_when_the_answer_is_withdrawn(client):
     assert "match-funding" not in _statuses(client, journey)
 
 
-def test_a_member_waiting_on_another_is_listed_but_cannot_start(client):
+def test_a_section_waiting_on_another_is_listed_but_cannot_start(client):
     journey = _start(client)
 
     response = client.get(_supporting(journey))
@@ -228,8 +228,8 @@ def test_a_member_waiting_on_another_is_listed_but_cannot_start(client):
     assertRedirects(client.get(door), _supporting(journey))
 
 
-def test_a_locked_member_unlocks_when_the_one_it_waits_on_finishes(client):
-    """`blocked()` reads `contact` — a root key — from inside a nested hub."""
+def test_a_locked_section_unlocks_when_the_one_it_waits_on_finishes(client):
+    """`blocked()` reads `contact` — a root key — from inside a nested page."""
     journey = _start(client)
 
     _finish_contact(client, journey)
@@ -241,12 +241,12 @@ def test_a_locked_member_unlocks_when_the_one_it_waits_on_finishes(client):
     assert f"/readme/apply/{journey}/supporting/referees/" in response["Location"]
 
 
-# --- a hub under the journey's hub -------------------------------------------
+# --- a page under the journey's page -------------------------------------------
 
 
-def test_a_nested_hubs_row_reads_its_own_rows(client):
-    """The parent never reads a stash for a hub: the row's status is the
-    nested hub's, derived from its members the same way its page derives
+def test_a_nested_pages_row_reads_its_own_rows(client):
+    """The parent never reads a stash for a page: the row's status is the
+    nested page's, derived from its sections the same way its page derives
     it."""
     journey = _start(client)
     assert _statuses(client, journey)["supporting"] == NOT_STARTED
@@ -262,19 +262,19 @@ def test_a_nested_hubs_row_reads_its_own_rows(client):
     )
 
 
-def test_a_nested_hubs_row_and_door_both_land_on_its_page(client):
+def test_a_nested_pages_row_and_door_both_land_on_its_page(client):
     journey = _start(client)
 
-    response = client.get(_hub(journey))
+    response = client.get(_page(journey))
     rows = {row.key: row for row in response.context["task_list"].rows}
 
     assert rows["supporting"].url == _supporting(journey)
-    # A nested hub's segment under its parent *is* its page.
+    # A nested page's segment under its parent *is* its page.
     assert _door(journey, "supporting") == _supporting(journey)
     assert client.get(_door(journey, "supporting")).status_code == HTTPStatus.OK
 
 
-def test_a_nested_hubs_submit_returns_to_the_parent_and_tombstones_nothing(client):
+def test_a_nested_pages_submit_returns_to_the_parent_and_tombstones_nothing(client):
     journey = _start(client)
     _finish_contact(client, journey)
     assertRedirects(client.post(_supporting(journey)), _supporting(journey))
@@ -282,7 +282,7 @@ def test_a_nested_hubs_submit_returns_to_the_parent_and_tombstones_nothing(clien
 
     response = client.post(_supporting(journey))
 
-    assertRedirects(response, _hub(journey))
+    assertRedirects(response, _page(journey))
     assert not stored_journey(client, journey).get("completed")
     assert _statuses(client, journey, "readme-apply-supporting")["referees"] == COMPLETE
 
@@ -323,13 +323,13 @@ def _complete_everything(client, journey):
     _finish_budget(client, journey)
 
 
-def test_the_submit_button_appears_only_once_every_member_is_complete(client):
+def test_the_submit_button_appears_only_once_every_section_is_complete(client):
     journey = _start(client)
-    assertNotContains(client.get(_hub(journey)), "Submit application")
+    assertNotContains(client.get(_page(journey)), "Submit application")
 
     _complete_everything(client, journey)
 
-    response = client.get(_hub(journey))
+    response = client.get(_page(journey))
     assert response.context["task_list"].is_complete
     assertContains(response, "Submit application")
 
@@ -337,19 +337,19 @@ def test_the_submit_button_appears_only_once_every_member_is_complete(client):
 def test_an_organisation_has_to_upload_its_document_too(client, isolated_media_root):
     journey = _start(client, "organisation")
     _complete_everything(client, journey)
-    assert not client.get(_hub(journey)).context["task_list"].is_complete
+    assert not client.get(_page(journey)).context["task_list"].is_complete
 
     _finish_documents(client, journey)
 
-    assert client.get(_hub(journey)).context["task_list"].is_complete
+    assert client.get(_page(journey)).context["task_list"].is_complete
 
 
 def test_submitting_early_is_refused(client):
     journey = _start(client)
 
-    response = client.post(_hub(journey))
+    response = client.post(_page(journey))
 
-    assertRedirects(response, _hub(journey))
+    assertRedirects(response, _page(journey))
     assert not stored_journey(client, journey).get("completed")
 
 
@@ -357,7 +357,7 @@ def test_submitting_does_the_work_once_and_tombstones_the_journey(client):
     journey = _start(client)
     _complete_everything(client, journey)
 
-    response = client.post(_hub(journey), follow=True)
+    response = client.post(_page(journey), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     application = Application.objects.get()
@@ -374,33 +374,35 @@ def test_submitting_does_the_work_once_and_tombstones_the_journey(client):
 def test_a_submitted_journey_refuses_every_way_back_in(client):
     journey = _start(client)
     _complete_everything(client, journey)
-    client.post(_hub(journey))
+    client.post(_page(journey))
 
-    # The hub is the done page now, the door leads there, the budget page
-    # leads there, and a member's own wizard sends a bookmarked URL back.
-    assertContains(client.get(_hub(journey)), "Application submitted")
+    # The page is the done page now, the door leads there, the budget page
+    # leads there, and a section's own wizard sends a bookmarked URL back.
+    assertContains(client.get(_page(journey)), "Application submitted")
     assertContains(client.get(_door(journey, "contact")), "Application submitted")
     budget = reverse("readme-apply-budget", kwargs={"journey": journey})
-    assertRedirects(client.get(budget), _hub(journey), target_status_code=HTTPStatus.OK)
-    # A member's bare URL is its door, so it answers as the hub does; a
-    # bookmarked run URL inside the member still sends the user back.
+    assertRedirects(
+        client.get(budget), _page(journey), target_status_code=HTTPStatus.OK
+    )
+    # A section's bare URL is its door, so it answers as the page does; a
+    # bookmarked run URL inside the section still sends the user back.
     response = client.get(reverse("readme-apply-contact", kwargs={"journey": journey}))
     assertContains(response, "Application submitted")
     run = "11111111-1111-1111-1111-111111111111"
     response = client.get(
         reverse("readme-apply-contact-run", kwargs={"journey": journey, "run_id": run})
     )
-    assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
-    # A nested hub sends the user up, and so do its members' doors.
+    assertRedirects(response, _page(journey), target_status_code=HTTPStatus.OK)
+    # A nested page sends the user up, and so do its sections' doors.
     assertRedirects(
         client.get(_supporting(journey)),
-        _hub(journey),
+        _page(journey),
         target_status_code=HTTPStatus.OK,
     )
     response = client.get(
         reverse("readme-apply-supporting-referees", kwargs={"journey": journey})
     )
-    assertRedirects(response, _hub(journey), target_status_code=HTTPStatus.OK)
+    assertRedirects(response, _page(journey), target_status_code=HTTPStatus.OK)
 
 
 def test_submitting_one_journey_leaves_another_untouched(client):
@@ -408,7 +410,7 @@ def test_submitting_one_journey_leaves_another_untouched(client):
     second = _start(client)
     _complete_everything(client, first)
 
-    client.post(_hub(first))
+    client.post(_page(first))
 
     assert stored_journey(client, first)["completed"] is True
     assert _statuses(client, second)["setup"] == COMPLETE
@@ -431,23 +433,25 @@ def test_an_observer_counts_the_answers_applicants_get_wrong(client):
     assert ch15_journey.rejections == ["applying-as"]
 
 
-# --- the machinery, on a hub with nothing to say ---------------------------
+# --- the machinery, on a page with nothing to say ---------------------------
 
 
 def _submit_hub(journey):
-    return reverse("submit-hub", kwargs={"journey": journey})
+    return reverse("submit-task-list", kwargs={"journey": journey})
 
 
 def _submit_everything(client, journey):
-    for member, url_name, data in [
-        ("first", "submit-hub-first", {"name": "Ada"}),
-        ("second", "submit-hub-second", {"name": "Grace"}),
+    for section, url_name, data in [
+        ("first", "submit-task-list-first", {"name": "Ada"}),
+        ("second", "submit-task-list-second", {"name": "Grace"}),
     ]:
         client.get(
-            reverse("submit-hub-entry", kwargs={"journey": journey, "entry": member}),
+            reverse(
+                "submit-task-list-entry", kwargs={"journey": journey, "entry": section}
+            ),
             follow=True,
         )
-        run_id = stored_section_run(client, member, journey=journey)
+        run_id = stored_section_run(client, section, journey=journey)
         client.post(
             reverse(
                 f"{url_name}-step",
@@ -466,7 +470,7 @@ def test_a_journey_that_decided_nothing_leaves_a_bare_tombstone(client):
     assert stored_journey(client, "app-1") == {"completed": True}
 
 
-def test_a_submitted_journey_is_gone_until_the_hub_says_otherwise(client):
+def test_a_submitted_journey_is_gone_until_the_page_says_otherwise(client):
     """The default `submitted()` is a 404: the library cannot know
     what a submitted journey looks like."""
     _submit_everything(client, "app-1")
@@ -495,27 +499,27 @@ def test_a_post_to_a_door_submits_nothing(client):
     _submit_everything(client, "app-1")
 
     response = client.post(
-        reverse("submit-hub-entry", kwargs={"journey": "app-1", "entry": "first"})
+        reverse("submit-task-list-entry", kwargs={"journey": "app-1", "entry": "first"})
     )
 
     assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
     assert not stored_journey(client, "app-1").get("completed")
 
 
-def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
-    """Chapter 12's task list has no `journey_done()`: a complete hub can be
+def test_a_page_with_nothing_to_do_at_submit_is_misconfigured(client):
+    """Chapter 12's task list has no `journey_done()`: a complete page can be
     submitted, and the library refuses to pretend that meant something."""
     for key in ("contact", "address"):
         seed_section_stash(client, key, {"version": 1, "label": key, "state": []})
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
-        client.post(reverse("readme-hub"))
+        client.post(reverse("readme-task-list"))
 
 
 # --- arranging a journey from a test ----------------------------------------
 
 
-def test_a_seeded_answer_reveals_a_member_without_driving_the_wizard(client):
+def test_a_seeded_answer_reveals_a_section_without_driving_the_wizard(client):
     journey = _start(client)
 
     seed_journey_data(client, {"amount": 20_000}, journey=journey)
@@ -533,7 +537,7 @@ def test_a_seeded_tombstone_reads_as_submitted(client):
 
     seed_journey_complete(client, journey=journey)
 
-    assertContains(client.get(_hub(journey)), "GF-SEEDED")
+    assertContains(client.get(_page(journey)), "GF-SEEDED")
     assert "stashes" not in stored_journey(client, journey)
 
 
@@ -544,7 +548,7 @@ def test_a_seeded_tombstone_with_nothing_decided_is_the_bare_one(client):
     assert client.get(_submit_hub("app-9")).status_code == HTTPStatus.NOT_FOUND
 
 
-def test_the_stash_keys_are_the_finished_members(client):
+def test_the_stash_keys_are_the_finished_sections(client):
     journey = _start(client)
     _finish_contact(client, journey)
     _finish_project(client, journey, 5_000)

@@ -66,13 +66,13 @@ class _Guests(AddAnotherViewSet):
     reverses through the URLconf rather than being faked."""
 
     template_name = "testapp/items.html"
-    remove_template_name = "testapp/collection_remove.html"
+    remove_template_name = "testapp/items_remove.html"
 
     url_name = "standalone-guests"
     key = "guests"
     section_template_name = "testapp/linear_wizard.html"
     add_another = GUESTS
-    task_list_url_name = "party-hub"
+    task_list_url_name = "party-task-list"
 
 
 _ItemViewSet = _Guests.item_viewset
@@ -132,7 +132,7 @@ def _view(task_list, **attributes):
     return type(
         "_ViewSet",
         (TaskListViewSet,),
-        {"url_name": "party-hub", "task_list": task_list, **attributes},
+        {"url_name": "party-task-list", "task_list": task_list, **attributes},
     )
 
 
@@ -147,24 +147,24 @@ def test_an_add_another_builds_its_item_viewset():
     assert _ItemViewSet.item_title == "name"
     assert _ItemViewSet.template_name == "testapp/linear_wizard.html"
     assert _Guests.template_name == "testapp/items.html"
-    assert _Guests.remove_template_name == "testapp/collection_remove.html"
+    assert _Guests.remove_template_name == "testapp/items_remove.html"
 
 
 def test_a_task_list_hands_its_add_another_pages_to_the_lists_it_builds():
     viewset = _view(
         _list(guests=GUESTS.replace(title="Guests")),
         add_another_template_name="testapp/items.html",
-        remove_template_name="testapp/collection_remove.html",
+        remove_template_name="testapp/items_remove.html",
     ).viewset_for("guests")
 
     assert viewset.template_name == "testapp/items.html"
-    assert viewset.remove_template_name == "testapp/collection_remove.html"
+    assert viewset.remove_template_name == "testapp/items_remove.html"
 
 
 def test_an_add_another_base_that_names_its_own_pages_keeps_them():
     class _Themed(AddAnotherViewSet):
         template_name = "testapp/task_list.html"
-        remove_template_name = "testapp/collection_remove.html"
+        remove_template_name = "testapp/items_remove.html"
 
     viewset = _view(
         _list(guests=GUESTS.replace(title="Guests")),
@@ -250,8 +250,8 @@ def test_a_task_list_builds_an_add_another_beneath_itself():
 
     assert issubclass(viewset, AddAnotherViewSet)
     assert viewset.key == "guests"
-    assert viewset.url_name == "party-hub-guests"
-    assert viewset.task_list_url_name == "party-hub"
+    assert viewset.url_name == "party-task-list-guests"
+    assert viewset.task_list_url_name == "party-task-list"
     assert viewset.item_viewset.list_key == "guests"
 
 
@@ -1029,7 +1029,7 @@ def test_the_remove_route_asks_before_it_destroys_anything(rf):
     response = GuestsViewSet.as_view()(request, item=ITEM_A)
 
     assert response.status_code == 200
-    assert response.template_name == ["testapp/collection_remove.html"]
+    assert response.template_name == ["testapp/items_remove.html"]
     assert response.context_data["row"].title == "Ada"
     store = SessionCollectionStore(WizardContext.from_request(request), "default")
     assert store.item_ids(KEY) == [ITEM_A]

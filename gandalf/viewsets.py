@@ -115,8 +115,8 @@ class WizardViewSet(View):
 
         What the start URL does, minus the redirect. The start URL mints a
         run id and hands it straight to a `Location` header; a caller that
-        has to *remember* which run a thing is being answered in — a hub
-        page tracking one run per member — learns the id at the moment it
+        has to *remember* which run a thing is being answered in — a task list
+        page tracking one run per section — learns the id at the moment it
         is created instead of having to discover it afterwards.
         `url_kwargs` are mount-prefix context (e.g. a tenant slug),
         forwarded into URL reversing via `get_url_kwargs()`.
@@ -258,7 +258,7 @@ class WizardViewSet(View):
         **`reopen()` does not fire this**, and neither does `inspect()`. A
         run seeded from a stash is a continuation, not a start: its metadata
         comes back with its answers, so the claim it created is already
-        there. Firing here would open a second one every time a hub member
+        there. Firing here would open a second one every time a task list section
         is re-entered.
 
         The cost worth knowing: the bare start URL mints a run and redirects,

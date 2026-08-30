@@ -188,7 +188,7 @@ class GrantApplication(TaskList):
     supporting = Group(
         SupportingInformation,
         title="Supporting information",
-        template_name="testapp/nested_hub.html",
+        template_name="testapp/nested_task_list.html",
     )
 
 
@@ -199,7 +199,7 @@ class GrantApplicationViewSet(TaskListViewSet):
 
     description = "Chapter 15: the application's task list, with a submit."
     url_name = "readme-apply"
-    template_name = "testapp/journey_hub.html"
+    template_name = "testapp/journey_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     add_another_template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"

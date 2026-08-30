@@ -273,7 +273,7 @@ class SummaryMixin(_SummaryMixinBase):
         A wizard that only runs forwards never has its own summary step in
         `path` — the step being rendered is the cursor, and the cursor is by
         definition unanswered. A run that has been round the houses does: an
-        edit revisited from a change link, or a stashed member re-opened
+        edit revisited from a change link, or a stashed section re-opened
         with `reopen_at` pointing here, both arrive with every answer
         stored, this page's own confirmation included. Dropping it is what
         stops the page offering to change itself.

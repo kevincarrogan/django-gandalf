@@ -31,7 +31,7 @@ class GrantApplication(TaskList):
 
 class GrantApplicationViewSet(TaskListViewSet):
     description = "Chapter 12: a task list over two independent sections."
-    template_name = "testapp/readme_hub.html"
+    template_name = "testapp/readme_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    url_name = "readme-hub"
+    url_name = "readme-task-list"
     task_list = GrantApplication

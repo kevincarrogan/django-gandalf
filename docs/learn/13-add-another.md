@@ -43,7 +43,7 @@ class Project(TaskList):
 
 
 class ProjectViewSet(TaskListViewSet):
-    template_name = "testapp/readme_hub.html"
+    template_name = "testapp/readme_task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     add_another_template_name = "testapp/budget.html"
     remove_template_name = "testapp/budget_remove.html"

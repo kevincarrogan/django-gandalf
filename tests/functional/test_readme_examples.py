@@ -565,9 +565,9 @@ def test_chapter_11_reopening_without_a_stash_starts_fresh(client, wizard_driver
 # --- Chapter 12: a task list --------------------------------------------------
 
 
-def test_chapter_12_lists_members_and_drives_one_to_complete(client, wizard_driver):
-    hub_url = reverse("readme-hub")
-    response = client.get(hub_url)
+def test_chapter_12_lists_sections_and_drives_one_to_complete(client, wizard_driver):
+    page_url = reverse("readme-task-list")
+    response = client.get(page_url)
 
     assert response.status_code == HTTPStatus.OK
     assert [(row.title, row.status) for row in response.context["task_list"].rows] == [
@@ -576,14 +576,14 @@ def test_chapter_12_lists_members_and_drives_one_to_complete(client, wizard_driv
     ]
 
     # Entering a member from the hub lands on its first step.
-    door = reverse("readme-hub-entry", kwargs={"entry": "contact"})
+    door = reverse("readme-task-list-entry", kwargs={"entry": "contact"})
     client.get(door, follow=True)
-    driver = wizard_driver("readme-hub-contact")
+    driver = wizard_driver("readme-task-list-contact")
     run = driver.only_run()
 
     # Half-answered, the member reads as Incomplete on the hub.
     run.post_step("name", {"full_name": "Ada"}, follow=True)
-    assertContains(client.get(hub_url), "Incomplete")
+    assertContains(client.get(page_url), "Incomplete")
 
     # Finished, it stashes its answers and reads as Complete.
     response = run.post_steps(
@@ -600,12 +600,12 @@ def test_chapter_12_lists_members_and_drives_one_to_complete(client, wizard_driv
     }
 
 
-def test_chapter_12_reopens_a_completed_member_on_its_review_page(
+def test_chapter_12_reopens_a_completed_section_on_its_review_page(
     client, wizard_driver
 ):
-    door = reverse("readme-hub-entry", kwargs={"entry": "address"})
+    door = reverse("readme-task-list-entry", kwargs={"entry": "address"})
     client.get(door, follow=True)
-    driver = wizard_driver("readme-hub-address")
+    driver = wizard_driver("readme-task-list-address")
     run = driver.only_run()
     run.post_steps([("address", ADDRESS), ("review", {})])
 
@@ -659,12 +659,12 @@ def test_chapter_13_adds_changes_and_removes_budget_lines(client):
     # Saying there are no more completes the collection, and the task list
     # above it reads that status without walking anything.
     assertRedirects(client.post(page, {"add_another": "no"}), reverse("readme-project"))
-    hub = client.get(reverse("readme-project"))
-    assert [(row.title, row.status) for row in hub.context["task_list"].rows] == [
+    overview = client.get(reverse("readme-project"))
+    assert [(row.title, row.status) for row in overview.context["task_list"].rows] == [
         ("Project", "not-started"),
         ("Budget", "complete"),
     ]
-    assert hub.context["task_list"].rows[1].url == page
+    assert overview.context["task_list"].rows[1].url == page
 
 
 def test_chapter_13_an_empty_budget_cannot_be_declared_complete(client):
@@ -673,8 +673,8 @@ def test_chapter_13_an_empty_budget_cannot_be_declared_complete(client):
 
     client.post(page, {"add_another": "no"})
 
-    hub = client.get(reverse("readme-project"))
-    assert hub.context["task_list"].rows[1].status == "incomplete"
+    overview = client.get(reverse("readme-project"))
+    assert overview.context["task_list"].rows[1].status == "incomplete"
 
 
 # --- Chapter 14: locked and hidden -------------------------------------------

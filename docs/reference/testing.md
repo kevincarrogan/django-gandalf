@@ -520,20 +520,20 @@ from gandalf.testing import (
 def test_a_section_pointing_at_a_forgotten_run_starts_again(client):
     seed_section_run(client, "contact", "00000000-0000-0000-0000-000000000000")
 
-    response = client.get(reverse("readme-hub-entry", kwargs={"entry": "contact"}))
+    response = client.get(reverse("readme-task-list-entry", kwargs={"entry": "contact"}))
 
     run_id = stored_section_run(client, "contact")
     assert run_id != "00000000-0000-0000-0000-000000000000"
     assertRedirects(
         response,
-        reverse("readme-hub-contact-step", kwargs={"run_id": run_id, "gandalf_step": "name"}),
+        reverse("readme-task-list-contact-step", kwargs={"run_id": run_id, "gandalf_step": "name"}),
     )
 
 
 def test_a_finished_section_reads_as_complete(client):
     seed_section_stash(client, "contact", {"version": 1, "label": "contact", "state": []})
 
-    assertContains(client.get(reverse("readme-hub")), "Complete")
+    assertContains(client.get(reverse("readme-task-list")), "Complete")
 ```
 
 And to drive a section through the page's door, recover the run the door
@@ -541,8 +541,8 @@ created with `only_run()`:
 
 ```python
 def test_lists_sections_and_drives_one_to_complete(client, wizard_driver):
-    client.get(reverse("readme-hub-entry", kwargs={"entry": "contact"}), follow=True)
-    run = wizard_driver("readme-hub-contact").only_run()
+    client.get(reverse("readme-task-list-entry", kwargs={"entry": "contact"}), follow=True)
+    run = wizard_driver("readme-task-list-contact").only_run()
 
     run.post_steps(
         [

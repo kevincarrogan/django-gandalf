@@ -24,7 +24,7 @@ from gandalf.testing import stored_items
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 from tests.testapp.forms import FirstStepForm
-from tests.testapp.readme.ch12_hub import GrantApplication, contact
+from tests.testapp.readme.ch12_task_list import GrantApplication, contact
 from tests.testapp.readme.ch15_journey import GrantApplicationViewSet
 from tests.testapp.views import GuestsViewSet, ScenarioViewSet
 
@@ -36,7 +36,7 @@ FIRST = Wizard().step(FirstStepForm, name="first")
 
 def test_entries_are_values():
     """Equal by kind, facts and key; hashable; readable."""
-    pay = Link("readme-hub", title="Pay", status=lambda r, k: COMPLETE)
+    pay = Link("readme-task-list", title="Pay", status=lambda r, k: COMPLETE)
 
     assert Section(contact, title="A") == Section(contact, title="A")
     assert Section(contact).bound("a") != Section(contact).bound("b")
@@ -44,9 +44,9 @@ def test_entries_are_values():
     assert (Section(contact) == "not an entry") is False
     assert len({Section(contact).bound("a"), Section(contact).bound("a")}) == 1
     assert repr(pay.bound("pay")) == (
-        f"Link(title='Pay', url_name='readme-hub', status={pay.status!r}, key='pay')"
+        f"Link(title='Pay', url_name='readme-task-list', status={pay.status!r}, key='pay')"
     )
-    assert pay.replace(title="Pay now").url_name == "readme-hub"
+    assert pay.replace(title="Pay now").url_name == "readme-task-list"
     assert AddAnother(FIRST, min_items=1).replace(min_items=2).min_items == 2
 
 
@@ -60,7 +60,7 @@ def test_a_kind_of_entry_the_page_cannot_list_is_refused():
     with pytest.raises(ImproperlyConfigured, match="_Odd is not a kind of entry"):
 
         class _Page(TaskListViewSet):
-            url_name = "readme-hub"
+            url_name = "readme-task-list"
             task_list = _List
 
 
@@ -76,7 +76,7 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
         plain = Section(_Plain)
 
     class _Page(TaskListViewSet):
-        url_name = "readme-hub"
+        url_name = "readme-task-list"
         template_name = "testapp/task_list.html"
         task_list = _List
 
@@ -139,7 +139,7 @@ def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf, client):
     page down with a KeyError."""
 
     class _Odd(TaskList):
-        pay = Link("readme-hub", status=lambda request, kwargs: "half-done")
+        pay = Link("readme-task-list", status=lambda request, kwargs: "half-done")
 
     class _OddPage(TaskListViewSet):
         url_name = "odd-status-page"
@@ -201,16 +201,16 @@ def test_an_unmounted_list_cannot_begin_a_journey(rf):
 
 
 def test_a_journey_on_a_one_per_session_list_has_no_id_in_its_url(client):
-    request = client.get(reverse("scenario-hub")).wsgi_request
+    request = client.get(reverse("scenario-task-list")).wsgi_request
 
     journey = ScenarioViewSet.begin(request)
 
-    assert journey.url == reverse("scenario-hub")
+    assert journey.url == reverse("scenario-task-list")
     assert journey.store.keys() == []
 
 
 def test_a_journeys_store_is_the_lists_store(client):
-    request = client.get(reverse("scenario-hub")).wsgi_request
+    request = client.get(reverse("scenario-task-list")).wsgi_request
 
     journey = GrantApplicationViewSet.begin(request, journey="app-1")
 

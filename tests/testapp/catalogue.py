@@ -133,24 +133,24 @@ GROUPS = (
                 note="Chapter 11. Only works once the wizard above has completed.",
             ),
             Example(
-                "readme-hub",
-                note="Chapter 12. The task list; enter the members from here.",
+                "readme-task-list",
+                note="Chapter 12. The task list; enter the sections from here.",
             ),
             Example(
-                "readme-hub-contact",
-                note="Chapter 12. A member, reached from the task list.",
+                "readme-task-list-contact",
+                note="Chapter 12. A section, reached from the task list.",
             ),
             Example(
-                "readme-hub-address",
-                note="Chapter 12. A member, reached from the task list.",
+                "readme-task-list-address",
+                note="Chapter 12. A section, reached from the task list.",
             ),
             Example(
                 "readme-project",
-                note="Chapter 13. A task list whose second row is a collection.",
+                note="Chapter 13. A task list whose second row is an add-another list.",
             ),
             Example(
                 "readme-project-project",
-                note="Chapter 13. The project member beside the budget.",
+                note="Chapter 13. The project section beside the budget.",
             ),
             Example(
                 "readme-project-budget",
@@ -158,19 +158,19 @@ GROUPS = (
             ),
             Example(
                 "readme-gated",
-                note="Chapter 14. Ask for over 10,000 and a member appears.",
+                note="Chapter 14. Ask for over 10,000 and a section appears.",
             ),
             Example("readme-gated-project"),
             Example("readme-gated-referees"),
             Example("readme-gated-match-funding"),
             Example(
                 "readme-apply-start",
-                note="Chapter 15. Start here — it mints an application and lands on its hub.",
+                note="Chapter 15. Start here — it mints an application and lands on its page.",
             ),
             Example(
                 "readme-apply",
                 url_kwargs=JOURNEY,
-                note="Chapter 15. The hub of one application. Reach it from the setup wizard.",
+                note="Chapter 15. The task list of one application. Reach it from the setup wizard.",
             ),
             Example("readme-apply-setup", url_kwargs=JOURNEY),
             Example("readme-apply-contact", url_kwargs=JOURNEY),
@@ -403,56 +403,62 @@ GROUPS = (
         ),
     ),
     Group(
-        "Hub and spoke",
-        "Parallel members instead of one line: a task list where each row is "
-        "an independent run with its own status. Enter the members from "
-        "their hub — a member's own URL starts a run the hub is not tracking.",
+        "Task lists",
+        "Parallel sections instead of one line: a task list where each row is "
+        "an independent run with its own status. Enter the sections from "
+        "the page — a section's own URL starts a run the page is not tracking.",
         (
-            Example("scenario-hub", note="Start here."),
-            Example("scenario-hub-plain"),
-            Example("scenario-hub-advancing"),
+            Example("scenario-task-list", note="Start here."),
+            Example("scenario-task-list-plain"),
+            Example("scenario-task-list-advancing"),
             Example(
-                "org-hub",
+                "org-task-list",
                 url_kwargs={"org": "acme"},
-                note="A hub whose members carry the tenant slug.",
+                note="A task list whose sections carry the tenant slug.",
             ),
-            Example("org-hub-details", url_kwargs={"org": "acme"}),
-            Example("counting-hub", note="Start here."),
-            Example("counting-hub-counting"),
-            Example("counting-hub-other"),
+            Example("org-task-list-details", url_kwargs={"org": "acme"}),
+            Example("counting-task-list", note="Start here."),
+            Example("counting-task-list-counting"),
+            Example("counting-task-list-other"),
             Example(
-                "gated-hub",
+                "gated-task-list",
                 note="The second row waits on the first: Cannot start yet, "
                 "and the door turns you away until it unlocks.",
             ),
-            Example("gated-hub-first"),
-            Example("gated-hub-second"),
+            Example("gated-task-list-first"),
+            Example("gated-task-list-second"),
         ),
     ),
     Group(
-        "Add another — collections of items",
+        "Add another — lists the user grows",
         "A list the user grows: each item is its own run, separately "
         "resumable, changeable and removable. The page asks whether there is "
         "another to add, because nothing in storage can answer that. Reach an "
-        "item from its collection page — the item wizard's own URL needs an "
-        "item id, and the collection is what mints them.",
+        "item from its list page — the item wizard's own URL needs an "
+        "item id, and the list is what mints them.",
         (
             Example(
-                "submit-hub",
+                "submit-task-list",
                 url_kwargs={"journey": "example"},
-                note="A hub under a journey segment; finish both rows, then submit.",
+                note="A task list under a journey segment; finish both rows, then submit.",
             ),
-            Example("submit-hub-first", url_kwargs={"journey": "example"}),
-            Example("submit-hub-second", url_kwargs={"journey": "example"}),
-            Example("party-hub", note="Start here — a task list with a collection."),
+            Example("submit-task-list-first", url_kwargs={"journey": "example"}),
+            Example("submit-task-list-second", url_kwargs={"journey": "example"}),
+            Example(
+                "party-task-list",
+                note="Start here — a task list with an add-another list.",
+            ),
             Example(
                 "standalone-guests",
-                note="The same collection mounted on its own, returning to the party hub.",
+                note="The same list mounted on its own, returning to the party task list.",
             ),
-            Example("party-hub-venue", note="A plain member beside the collection."),
             Example(
-                "party-hub-guests",
-                note="The collection page. Add a few, then change and remove them.",
+                "party-task-list-venue",
+                note="A plain section beside the add-another list.",
+            ),
+            Example(
+                "party-task-list-guests",
+                note="The list page. Add a few, then change and remove them.",
             ),
             Example(
                 "minimum-guests",
@@ -470,9 +476,9 @@ GROUPS = (
                 "bare run URL would complete on a GET.",
             ),
             Example(
-                "org-hub-org_guests",
+                "org-task-list-org_guests",
                 url_kwargs={"org": "acme"},
-                note="A collection whose items carry the tenant slug.",
+                note="An add-another list whose items carry the tenant slug.",
             ),
             Example(
                 "off-route-guests",
@@ -493,12 +499,14 @@ GROUPS = (
         "are about completion — a finished run is tombstoned so done() "
         "cannot fire twice, and the tombstones are eventually pruned.",
         (
-            Example("durable-hub", note="Start here; its runs survive a restart."),
-            Example("durable-hub-durable"),
+            Example(
+                "durable-task-list", note="Start here; its runs survive a restart."
+            ),
+            Example("durable-task-list-durable"),
             Example("titled-guests"),
             Example(
                 "durable-guests",
-                note="A collection whose registry is a table, so two tabs "
+                note="An add-another list whose registry is a table, so two tabs "
                 "adding at once cannot lose an item.",
             ),
             Example(
@@ -590,14 +598,14 @@ def _iter_leaf_patterns(patterns, prefix_converters=frozenset()):
 
 
 def published_url_names():
-    """Every wizard and hub *start* URL the test app mounts.
+    """Every wizard and task list *start* URL the test app mounts.
 
     Derived from the URLconf rather than declared, so a wizard added to
     `urls.py` and forgotten here shows up as a test failure. The per-run,
-    per-step, per-member and per-item patterns are skipped: they are ways
+    per-step, per-section and per-item patterns are skipped: they are ways
     back into something that already exists, not places to begin. A
-    collection's items are per-item wherever the segment sits, so the whole
-    item wizard is reached from its collection page rather than the index.
+    list's items are per-item wherever the segment sits, so the whole
+    item wizard is reached from its list page rather than the index.
     """
     names = set()
     for pattern, converters in _iter_leaf_patterns(get_resolver(None).url_patterns):

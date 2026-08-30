@@ -146,8 +146,8 @@ def test_a_group_shares_its_parents_journey_and_stores():
 
 def test_a_group_takes_its_page_from_its_entry_and_its_entries_from_its_list():
     assert SupportingViewSet.task_list is SupportingInformation
-    assert SupportingViewSet.template_name == "testapp/nested_hub.html"
-    assert GrantApplicationViewSet.template_name == "testapp/journey_hub.html"
+    assert SupportingViewSet.template_name == "testapp/nested_task_list.html"
+    assert GrantApplicationViewSet.template_name == "testapp/journey_task_list.html"
 
 
 def test_a_group_without_a_page_of_its_own_renders_with_its_roots():

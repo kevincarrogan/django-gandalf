@@ -3,11 +3,11 @@
 Gandalf ships no durable backend — `storage_class` and `journey_store_class`
 are the seams a project swaps. This suite is the proof that they are
 sufficient: `tests/testapp/durable.py` implements both protocols against
-ordinary models, and a whole hub journey runs over them with the session
+ordinary models, and a whole page journey runs over them with the session
 holding nothing but the login.
 
 The point the tests make together is that *nothing else changes*. The wizard,
-the walk, the escapes and the hub are untouched; only where the bytes live
+the walk, the escapes and the page are untouched; only where the bytes live
 differs.
 """
 
@@ -37,8 +37,8 @@ from tests.testapp.models import (
 
 pytestmark = pytest.mark.django_db
 
-HUB_URL = "/durable-hub/"
-DOOR_URL = "/durable-hub/durable/"
+HUB_URL = "/durable-task-list/"
+DOOR_URL = "/durable-task-list/durable/"
 
 
 @pytest.fixture
@@ -54,7 +54,8 @@ def logged_in(client, user):
 
 def _step_url(run_id, step):
     return reverse(
-        "durable-hub-durable-step", kwargs={"run_id": run_id, "gandalf_step": step}
+        "durable-task-list-durable-step",
+        kwargs={"run_id": run_id, "gandalf_step": step},
     )
 
 
@@ -72,7 +73,7 @@ def test_a_run_and_its_answers_live_in_the_database_not_the_session(logged_in):
     assert "gandalf_runs" not in logged_in.session
 
 
-def test_the_hubs_bookkeeping_lives_in_the_database_too(logged_in):
+def test_the_pages_bookkeeping_lives_in_the_database_too(logged_in):
     logged_in.get(DOOR_URL, follow=True)
 
     record = SectionRecord.objects.get()
@@ -81,7 +82,7 @@ def test_the_hubs_bookkeeping_lives_in_the_database_too(logged_in):
     assert "gandalf_journeys" not in logged_in.session
 
 
-def test_a_whole_member_completes_over_model_storage(logged_in):
+def test_a_whole_section_completes_over_model_storage(logged_in):
     logged_in.get(DOOR_URL, follow=True)
     run = WizardRun.objects.get()
 
@@ -101,7 +102,7 @@ def test_a_whole_member_completes_over_model_storage(logged_in):
     ]
 
 
-def test_the_hub_reads_every_status_off_model_storage(logged_in):
+def test_the_page_reads_every_status_off_model_storage(logged_in):
     assert _status(logged_in) == NOT_STARTED
 
     logged_in.get(DOOR_URL, follow=True)
@@ -121,8 +122,8 @@ def _status(client):
 # --- what durability actually buys ------------------------------------------
 
 
-def test_a_half_answered_member_survives_the_session_being_lost(logged_in, user):
-    """The whole point: come back tomorrow, on a new session, and the member
+def test_a_half_answered_section_survives_the_session_being_lost(logged_in, user):
+    """The whole point: come back tomorrow, on a new session, and the section
     is still where you left it."""
     logged_in.get(DOOR_URL, follow=True)
     run = WizardRun.objects.get()
@@ -136,7 +137,7 @@ def test_a_half_answered_member_survives_the_session_being_lost(logged_in, user)
     assertRedirects(logged_in.get(DOOR_URL), _step_url(run.pk, "second"))
 
 
-def test_a_completed_member_reopens_from_its_stored_stash(logged_in, user):
+def test_a_completed_section_reopens_from_its_stored_stash(logged_in, user):
     logged_in.get(DOOR_URL, follow=True)
     original = WizardRun.objects.get()
     logged_in.post(_step_url(original.pk, "first"), {"name": "Ada"}, follow=True)
@@ -348,7 +349,7 @@ def test_journeys_are_scoped_by_owner_and_by_journey(user, django_user_model):
     assert ModelJourneyStore(WizardContext(actor=other), "app-1").keys() == []
 
 
-def test_completing_a_journey_deletes_its_members_and_keeps_its_row(user):
+def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
     store = ModelCollectionStore(WizardContext(actor=user), "app-1")
     store.set_run("contact", None)
     store.put_stash("contact", {"state": []})
@@ -367,8 +368,8 @@ def test_completing_a_journey_deletes_its_members_and_keeps_its_row(user):
     assert not CollectionItemRecord.objects.filter(owner=user).exists()
 
 
-def test_a_submitted_durable_journey_is_gone_from_its_hub(logged_in, user):
-    """The default `submitted()`: a tombstone is a 404 until the hub
+def test_a_submitted_durable_journey_is_gone_from_its_page(logged_in, user):
+    """The default `submitted()`: a tombstone is a 404 until the page
     says what a submitted journey looks like."""
     ModelJourneyStore(WizardContext(actor=user), "default").complete()
 
