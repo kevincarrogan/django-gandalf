@@ -21,6 +21,43 @@ What every version has to do, somehow:
 """
 
 # =============================================================================
+# The task list every sketch starts (tests/testapp/readme/ch14_tasklist.py)
+# =============================================================================
+#
+# `setup` is the section the start wizard's answers become. `SetupMember`
+# is the section's viewset: the same wizard, plus what to do when it
+# finishes. `GrantApplication` is a TemplateView underneath, mounted with
+# `include(GrantApplication.urls())` under `apply/<slug:journey>/`.
+
+
+class SetupMember(MemberViewSet):
+    wizard = setup
+
+    def run_done(self, bound_wizard):
+        record_applying_as(self.get_journey_store(), bound_wizard)
+        return super().run_done(bound_wizard)
+
+
+class GrantApplication(TaskList):
+    url_name = "apply"
+    template_name = "apply/hub.html"
+    member_template_name = "apply/step.html"
+
+    setup = Section(SetupMember, title="Applying as")
+    contact = Section(ContactMember, title="Contact details", reopen="review")
+    project = Section(ProjectMember, title="Project", reopen="review")
+    budget = AddAnother(budget, title="Budget")
+    match_funding = Section(MatchFundingMember, title="Match funding")
+    supporting = Group(SupportingInformation, title="Supporting information")
+
+    def journey_done(self, hub, store):
+        application = Application.objects.create()
+        application.submit(store.data["email"])
+        store.data["reference"] = application.reference
+        return redirect(self.get_page_url())
+
+
+# =============================================================================
 # 0. By hand (the branch's ch14_journey.py)
 # =============================================================================
 #
