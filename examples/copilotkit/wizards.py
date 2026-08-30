@@ -19,7 +19,7 @@ from examples.insurance import (
 )
 from examples.identity import IdentityCheckViewSet
 from examples.licence import LicenceCheckViewSet
-from tests.testapp.durable import ModelCollectionStore, ModelStorage
+from tests.testapp.durable import ModelItemStore, ModelStorage
 
 
 class HybridQuoteViewSet(InsuranceQuoteViewSet):
@@ -85,7 +85,7 @@ class HybridVehiclesViewSet(VehiclesViewSet):
     """
 
     storage_class = ModelStorage
-    journey_store_class = ModelCollectionStore
+    journey_store_class = ModelItemStore
 
 
 #: The item wizard the page built, for the driver to address directly.

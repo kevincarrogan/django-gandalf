@@ -31,7 +31,7 @@ a pointer back to the [Learn](../learn/README.md) chapter that introduces it.
 
 - [Task lists](tasklists.md) — `TaskList`, `Section`, `Group`, `TaskListViewSet`, `SectionViewSet`, statuses, `blocked()` / `hidden()`, journeys, groups, ending
 - [Add another](add-another.md) — `AddAnother`, `AddAnotherViewSet`, `ItemViewSet`, add / change / remove
-- [Journey store](journey-store.md) — `SessionJourneyStore`, `store.data`, the `JourneyStore` / `CollectionStore` protocols
+- [Journey store](journey-store.md) — `SessionJourneyStore`, `store.data`, the `JourneyStore` / `ItemStore` protocols
 
 ## From outside
 

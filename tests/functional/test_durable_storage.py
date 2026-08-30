@@ -22,13 +22,13 @@ from gandalf.context import WizardContext
 from gandalf.tasklists import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
 from tests.testapp.durable import (
-    ModelCollectionStore,
+    ModelItemStore,
     ModelJourneyStore,
     ModelStorage,
 )
 from tests.testapp.models import (
-    CollectionItemRecord,
-    CollectionRecord,
+    ItemRecord,
+    ItemListRecord,
     JourneyRecord,
     SectionRecord,
     WizardRun,
@@ -233,8 +233,8 @@ def _complete_durable(client, name):
 def test_a_collections_registry_lives_in_the_database_not_the_session(logged_in):
     _add_durable(logged_in)
 
-    (record,) = CollectionItemRecord.objects.all()
-    assert record.collection_key == "durable-guests"
+    (record,) = ItemRecord.objects.all()
+    assert record.list_key == "durable-guests"
     assert record.position == 0
     assert "gandalf_journeys" not in logged_in.session
 
@@ -242,7 +242,7 @@ def test_a_collections_registry_lives_in_the_database_not_the_session(logged_in)
 def test_an_items_title_is_cached_in_the_database_when_it_finishes(logged_in):
     _complete_durable(logged_in, "Ada")
 
-    assert CollectionItemRecord.objects.get().title == "Ada"
+    assert ItemRecord.objects.get().title == "Ada"
     assert SectionRecord.objects.get().stash["label"] == "durable-guests"
 
 
@@ -251,7 +251,7 @@ def test_the_users_answer_to_add_another_lives_in_the_database(logged_in):
 
     logged_in.post(COLLECTION_URL, {"add_another": "no"})
 
-    assert CollectionRecord.objects.get().declared_done is True
+    assert ItemListRecord.objects.get().declared_done is True
     assert logged_in.get(COLLECTION_URL).context["items"].status == COMPLETE
 
 
@@ -268,7 +268,7 @@ def test_a_half_finished_item_survives_the_session_being_lost(logged_in, user):
 
 def test_a_finished_item_reopens_from_the_database_after_a_new_session(logged_in, user):
     _complete_durable(logged_in, "Ada")
-    item_id = CollectionItemRecord.objects.get().item_id
+    item_id = ItemRecord.objects.get().item_id
     logged_in.logout()
     logged_in.force_login(user)
 
@@ -282,13 +282,11 @@ def test_a_finished_item_reopens_from_the_database_after_a_new_session(logged_in
 def test_removing_an_item_takes_its_row_and_its_run_out_of_the_database(logged_in):
     _complete_durable(logged_in, "Ada")
     _complete_durable(logged_in, "Grace")
-    first, second = list(CollectionItemRecord.objects.values_list("item_id", flat=True))
+    first, second = list(ItemRecord.objects.values_list("item_id", flat=True))
 
     logged_in.post(reverse("durable-guests-remove", kwargs={"item": first}))
 
-    assert list(CollectionItemRecord.objects.values_list("item_id", flat=True)) == [
-        second
-    ]
+    assert list(ItemRecord.objects.values_list("item_id", flat=True)) == [second]
     assert (
         SectionRecord.objects.filter(
             key=f"durable-guests:{first}", stash__isnull=False
@@ -300,13 +298,13 @@ def test_removing_an_item_takes_its_row_and_its_run_out_of_the_database(logged_i
 def test_a_unique_constraint_settles_the_race_the_session_store_loses(logged_in):
     """Two tabs adding at once both read the same list and both append one,
     so a session-backed registry loses an item outright. A table cannot."""
-    store = ModelCollectionStore(WizardContext(actor=User.objects.get()), "default")
+    store = ModelItemStore(WizardContext(actor=User.objects.get()), "default")
 
     store.add_item("durable-guests", "same-id")
     store.add_item("durable-guests", "same-id")
 
     assert store.item_ids("durable-guests") == ["same-id"]
-    assert CollectionItemRecord.objects.count() == 1
+    assert ItemRecord.objects.count() == 1
 
 
 def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
@@ -328,12 +326,12 @@ def test_a_journeys_data_lives_on_its_own_row(user):
     store = ModelJourneyStore(WizardContext(actor=user), "app-1")
 
     store.data["applicant_type"] = "business"
-    store.data.for_member("employment")["checked"] = True
+    store.data.for_section("employment")["checked"] = True
 
     record = JourneyRecord.objects.get(owner=user, journey="app-1")
     assert record.data == {
         "journey": {"applicant_type": "business"},
-        "members": {"employment": {"checked": True}},
+        "sections": {"employment": {"checked": True}},
     }
     assert (
         ModelJourneyStore(WizardContext(actor=user), "app-1").data["applicant_type"]
@@ -350,7 +348,7 @@ def test_journeys_are_scoped_by_owner_and_by_journey(user, django_user_model):
 
 
 def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
-    store = ModelCollectionStore(WizardContext(actor=user), "app-1")
+    store = ModelItemStore(WizardContext(actor=user), "app-1")
     store.set_run("contact", None)
     store.put_stash("contact", {"state": []})
     store.add_item("guests", "a")
@@ -365,7 +363,7 @@ def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
     assert store.is_declared_done("guests") is False
     assert store.data["reference"] == "APP-1"
     assert not SectionRecord.objects.filter(owner=user).exists()
-    assert not CollectionItemRecord.objects.filter(owner=user).exists()
+    assert not ItemRecord.objects.filter(owner=user).exists()
 
 
 def test_a_submitted_durable_journey_is_gone_from_its_page(logged_in, user):

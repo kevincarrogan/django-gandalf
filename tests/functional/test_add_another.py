@@ -834,7 +834,7 @@ def test_registering_an_id_a_list_already_lists_does_not_duplicate_it(rf, client
     """Ids need not be uuids — a collection whose items are named by the
     domain can press Add twice for the same one."""
 
-    from gandalf.storage import SessionCollectionStore
+    from gandalf.storage import SessionItemStore
 
     class _Fixed(GuestsViewSet):
         def new_item_id(self):
@@ -846,7 +846,7 @@ def test_registering_an_id_a_list_already_lists_does_not_duplicate_it(rf, client
         request.session = session
         _Fixed.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert store.item_ids("standalone-guests") == [ITEM]
 
 

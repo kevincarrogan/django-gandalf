@@ -25,7 +25,7 @@ A durable hub needs **both** stores swapped, once, on the root viewset:
 and every member the hub builds gets the same two. A journey store is built
 with the journey as well as the context, and its `data` and `complete()`
 are the journey's own — kept on a row that survives the members being
-deleted at submission. A durable *collection* needs `ModelCollectionStore`
+deleted at submission. A durable *collection* needs `ModelItemStore`
 in place of `ModelJourneyStore` — it is the journey store plus an ordered
 registry, so one swap covers both halves. Swapping only one gives you
 durable answers nobody can find, or a durable index into runs that have
@@ -39,8 +39,8 @@ from django.core.exceptions import ValidationError
 from gandalf.storage import JourneyData, RunNotFound, StashNotFound
 
 from .models import (
-    CollectionItemRecord,
-    CollectionRecord,
+    ItemRecord,
+    ItemListRecord,
     JourneyRecord,
     SectionRecord,
     WizardRun,
@@ -202,8 +202,8 @@ class ModelJourneyStore:
         return JourneyRecord.objects.filter(**self._scope(), completed=True).exists()
 
 
-class ModelCollectionStore(ModelJourneyStore):
-    """`SessionCollectionStore`'s protocol, against tables scoped to the user
+class ModelItemStore(ModelJourneyStore):
+    """`SessionItemStore`'s protocol, against tables scoped to the user
     and the journey.
 
     Everything `ModelJourneyStore` does — an item's run and stash live under
@@ -214,7 +214,7 @@ class ModelCollectionStore(ModelJourneyStore):
     """
 
     def _items(self, key):
-        return CollectionItemRecord.objects.filter(**self._scope(), collection_key=key)
+        return ItemRecord.objects.filter(**self._scope(), list_key=key)
 
     def item_ids(self, key):
         return list(self._items(key).values_list("item_id", flat=True))
@@ -227,9 +227,9 @@ class ModelCollectionStore(ModelJourneyStore):
         # nothing, so a gap is possible and the order is what matters, not
         # the values. `get_or_create` makes adding an id already listed a
         # no-op, as the session store's early return does.
-        CollectionItemRecord.objects.get_or_create(
+        ItemRecord.objects.get_or_create(
             **self._scope(),
-            collection_key=key,
+            list_key=key,
             item_id=item_id,
             defaults={"position": self._items(key).count()},
         )
@@ -245,16 +245,16 @@ class ModelCollectionStore(ModelJourneyStore):
         self._items(key).filter(item_id=item_id).update(title=title)
 
     def is_declared_done(self, key):
-        return CollectionRecord.objects.filter(
+        return ItemListRecord.objects.filter(
             **self._scope(), key=key, declared_done=True
         ).exists()
 
     def set_declared_done(self, key, declared_done):
-        CollectionRecord.objects.update_or_create(
+        ItemListRecord.objects.update_or_create(
             **self._scope(), key=key, defaults={"declared_done": declared_done}
         )
 
     def complete(self):
-        CollectionItemRecord.objects.filter(**self._scope()).delete()
-        CollectionRecord.objects.filter(**self._scope()).delete()
+        ItemRecord.objects.filter(**self._scope()).delete()
+        ItemListRecord.objects.filter(**self._scope()).delete()
         super().complete()

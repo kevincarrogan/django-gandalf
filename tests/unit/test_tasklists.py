@@ -45,7 +45,7 @@ class _Session(dict):
 #: The parts of a journey's record a test seeds, lifted under the journey
 #: key the store reads them from. Everything else (`gandalf_runs`) passes
 #: through untouched.
-_JOURNEY_PARTS = ("runs", "stashes", "collections", "data", "completed")
+_JOURNEY_PARTS = ("runs", "stashes", "lists", "data", "completed")
 
 
 def _session(seed=None, journey="default"):
@@ -1766,7 +1766,7 @@ def test_a_post_to_the_page_submits_the_journey(rf):
                 "supporting:referees": _stash([{"step": {}}], "supporting:referees"),
                 f"budget:{line}": _stash([{"step": {}}], "budget"),
             },
-            "collections": {
+            "lists": {
                 "budget": {
                     "items": [{"id": line, "title": "Paint"}],
                     "declared_done": True,

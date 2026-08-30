@@ -23,7 +23,7 @@ from gandalf.add_another import (
 )
 from gandalf.context import WizardContext
 from gandalf.form_views import StepFormView
-from gandalf.storage import SessionCollectionStore
+from gandalf.storage import SessionItemStore
 from gandalf.tasklists import (
     AddAnother,
     Group,
@@ -45,7 +45,7 @@ class _Session(dict):
 #: The parts of a journey's record a test seeds, lifted under the journey
 #: key the store reads them from. Everything else (`gandalf_runs`) passes
 #: through untouched.
-_JOURNEY_PARTS = ("runs", "stashes", "collections", "data", "completed")
+_JOURNEY_PARTS = ("runs", "stashes", "lists", "data", "completed")
 
 
 def _session(seed=None, journey="default"):
@@ -106,7 +106,7 @@ RUN = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 def _seed(items=(), declared_done=False, key="guests"):
     return {
-        "collections": {
+        "lists": {
             key: {
                 "items": [{"id": i, "title": t} for i, t in items],
                 "declared_done": declared_done,
@@ -531,7 +531,7 @@ def test_adding_an_item_registers_it_before_entering_its_wizard(guests):
 
     view.add_item()
 
-    store = SessionCollectionStore(view.request, "default")
+    store = SessionItemStore(view.request, "default")
     (item_id,) = store.item_ids("guests")
     assert store.get_run(f"guests:{item_id}") is not None
 
@@ -541,10 +541,7 @@ def test_adding_an_item_withdraws_the_users_answer(guests):
 
     view.add_item()
 
-    assert (
-        SessionCollectionStore(view.request, "default").is_declared_done("guests")
-        is False
-    )
+    assert SessionItemStore(view.request, "default").is_declared_done("guests") is False
 
 
 def test_declaring_no_more_records_the_answer_and_moves_the_user_on(guests):
@@ -554,10 +551,7 @@ def test_declaring_no_more_records_the_answer_and_moves_the_user_on(guests):
 
     response = view.declare_done()
 
-    assert (
-        SessionCollectionStore(view.request, "default").is_declared_done("guests")
-        is True
-    )
+    assert SessionItemStore(view.request, "default").is_declared_done("guests") is True
     assert response.status_code == 302
     assert response["Location"] == "/party/"
 
@@ -589,7 +583,7 @@ def test_removing_an_item_destroys_the_pointer_last(guests):
     with pytest.raises(RuntimeError):
         view.remove_item(ITEM_A)
 
-    store = SessionCollectionStore(view.request, "default")
+    store = SessionItemStore(view.request, "default")
     assert events == [(None, True)]
     assert store.item_ids("guests") == [ITEM_A]
 
@@ -607,10 +601,7 @@ def test_removing_an_item_leaves_the_users_answer_alone(guests):
 
     view.remove_item(ITEM_A)
 
-    assert (
-        SessionCollectionStore(view.request, "default").is_declared_done("guests")
-        is True
-    )
+    assert SessionItemStore(view.request, "default").is_declared_done("guests") is True
 
 
 def test_discarding_a_run_the_storage_has_forgotten_is_not_an_error(guests):
@@ -620,7 +611,7 @@ def test_discarding_a_run_the_storage_has_forgotten_is_not_an_error(guests):
 
     view.remove_item(ITEM_A)
 
-    assert SessionCollectionStore(view.request, "default").item_ids("guests") == []
+    assert SessionItemStore(view.request, "default").item_ids("guests") == []
 
 
 def test_an_item_id_the_registry_does_not_list_is_refused(guests):
@@ -688,7 +679,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
         rf,
         session={
             "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
-            "collections": {
+            "lists": {
                 "guests": {
                     "items": [{"id": "7", "title": None}],
                     "declared_done": False,
@@ -700,7 +691,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
 
     view.done(_ItemViewSet.inspect(view.request, "run-1", item="7"))
 
-    store = SessionCollectionStore(WizardContext.from_request(view.request), "default")
+    store = SessionItemStore(WizardContext.from_request(view.request), "default")
     assert store.get_item_title("guests", "7") == "Ada"
     assert store.get_stash("guests:7")["label"] == "guests"
 
@@ -741,7 +732,7 @@ def test_an_items_run_done_knows_which_item_it_is(rf):
         cls=_Page.item_viewset,
         session={
             "gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}},
-            "collections": {
+            "lists": {
                 "guests": {
                     "items": [{"id": "7", "title": None}],
                     "declared_done": False,
@@ -943,7 +934,7 @@ def test_the_page_route_registers_an_item_and_redirects_into_its_wizard(rf):
 
     response = GuestsViewSet.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     (item_id,) = store.item_ids(KEY)
     assert response.status_code == 302
     assert response["Location"].startswith(f"{PAGE}{item_id}/")
@@ -973,7 +964,7 @@ def test_answering_no_records_it_and_moves_the_user_on(rf):
     response = GuestsViewSet.as_view()(request)
 
     assert response["Location"] == "/party/"
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert store.is_declared_done(KEY) is True
 
 
@@ -1011,7 +1002,7 @@ def test_adding_to_a_locked_page_still_registers_the_item(rf):
 
     response = LockedGuestsViewSet.as_view()(request)
 
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert response["Location"] == "/locked-guests/"
     assert len(store.item_ids("locked-guests")) == 1
 
@@ -1031,7 +1022,7 @@ def test_the_remove_route_asks_before_it_destroys_anything(rf):
     assert response.status_code == 200
     assert response.template_name == ["testapp/items_remove.html"]
     assert response.context_data["row"].title == "Ada"
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert store.item_ids(KEY) == [ITEM_A]
 
 
@@ -1049,7 +1040,7 @@ def test_posting_to_the_remove_route_destroys_the_item(rf):
     response = GuestsViewSet.as_view()(request, item=ITEM_A)
 
     assert response["Location"] == PAGE
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert store.item_ids(KEY) == []
 
 
@@ -1115,7 +1106,7 @@ def test_posting_to_an_items_door_removes_nothing(rf):
     response = GuestsViewSet.as_view()(request, item=ITEM_A)
 
     assert response.status_code == 405
-    store = SessionCollectionStore(WizardContext.from_request(request), "default")
+    store = SessionItemStore(WizardContext.from_request(request), "default")
     assert store.item_ids(KEY) == [ITEM_A]
 
 

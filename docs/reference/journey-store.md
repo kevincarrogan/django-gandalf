@@ -7,11 +7,11 @@ answers, what they decided, and whether the journey has been submitted; and
 ```python
 from gandalf.storage import (
     JourneyData,
-    SessionCollectionStore,
+    SessionItemStore,
     SessionJourneyStore,
     StashNotFound,
 )
-from gandalf.types import CollectionStore, JourneyStore
+from gandalf.types import ItemStore, JourneyStore
 ```
 
 A *journey* is what a task list's sections add up to — one application,
@@ -51,7 +51,7 @@ session["gandalf_journeys"][journey] = {
     "runs": {key: run_id},        # sections being answered right now
     "stashes": {key: payload},    # sections that have finished
     "data": {...},                # what the sections decided (JourneyData's envelope)
-    "collections": {...},         # SessionCollectionStore only
+    "lists": {...},         # SessionItemStore only
     "completed": True,            # tombstone only
 }
 ```
@@ -118,7 +118,7 @@ the journey rather than one run; the bag semantics are in
 
 **Methods**
 
-- `for_member(key)` — this journey's data for section `key`, addressed
+- `for_section(key)` — this journey's data for section `key`, addressed
   from the root whichever bag it is called on: a section can keep its own
   notes without treading on the journey or on another section.
 
@@ -126,10 +126,10 @@ Write here from a section's `run_done()` (the run is still readable) and
 read back from `blocked()` / `hidden()`, `journey_done()` and
 `submitted()`. The tombstone keeps it.
 
-### `SessionCollectionStore(context, journey)`
+### `SessionItemStore(context, journey)`
 
 `SessionJourneyStore` plus an ordered registry of items per add-another
-list, under a `"collections"` mapping in the same record. Nothing above
+list, under a `"lists"` mapping in the same record. Nothing above
 it changes: an item's run and stash live under the composed key the view
 builds (`"budget:<id>"`), so a task list's store and an add-another page's
 store share one key space.
@@ -189,12 +189,12 @@ Contracts a backend must keep:
 - Scope by `context.actor` and `journey`: the journey names *which*, the
   actor *whose*.
 
-### `gandalf.types.CollectionStore`
+### `gandalf.types.ItemStore`
 
-`JourneyStore` plus the eight registry methods of `SessionCollectionStore`
+`JourneyStore` plus the eight registry methods of `SessionItemStore`
 above. What the `journey_store_class` of a tree with an add-another list in
 it has to satisfy — which is why `TaskListViewSet`'s default is
-`SessionCollectionStore` rather than `SessionJourneyStore`: one class
+`SessionItemStore` rather than `SessionJourneyStore`: one class
 serves a list with no add-another just as well, and one class means every
 entry of the tree reads the same record.
 
@@ -213,7 +213,7 @@ A store that keeps the same things in tables drops in by
 is a worked example: `ModelJourneyStore` keeps run id and stash on one row
 per section (they outlive each other), and the journey's data and completion
 on a row of their own that survives `complete()` deleting the sections;
-`ModelCollectionStore` adds the registry with an explicit `position` and a
+`ModelItemStore` adds the registry with an explicit `position` and a
 uniqueness constraint. Both are scoped by `context.actor` and `journey`.
 
 A durable task list needs **both** seams swapped, once, on the root
@@ -277,8 +277,8 @@ the page under that id. See [`Journey`](tasklists.md).
 
 ```python
 store = self.get_journey_store()
-store.data.for_member("budget").update({"lines": 3, "total": 420})
-store.data.for_member("budget")["total"]     # 420
+store.data.for_section("budget").update({"lines": 3, "total": 420})
+store.data.for_section("budget")["total"]     # 420
 store.data.get("total")                       # None — a different bucket
 ```
 
@@ -313,7 +313,7 @@ finished" is an ordinary answer.
 
 Reads are deep copies: `store.data["budget"]["total"] = 1` changes the copy.
 Assign the whole value back — `store.data["budget"] = {**budget, "total": 1}`
-— or use `for_member()` / `update()`.
+— or use `for_section()` / `update()`.
 
 ### An older submitted application's done page now 404s
 

@@ -72,7 +72,7 @@ from gandalf.tasklists import (
     TaskListViewSet,
     class_name_for,
 )
-from gandalf.types import CollectionStore, JourneyStore, StrOrPromise
+from gandalf.types import ItemStore, JourneyStore, StrOrPromise
 from gandalf.viewsets import RunUnavailable
 
 __all__ = [
@@ -200,8 +200,8 @@ class ItemViewSet(SectionViewSet):
         anything on the way back in."""
         return self.get_list_key()
 
-    def get_journey_store(self) -> CollectionStore:
-        return cast(CollectionStore, super().get_journey_store())
+    def get_journey_store(self) -> ItemStore:
+        return cast(ItemStore, super().get_journey_store())
 
     def get_item_title(self, run: Run) -> str:
         """The name this item goes by on the page, read off the finished
@@ -224,11 +224,11 @@ class ItemViewSet(SectionViewSet):
 
     def run_recorded(self, run: Run, store: JourneyStore, key: str) -> None:
         title = self.get_item_title(run)
-        cast(CollectionStore, store).set_item_title(
+        cast(ItemStore, store).set_item_title(
             self.get_list_key(), self.get_item_id(), title or None
         )
 
-    def item_removed(self, store: CollectionStore) -> None:
+    def item_removed(self, store: ItemStore) -> None:
         """This item is about to leave the list. Undo whatever finishing it
         did elsewhere; `self.get_item_id()` says which."""
 
@@ -379,8 +379,8 @@ class AddAnotherViewSet(TaskListViewSet):
         assert key is not None
         return key
 
-    def get_store(self) -> CollectionStore:
-        return cast(CollectionStore, self.get_journey_store())
+    def get_store(self) -> ItemStore:
+        return cast(ItemStore, self.get_journey_store())
 
     def get_item_viewset(self) -> type[ItemViewSet]:
         assert self.item_viewset is not None
@@ -439,9 +439,7 @@ class AddAnotherViewSet(TaskListViewSet):
             min_items=self.get_declaration().min_items,
         )
 
-    def build_item_row(
-        self, entry: Entry, store: CollectionStore, position: int
-    ) -> ItemRow:
+    def build_item_row(self, entry: Entry, store: ItemStore, position: int) -> ItemRow:
         item_id = self.item_id_for(entry)
         status = self.get_entry_status(entry, store)
         return ItemRow(
@@ -459,7 +457,7 @@ class AddAnotherViewSet(TaskListViewSet):
         return cast(str, entry.url_kwargs[self.entry_url_kwarg])
 
     def get_item_title(
-        self, item_id: str, store: CollectionStore, position: int
+        self, item_id: str, store: ItemStore, position: int
     ) -> StrOrPromise:
         """The cached name the item finished with, or a positional one."""
         title = store.get_item_title(self.get_list_key(), item_id)
@@ -487,7 +485,7 @@ class AddAnotherViewSet(TaskListViewSet):
         return capfirst(key[:-1] if key.endswith("s") else key)
 
     def get_items_status(
-        self, rows: tuple[ItemRow, ...], store: CollectionStore
+        self, rows: tuple[ItemRow, ...], store: ItemStore
     ) -> EntryStatus:
         """Complete only when the user has said there are no more, every
         item has finished, and there are at least `min_items`."""
@@ -566,7 +564,7 @@ class AddAnotherViewSet(TaskListViewSet):
         store.remove_item(key, item_id)
         return redirect(self.get_page_url())
 
-    def discard_item_run(self, entry: Entry, store: CollectionStore) -> None:
+    def discard_item_run(self, entry: Entry, store: ItemStore) -> None:
         run_id = store.get_run(self.full_key(entry))
         if run_id is None:
             return

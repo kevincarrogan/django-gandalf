@@ -368,7 +368,7 @@ def test_submitting_does_the_work_once_and_tombstones_the_journey(client):
     assert record["completed"] is True
     assert "stashes" not in record
     assert "runs" not in record
-    assert "collections" not in record
+    assert "lists" not in record
 
 
 def test_a_submitted_journey_refuses_every_way_back_in(client):

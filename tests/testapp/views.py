@@ -45,7 +45,7 @@ from gandalf.summary import Group, Hide, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
-from .durable import ModelCollectionStore, ModelJourneyStore, ModelStorage
+from .durable import ModelItemStore, ModelJourneyStore, ModelStorage
 from .forms import (
     AccountKindForm,
     AddressForm,
@@ -2419,7 +2419,7 @@ class DurableGuestsViewSet(GuestsViewSet):
     url_name = "durable-guests"
     key = "durable-guests"
     storage_class = ModelStorage
-    journey_store_class = ModelCollectionStore
+    journey_store_class = ModelItemStore
     task_list_url_name = "durable-task-list"
 
 

@@ -1,4 +1,4 @@
-"""Unit coverage for `SessionCollectionStore` — a collection's registry.
+"""Unit coverage for `SessionItemStore` — a collection's registry.
 
 A page's sections are declared, so the store never has to enumerate them. A
 collection's items are not: the user grows them, and no reading of runs or
@@ -11,7 +11,7 @@ still have a row.
 from django.contrib.sessions.backends.cache import SessionStore
 
 from gandalf.context import WizardContext
-from gandalf.storage import SessionCollectionStore
+from gandalf.storage import SessionItemStore
 
 
 class _Session(dict):
@@ -48,12 +48,12 @@ def test_an_item_added_with_no_response_coming_still_reaches_the_store():
     written into an unsaved one is an item nobody can list."""
     session = SessionStore()
     session.create()
-    store = SessionCollectionStore(WizardContext(session=session), "default")
+    store = SessionItemStore(WizardContext(session=session), "default")
 
     store.add_item("guests", "a")
 
     reopened = SessionStore(session_key=session.session_key)
-    listed = SessionCollectionStore(WizardContext(session=reopened), "default")
+    listed = SessionItemStore(WizardContext(session=reopened), "default")
     assert listed.item_ids("guests") == ["a"]
 
 
@@ -61,12 +61,12 @@ def test_an_item_added_with_no_response_coming_still_reaches_the_store():
 
 
 def test_a_collection_that_was_never_started_lists_no_items():
-    assert SessionCollectionStore(_Context(), "default").item_ids("guests") == []
+    assert SessionItemStore(_Context(), "default").item_ids("guests") == []
 
 
 def test_items_are_listed_in_the_order_the_user_added_them():
     context = _Context()
-    store = SessionCollectionStore(context, "default")
+    store = SessionItemStore(context, "default")
 
     store.add_item("guests", "a")
     store.add_item("guests", "b")
@@ -77,7 +77,7 @@ def test_items_are_listed_in_the_order_the_user_added_them():
 
 def test_adding_an_item_already_listed_does_not_list_it_twice():
     """The page's uniqueness rule holds by construction rather than by check."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
 
     store.add_item("guests", "a")
@@ -88,7 +88,7 @@ def test_adding_an_item_already_listed_does_not_list_it_twice():
 def test_removing_an_item_keeps_the_order_of_the_rest():
     """The whole reason identity is opaque: nothing renumbers, so a live URL
     for the item after the hole still names the same item."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     for item_id in ("a", "b", "c"):
         store.add_item("guests", item_id)
 
@@ -98,7 +98,7 @@ def test_removing_an_item_keeps_the_order_of_the_rest():
 
 
 def test_removing_an_item_that_was_never_listed_is_not_an_error():
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
 
     store.remove_item("guests", "nope")
@@ -107,7 +107,7 @@ def test_removing_an_item_that_was_never_listed_is_not_an_error():
 
 
 def test_has_item_answers_without_an_exception_to_catch():
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
 
     assert store.has_item("guests", "a") is True
@@ -115,7 +115,7 @@ def test_has_item_answers_without_an_exception_to_catch():
 
 
 def test_collections_keep_their_own_registries():
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
 
     store.add_item("guests", "a")
     store.add_item("courses", "b")
@@ -128,7 +128,7 @@ def test_collections_keep_their_own_registries():
 
 
 def test_an_item_that_has_never_finished_has_no_title():
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
 
     assert store.get_item_title("guests", "a") is None
@@ -138,7 +138,7 @@ def test_a_title_is_cached_per_item_and_read_back_as_a_string():
     """What keeps a collection of thirty items costing thirty dict lookups
     rather than thirty walks."""
     context = _Context()
-    store = SessionCollectionStore(context, "default")
+    store = SessionItemStore(context, "default")
     store.add_item("guests", "a")
     store.add_item("guests", "b")
 
@@ -151,7 +151,7 @@ def test_a_title_is_cached_per_item_and_read_back_as_a_string():
 
 def test_a_title_lands_on_the_item_it_names_and_no_other():
     """The registry is a list, so titling walks past the items before it."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
     store.add_item("guests", "b")
 
@@ -163,7 +163,7 @@ def test_a_title_lands_on_the_item_it_names_and_no_other():
 
 def test_a_title_can_be_cleared_for_an_item_whose_answers_were_discarded():
     """Otherwise the row shows a name for an item with nothing behind it."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
     store.set_item_title("guests", "a", "Ada Lovelace")
 
@@ -173,7 +173,7 @@ def test_a_title_can_be_cleared_for_an_item_whose_answers_were_discarded():
 
 
 def test_titling_an_item_the_registry_does_not_list_is_not_an_error():
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
 
     store.set_item_title("guests", "gone", "Ada Lovelace")
 
@@ -182,7 +182,7 @@ def test_titling_an_item_the_registry_does_not_list_is_not_an_error():
 
 def test_removing_an_item_takes_its_title_with_it():
     """Titles ride inside the item entry, so removal cannot orphan one."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
     store.set_item_title("guests", "a", "Ada Lovelace")
 
@@ -196,17 +196,14 @@ def test_removing_an_item_takes_its_title_with_it():
 
 
 def test_a_collection_starts_out_with_the_user_having_declared_nothing():
-    assert (
-        SessionCollectionStore(_Context(), "default").is_declared_done("guests")
-        is False
-    )
+    assert SessionItemStore(_Context(), "default").is_declared_done("guests") is False
 
 
 def test_the_users_answer_to_add_another_round_trips():
     """Not "are all the items finished" — a different question with a
     different answer."""
     context = _Context()
-    store = SessionCollectionStore(context, "default")
+    store = SessionItemStore(context, "default")
 
     store.set_declared_done("guests", True)
 
@@ -224,7 +221,7 @@ def test_the_users_answer_to_add_another_round_trips():
 def test_a_collections_items_and_a_pages_sections_share_one_key_space():
     """An item's run and stash live under an ordinary section key the view
     composes, so the nine inherited methods are untouched."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
 
     store.set_run("guests", "run-1")
     store.set_run("guests:a", "run-2")
@@ -239,17 +236,17 @@ def test_a_collections_items_and_a_pages_sections_share_one_key_space():
 def test_a_collections_registry_is_the_journeys_own():
     """Two journeys with a collection under the same key are two lists."""
     context = _Context()
-    SessionCollectionStore(context, "app-1").add_item("guests", "a")
+    SessionItemStore(context, "app-1").add_item("guests", "a")
 
-    assert SessionCollectionStore(context, "app-2").item_ids("guests") == []
-    assert context.session["gandalf_journeys"]["app-1"]["collections"] == {
+    assert SessionItemStore(context, "app-2").item_ids("guests") == []
+    assert context.session["gandalf_journeys"]["app-1"]["lists"] == {
         "guests": {"items": [{"id": "a", "title": None}]}
     }
 
 
 def test_completing_the_journey_takes_the_registry_with_it():
     """A tombstone lists no items — the same tearing-down the sections get."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
     store.set_declared_done("guests", True)
 
@@ -264,7 +261,7 @@ def test_the_registry_is_not_derivable_from_the_stash_keys():
     """`keys()` reports what has finished; the registry reports what exists.
     A half-finished item is in one and not the other, which is exactly why
     the registry has to be written down."""
-    store = SessionCollectionStore(_Context(), "default")
+    store = SessionItemStore(_Context(), "default")
     store.add_item("guests", "a")
     store.add_item("guests", "b")
     store.put_stash("guests:a", _PAYLOAD)

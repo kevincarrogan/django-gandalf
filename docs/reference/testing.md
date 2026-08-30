@@ -308,7 +308,7 @@ under one, pass the segment's value.
 | `"runs"` | entering a section | `stored_section_run(s)` |
 | `"stashes"` | a section finishing | `stored_section_stash(es)` |
 | `"data"` | `store.data`, under the `"journey"` bucket | `stored_journey_data` |
-| `"collections"` | an add-another page registering an item | `stored_items` |
+| `"lists"` | an add-another page registering an item | `stored_items` |
 | `"completed"` | the journey being submitted | `stored_journey(...)["completed"]` |
 
 #### `stored_journey(client, journey="default")`

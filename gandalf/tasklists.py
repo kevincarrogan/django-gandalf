@@ -103,7 +103,7 @@ from gandalf.context import WizardContext
 from gandalf.runtime import Run, InvalidStash
 from gandalf.storage import (
     RunNotFound,
-    SessionCollectionStore,
+    SessionItemStore,
     SessionStorage,
     StashNotFound,
 )
@@ -564,7 +564,7 @@ class JourneyScoped:
     #: journey store plus an item registry, so it serves a list with no
     #: add-another entries just as well, and one class means every entry
     #: of the tree reads the same record.
-    journey_store_class: type[Any] = SessionCollectionStore
+    journey_store_class: type[Any] = SessionItemStore
     #: Which journey this entry belongs to. Read off the URL when mounted
     #: under a `<journey>` segment (`journey_url_kwarg`), otherwise this fixed
     #: one — a list that keeps one journey per session.

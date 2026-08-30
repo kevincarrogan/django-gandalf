@@ -233,23 +233,23 @@ def test_a_sections_own_data_cannot_tread_on_the_journeys():
     store = SessionJourneyStore(_Context(), "default")
 
     store.data["status"] = "journey"
-    store.data.for_member("employment")["status"] = "section"
-    store.data.for_member("contact")["status"] = "other"
+    store.data.for_section("employment")["status"] = "section"
+    store.data.for_section("contact")["status"] = "other"
 
     assert store.data["status"] == "journey"
-    assert store.data.for_member("employment")["status"] == "section"
-    assert store.data.for_member("contact")["status"] == "other"
+    assert store.data.for_section("employment")["status"] == "section"
+    assert store.data.for_section("contact")["status"] == "other"
 
 
-def test_for_member_addresses_from_the_root():
-    """`for_member(a).for_member(b)` is `for_member(b)`, not a nesting
+def test_for_section_addresses_from_the_root():
+    """`for_section(a).for_section(b)` is `for_section(b)`, not a nesting
     nobody asked for."""
     store = SessionJourneyStore(_Context(), "default")
 
-    store.data.for_member("a").for_member("b")["x"] = 1
+    store.data.for_section("a").for_section("b")["x"] = 1
 
-    assert store.data.for_member("b")["x"] == 1
-    assert "x" not in store.data.for_member("a")
+    assert store.data.for_section("b")["x"] == 1
+    assert "x" not in store.data.for_section("a")
 
 
 def test_journey_data_hands_back_a_copy():

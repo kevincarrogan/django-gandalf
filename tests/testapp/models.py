@@ -90,19 +90,19 @@ class SectionRecord(models.Model):
         ]
 
 
-class CollectionRecord(models.Model):
-    """One collection of one user's journey: whether they have said there is
-    nothing more to add.
+class ItemListRecord(models.Model):
+    """One add-another list of one user's journey: whether they have said
+    there is nothing more to add.
 
     Its own row rather than a flag denormalised onto every item, because it is
-    a fact about the collection and survives having no items at all — which is
+    a fact about the list and survives having no items at all — which is
     exactly the state "any other income? no" leaves behind.
     """
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="wizard_collections",
+        related_name="wizard_item_lists",
     )
     journey = models.CharField(max_length=100, default="default")
     key = models.CharField(max_length=100)
@@ -111,14 +111,14 @@ class CollectionRecord(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["owner", "journey", "key"], name="unique_collection"
+                fields=["owner", "journey", "key"], name="unique_item_list"
             ),
         ]
 
 
-class CollectionItemRecord(models.Model):
-    """One item of one collection, and the title it cached when it last
-    finished.
+class ItemRecord(models.Model):
+    """One item of one add-another list, and the title it cached when it
+    last finished.
 
     `position` is what the session store gets for free from list order and a
     table does not. The unique constraint is what the session store cannot
@@ -130,10 +130,10 @@ class CollectionItemRecord(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="wizard_collection_items",
+        related_name="wizard_items",
     )
     journey = models.CharField(max_length=100, default="default")
-    collection_key = models.CharField(max_length=100)
+    list_key = models.CharField(max_length=100)
     item_id = models.CharField(max_length=64)
     # Worked out once, when the item finished; None until then.
     title = models.CharField(max_length=255, null=True, blank=True)
@@ -143,8 +143,8 @@ class CollectionItemRecord(models.Model):
         ordering = ["position"]
         constraints = [
             models.UniqueConstraint(
-                fields=["owner", "journey", "collection_key", "item_id"],
-                name="unique_collection_item",
+                fields=["owner", "journey", "list_key", "item_id"],
+                name="unique_item",
             ),
         ]
 

@@ -106,7 +106,7 @@ defaults and additions:
 | `items_context_name` | `"items"` | Where the `AddAnotherPage` lands in the template context. |
 | `page_context_name` | `None` | Suppresses the task list's `task_list` context object: one page, one status. |
 | `entry_url_kwarg` | `"item"` | The URL kwarg carrying the item id on the door and remove routes. |
-| `journey_store_class` | `SessionCollectionStore` | Must satisfy `gandalf.types.CollectionStore`. |
+| `journey_store_class` | `SessionItemStore` | Must satisfy `gandalf.types.ItemStore`. |
 
 #### The routes
 
@@ -136,7 +136,7 @@ Items and identity:
 | Hook | Default | Override to |
 | --- | --- | --- |
 | `get_list_key()` | `key` | — |
-| `get_store()` | `get_journey_store()` cast to `CollectionStore` | — |
+| `get_store()` | `get_journey_store()` cast to `ItemStore` | — |
 | `get_item_viewset()` | `item_viewset` | — |
 | `get_item_ids()` | `store.item_ids(key)` | build the list from your own records instead of the registry; `get_item()` and `get_entries()` both read it |
 | `new_item_id()` | `str(uuid.uuid4())` | choose identity yourself. Must be opaque and unique; a positional id would renumber survivors on removal, and the routes match `<uuid:item>` |
@@ -365,11 +365,11 @@ segment and every item URL carries it.
 
 ### Storage
 
-`SessionCollectionStore` (in `gandalf.storage`) is a `SessionJourneyStore`
-plus a `"collections"` mapping on the journey's record:
+`SessionItemStore` (in `gandalf.storage`) is a `SessionJourneyStore`
+plus a `"lists"` mapping on the journey's record:
 
 ```python
-{"collections": {"budget": {"items": [{"id": "<uuid>", "title": "Paint"}, ...],
+{"lists": {"budget": {"items": [{"id": "<uuid>", "title": "Paint"}, ...],
                             "declared_done": False}}}
 ```
 
@@ -379,7 +379,7 @@ An item's run and stash live under the ordinary key `budget:<uuid>`,
 composed by the view — the store never learns the scheme, so a task list's
 store and an add-another page's store share one key space.
 
-`gandalf.types.CollectionStore` is what `journey_store_class` must provide
+`gandalf.types.ItemStore` is what `journey_store_class` must provide
 beyond a `JourneyStore`:
 
 | Method | Contract |

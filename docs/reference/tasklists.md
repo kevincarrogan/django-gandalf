@@ -195,7 +195,7 @@ class GrantApplicationViewSet(TaskListViewSet):
 | `add_another_template_name` | `None` | The page every add-another entry in the tree renders with, unless `add_another_viewset_class` names its own. |
 | `remove_template_name` | `None` | The confirmation page before an add-another item is removed, likewise. |
 | `storage_class` | `SessionStorage` | The run storage every section of the tree uses. |
-| `journey_store_class` | `SessionCollectionStore` | The store the journey's bookkeeping lives in, for the whole tree. Must satisfy `gandalf.types.JourneyStore` — `CollectionStore` if the tree has an add-another. |
+| `journey_store_class` | `SessionItemStore` | The store the journey's bookkeeping lives in, for the whole tree. Must satisfy `gandalf.types.JourneyStore` — `ItemStore` if the tree has an add-another. |
 | `add_another_viewset_class` | `None` | The base every add-another page in the tree is built on; `None` means `AddAnotherViewSet`. |
 | `journey` | `"default"` | The fixed journey used when the URL carries none. |
 | `journey_url_kwarg` | `"journey"` | The URL kwarg the journey is read from when mounted under one. |

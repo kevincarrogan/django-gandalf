@@ -72,11 +72,11 @@ Context: TypeAlias = dict[str, Any]
 
 #: One item of a collection: its opaque id, and the title its own section
 #: cached the last time it finished (`None` until it has).
-CollectionItem: TypeAlias = dict[str, Any]
+Item: TypeAlias = dict[str, Any]
 
 #: Everything a store keeps about one collection — its items in the order the
 #: user added them, and whether the user has said there are no more to add.
-CollectionData: TypeAlias = dict[str, Any]
+ItemRegistry: TypeAlias = dict[str, Any]
 
 #: Everything a session keeps about one journey — its sections' runs and
 #: stashes, its collections, its decided data, or the tombstone a submitted
@@ -179,7 +179,7 @@ class JourneyStore(Protocol):
     def is_complete(self) -> bool: ...
 
 
-class CollectionStore(JourneyStore, Protocol):
+class ItemStore(JourneyStore, Protocol):
     """What a collection's `journey_store_class` has to provide: a journey
     store, plus the ordered registry of items per collection and the user's
     answer to *add another*."""

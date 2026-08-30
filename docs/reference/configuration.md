@@ -193,13 +193,13 @@ class GrantApplicationViewSet(TaskListViewSet):
     journey_store_class = DurableJourneyStore
 ```
 
-Default `gandalf.storage.SessionCollectionStore`. Built per request as
+Default `gandalf.storage.SessionItemStore`. Built per request as
 `cls(WizardContext.from_request(request), journey)`.
 
 **Contract** — the `gandalf.types.JourneyStore` protocol (`get_run`,
 `set_run`, `clear_run`, `get_stash`, `has_stash`, `put_stash`,
 `delete_stash`, `keys`, `data`, `complete`, `is_complete`); a tree with an
-add-another list needs the `CollectionStore` extension (`item_ids`, `has_item`,
+add-another list needs the `ItemStore` extension (`item_ids`, `has_item`,
 `add_item`, `remove_item`, `get_item_title`, `set_item_title`,
 `is_declared_done`, `set_declared_done`). See [Journey store](journey-store.md)
 and [Task lists](tasklists.md).

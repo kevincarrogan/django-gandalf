@@ -219,7 +219,7 @@ the journey: a POST to the supporting page goes back up to the application.
 
 ### Beyond the session
 
-The store behind all of this is `SessionCollectionStore(context, journey)`,
+The store behind all of this is `SessionItemStore(context, journey)`,
 and the contract it satisfies is written down as a protocol. The day an
 application outgrows the session, a store that keeps the same things in a
 table drops in by `journey_store_class` on the root alone — every section

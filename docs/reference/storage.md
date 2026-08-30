@@ -144,7 +144,7 @@ with the session holding nothing but the login.
 A durable **task list** or **add-another page** needs both seams swapped,
 once, on the root viewset: `storage_class` for the runs and
 `journey_store_class` for the bookkeeping (a `ModelJourneyStore` and
-`ModelCollectionStore` are in the same module), and every entry the root
+`ModelItemStore` are in the same module), and every entry the root
 builds gets the same two.
 Swapping only one gives durable answers nobody can find, or a durable index
 into runs that have expired. See [Journey store](journey-store.md).

@@ -7,8 +7,8 @@ from typing import Any, cast
 from gandalf.context import WizardContext
 from gandalf.metadata import MetadataBag
 from gandalf.types import (
-    CollectionData,
-    CollectionItem,
+    ItemRegistry,
+    Item,
     JourneyRecord,
     Metadata,
     RunData,
@@ -225,7 +225,7 @@ class SessionStashStore:
 
 #: The two buckets a journey's data is kept in — see `JourneyData`.
 JOURNEY_BUCKET = "journey"
-MEMBER_BUCKET = "members"
+SECTION_BUCKET = "sections"
 
 
 class JourneyData(MetadataBag):
@@ -247,7 +247,7 @@ class JourneyData(MetadataBag):
         return store.data.get("employment_status") != "employed"
 
     Two buckets, as a run's metadata has: the journey's own keys, and one
-    sub-bag per member under `for_member(key)`, so a member can keep its
+    sub-bag per member under `for_section(key)`, so a member can keep its
     own notes without treading on the journey or on another section. The
     mapping itself is `MetadataBag`'s — JSON-safe values, deep-copied reads,
     one write per assignment, `update()` for several at once.
@@ -265,10 +265,10 @@ class JourneyData(MetadataBag):
     ) -> None:
         super().__init__(read, write, path)
 
-    def for_member(self, key: str) -> JourneyData:
+    def for_section(self, key: str) -> JourneyData:
         """This journey's data for the section `key` names. Addressed from
         the root whichever bag it is called on."""
-        return type(self)(self._read, self._write_envelope, (MEMBER_BUCKET, key))
+        return type(self)(self._read, self._write_envelope, (SECTION_BUCKET, key))
 
 
 class SessionJourneyStore:
@@ -306,7 +306,7 @@ class SessionJourneyStore:
             "completed": True,        # tombstone only
         }
 
-    `SessionCollectionStore` adds a `"collections"` mapping to the record.
+    `SessionItemStore` adds a `"lists"` mapping to the record.
     """
 
     SESSION_KEY = "gandalf_journeys"
@@ -451,7 +451,7 @@ class SessionJourneyStore:
             del journeys[journey]
 
 
-class SessionCollectionStore(SessionJourneyStore):
+class SessionItemStore(SessionJourneyStore):
     """A collection's registry, on top of a journey's bookkeeping.
 
     A task list's sections are declared, so the store never has to enumerate them. A
@@ -474,21 +474,21 @@ class SessionCollectionStore(SessionJourneyStore):
     space and one contract.
     """
 
-    def _collections(self) -> dict[str, CollectionData]:
-        return cast(dict[str, CollectionData], self._read().get("collections", {}))
+    def _lists(self) -> dict[str, ItemRegistry]:
+        return cast(dict[str, ItemRegistry], self._read().get("lists", {}))
 
-    def _collection(self, key: str) -> CollectionData:
+    def _list_record(self, key: str) -> ItemRegistry:
         """The collection's record, created on first write. Read-only callers
-        go through `_collections()` so a render cannot dirty the session."""
-        record = self._mapping("collections").setdefault(key, {})
+        go through `_lists()` so a render cannot dirty the session."""
+        record = self._mapping("lists").setdefault(key, {})
         record.setdefault("items", [])
-        return cast(CollectionData, record)
+        return cast(ItemRegistry, record)
 
-    def _items(self, key: str) -> list[CollectionItem]:
-        record = self._collections().get(key)
+    def _items(self, key: str) -> list[Item]:
+        record = self._lists().get(key)
         if record is None:
             return []
-        return cast("list[CollectionItem]", record.get("items", []))
+        return cast("list[Item]", record.get("items", []))
 
     def item_ids(self, key: str) -> list[str]:
         """The collection's items in the order the user added them; empty for
@@ -506,14 +506,14 @@ class SessionCollectionStore(SessionJourneyStore):
         construction."""
         if self.has_item(key, item_id):
             return
-        self._collection(key)["items"].append({"id": item_id, "title": None})
+        self._list_record(key)["items"].append({"id": item_id, "title": None})
         self.context.session_changed()
 
     def remove_item(self, key: str, item_id: str) -> None:
         """Forget an item and the title cached for it, keeping the order of
         the rest. Idempotent: removing an unlisted item is not an error, so
         callers need not check first."""
-        record = self._collection(key)
+        record = self._list_record(key)
         record["items"] = [item for item in record["items"] if item["id"] != item_id]
         self.context.session_changed()
 
@@ -529,7 +529,7 @@ class SessionCollectionStore(SessionJourneyStore):
         """Replace an item's cached title. `None` clears it, for an item whose
         stash was discarded and whose name would otherwise outlive its
         answers. Titling an item the registry does not list does nothing."""
-        for item in self._collection(key)["items"]:
+        for item in self._list_record(key)["items"]:
             if item["id"] == item_id:
                 item["title"] = title
                 self.context.session_changed()
@@ -538,12 +538,12 @@ class SessionCollectionStore(SessionJourneyStore):
     def is_declared_done(self, key: str) -> bool:
         """Whether the user answered "no" to *add another*. Not "are all the
         items finished" — a different question, with a different answer."""
-        record = self._collections().get(key)
+        record = self._lists().get(key)
         if record is None:
             return False
         return bool(record.get("declared_done"))
 
     def set_declared_done(self, key: str, declared_done: bool) -> None:
         """Record or withdraw the user's answer to *add another*."""
-        self._collection(key)["declared_done"] = declared_done
+        self._list_record(key)["declared_done"] = declared_done
         self.context.session_changed()

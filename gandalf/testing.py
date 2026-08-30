@@ -238,7 +238,7 @@ def stored_items(client: Client, key: str, journey: str = "default") -> list[str
     an item is registered, so this includes items with no answers yet — which
     is what makes them distinguishable from items that were never added.
     """
-    collections = stored_journey(client, journey).get("collections", {})
+    collections = stored_journey(client, journey).get("lists", {})
     record = collections.get(key)
     if record is None:
         return []
@@ -258,7 +258,7 @@ def seed_item(
     session = client.session
     journeys = session.setdefault(SessionJourneyStore.SESSION_KEY, {})
     record = journeys.setdefault(journey, {})
-    collections = record.setdefault("collections", {})
+    collections = record.setdefault("lists", {})
     collection = collections.setdefault(key, {"items": [], "declared_done": False})
     collection["items"].append({"id": str(item_id), "title": title})
     session.save()
