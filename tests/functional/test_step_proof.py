@@ -131,3 +131,39 @@ def test_the_page_says_which_state_the_proof_is_in(run):
     run.post_step("first", {"name": "Grace"})
 
     assert "voided by a change to the answers before it" in shown()
+
+
+def test_a_completed_run_keeps_no_proof(run):
+    """A proof is a claim about answers, and completion discards the
+    answers — so the claim has nothing left to be about. A spent one-time
+    code has no business sitting in a tombstone.
+
+    Swept with the uploaded files rather than at `complete()`, because a
+    completion page reading the finished run back rebuilds every step's form
+    and would perform the consuming check again against something already
+    spent.
+    """
+    run.post_step("token", {"token": "123456"})
+    run.post_step("second", {"email": "ada@example.com"}, follow=True)
+
+    assert run.data["completed"] is True
+    assert "proofs" not in run.data.get("meta", {})
+
+
+def test_a_completion_page_reading_the_run_back_re_checks_rather_than_re_performs(
+    wizard_driver,
+):
+    """Why the sweep waits for the render rather than happening in
+    `complete()`. A completion page that reads the finished run back
+    rebuilds and validates every step, so the token step's check runs again
+    — against a token the first pass has spent. Only the proof, still there
+    at render time, turns that back into a re-check."""
+    run = wizard_driver("one-time-token-done-wizard").start()
+    run.post_step("first", {"name": "Ada"})
+    run.post_step("token", {"token": "123456"})
+
+    response = run.post_step("second", {"email": "ada@example.com"}, follow=True)
+
+    assert VERIFICATIONS == ["123456"]
+    assert "token: 123456" in response.content.decode()
+    assert "proofs" not in run.data.get("meta", {})

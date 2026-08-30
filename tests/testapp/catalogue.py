@@ -287,6 +287,12 @@ GROUPS = (
                 "back and change the first answer to watch the proof fall "
                 "away and the check be performed again.",
             ),
+            Example(
+                "one-time-token-done-wizard",
+                note="the same check, finishing on a page that reads the "
+                "run back — which validates the token step again after the "
+                "run has been tombstoned.",
+            ),
         ),
     ),
     Group(

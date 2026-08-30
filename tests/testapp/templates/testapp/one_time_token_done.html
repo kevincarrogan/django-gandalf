@@ -1,0 +1,19 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/one_time_token_done.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h2>All done</h2>
+        {% comment %}
+            The README's re-entrant pattern, over a check that cannot be
+            performed twice. Touching the token step's form here validates it
+            again, which re-performs the check unless the step's proof is
+            still there to re-check against — so the run's proofs, like its
+            files, have to outlive the response being rendered.
+        {% endcomment %}
+        {% for step in wizard.path %}
+            <p>{{ step.name }}: {{ step.form.cleaned_data.token }}</p>
+        {% endfor %}
+    </div>
+{% endblock %}

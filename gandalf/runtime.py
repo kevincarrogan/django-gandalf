@@ -908,6 +908,25 @@ class Run:
         canonical = json.dumps(prefix, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode()).hexdigest()
 
+    def discard_proofs(self) -> None:
+        """Drop every proof this run holds.
+
+        Called when the run retires, in the same slot as `cleanup_files()`
+        and for the same reason. A proof is a claim about answers;
+        completion discards the answers, so the claim has nothing left to be
+        about — and a spent one-time code has no business sitting in a
+        tombstone.
+
+        Swept after the response renders rather than at `complete()`,
+        because a completion page reading the finished run back rebuilds
+        every step's form (`RuntimeStep.form` validates), and a consuming
+        check whose proof had already gone would be performed again against
+        something it has already spent.
+        """
+        envelope = self.storage.get_run_metadata(self.run_id)
+        if envelope and PROOF_BUCKET in envelope:
+            self.storage.set_run_metadata(self.run_id, _without_proofs(envelope))
+
     def stash(self, label: str | None = None) -> Stash:
         """A caller-owned, JSON-safe payload of this run's answers.
 

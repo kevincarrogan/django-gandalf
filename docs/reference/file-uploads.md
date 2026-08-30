@@ -119,7 +119,8 @@ step the run cannot reach is deleted immediately.
 
 The run's files are removed by `run.cleanup_files()` —
 `file_storage.delete_run(run_id)` — from `WizardViewSet.finish()` after
-`done()` returns:
+`done()` returns, together with the run's [proofs](proofs.md), which are
+claims on the same answers completion discards:
 
 - when `done()` returns a `SimpleTemplateResponse`, as a post-render
   callback, so a completion template can still read an uploaded file back;

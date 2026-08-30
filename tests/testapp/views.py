@@ -303,6 +303,23 @@ class OneTimeTokenWizardViewSet(WizardViewSet):
         return HttpResponse(f"verified {len(VERIFICATIONS)} time(s) as {proven}")
 
 
+class OneTimeTokenDoneWizardViewSet(OneTimeTokenWizardViewSet):
+    description = (
+        "The same consuming check, whose done() returns a TemplateResponse "
+        "that reads the finished run back — the completion page validates "
+        "the token step again at render time, so the run's proof has to "
+        "outlive the response being rendered."
+    )
+    url_name = "one-time-token-done-wizard"
+
+    def done(self, run):
+        return TemplateResponse(
+            self.request,
+            "testapp/one_time_token_done.html",
+            {"wizard": run},
+        )
+
+
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
     description = "Single-step wizard with no done() override (falls back to default)."
     template_name = "testapp/single_step_wizard.html"

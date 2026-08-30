@@ -33,6 +33,19 @@ class RunUnavailable(str, Enum):
     __str__ = str.__str__
 
 
+def _retire(run: Run) -> None:
+    """Everything that outlives `done()` but must not outlive the run.
+
+    Both halves are claims on answers that completion has discarded: the
+    uploaded bytes a step's answer names, and the facts a step proved about
+    the answers before it. Swept together, after the response has rendered,
+    because a completion page reading the run back still needs both —
+    `RuntimeStep.form` rebuilds and validates every step.
+    """
+    run.cleanup_files()
+    run.discard_proofs()
+
+
 class WizardViewSet(View):
     storage_class: StorageClass = SessionStorage
     url_name: str | None = None
@@ -653,7 +666,7 @@ class WizardViewSet(View):
         step's `.form` — does its reading after this method has returned,
         and both halves of retiring the run have to allow for that. The
         tree is pinned (`keep_readable()`) before the answers are
-        discarded, and the files are swept once the response has rendered
+        discarded, and the run is retired once the response has rendered
         rather than the moment `done()` returns.
 
         The tombstone is not deferred with them. A completion template that
@@ -661,8 +674,8 @@ class WizardViewSet(View):
         side effects and which a refresh can fire again.
 
         The sweep is the render's to trigger, so a programmatic caller that
-        drops an unrendered `TemplateResponse` leaves the run's uploads
-        behind. That response is unusable in that state — reading its
+        drops an unrendered `TemplateResponse` leaves the run's uploads and
+        proofs behind. That response is unusable in that state — reading its
         `.content` raises — so a caller doing it has already discarded what
         it asked for; anything driving a run headlessly wants a rendered or
         plain response from `done()` regardless.
@@ -671,9 +684,9 @@ class WizardViewSet(View):
         run.keep_readable()
         if isinstance(response, SimpleTemplateResponse):
             # Fires immediately if the response is already rendered.
-            response.add_post_render_callback(lambda _rendered: run.cleanup_files())
+            response.add_post_render_callback(lambda _rendered: _retire(run))
         else:
-            run.cleanup_files()
+            _retire(run)
         run.complete()
         return response
 

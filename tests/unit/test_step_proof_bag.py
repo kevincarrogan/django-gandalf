@@ -215,3 +215,32 @@ def test_a_rotated_csrf_token_does_not_void_a_proof(bound):
     ]
 
     assert bound.answered(with_token).proof("second")["verified"] is True
+
+
+def test_discarding_proofs_leaves_the_durable_metadata_standing(bound):
+    """What retiring a run sweeps, and what it must not. A proof is a claim
+    about answers completion discards; a record the run opened somewhere
+    else outlives the run entirely, and the two sit in adjacent buckets so
+    that this sweep can tell them apart."""
+    bound.metadata.for_step("second")["reference"] = "INV-1"
+    bound.proof("second")["verified"] = True
+
+    bound.discard_proofs()
+
+    assert bound.storage.get_run_metadata("run") == {
+        "steps": {"second": {"reference": "INV-1"}}
+    }
+
+
+def test_discarding_proofs_on_a_run_that_holds_none_writes_nothing(bound):
+    """Every run without a consuming check takes this path on completion,
+    and a write here would dirty the session on the way out for nothing."""
+    bound.metadata.for_step("second")["reference"] = "INV-1"
+    bound.context.session.modified = False
+
+    bound.discard_proofs()
+
+    assert bound.context.session.modified is False
+    assert bound.storage.get_run_metadata("run") == {
+        "steps": {"second": {"reference": "INV-1"}}
+    }

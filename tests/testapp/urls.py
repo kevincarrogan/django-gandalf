@@ -196,6 +196,10 @@ urlpatterns = [
     path("wizardless-wizard/", include(views.WizardlessWizardViewSet.urls())),
     path("file-editing-wizard/", include(views.FileEditingWizardViewSet.urls())),
     path("file-done-wizard/", include(views.FileDoneWizardViewSet.urls())),
+    path(
+        "one-time-token-done-wizard/",
+        include(views.OneTimeTokenDoneWizardViewSet.urls()),
+    ),
     path("sniffed-file-wizard/", include(views.SniffedFileWizardViewSet.urls())),
     path(
         "empty-branch-arm-context-finder-wizard/",

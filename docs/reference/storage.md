@@ -50,7 +50,9 @@ scheme too.
   be answered as "finished" rather than "no such run" —
   `WizardViewSet.run_unavailable()` receives `reason="completed"` for the
   one and `"unknown"` for the other. The metadata survives the tombstone
-  because it describes what the run did *outside* itself.
+  because it describes what the run did *outside* itself — all but the
+  proof bucket, which describes the answers completion has just discarded
+  and is swept with them. See [Proofs](proofs.md).
 - `get_state` and `get_run_metadata` default missing keys: a freshly
   initialised `SessionStorage` run is stored as `{}`, with neither `state`
   nor `meta` present until something writes them.

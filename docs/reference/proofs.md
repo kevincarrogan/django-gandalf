@@ -87,6 +87,7 @@ assignment writes through, `update()` for several keys in one write.
 | the step's own answer changes | stands | a proof is about what came *before* its step; the new submission is a new claim, and the form checks it |
 | an earlier answer changes and changes back | stands | the digest describes the answers, not how many times they moved |
 | the run is stashed and resurrected | **not carried** | a stash carries answers to a different run; see [Stashing](stashing.md) |
+| the run completes | **discarded** | completion throws away the answers a proof is a claim about; see below |
 
 The first row is the whole point, and it is why this is not a convention
 over `metadata.for_step()`. A durable note saying "this token is verified"
@@ -225,6 +226,17 @@ def done(self, run):
 
 `done()` holds the same answers before the token step that the step's own
 dispatch did, so the proof reads back there unchanged.
+
+It is also the last place one reads back. Completion discards the answers a
+proof is a claim about, so the proofs go with them — swept alongside the
+run's uploaded files once the completion response has *rendered*, not the
+moment `done()` returns. That order is what lets a completion page read the
+finished run back: rendering it validates every step again, and a consuming
+check whose proof had already gone would be performed a second time against
+something it has already spent. Nothing of a proof survives into the
+tombstone, which is where a spent one-time code has no business sitting. For
+a fact that is meant to outlive the run, use
+[`run.metadata`](run-metadata.md).
 
 ---
 

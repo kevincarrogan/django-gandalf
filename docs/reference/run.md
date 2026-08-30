@@ -192,6 +192,7 @@ the validated prefix to code running inside a walk), `previous_step`,
 `mark_rendering` / `clear_rendering`, `render_step(...)` (raises
 `StepNotFound` for a step the run cannot reach or that has no stored
 answer), `store_uploads`, `delete_file_refs`, `cleanup_files()`,
+`discard_proofs()`,
 `switch_value`.
 
 ### `Path`
