@@ -56,7 +56,7 @@ class StepFormView(_StepFormViewBase):
     """
 
     #: Narrowed from `View.request`: a step view is dispatched inside a
-    #: wizard, which is what puts `request.wizard` there. A `StepFormView`
+    #: wizard, which is what puts `request.run` there. A `StepFormView`
     #: mounted standalone (see below) is handed a plain request and simply
     #: has no run to read.
     request: WizardRequest

@@ -227,7 +227,7 @@ view rendering an ordinary template. The settings that matter:
 | --- | --- |
 | `"django.contrib.sessions"` in `INSTALLED_APPS` | `SessionStorage`, `SessionJourneyStore`, `WizardFileStorage` refs — every default store lives in the session |
 | `"django.contrib.sessions.middleware.SessionMiddleware"` in `MIDDLEWARE` | `request.session` on every wizard request; storage sets `session.modified` so the middleware saves it |
-| `"django.template.context_processors.request"` in `TEMPLATES[...]["OPTIONS"]["context_processors"]` | templates that read `{{ request.wizard.back_url }}`, `{{ request.wizard.run_url }}` or `{{ request.wizard.path }}` |
+| `"django.template.context_processors.request"` in `TEMPLATES[...]["OPTIONS"]["context_processors"]` | templates that read `{{ request.run.back_url }}`, `{{ request.run.run_url }}` or `{{ request.run.path }}` |
 | `"django.middleware.csrf.CsrfViewMiddleware"` | ordinary POST protection; the walk strips the CSRF token before storing a submission |
 | `DEFAULT_FILE_STORAGE` / `STORAGES["default"]` | where `WizardFileStorage` puts uploads |
 
@@ -298,7 +298,7 @@ from gandalf.wizard import Wizard
 class GrantStepView(StepFormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["programme"] = self.request.wizard.metadata.get("programme")
+        context["programme"] = self.request.run.metadata.get("programme")
         return context
 
 

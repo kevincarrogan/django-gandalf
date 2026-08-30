@@ -193,7 +193,7 @@ def summary_view(rf):
     run.retrieve("existing-run")
     run.urls = _StubUrls()
     # The view reads its own request, exactly as a dispatch hands it one.
-    request.wizard = run
+    request.run = run
     return _SummaryView(request)
 
 
@@ -317,7 +317,7 @@ def summary_view_for(rf):
         run = Run(context, SessionStorage(context), wizard=wizard)
         run.retrieve("existing-run")
         run.urls = _StubUrls()
-        request.wizard = run
+        request.run = run
         return view_class(request)
 
     return build

@@ -92,7 +92,7 @@ class WizardRequest(HttpRequest):
 
         class BillingStepView(StepFormView):
             def get_initial(self):
-                self.request.wizard.path.find_step(name="account")
+                self.request.run.path.find_step(name="account")
 
     Step views get this narrowing from `StepFormView` already.
 
@@ -101,7 +101,7 @@ class WizardRequest(HttpRequest):
     which is true of a run whether or not a browser is driving it.
     """
 
-    wizard: Run
+    run: Run
 
 
 class WizardStorage(Protocol):

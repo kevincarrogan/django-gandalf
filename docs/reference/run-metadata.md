@@ -170,7 +170,7 @@ class RefereesStepView(StepFormView):
     template_name = "steps/referees.html"
 
     def form_valid(self, form):
-        own = self.request.wizard.metadata.for_step("referees")
+        own = self.request.run.metadata.for_step("referees")
         if own.get("emailed") != form.cleaned_data["referee_email"]:
             send_referee_request(form.cleaned_data["referee_email"])
             own["emailed"] = form.cleaned_data["referee_email"]

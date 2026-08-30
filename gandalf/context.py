@@ -121,7 +121,7 @@ class WizardContext:
 
     `run` is filled in by `Run` as it is constructed, which is what
     lets a predicate reach the answers behind it. Before that moment it is
-    `None`, exactly as `request.wizard` was absent before a dispatch set it.
+    `None`, exactly as `request.run` was absent before a dispatch set it.
 
     Not a dataclass, because `actor` and `session` are read *lazily* off the
     request when there is one. Eagerly touching `request.session` would
@@ -143,7 +143,7 @@ class WizardContext:
         self.url_kwargs = dict(url_kwargs or {})
         self.path = path
         #: The run this context is bound to — `Run` sets it on
-        #: construction. What `request.wizard` used to be.
+        #: construction. What `request.run` used to be.
         self.run: Run | None = None
         self._actor = actor
         self._session: WizardSession | None = session
@@ -269,9 +269,9 @@ class WizardContext:
         rather than a browser impersonated per run.
         """
         request = copy(self._base())
-        # What `request.wizard` is for: the walk's own code reaches the run
+        # What `request.run` is for: the walk's own code reaches the run
         # through the request it is dispatched with.
-        request.wizard = self.run  # type: ignore[attr-defined]
+        request.run = self.run  # type: ignore[attr-defined]
         return request
 
     def _base(self) -> HttpRequest:

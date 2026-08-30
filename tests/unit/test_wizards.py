@@ -2946,7 +2946,7 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
         template_name = "testapp/linear_wizard.html"
 
         def get_initial(self):
-            path = self.request.wizard.path
+            path = self.request.run.path
             captured["path_head_name"] = (
                 path.head.form.cleaned_data["name"] if path else None
             )

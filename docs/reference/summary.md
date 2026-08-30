@@ -32,7 +32,7 @@ class ReviewStepView(SummaryMixin, StepFormView):
     template_name = "grants/review.html"
 ```
 
-The rows come from `request.wizard.path`, so they are the answers on the
+The rows come from `request.run.path`, so they are the answers on the
 run's resolved route, in walk order, with the selected branch arm inlined —
 never an answer left behind in a dormant arm, and never the step doing the
 summarising.
@@ -50,7 +50,7 @@ do not special-case:
 
 | Hook | Returns | Default |
 | --- | --- | --- |
-| `get_summary_steps()` | `list[RuntimeStep]` | every step in `request.wizard.path` whose declaration is not `request.wizard.rendering` — the step being rendered |
+| `get_summary_steps()` | `list[RuntimeStep]` | every step in `request.run.path` whose declaration is not `request.run.rendering` — the step being rendered |
 | `get_summary_rows()` | `list[SummaryRow]` | runs `check_summary_fields()`, then `build_summary_row()` per summarised step |
 | `check_summary_fields()` | `None` | raises `ImproperlyConfigured` for a `summary_fields` key naming no declared step (see below) |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
@@ -72,7 +72,7 @@ do not special-case:
   round the houses does: an edit revisited from a change link, or a stashed
   section re-opened with `reopen_at` pointing here, arrives with the
   confirmation stored too. `get_summary_steps()` drops it by comparing each
-  step's declaration with `request.wizard.rendering`, which is what stops
+  step's declaration with `request.run.rendering`, which is what stops
   the page offering to change itself.
 - **One form per row.** Reading a step's answers means reconstructing and
   re-validating its form. The mixin builds each row from a single
@@ -82,7 +82,7 @@ do not special-case:
   per answered step — the walk proves each answer, then the row reads it
   back — where an ordinary step page costs one. See
   [Walk costs](walk-costs.md).
-- The mixin reads `self.request.wizard`, so it works only on a view
+- The mixin reads `self.request.run`, so it works only on a view
   dispatched inside a wizard.
 
 ### `summary_fields` validation
@@ -333,7 +333,7 @@ same step both name it; remove it from one.
 ### The summary offers to change itself
 
 `get_summary_steps()` drops the step whose declaration is
-`request.wizard.rendering`, which the viewset sets for a routed GET. A
+`request.run.rendering`, which the viewset sets for a routed GET. A
 summary built outside a step render — where `rendering` is `None` — excludes
 nothing; filter `get_summary_steps()` yourself there.
 
@@ -353,7 +353,7 @@ the members through `row.form[name]` instead.
 Each row costs one form reconstruction, and the walk that reached the page
 already validated each answer once, so a summary is two validations per
 answered step. If a step's `clean()` is expensive, that is where the time
-goes; see [Walk costs](walk-costs.md). Reading `request.wizard.path` again
+goes; see [Walk costs](walk-costs.md). Reading `request.run.path` again
 inside the template — rather than the `summary` rows — rebuilds every form
 a second time.
 

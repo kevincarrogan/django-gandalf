@@ -46,17 +46,23 @@ the journey.
 
 ## Reference
 
-### Status constants
+### `EntryStatus`
 
-| Constant | Value | Label (`get_status_label()`) |
-| --- | --- | --- |
-| `NOT_STARTED` | `"not-started"` | Not started |
-| `INCOMPLETE` | `"incomplete"` | Incomplete |
-| `COMPLETE` | `"complete"` | Complete |
-| `BLOCKED` | `"blocked"` | Cannot start yet |
+How far a row has got: the four statuses a page can label, as a `str` enum.
 
-Plain strings, so a template can compare them and render them directly
-(`tag--{{ row.status }}`).
+| Member | Also exported as | Value | Label (`get_status_label()`) |
+| --- | --- | --- | --- |
+| `EntryStatus.NOT_STARTED` | `NOT_STARTED` | `"not-started"` | Not started |
+| `EntryStatus.INCOMPLETE` | `INCOMPLETE` | `"incomplete"` | Incomplete |
+| `EntryStatus.COMPLETE` | `COMPLETE` | `"complete"` | Complete |
+| `EntryStatus.BLOCKED` | `BLOCKED` | `"blocked"` | Cannot start yet |
+
+Each member is a `str` equal to its own value, so a template renders one
+directly (`tag--{{ row.status }}` gives `tag--not-started`) and compares it
+as it always did. Each is exported under its own name too, because
+`status == COMPLETE` reads better than a lookup — the type is there so the
+closed set is discoverable, and so a `Link`'s status callable has something
+to be checked against.
 
 How an entry's status is derived, in precedence order:
 

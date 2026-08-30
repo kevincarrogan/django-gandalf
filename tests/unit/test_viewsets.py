@@ -420,7 +420,7 @@ def test_wizard_viewset_routed_get_annotates_back_and_run_urls(rf):
         request, run_id="existing-run", gandalf_step="second"
     )
 
-    step_wizard = response.context_data["view"].request.wizard
+    step_wizard = response.context_data["view"].request.run
     assert step_wizard.back_url == "/wizard/existing-run/first/"
     assert step_wizard.run_url == "/wizard/existing-run/"
 
@@ -433,7 +433,7 @@ def test_wizard_viewset_first_step_render_has_no_back_url(rf):
         request, run_id="existing-run", gandalf_step="first"
     )
 
-    step_wizard = response.context_data["view"].request.wizard
+    step_wizard = response.context_data["view"].request.run
     assert step_wizard.back_url is None
 
 
@@ -450,7 +450,7 @@ def test_wizard_viewset_edit_render_annotates_back_url(rf):
         request, run_id="existing-run", gandalf_step="second"
     )
 
-    step_wizard = response.context_data["view"].request.wizard
+    step_wizard = response.context_data["view"].request.run
     assert step_wizard.back_url == "/wizard/existing-run/first/"
 
 
@@ -475,7 +475,7 @@ def test_wizard_viewset_rejected_submission_render_annotates_back_url(rf):
     )
 
     assert response.context_data["form"].errors
-    step_wizard = response.context_data["view"].request.wizard
+    step_wizard = response.context_data["view"].request.run
     assert step_wizard.back_url == "/wizard/existing-run/first/"
 
 

@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from enum import Enum
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -116,6 +117,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BLOCKED",
     "COMPLETE",
+    "EntryStatus",
     "INCOMPLETE",
     "NOT_STARTED",
     "AddAnother",
@@ -134,16 +136,32 @@ __all__ = [
 ]
 
 
-# Plain strings rather than an enum, following `run_unavailable(reason=...)`:
-# a status is rendered into a template and compared in one, and neither reads
-# well through a lookup.
-NOT_STARTED = "not-started"
-INCOMPLETE = "incomplete"
-COMPLETE = "complete"
-# Named for the state rather than the wording, unlike its three siblings,
-# because the wording is a label's job and `is_cannot_start` is no name for a
-# property. The default label is the task list's own: "Cannot start yet".
-BLOCKED = "blocked"
+class EntryStatus(str, Enum):
+    """How far a row on a task list has got — the four a page can label.
+
+    A `str` too, so a status still renders into a template as the CSS class
+    it always was (`tag--not-started`) and compares equal to its own
+    spelling. Each member is exported under its own name as well, because a
+    comparison reads better as `status == COMPLETE` than through a lookup;
+    the type is what a `Link`'s own status callable is checked against.
+    """
+
+    NOT_STARTED = "not-started"
+    INCOMPLETE = "incomplete"
+    COMPLETE = "complete"
+    #: Named for the state rather than the wording, unlike its three
+    #: siblings, because the wording is a label's job and `is_cannot_start`
+    #: is no name for a property. The default label is the task list's own:
+    #: "Cannot start yet".
+    BLOCKED = "blocked"
+
+    __str__ = str.__str__
+
+
+NOT_STARTED = EntryStatus.NOT_STARTED
+INCOMPLETE = EntryStatus.INCOMPLETE
+COMPLETE = EntryStatus.COMPLETE
+BLOCKED = EntryStatus.BLOCKED
 
 
 class EntryNotFound(LookupError):
@@ -177,7 +195,7 @@ class Entry:
     reopen_at: str | None = None
     #: Where a link goes, and what decides its status; `None` for the rest.
     url_name: str | None = None
-    status: Callable[[HttpRequest, dict[str, Any]], str] | None = None
+    status: Callable[[HttpRequest, dict[str, Any]], EntryStatus] | None = None
 
     def __init__(
         self,
@@ -345,7 +363,7 @@ class Link(Entry):
         url_name: str,
         *,
         title: StrOrPromise | None = None,
-        status: Callable[[HttpRequest, dict[str, Any]], str] | None = None,
+        status: Callable[[HttpRequest, dict[str, Any]], EntryStatus] | None = None,
         key: str = "",
         viewset: type[Any] | None = None,
         url_kwargs: dict[str, Any] | None = None,
@@ -444,7 +462,7 @@ class Row:
     that needs the viewset or the key can still reach them."""
 
     entry: Entry
-    status: str
+    status: EntryStatus
     title: StrOrPromise
     status_label: StrOrPromise
     url: str
@@ -485,7 +503,7 @@ class TaskListPage:
     """
 
     rows: tuple[Row, ...]
-    status: str
+    status: EntryStatus
     status_label: StrOrPromise
 
     @property
@@ -1016,7 +1034,9 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         return self.full_key(entry) if entry.label is None else entry.label
 
     @classmethod
-    def status_for(cls, request: HttpRequest, url_kwargs: dict[str, Any]) -> str:
+    def status_for(
+        cls, request: HttpRequest, url_kwargs: dict[str, Any]
+    ) -> EntryStatus:
         """This page's status as a row on the page above it — its own rows',
         read off the same record. Costs this page's rows' storage reads,
         and still no walk."""
@@ -1082,7 +1102,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             rows=rows, status=status, status_label=self.get_status_label(status)
         )
 
-    def get_page_status(self, rows: tuple[Row, ...]) -> str:
+    def get_page_status(self, rows: tuple[Row, ...]) -> EntryStatus:
         """Complete when every row is; not started when none has been
         touched (a locked row counts as untouched); incomplete between."""
         if rows and all(row.is_complete for row in rows):
@@ -1110,7 +1130,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             url=self.get_entry_url(entry),
         )
 
-    def get_entry_status(self, entry: Entry, store: JourneyStore) -> str:
+    def get_entry_status(self, entry: Entry, store: JourneyStore) -> EntryStatus:
         """In precedence order: a link's own status; blocked; a group's
         rows; a stash (complete); a run (incomplete); nothing (not started).
         Blocked outranks a stash so a section whose prerequisite was
@@ -1158,7 +1178,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             return entry.title
         return capfirst(entry.key.replace("_", " ").replace("-", " "))
 
-    def get_status_label(self, status: str) -> StrOrPromise:
+    def get_status_label(self, status: EntryStatus) -> StrOrPromise:
         """The status as display text. Override for your own wording."""
         labels = {
             NOT_STARTED: gettext("Not started"),

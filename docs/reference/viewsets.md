@@ -373,8 +373,8 @@ an ordinary Django view, so its template context is Django's:
 | Name | What it is |
 | --- | --- |
 | `form` | The step's form — unbound for the cursor's step, bound to `initial` for an answered one, with errors after a rejected POST. |
-| `view` | The generated `FormView`. `view.request.wizard` and `view.kwargs` are reachable through it. |
-| `request.wizard` | The `Run` for this run: `back_url` (the previous active-route step, `None` at the first), `run_url`, `step_url(step)`, `path`, `metadata`. Set on the request the step view is dispatched with — it is not a context variable, so reach it as `request.wizard` (with the request context processor) or `view.request.wizard`. |
+| `view` | The generated `FormView`. `view.request.run` and `view.kwargs` are reachable through it. |
+| `request.run` | The `Run` for this run: `back_url` (the previous active-route step, `None` at the first), `run_url`, `step_url(step)`, `path`, `metadata`. Set on the request the step view is dispatched with — it is not a context variable, so reach it as `request.run` (with the request context processor) or `view.request.run`. |
 
 The step view's own kwargs are the request's mount-prefix kwargs;
 `gandalf_step` is stripped and `run_id` is not passed. A step that brings its

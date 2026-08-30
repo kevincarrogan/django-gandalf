@@ -1449,7 +1449,7 @@ def test_outline_degrades_to_no_schema_for_a_view_it_cannot_compose_yet():
 
         def get_initial(self):
             initial = super().get_initial()
-            first = self.request.wizard.path.find_step(name="first")
+            first = self.request.run.path.find_step(name="first")
             initial["email"] = first.form.cleaned_data["name"] + "@example.com"
             return initial
 
@@ -1731,7 +1731,7 @@ def test_check_cannot_judge_a_step_whose_form_needs_missing_answers():
 
         def get_initial(self):
             initial = super().get_initial()
-            first = self.request.wizard.path.find_step(name="first")
+            first = self.request.run.path.find_step(name="first")
             initial["email"] = first.form.cleaned_data["name"] + "@example.com"
             return initial
 

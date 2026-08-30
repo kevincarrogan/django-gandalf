@@ -163,7 +163,7 @@ class RecordReadingStepView(StepFormView):
     template_name = "testapp/run_metadata_wizard.html"
 
     def get_initial(self):
-        metadata = self.request.wizard.metadata
+        metadata = self.request.run.metadata
         SEEN_RECORDS.append(metadata.get("record_id"))
         # A note in this step's own bag, so the run-level record id and a
         # step's own cannot tread on each other. Written on every dispatch,
@@ -702,7 +702,7 @@ class EmailStepPrefilledFromPath(FormView):
 
     def get_initial(self):
         initial = super().get_initial()
-        path = self.request.wizard.path
+        path = self.request.run.path
         if path:
             name = path.head.form.cleaned_data["name"]
             initial["email"] = f"{name.lower()}@example.com"
@@ -1139,10 +1139,10 @@ class LookupProbeStepView(FormView):
 
         context = super().get_context_data(**kwargs)
         try:
-            self.request.wizard.render_step(name="second")
+            self.request.run.render_step(name="second")
         except StepNotFound:
             context["lookup_probe"] = "step-not-found"
-        found = self.request.wizard.path.find_step(name="first")
+        found = self.request.run.path.find_step(name="first")
         context["name_lookup_probe"] = found.declaration.context["name"]
         return context
 
@@ -1239,7 +1239,7 @@ class PathProbeStepView(FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        names = [step.declaration.context["name"] for step in self.request.wizard.path]
+        names = [step.declaration.context["name"] for step in self.request.run.path]
         context["path_names"] = names
         return context
 
@@ -1593,8 +1593,7 @@ class PathReadingGate(FormView):
         # would start a fresh walk that re-dispatches this very step.
         if self.request.method == "GET":
             names = [
-                step.declaration.context.get("name")
-                for step in self.request.wizard.path
+                step.declaration.context.get("name") for step in self.request.run.path
             ]
             context["path_names"] = names
         return context
@@ -1692,7 +1691,7 @@ class EmptyPathReadingStepView(FormView):
 
     def get_initial(self):
         initial = super().get_initial()
-        initial["name"] = f"seen-{len(list(self.request.wizard.path))}"
+        initial["name"] = f"seen-{len(list(self.request.run.path))}"
         return initial
 
 

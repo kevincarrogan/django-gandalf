@@ -29,7 +29,7 @@ generates answer a submission the same way.
   URL is never followed; every step view would otherwise have to write the
   same no-op redirect back onto itself.
 - `request` is typed as `WizardRequest` — an `HttpRequest` carrying
-  `wizard` — so `self.request.wizard` type-checks with no cast (Gandalf ships
+  `run` — so `self.request.run` type-checks with no cast (Gandalf ships
   `py.typed`).
 - `form_class` is restated as `type[forms.BaseForm] | None`, so a
   `ModelForm` step type-checks.
@@ -47,7 +47,7 @@ generates answer a submission the same way.
 - A `StepFormView` keeps its own configuration, so the same class can be
   mounted as an ordinary standalone view outside the wizard (`path("edit/",
   ContactStepView.as_view())`). Mounted that way it is handed a plain
-  request with no `wizard` attribute; override `get_success_url()` there to
+  request with no `run` attribute; override `get_success_url()` there to
   go somewhere real.
 - Nothing else changes. Django's `FormView` composition API — `form_class`,
   `get_form_class()`, `get_form_kwargs()`, `get_initial()`, `get_prefix()`,
@@ -115,7 +115,7 @@ A step view is dispatched as an ordinary Django view, on a request shaped
 for it (`StepDispatcher.build_request`): a shallow copy of the browser's
 request — or one fabricated for a run nobody is browsing — with `method`,
 `POST` and `FILES` set to the submission being placed or replayed, and
-`request.wizard` set to the run.
+`request.run` set to the run.
 
 The wizard then reads **only the status code**
 (`StepDispatcher.response_satisfies_step`):
@@ -136,7 +136,7 @@ The dispatcher is replaceable per wizard
 
 ### What a step view may read
 
-`self.request.wizard` is the run's [`Run`](run.md), from
+`self.request.run` is the run's [`Run`](run.md), from
 anywhere in the view — `get_initial()`, `get_form_kwargs()`,
 `get_context_data()`, `form_valid()`.
 
@@ -145,9 +145,9 @@ has already proved on this request, never the step's own answer and nothing
 after it. This is the same contract a branch predicate gets, and it holds
 whether the step is being rendered or replayed behind the cursor: the
 dispatch runs inside the walk's `walking()` handoff, so reading
-`request.wizard.path` yields the prefix rather than starting a nested walk.
+`request.run.path` yields the prefix rather than starting a nested walk.
 
-- `request.wizard.path` — the resolved route so far, as a `Path`.
+- `request.run.path` — the resolved route so far, as a `Path`.
 - `path.find_step(**context)` — the single prior step matching `context`, or
   **`None`** for a step the run cannot see: not yet reached, on an arm not
   taken, or downstream of this one. Raises `MultipleStepsReturned` on
@@ -157,7 +157,7 @@ dispatch runs inside the walk's `walking()` handoff, so reading
 - `step.form.cleaned_data` — a prior step's validated answer. `form` is
   built once per step per `path` access; hold the steps you iterate rather
   than re-reading `wizard.path` per field.
-- `request.wizard.metadata` — the run's metadata bag. A write from a step
+- `request.run.metadata` — the run's metadata bag. A write from a step
   view runs on every walk, so it must be idempotent; see
   [Run metadata](run-metadata.md).
 
@@ -187,9 +187,9 @@ A step template receives Django's `FormView` context plus whatever
 | --- | --- |
 | `form` | the step's form — unbound on a first visit, bound to the failing submission on a validation error, pre-filled from the stored answer via `initial` when a completed step is revisited |
 | `view` | the view instance |
-| `request.wizard.back_url` | the previous active-route step's URL; `None` at the first step, or when the predecessor is inside a preserved branch region |
-| `request.wizard.run_url` | the bare run URL — redirects to the current step, so it is a "return to where I was" link |
-| `request.wizard.path` | the answered steps on the route (a walk-time read; see above) |
+| `request.run.back_url` | the previous active-route step's URL; `None` at the first step, or when the predecessor is inside a preserved branch region |
+| `request.run.run_url` | the bare run URL — redirects to the current step, so it is a "return to where I was" link |
+| `request.run.path` | the answered steps on the route (a walk-time read; see above) |
 
 `request` is in the context only with
 `django.template.context_processors.request` enabled, as in Django's
@@ -211,7 +211,7 @@ class WebsiteStepView(StepFormView):
 
     def get_initial(self):
         initial = super().get_initial()   # keeps the stored answer on revisit
-        contact = self.request.wizard.path.find_step(name="contact")
+        contact = self.request.run.path.find_step(name="contact")
         if contact is not None and "website" not in initial:
             domain = contact.form.cleaned_data["email"].partition("@")[2]
             initial["website"] = f"https://{domain}"
@@ -261,7 +261,7 @@ class BudgetStepView(StepFormView):
     template_name = "grants/budget.html"
 
     def form_valid(self, form):
-        if form.cleaned_data["amount"] > self.request.wizard.metadata.get("cap", 0):
+        if form.cleaned_data["amount"] > self.request.run.metadata.get("cap", 0):
             raise Park("grant-cap-exceeded")
         return super().form_valid(form)
 ```
@@ -285,7 +285,7 @@ class TrusteeEditView(TrusteeStepView):
 urlpatterns = [path("trustee/edit/", TrusteeEditView.as_view())]
 ```
 
-Outside the wizard `self.request` has no `wizard` attribute; a view that
+Outside the wizard `self.request` has no `run` attribute; a view that
 reads it must be given a real success URL and must not reach for the run.
 
 ---

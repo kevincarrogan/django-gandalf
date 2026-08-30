@@ -62,6 +62,7 @@ from gandalf.tasklists import (
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
+    EntryStatus,
     AddAnother,
     Entry,
     Row,
@@ -487,7 +488,7 @@ class AddAnotherViewSet(TaskListViewSet):
 
     def get_items_status(
         self, rows: tuple[ItemRow, ...], store: CollectionStore
-    ) -> str:
+    ) -> EntryStatus:
         """Complete only when the user has said there are no more, every
         item has finished, and there are at least `min_items`."""
         if not store.is_declared_done(self.get_list_key()):

@@ -25,7 +25,7 @@ class WebsiteStepView(StepFormView):
 
     def get_initial(self):
         initial = super().get_initial()  # the stored answer, on a revisit
-        contact = self.request.wizard.path.find_step(name="contact")
+        contact = self.request.run.path.find_step(name="contact")
         if contact is not None and "website" not in initial:
             domain = contact.form.cleaned_data["email"].partition("@")[2]
             initial["website"] = f"https://{domain}"
@@ -99,7 +99,7 @@ piece has a use in a wizard:
 
 ### What the view can see
 
-`self.request.wizard` is the run, from anywhere in the view. What it shows
+`self.request.run` is the run, from anywhere in the view. What it shows
 is the **validated prefix**: the answers before this step, already proved
 on this request — never the step's own answer, and nothing after it. That
 is the same contract a branch predicate has.

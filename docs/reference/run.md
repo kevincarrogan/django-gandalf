@@ -25,7 +25,7 @@ from gandalf.types import WizardRequest
 A `Run` is never constructed by application code. The viewset
 builds one per request and hands it to every hook — `done(run)`,
 `run_started(run)`, `run_unavailable(run, reason)` — and a
-step view reaches the same object as `self.request.wizard`. Walk-time code
+step view reaches the same object as `self.request.run`. Walk-time code
 (a branch predicate, a switch selector, an expand builder) receives a
 [`WizardContext`](#wizardcontext) and reaches it as `context.run`. The
 classmethods on [`WizardViewSet`](viewsets.md) (`begin`, `inspect`,
@@ -279,7 +279,7 @@ browser request implies. What the viewset builds per request.
 
 | | |
 | --- | --- |
-| `run` | The `Run`, set as it is constructed. `None` before that. What `request.wizard` used to be. |
+| `run` | The `Run`, set as it is constructed. `None` before that. What `request.run` used to be. |
 | `actor` | Whoever is answering: `request.user` on the HTTP path (read lazily), or whoever a programmatic caller named. `None` when nobody said. A durable storage scopes runs by this. |
 | `session` | The browser's session when there is a request; otherwise the one given, or an in-memory `gandalf.context.Session` (a dict with a `modified` flag). The same object for the life of the context. |
 | `url_kwargs` | What the mount prefix captured, minus the wizard's own `run_id` and step segment. |
@@ -323,7 +323,7 @@ receives — that is a `WizardContext`.
 
 | Caller | Handed | Sees in `path` |
 | --- | --- | --- |
-| A step view (`self.request.wizard`) | `WizardRequest` | The validated prefix before it — never its own answer, nothing after. Holds whether it is being rendered or replayed. |
+| A step view (`self.request.run`) | `WizardRequest` | The validated prefix before it — never its own answer, nothing after. Holds whether it is being rendered or replayed. |
 | A branch predicate / switch selector (`context.run`) | `WizardContext` | The validated prefix before the branch. |
 | An expand builder (`context.run`) | `WizardContext` | The validated prefix before the expansion. |
 | `done(run)` | `Run` | The whole route; every answer validated. |
@@ -373,7 +373,7 @@ class BudgetLinesStepView(StepFormView):
     template_name = "steps/budget_lines.html"
 
     def get_initial(self):
-        organisation = self.request.wizard.path.find_step(name="organisation")
+        organisation = self.request.run.path.find_step(name="organisation")
         if organisation is None:   # not on this route
             return super().get_initial()
         return {"currency": organisation.form.cleaned_data["currency"]}

@@ -16,7 +16,7 @@ class WebsiteStepView(StepFormView):
 
     def get_initial(self):
         initial = super().get_initial()  # the stored answer, on a revisit
-        contact = self.request.wizard.path.find_step(name="contact")
+        contact = self.request.run.path.find_step(name="contact")
         if contact is not None and "website" not in initial:
             domain = contact.form.cleaned_data["email"].partition("@")[2]
             initial["website"] = f"https://{domain}"

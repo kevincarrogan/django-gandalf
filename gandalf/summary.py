@@ -240,7 +240,7 @@ class SummaryMixin(_SummaryMixinBase):
             form_class = ConfirmForm
             template_name = "checkout/review.html"
 
-    The rows come from `request.wizard.path`, so they are the answers on the
+    The rows come from `request.run.path`, so they are the answers on the
     run's resolved route, in walk order, with the selected branch arm inlined
     — never an answer the run has left behind in a dormant arm, and never the
     step doing the summarising, which is dropped explicitly because a run
@@ -278,11 +278,9 @@ class SummaryMixin(_SummaryMixinBase):
         stored, this page's own confirmation included. Dropping it is what
         stops the page offering to change itself.
         """
-        rendering = self.request.wizard.rendering
+        rendering = self.request.run.rendering
         return [
-            step
-            for step in self.request.wizard.path
-            if step.declaration is not rendering
+            step for step in self.request.run.path if step.declaration is not rendering
         ]
 
     def get_summary_rows(self) -> list[SummaryRow]:
@@ -327,7 +325,7 @@ class SummaryMixin(_SummaryMixinBase):
         """
         if not self.summary_fields:
             return
-        fields = declared_step_fields(self.request.wizard.wizard)
+        fields = declared_step_fields(self.request.run.wizard)
         if fields is None:
             return
         for step_name, specs in self.summary_fields.items():
@@ -355,7 +353,7 @@ class SummaryMixin(_SummaryMixinBase):
         theirs cannot be known before the walk reaches them, and a name that
         looks unknown may simply not have been grown yet.
         """
-        return declared_step_names(self.request.wizard.wizard)
+        return declared_step_names(self.request.run.wizard)
 
     def build_summary_row(self, step: RuntimeStep) -> SummaryRow:
         form = step.form

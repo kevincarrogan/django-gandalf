@@ -687,7 +687,7 @@ class Run:
         self.context = context
         # The context is the run's environment and the run is the context's
         # subject; each needs the other. Closed once, here, rather than on
-        # every synthetic request as `request.wizard = ...` used to be.
+        # every synthetic request as `request.run = ...` used to be.
         context.run = self
         self.storage = storage
         self.run_id: str = None  # type: ignore[assignment]
@@ -1246,7 +1246,7 @@ class CursorWalker(tree.Interpreter):
         and the rendered response when it does not.
 
         Dispatched behind the `walking()` handoff, so a step view that reads
-        `request.wizard` sees the prefix validated so far instead of starting
+        `request.run` sees the prefix validated so far instead of starting
         a nested walk. `self._head` is the prefix *excluding* this step — it
         is appended only once the dispatch returns — which is exactly the
         "prior answers, never the current step" contract `path` promises.

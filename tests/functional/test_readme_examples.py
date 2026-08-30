@@ -372,7 +372,7 @@ def test_chapter_6_the_website_step_prefills_from_the_email(wizard_driver):
 
     response = run.post_step("contact", {"email": "ada@example.com"}, follow=True)
 
-    # get_initial() read the contact step's answer off request.wizard.path.
+    # get_initial() read the contact step's answer off request.run.path.
     assert response.context["form"]["website"].value() == "https://example.com"
 
 

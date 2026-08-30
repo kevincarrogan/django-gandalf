@@ -17,13 +17,13 @@ the steps that now need attention, then fast-forwards through every
 still-valid answer.
 
 For an explicit in-page back link, any step template can reach
-`request.wizard.back_url` (the previous step's URL, branch-aware; `None` on
-the first step) and `request.wizard.run_url` (a "return to where I was"
+`request.run.back_url` (the previous step's URL, branch-aware; `None` on
+the first step) and `request.run.run_url` (a "return to where I was"
 link):
 
 ```django
-{% if request.wizard.back_url %}
-  <a href="{{ request.wizard.back_url }}">Back</a>
+{% if request.run.back_url %}
+  <a href="{{ request.run.back_url }}">Back</a>
 {% endif %}
 ```
 
