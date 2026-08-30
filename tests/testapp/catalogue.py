@@ -199,6 +199,12 @@ GROUPS = (
             Example(
                 "empty-wizard", note="No steps at all, so it completes on arrival."
             ),
+            Example(
+                "opening-hours-wizard",
+                note="A formset step: seven compact rows on one page rather "
+                "than seven pages. Its bounds are enforced, so its schema "
+                "states them. Compare AddAnother, where an item earns a page.",
+            ),
         ),
     ),
     Group(

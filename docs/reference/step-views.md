@@ -62,9 +62,20 @@ once because an empty `ErrorDict` is falsy, and a form object that is not a
 `BaseForm` need not behave that way. Override it beside such an object; the
 [`RuntimeStep.errors`](run.md) every reader goes through asks here.
 
+**`get_answer(form)`** — what the step was answered with. A mapping of field
+name to cleaned value for a form, and whatever shape suits an object that is
+not one. Everything reading a run's answers goes through
+[`RuntimeStep.answer`](run.md), so a step's answer has one shape rather than
+a shape per reader.
+
+**`get_answer_schema(form)`** — the step as JSON Schema, which is what an
+agent is told it asks. Override it beside a form object
+`form_json_schema()` cannot read: that walks `form.fields`, which only a
+`BaseForm` has.
+
 A step declared with a bare Django `FormView` rather than a `StepFormView`
-carries no `get_answer_errors` and gets the `BaseForm` reading, so nothing
-has to change to keep working.
+carries none of these and gets the `BaseForm` readings, so nothing has to
+change to keep working.
 
 ### `FormSetStepView`
 
@@ -95,6 +106,14 @@ the field name, `"0-email"`, because `"email"` names nothing when several
 people are being asked at once. Errors belonging to the formset itself
 rather than to any row — `min_num`, `max_num`, a `clean()` on the formset —
 keep Django's own `__all__`.
+
+**`get_answer_schema(form)`** — an array of rows rather than an object of
+fields. The row schema comes from the formset's `empty_form`, so it
+describes what a row *asks* rather than what any row was answered with.
+`minItems` and `maxItems` are stated only where the formset enforces them:
+`min_num` and `max_num` say what the page draws, and `validate_min` /
+`validate_max` say what it will accept. Advertising an unenforced bound
+would tell an agent a rule that is not one.
 
 **Why it is needed at all.** A valid formset's `errors` is `[{}]` — a list
 holding one empty dict per row — which is **truthy**. Code written as `if

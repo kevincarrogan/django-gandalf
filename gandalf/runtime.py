@@ -461,6 +461,19 @@ class RuntimeStep:
         return view
 
     @property
+    def answer(self) -> Any:
+        """What this step was answered with, as its view reports it.
+
+        `form.cleaned_data` for a form; a list of one mapping per row for a
+        formset. Asked of `step_view` so that a step's answer has one shape
+        for every reader rather than a shape each reader infers.
+        """
+        reader = getattr(self.step_view, "get_answer", None)
+        if reader is None:
+            return self.form.cleaned_data
+        return reader(self.form)
+
+    @property
     def errors(self) -> dict[str, list[dict[str, Any]]]:
         """What this step refused, by field name, empty when it is settled.
 

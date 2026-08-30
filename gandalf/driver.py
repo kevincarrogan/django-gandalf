@@ -315,7 +315,7 @@ class RunDriver:
             )
         return StepDescription(
             step=_step_name(cursor.node),
-            schema=form_json_schema(self._unbound_form(cursor.node)),
+            schema=self._schema_for(cursor.node),
             answers=answers,
             errors=self._last_errors,
             complete=False,
@@ -345,14 +345,18 @@ class RunDriver:
 
     def _placement(self, step: RuntimeStep, *, json_safe: bool) -> Placement:
         files: FileRefs = dict(step.files or {})
-        answers = dict(step.form.cleaned_data)
+        answers = dict(step.answer) if isinstance(step.answer, dict) else step.answer
         metadata = dict(step.metadata or {})
         if json_safe:
             # An uploaded file is not JSON and never will be. Its stored
             # reference is, and names the same bytes — so a caller
             # serialising a run gets told a file is here and which one,
             # where before this it got a `TypeError` and no run at all.
-            answers = _json_safe({**answers, **files})
+            # A step whose answer is not a mapping has nowhere to fold a
+            # file into; its files are listed on the placement regardless.
+            if isinstance(answers, dict):
+                answers = {**answers, **files}
+            answers = _json_safe(answers)
             metadata = _json_safe(metadata)
         return Placement(answers=answers, files=files, metadata=metadata)
 
@@ -836,22 +840,32 @@ class RunDriver:
         # code that may read answers the run does not hold yet; any failure
         # means "no schema until reached", not a broken outline.
         try:
-            return form_json_schema(self._unbound_form(declaration))
+            return self._schema_for(declaration)
         except Exception:
             return None
 
-    def _unbound_form(self, declaration: tree.Step) -> BaseForm:
-        """The step's form, unbound, through the view's composition API — a
-        GET-shaped request, so no phantom "this field is required" errors."""
-        form: BaseForm = self._view_for(declaration).get_form()
-        return form
+    def _schema_for(self, declaration: tree.Step) -> dict[str, Any]:
+        """The step as JSON Schema, asked of its view.
+
+        The view built the form object, so it is the one that knows how to
+        describe it — `form_json_schema()` walks `form.fields`, which only
+        a `BaseForm` has. A step declared with a bare Django `FormView` has
+        no say and gets the form reading.
+        """
+        view = self._view_for(declaration)
+        # GET-shaped, so no phantom "this field is required" errors.
+        form = view.get_form()
+        builder = getattr(view, "get_answer_schema", None)
+        if builder is None:
+            return form_json_schema(form)
+        return cast("dict[str, Any]", builder(form))
 
 
 def _step_name(declaration: tree.Step) -> str | None:
     return cast("str | None", (declaration.context or {}).get("name"))
 
 
-def _json_safe(data: dict[str, Any]) -> dict[str, Any]:
+def _json_safe(data: Any) -> Any:
     """`data` with every value rendered as one JSON can hold.
 
     Used at both of the driver's doors, for reasons that are the same
@@ -874,7 +888,7 @@ def _json_safe(data: dict[str, Any]) -> dict[str, Any]:
     parse back, so a value survives the trip out and in again as itself. A
     value it cannot render still raises, but at the door it was handed to.
     """
-    return cast("dict[str, Any]", json.loads(json.dumps(data, cls=DjangoJSONEncoder)))
+    return json.loads(json.dumps(data, cls=DjangoJSONEncoder))
 
 
 def outline_steps(entries: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:

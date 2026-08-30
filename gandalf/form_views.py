@@ -90,6 +90,30 @@ class StepFormView(_StepFormViewBase):
             form.errors.get_json_data(),
         )
 
+    def get_answer(self, form: Any) -> Any:
+        """What this step was answered with.
+
+        A mapping of field name to cleaned value for a form, and whatever
+        shape suits an object that is not one — a formset answers with a
+        list of one mapping per row. Everything reading a run's answers
+        goes through here, so a step's answer has one shape rather than a
+        shape per reader.
+        """
+        return form.cleaned_data
+
+    def get_answer_schema(self, form: Any) -> dict[str, Any]:
+        """This step as a JSON Schema — what an agent is told it asks.
+
+        Override beside a form object `form_json_schema()` cannot read: it
+        walks `form.fields`, which only a `BaseForm` has.
+        """
+        # Imported here rather than at module scope: `gandalf.driver` is
+        # built on top of this module, and the schema vocabulary lives with
+        # the driver that publishes it.
+        from gandalf.driver import form_json_schema
+
+        return form_json_schema(form)
+
 
 class FormSetStepView(StepFormView):
     """A step whose form object is a formset rather than a form.
@@ -123,6 +147,28 @@ class FormSetStepView(StepFormView):
         if non_form:
             errors["__all__"] = non_form.get_json_data()
         return errors
+
+    def get_answer_schema(self, form: Any) -> dict[str, Any]:
+        """An array of rows, rather than an object of fields.
+
+        The row schema comes from `empty_form`, which is the unbound row
+        the formset would render next, so it describes what a row *asks*
+        rather than what any particular row was answered with. `minItems`
+        is stated only when the formset actually enforces `min_num` —
+        `validate_min` off means the rows are rendered, not required.
+        """
+        # Imported here for the reason `StepFormView.get_answer_schema` is.
+        from gandalf.driver import form_json_schema
+
+        schema: dict[str, Any] = {
+            "type": "array",
+            "items": form_json_schema(form.empty_form),
+        }
+        if form.validate_min:
+            schema["minItems"] = form.min_num
+        if form.validate_max:
+            schema["maxItems"] = form.max_num
+        return schema
 
 
 def form_view_factory(

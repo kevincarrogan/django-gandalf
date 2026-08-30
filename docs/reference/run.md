@@ -261,6 +261,13 @@ reads *about* that object — what the step refused, what it asks — is asked
 of the view, which knows what kind of object it built. An application
 answers here; see [Step views](step-views.md).
 
+### `RuntimeStep.answer`
+
+What the step was answered with, as its view reports it —
+`form.cleaned_data` for a form, a list of one mapping per row for a formset.
+Asked of `step_view.get_answer()` so a step's answer has one shape for every
+reader rather than a shape each reader infers.
+
 ### `RuntimeStep.errors`
 
 What the step refused, by field name, in `get_json_data()` shape, and empty

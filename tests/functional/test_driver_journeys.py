@@ -15,6 +15,7 @@ from tests.testapp.readme.ch02_branching import BranchingApplicationViewSet
 from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
 from tests.testapp.views import (
     FileUploadingWizardViewSet,
+    OpeningHoursWizardViewSet,
     PathAwareFormViewFirstStepWizardViewSet,
 )
 
@@ -416,6 +417,45 @@ def test_a_step_declared_with_a_plain_form_view_still_reports_its_errors():
     driver = RunDriver.begin(PathAwareFormViewFirstStepWizardViewSet)
 
     result = driver.submit({}, step="first")
-
     assert result.status == "invalid"
     assert list(result.errors) == ["name"]
+
+    driver.submit({"name": "Ada"}, step="first")
+    assert driver.answers()["first"] == {"name": "Ada"}
+
+
+def test_an_agent_is_told_a_formset_step_asks_for_rows():
+    """What the step asks, as an agent sees it. A formset has no `fields`,
+    so the form-shaped read raised — and `outline_for` swallowed it and
+    reported the step as having no schema at all, which on an agent-facing
+    surface is worse than raising."""
+    driver = _at_the_organisers()
+
+    driver.submit(ORGANISERS, step="organisers")
+    organisers = next(
+        entry
+        for entry in RunDriver.outline_for(OrganiseAnEventViewSet)
+        if entry.get("step") == "organisers"
+    )
+
+    assert organisers["schema"]["type"] == "array"
+    assert set(organisers["schema"]["items"]["properties"]) == {
+        "email",
+        "first_name",
+    }
+
+
+def test_a_formset_step_advertises_the_bounds_it_enforces():
+    """`min_num` and `max_num` say what the page draws; `validate_min` and
+    `validate_max` say what it will accept. Only the enforced pair belongs
+    in a schema, or an agent is told a rule that is not one."""
+    driver = RunDriver.begin(OpeningHoursWizardViewSet)
+    driver.submit({"name": "Ada"}, step="who")
+
+    schema = driver.describe().schema
+
+    assert schema["type"] == "array"
+    assert schema["maxItems"] == 7
+    # Nothing enforces a minimum here, so the schema states none — the
+    # organisers step is the other way round, and states only `minItems`.
+    assert "minItems" not in schema

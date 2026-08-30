@@ -34,7 +34,7 @@ from gandalf.driver import (
     outline_steps,
 )
 from gandalf.escapes import Advance, Escape, Obliterate, Park
-from gandalf.form_views import StepFormView
+from gandalf.form_views import FormSetStepView, StepFormView
 from gandalf.runtime import StepNotFound
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.viewsets import WizardViewSet
@@ -1921,3 +1921,88 @@ def test_a_step_with_a_plain_form_view_has_no_say_in_how_its_errors_read():
 
     assert result.status == "invalid"
     assert list(result.errors) == ["name"]
+
+
+def test_a_formset_steps_answers_read_as_rows(organisers_driver):
+    """`answers()` did `dict(cleaned_data)`, and a formset answers with a
+    list of row mappings. `dict([{"email": ..., "first_name": ...}])` does
+    not raise — it reads the row as a key/value pair and returns
+    `{"email": "first_name"}`, so an agent was told the run held something
+    nobody ever answered."""
+    organisers_driver.submit(ORGANISERS, step="organisers")
+
+    assert organisers_driver.answers()["organisers"] == [
+        {"email": "ada@example.com", "first_name": "Ada"}
+    ]
+
+
+def test_a_formset_step_is_described_as_an_array_of_rows(organisers_driver):
+    """What an agent is told the step asks. A formset has no `fields`, so
+    the form-shaped read raised and `describe()` gave nothing at all."""
+    schema = organisers_driver.describe().schema
+
+    assert schema["type"] == "array"
+    assert set(schema["items"]["properties"]) == {"email", "first_name"}
+    assert schema["minItems"] == 1
+    # `max_num=10` without `validate_max` is a rendering limit, not a rule —
+    # an eleventh row is accepted — so saying `maxItems` would be a lie.
+    assert "maxItems" not in schema
+
+
+def test_an_outline_carries_a_formset_steps_schema():
+    """`_schema_or_none` swallows any failure as "no schema until reached",
+    which is right for a form composed from answers the run has not got —
+    and was quietly wrong for a formset, which can always be described."""
+    from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
+
+    outline = RunDriver.outline_for(OrganiseAnEventViewSet)
+    organisers = next(entry for entry in outline if entry.get("step") == "organisers")
+
+    assert organisers["schema"]["type"] == "array"
+
+
+def test_a_formset_that_enforces_its_maximum_says_so():
+    """The other half: `validate_max` is what turns `max_num` from what the
+    page renders into what the step will accept."""
+
+    class _RowForm(forms.Form):
+        day = forms.CharField()
+
+    class _HoursStepView(FormSetStepView):
+        form_class = forms.formset_factory(_RowForm, max_num=3, validate_max=True)
+        template_name = "testapp/formset_step.html"
+
+    class _HoursViewSet(WizardViewSet):
+        url_name = "signup"
+        template_name = "testapp/linear_wizard.html"
+        wizard = Wizard().step(_HoursStepView, name="hours")
+
+    schema = RunDriver.begin(_HoursViewSet).describe().schema
+
+    assert schema["maxItems"] == 3
+    assert "minItems" not in schema
+
+
+def test_a_formset_steps_rows_survive_being_made_json_safe(organisers_driver):
+    """A file cannot be folded into an answer that is a list, and does not
+    need to be — the placement lists its files either way."""
+    organisers_driver.submit(ORGANISERS, step="organisers")
+
+    placements = organisers_driver.placements(json_safe=True)
+
+    assert placements["organisers"].answers == [
+        {"email": "ada@example.com", "first_name": "Ada"}
+    ]
+    assert placements["organisers"].files == {}
+
+
+def test_a_step_with_a_plain_form_view_is_read_and_described_as_a_form():
+    """A bare Django `FormView` carries neither `get_answer` nor
+    `get_answer_schema`, so both reads fall back to the `BaseForm` ones."""
+    from tests.testapp.views import PathAwareFormViewFirstStepWizardViewSet
+
+    driver = RunDriver.begin(PathAwareFormViewFirstStepWizardViewSet)
+    driver.submit({"name": "Ada"}, step="first")
+
+    assert driver.answers()["first"] == {"name": "Ada"}
+    assert set(driver.describe().schema["properties"]) == {"email"}

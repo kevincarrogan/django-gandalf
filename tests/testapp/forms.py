@@ -243,4 +243,11 @@ class OpeningHoursForm(forms.Form):
     opens = forms.CharField()
 
 
-OpeningHoursFormSet = forms.formset_factory(OpeningHoursForm, extra=1)
+#: A bound that is *enforced* rather than merely rendered: `validate_max` is
+#: what turns `max_num` from what the page draws into what the step will
+#: accept, and so into something a schema can honestly advertise. There is
+#: no matching minimum — a week with no opening hours in it is a shop that
+#: is closed, which is an answer.
+OpeningHoursFormSet = forms.formset_factory(
+    OpeningHoursForm, extra=1, max_num=7, validate_max=True
+)

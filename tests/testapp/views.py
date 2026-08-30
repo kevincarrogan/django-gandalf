@@ -25,7 +25,7 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from gandalf.escapes import Obliterate
-from gandalf.form_views import StepFormView
+from gandalf.form_views import FormSetStepView, StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
 from gandalf.add_another import AddAnotherViewSet
 from gandalf.tasklists import (
@@ -2098,12 +2098,30 @@ class DynamicAddressStepView(StepFormView):
         return ShorterAddressForm
 
 
-class OpeningHoursStepView(StepFormView):
+class OpeningHoursStepView(FormSetStepView):
     """A formset step, which declares no step-level fields of its own —
     the other way the declaration is not the whole story."""
 
     form_class = OpeningHoursFormSet
     template_name = "testapp/formset_step.html"
+
+
+class OpeningHoursWizardViewSet(WizardViewSet):
+    description = (
+        "A formset step: seven compact rows on one page, rather than seven "
+        "pages. Its bounds are enforced, so its schema states them."
+    )
+    url_name = "opening-hours-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+    )
+
+    def done(self, run):
+        hours = run.path.find_step(name="opening-hours").answer
+        return HttpResponse(f"open {len(hours)} day(s)")
 
 
 class DynamicSummaryStepView(SummaryMixin, StepFormView):
