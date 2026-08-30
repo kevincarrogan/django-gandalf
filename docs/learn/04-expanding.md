@@ -53,12 +53,21 @@ spliced in where `.expand()` sits — inside the organisation arm, so an
 individual is never asked. Answering the count parks the user on the first
 grown step in a single request.
 
-Grown answers are stored positionally: raising a count keeps the answers
-already given, lowering it drops the trailing ones. That is exactly why
-`.expand()` is the wrong tool for a list the user grows and prunes over time
-— deleting from the middle would shift every answer after it. Budget lines,
-in [chapter 12](12-add-another.md), are that kind of list, and each is its
-own run.
+What if the count changes? Say the applicant answers three, names three
+trustees, then goes back to the count (every step has a URL, so they can)
+and says two. The builder runs again and grows two steps. Gandalf keeps the
+grown answers in order under the expansion — first, second, third — not by
+name, so the first two trustees are still there and the third is dropped.
+Say four instead and all three survive, with one more to ask. Nothing
+already answered is asked again.
+
+That is also the limit of `.expand()`. The only thing the applicant can
+change is *how many*: there is no way to say "remove the second trustee",
+because with answers kept in order, taking one out of the middle would slide
+every later answer up a place and put the wrong name against the wrong
+trustee. A list the user grows and prunes over time — budget lines, in
+[chapter 12](12-add-another.md) — needs each item to be its own run, and
+that is a different tool.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`ch04_expand.py`](../../tests/testapp/readme/ch04_expand.py) &nbsp;·&nbsp; **Reference:** [`Wizard.expand()`](../reference/wizard.md)
 
