@@ -12,22 +12,19 @@ Declared as an entry of a task list —
 
     class GrantApplication(TaskList):
         budget = AddAnother(
-            budget_line,
-            title="Budget",
-            item_name="Budget line",
-            item_title=("line", "item"),
-            min_items=1,
-            reopen_at="review",
-            template_name="apply/budget.html",
-            remove_template_name="apply/budget_remove.html",
+            budget_line, title="Budget", item_title="item", min_items=1, reopen_at="review"
         )
 
-— which mounts it beneath the page; or mounted on its own:
+— which mounts it beneath the page, rendering with the page's
+`add_another_template_name` and `remove_template_name`; or mounted on its
+own:
 
     class VehiclesViewSet(AddAnotherViewSet):
         url_name = "vehicles"
         key = "vehicles"
-        add_another = AddAnother(vehicle, item_name="Vehicle", ...)
+        add_another = AddAnother(vehicle, item_title="registration")
+        template_name = "fleet/vehicles.html"
+        remove_template_name = "fleet/remove_vehicle.html"
         task_list_url_name = "quote"   # where Continue goes
 
 Completeness is declared, not derived: no reading of storage can say
@@ -56,6 +53,8 @@ from django.urls import URLPattern, URLResolver, include, path, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext, gettext_lazy as _
 
+from gandalf import tree
+from gandalf.wizard import ConfiguredWizard, Wizard
 from gandalf.runtime import Run
 from gandalf.storage import RunNotFound
 from gandalf.tasklists import (
@@ -137,6 +136,42 @@ class AddAnotherPage(TaskListPage):
         return not self.rows
 
 
+# --- the item wizard, as declared --------------------------------------------
+
+
+def item_wizard(entry: AddAnother) -> Wizard | ConfiguredWizard | None:
+    """The entry's item wizard as a declaration, or None when there is none
+    to read: an `ItemViewSet` subclass in the slot that builds its wizard
+    per request."""
+    wizard = entry.wizard
+    if isinstance(wizard, type):
+        wizard = getattr(wizard, "wizard", None)
+    return wizard
+
+
+def first_step_label(entry: AddAnother) -> StrOrPromise | None:
+    """The `label` of the item wizard's first step, if it has one."""
+    wizard = item_wizard(entry)
+    nodes = [] if wizard is None else list(tree.iter_nodes(wizard.tree))
+    steps = [node for node in nodes if isinstance(node, tree.Step)]
+    if not steps:
+        return None
+    return (steps[0].context or {}).get("label")
+
+
+def declared_fields(node: tree.Step) -> set[str]:
+    """The field names a step's form declares, or none when the step's
+    view decides its form at request time."""
+    declaration: Any = node.declaration
+    if isinstance(declaration, type) and issubclass(declaration, forms.BaseForm):
+        form_class = declaration
+    else:
+        form_class = getattr(declaration, "form_class", None)
+    if form_class is None:
+        return set()
+    return set(form_class.base_fields)
+
+
 # --- one item ------------------------------------------------------------------
 
 
@@ -181,22 +216,22 @@ class ItemViewSet(SectionViewSet):
 
     def get_item_title(self, run: Run) -> str:
         """The name this item goes by on the page, read off the finished
-        run: `item_title`'s field, or its callable. A step that is not on
-        the route the user took names nothing, and the page falls back to a
-        positional name rather than inventing one."""
+        run: the `item_title` field's answer, or its callable's return. A
+        field on a step that is not on the route the user took names
+        nothing, and the page falls back to a positional name rather than
+        inventing one."""
         if self.item_title is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
                 f"{name} cannot name its items. Declare the AddAnother with "
-                f"item_title=(step, field), or a callable of the finished run."
+                f"item_title=<field name>, or a callable of the finished run."
             )
         if callable(self.item_title):
             return str(self.item_title(run))
-        step_name, field_name = self.item_title
-        step = run.path.find_step(name=step_name)
-        if step is None:
-            return ""
-        return str(step.form.cleaned_data.get(field_name, ""))
+        for step in run.path:
+            if self.item_title in step.form.cleaned_data:
+                return str(step.form.cleaned_data[self.item_title])
+        return ""
 
     def run_recorded(self, run: Run, store: JourneyStore, key: str) -> None:
         title = self.get_item_title(run)
@@ -253,7 +288,6 @@ class AddAnotherViewSet(TaskListViewSet):
     entry_url_kwarg = "item"
     items_context_name = "items"
     form_class = AddAnotherForm
-    remove_template_name: str | None = None
 
     @classmethod
     def declared_entries(cls) -> dict[str, Entry] | None:
@@ -268,11 +302,7 @@ class AddAnotherViewSet(TaskListViewSet):
                 f"{cls.__name__} has no list to show. Set {cls.__name__}.key "
                 f"to the key its items are registered under."
             )
-        # The entry's pages, unless this class names its own.
-        for name in ("template_name", "remove_template_name"):
-            declared = getattr(entry, name)
-            if declared is not None and name not in cls.__dict__:
-                setattr(cls, name, declared)
+        cls.check_item_title(entry)
         item_url_name = f"{cls.url_name}-item"
         bases = cls.wizard_bases(entry.wizard, ItemViewSet)
         attrs = {
@@ -287,6 +317,41 @@ class AddAnotherViewSet(TaskListViewSet):
         cls.item_viewset = type(class_name_for(cls.key, "ItemViewSet"), bases, attrs)
         cls.entries = []
         cls._routes = []
+
+    @classmethod
+    def check_item_title(cls, entry: AddAnother) -> None:
+        """Refuse an `item_title` field that no step of the item wizard
+        declares, or that two of them do — the second would be answered by
+        whichever step came first on the route, silently. Skipped for a
+        wizard the declaration cannot see: one grown by `.expand()`, or one
+        a step view builds its form for at request time."""
+        field = entry.item_title
+        if not isinstance(field, str):
+            return
+        wizard = item_wizard(entry)
+        if wizard is None:
+            return
+        nodes = list(tree.iter_nodes(wizard.tree))
+        if any(isinstance(node, tree.Expand) for node in nodes):
+            return
+        declaring = [
+            (node.context or {}).get("name") or "?"
+            for node in nodes
+            if isinstance(node, tree.Step) and field in declared_fields(node)
+        ]
+        if len(declaring) == 1:
+            return
+        name = cls.__name__
+        if not declaring:
+            raise ImproperlyConfigured(
+                f"{name} names its items by {field!r}, a field no step of its "
+                f"item wizard declares."
+            )
+        raise ImproperlyConfigured(
+            f"{name} names its items by {field!r}, which steps "
+            f"{', '.join(declaring)} all declare. Name them with a callable "
+            f"of the finished run instead."
+        )
 
     @classmethod
     def urls(cls) -> list[URLPattern | URLResolver]:
@@ -419,9 +484,14 @@ class AddAnotherViewSet(TaskListViewSet):
         }
 
     def get_item_name(self) -> StrOrPromise:
-        item_name = self.get_declaration().item_name
-        if item_name is not None:
-            return item_name
+        """What an unfinished item is called: the declared `item_name`, else
+        the item wizard's first step label, else the key made singular."""
+        declaration = self.get_declaration()
+        if declaration.item_name is not None:
+            return declaration.item_name
+        label = first_step_label(declaration)
+        if label is not None:
+            return label
         key = self.get_list_key().rsplit(self.key_separator, 1)[-1]
         key = key.replace("_", " ").replace("-", " ")
         return capfirst(key[:-1] if key.endswith("s") else key)
@@ -534,8 +604,9 @@ class AddAnotherViewSet(TaskListViewSet):
             if self.remove_template_name is None:
                 name = self.__class__.__name__
                 raise ImproperlyConfigured(
-                    f"Set remove_template_name on {name}'s AddAnother: the page "
-                    f"that asks the user to confirm removing an item."
+                    f"Set remove_template_name on {name}, or on the task list "
+                    f"viewset that builds it: the page that asks the user to "
+                    f"confirm removing an item."
                 )
             return [self.remove_template_name]
         return super().get_template_names()

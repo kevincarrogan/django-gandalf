@@ -28,13 +28,10 @@ class Project(TaskList):
     budget = AddAnother(
         budget_line,
         title="Budget",
-        item_name="Budget line",
         # The answer that names a row, cached when the line finishes.
-        item_title=("line", "item"),
+        item_title="item",
         min_items=1,
         reopen_at="review",
-        template_name="testapp/budget.html",
-        remove_template_name="testapp/budget_remove.html",
     )
 
 
@@ -42,5 +39,7 @@ class ProjectViewSet(TaskListViewSet):
     description = "Chapter 13: a task list whose second row is an add-another."
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
+    add_another_template_name = "testapp/budget.html"
+    remove_template_name = "testapp/budget_remove.html"
     url_name = "readme-project"
     task_list = Project

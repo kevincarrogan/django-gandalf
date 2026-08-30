@@ -22,7 +22,16 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import resolve, reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from gandalf.add_another import COMPLETE, INCOMPLETE, NOT_STARTED, AddAnotherViewSet
+from gandalf.add_another import (
+    COMPLETE,
+    INCOMPLETE,
+    NOT_STARTED,
+    AddAnotherViewSet,
+    ItemViewSet,
+)
+from gandalf.form_views import StepFormView
+from gandalf.wizard import Wizard
+from tests.testapp.forms import GuestForm
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
 from tests.testapp.views import GuestsViewSet, PartyViewSet
@@ -680,6 +689,78 @@ def test_a_list_without_a_url_name_cannot_publish_urls():
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
         _Nameless.urls()
+
+
+def test_an_item_title_field_no_step_declares_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="'nickname', a field no step"):
+
+        class _Nameless(GuestsViewSet):
+            add_another = GuestsViewSet.add_another.replace(item_title="nickname")
+
+
+def test_an_item_title_field_two_steps_declare_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="steps guest, plus_one all declare"):
+
+        class _Ambiguous(GuestsViewSet):
+            add_another = GuestsViewSet.add_another.replace(
+                wizard=Wizard()
+                .step(GuestForm, name="guest")
+                .step(GuestForm, name="plus_one")
+            )
+
+
+def test_a_step_view_that_picks_its_form_at_request_time_declares_no_fields():
+    class _Undecided(StepFormView):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_form_class(self):
+            return GuestForm
+
+    with pytest.raises(ImproperlyConfigured, match="a field no step"):
+
+        class _Unreadable(GuestsViewSet):
+            add_another = GuestsViewSet.add_another.replace(
+                wizard=Wizard().step(_Undecided, name="guest")
+            )
+
+
+def test_an_item_wizard_the_declaration_cannot_see_is_taken_on_trust(rf):
+    class _PerRequest(ItemViewSet):
+        def get_wizard(self, run):
+            return Wizard().step(GuestForm, name="guest")
+
+    class _Trusted(GuestsViewSet):
+        add_another = GuestsViewSet.add_another.replace(
+            wizard=_PerRequest, item_title="anything", item_name=None
+        )
+
+    class _Growing(GuestsViewSet):
+        add_another = GuestsViewSet.add_another.replace(
+            wizard=Wizard()
+            .step(GuestForm, name="guest")
+            .expand(lambda context: Wizard())
+        )
+
+    assert _Trusted.item_viewset.item_title == "anything"
+    assert _Growing.item_viewset.item_title == "name"
+    view = _Trusted()
+    view.setup(rf.get(PAGE))
+    assert view.get_item_name() == "Standalone guest"
+
+
+def test_an_add_another_base_that_names_its_own_pages_keeps_them():
+    class _Themed(AddAnotherViewSet):
+        template_name = "testapp/hub.html"
+
+    class _Party(PartyViewSet):
+        url_name = "themed-party"
+        add_another_viewset_class = _Themed
+
+    assert _Party.viewset_for("guests").template_name == "testapp/hub.html"
+    assert (
+        _Party.viewset_for("guests").remove_template_name
+        == "testapp/collection_remove.html"
+    )
 
 
 def test_a_list_with_no_confirmation_page_is_misconfigured(rf, client):

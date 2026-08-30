@@ -1805,7 +1805,7 @@ def test_an_add_another_entry_is_a_page_beneath_the_list():
     its key and its return composed — as any entry is."""
     from gandalf.add_another import AddAnotherViewSet
 
-    guests = AddAnother(CONTACT, item_name="Guest", item_title=("first", "name"))
+    guests = AddAnother(CONTACT, item_name="Guest", item_title="name")
     viewset = _view(_list(guests=guests), url_name="party-hub").viewset_for("guests")
 
     assert issubclass(viewset, AddAnotherViewSet)

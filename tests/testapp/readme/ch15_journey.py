@@ -93,12 +93,9 @@ budget = AddAnother(
     .step(BudgetLineForm, name="line", label="Budget line")
     .step(ReviewStepView, name="review"),
     title="Budget",
-    item_name="Budget line",
-    item_title=("line", "item"),
+    item_title="item",
     min_items=1,
     reopen_at="review",
-    template_name="testapp/budget.html",
-    remove_template_name="testapp/budget_remove.html",
 )
 
 match_funding = Wizard().step(MatchFundingForm, name="source", label="Match funding")
@@ -204,6 +201,8 @@ class GrantApplicationViewSet(TaskListViewSet):
     url_name = "readme-apply"
     template_name = "testapp/journey_hub.html"
     section_template_name = "testapp/linear_wizard.html"
+    add_another_template_name = "testapp/budget.html"
+    remove_template_name = "testapp/budget_remove.html"
     task_list = GrantApplication
 
     def journey_done(self, page, store):

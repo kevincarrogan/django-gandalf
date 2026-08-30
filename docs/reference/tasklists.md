@@ -126,7 +126,7 @@ A wizard the user finishes on its own and can come back to.
   in `get_wizard()`, cannot be checked). Default `None`: the
   first step on the route.
 
-#### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None, template_name=None, remove_template_name=None)`
+#### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None)`
 
 A list the user grows, one run of `wizard` per item. The row links straight
 at the list's page and reads its declared status. The keyword arguments
@@ -179,6 +179,8 @@ class GrantApplicationViewSet(TaskListViewSet):
 | `url_name` | `None` | The page's URL name, and the prefix of every name beneath it. Required. |
 | `template_name` | — | The page (from `TemplateView`). |
 | `section_template_name` | `None` | The template this list's sections render with when their `Wizard` carries none. |
+| `add_another_template_name` | `None` | The page every add-another entry in the tree renders with, unless `add_another_viewset_class` names its own. |
+| `remove_template_name` | `None` | The confirmation page before an add-another item is removed, likewise. |
 | `storage_class` | `SessionStorage` | The run storage every section of the tree uses. |
 | `journey_store_class` | `SessionCollectionStore` | The store the journey's bookkeeping lives in, for the whole tree. Must satisfy `gandalf.types.JourneyStore` — `CollectionStore` if the tree has an add-another. |
 | `add_another_viewset_class` | `None` | The base every add-another page in the tree is built on; `None` means `AddAnotherViewSet`. |

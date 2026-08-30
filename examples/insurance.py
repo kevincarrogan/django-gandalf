@@ -338,12 +338,7 @@ class VehiclesViewSet(AddAnotherViewSet):
 
     url_name = "vehicles"
     key = "vehicles"
-    add_another = AddAnother(
-        VehicleItem,
-        item_name="Vehicle",
-        item_title=("vehicle", "registration"),
-        reopen_at="review",
-        template_name="hybrid/collection.html",
-        remove_template_name="hybrid/remove_item.html",
-    )
+    add_another = AddAnother(VehicleItem, item_title="registration", reopen_at="review")
+    template_name = "hybrid/collection.html"
+    remove_template_name = "hybrid/remove_item.html"
     task_list_url_name = "quote"

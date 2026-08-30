@@ -2038,9 +2038,7 @@ class ScenarioViewSet(TaskListViewSet):
 GUESTS = AddAnother(
     Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review"),
     item_name="Guest",
-    item_title=("guest", "name"),
-    template_name="testapp/collection.html",
-    remove_template_name="testapp/collection_remove.html",
+    item_title="name",
 )
 
 
@@ -2057,6 +2055,8 @@ class OrgViewSet(TaskListViewSet):
     description = "Task list whose entries carry mount-prefix URL kwargs."
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
+    add_another_template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
     url_name = "org-hub"
     task_list = Org
 
@@ -2155,6 +2155,8 @@ class PartyViewSet(TaskListViewSet):
     description = "Task list with an add-another row beside a plain section."
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
+    add_another_template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
     url_name = "party-hub"
     task_list = Party
 
@@ -2167,6 +2169,8 @@ class GuestsViewSet(AddAnotherViewSet):
     not listed by — the shape `examples/insurance.py` uses."""
 
     description = "Add another: a list of items with full CRUD."
+    template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "standalone-guests"
     key = "standalone-guests"
@@ -2196,7 +2200,7 @@ class AdvancingGuestsViewSet(GuestsViewSet):
     key = "advancing-guests"
     add_another = GUESTS.replace(
         wizard=Wizard().step(NewsletterForm, name="newsletter"),
-        item_title=("newsletter", "email"),
+        item_title="email",
     )
 
 
@@ -2214,7 +2218,17 @@ class OffRouteGuestsViewSet(GuestsViewSet):
     description = "Items that answer nothing that names them."
     url_name = "off-route-guests"
     key = "off-route-guests"
-    add_another = GUESTS.replace(item_title=("not-on-this-route", "name"))
+    add_another = GUESTS.replace(
+        wizard=Wizard()
+        .step(GuestForm, name="guest")
+        .branch(
+            condition(
+                lambda context: False, Wizard().step(NewsletterForm, name="newsletter")
+            )
+        )
+        .step(ConfirmForm, name="review"),
+        item_title="email",
+    )
 
 
 class ReshapedGuestsViewSet(GuestsViewSet):

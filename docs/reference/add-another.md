@@ -34,7 +34,7 @@ thing that can be *destroyed*.
 
 ## Reference
 
-### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None, template_name=None, remove_template_name=None)`
+### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None)`
 
 The entry: one *add another* list. Declared in a `TaskList` body, which
 mounts the page beneath the list, or set as `add_another` on a root
@@ -46,13 +46,18 @@ variant.
   (`run_done()`, `item_removed()`).
 - `title` — what the row on the task list above renders.
 - `item_name` — what an unfinished item is called in a positional title
-  (`Budget line 2`). `None` derives it from the key: underscores and
-  hyphens to spaces, a trailing `s` dropped, first letter capitalised
-  (`budget_lines` → `Budget line`).
-- `item_title` — what names a finished item on the page: a
-  `(step, field)` pair, read off the finished run, or
-  `callable(run) -> str`. Return `""` and the row keeps its
-  positional name. Required by the time an item finishes.
+  (`Budget line 2`). `None` uses the item wizard's first step `label`,
+  else derives it from the key: underscores and hyphens to spaces, a
+  trailing `s` dropped, first letter capitalised (`budget_lines` →
+  `Budget line`).
+- `item_title` — what names a finished item on the page: a field name,
+  read off whichever step of the finished run answered it, or
+  `callable(run) -> str`. A field name is checked when the page is built:
+  `ImproperlyConfigured` if no step of the item wizard declares it, or if
+  more than one does (name those with a callable). A field on a step the
+  route did not take names nothing, and a callable may return `""`; either
+  way the row keeps its positional name. Required by the time an item
+  finishes.
 - `min_items` — items required before *no more to add* counts as complete.
   Zero is right for "any other income?"; one for "add at least one".
 - `reopen_at` — the step a finished item re-opens at (its review step,
@@ -60,8 +65,12 @@ variant.
 - `label` — the stash label every item stamps and the page expects; one
   value for both halves. `None` uses the list's key. Bump it when a deploy
   reshapes the item wizard.
-- `template_name` / `remove_template_name` — the page and the confirmation
-  page. A root viewset that sets either on the class keeps its own.
+
+The page's templates are not the entry's business. An entry of a task list
+renders with the `TaskListViewSet`'s `add_another_template_name` and
+`remove_template_name`, as a section renders with its
+`section_template_name`; a root `AddAnotherViewSet` sets `template_name`
+and `remove_template_name` on the class.
 
 ### `AddAnotherViewSet`
 
@@ -417,12 +426,9 @@ class Project(TaskList):
         .step(BudgetLineForm, name="line", label="Budget line")
         .step(ReviewStepView, name="review"),
         title="Budget",
-        item_name="Budget line",
-        item_title=("line", "item"),
+        item_title="item",
         min_items=1,
         reopen_at="review",
-        template_name="grants/budget.html",
-        remove_template_name="grants/budget_remove.html",
     )
 
 
@@ -498,7 +504,7 @@ class BudgetLineItem(ItemViewSet):
 
 
 class Project(TaskList):
-    budget = AddAnother(BudgetLineItem, title="Budget", item_title=("line", "item"))
+    budget = AddAnother(BudgetLineItem, title="Budget", item_title="item")
 ```
 
 The entry is unchanged; the richer thing goes in the slot. `item_removed()`
@@ -511,7 +517,9 @@ line listed and removable.
 class VehiclesViewSet(AddAnotherViewSet):
     url_name = "vehicles"
     key = "vehicles"
-    add_another = AddAnother(VehicleItem, item_name="Vehicle", item_title=("vehicle", "registration"))
+    add_another = AddAnother(VehicleItem, item_title="registration")
+    template_name = "fleet/vehicles.html"
+    remove_template_name = "fleet/remove_vehicle.html"
     task_list_url_name = "quote"          # Continue returns to the quote wizard
 
 
@@ -588,7 +596,7 @@ row links to cannot remove the item it meant to open. Removal is
 ### `ImproperlyConfigured: ... cannot name its items`
 
 The item finished and `run_recorded()` asked for a title, but the entry has
-no `item_title`. Give it the `(step, field)` pair, or a callable of the
+no `item_title`. Give it the field that names an item, or a callable of the
 finished run.
 
 ### `ImproperlyConfigured: ... is not mounted under an item segment`

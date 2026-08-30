@@ -22,6 +22,7 @@ from gandalf.add_another import (
     ItemViewSet,
 )
 from gandalf.context import WizardContext
+from gandalf.form_views import StepFormView
 from gandalf.storage import SessionCollectionStore
 from gandalf.tasklists import (
     AddAnother,
@@ -31,9 +32,9 @@ from gandalf.tasklists import (
     TaskListPage,
     TaskListViewSet,
 )
-from gandalf.wizard import Wizard
+from gandalf.wizard import Wizard, condition
 
-from tests.testapp.forms import GuestForm
+from tests.testapp.forms import GuestForm, NewsletterForm
 from tests.testapp.views import GuestsViewSet, LockedGuestsViewSet
 
 
@@ -57,18 +58,15 @@ def _session(seed=None, journey="default"):
 
 GUEST = Wizard().step(GuestForm, name="guest")
 
-GUESTS = AddAnother(
-    GUEST,
-    item_name="Guest",
-    item_title=("guest", "name"),
-    template_name="testapp/collection.html",
-    remove_template_name="testapp/collection_remove.html",
-)
+GUESTS = AddAnother(GUEST, item_name="Guest", item_title="name")
 
 
 class _Guests(AddAnotherViewSet):
     """Named after the test app's standalone page, so every URL it builds
     reverses through the URLconf rather than being faked."""
+
+    template_name = "testapp/collection.html"
+    remove_template_name = "testapp/collection_remove.html"
 
     url_name = "standalone-guests"
     key = "guests"
@@ -146,19 +144,102 @@ def test_an_add_another_builds_its_item_viewset():
     assert _ItemViewSet.list_key == "guests"
     assert _ItemViewSet.url_name == "standalone-guests-item"
     assert _ItemViewSet.task_list_url_name == "standalone-guests"
-    assert _ItemViewSet.item_title == ("guest", "name")
+    assert _ItemViewSet.item_title == "name"
     assert _ItemViewSet.template_name == "testapp/linear_wizard.html"
     assert _Guests.template_name == "testapp/collection.html"
     assert _Guests.remove_template_name == "testapp/collection_remove.html"
 
 
-def test_the_pages_can_be_named_on_the_viewset_instead():
-    class _OwnPages(_Guests):
-        template_name = "testapp/hub.html"
-        remove_template_name = None
+def test_a_task_list_hands_its_add_another_pages_to_the_lists_it_builds():
+    viewset = _view(
+        _list(guests=GUESTS.replace(title="Guests")),
+        add_another_template_name="testapp/collection.html",
+        remove_template_name="testapp/collection_remove.html",
+    ).viewset_for("guests")
 
-    assert _OwnPages.template_name == "testapp/hub.html"
-    assert _OwnPages.remove_template_name is None
+    assert viewset.template_name == "testapp/collection.html"
+    assert viewset.remove_template_name == "testapp/collection_remove.html"
+
+
+def test_an_add_another_base_that_names_its_own_pages_keeps_them():
+    class _Themed(AddAnotherViewSet):
+        template_name = "testapp/hub.html"
+        remove_template_name = "testapp/collection_remove.html"
+
+    viewset = _view(
+        _list(guests=GUESTS.replace(title="Guests")),
+        add_another_viewset_class=_Themed,
+        add_another_template_name="testapp/collection.html",
+    ).viewset_for("guests")
+
+    assert viewset.template_name == "testapp/hub.html"
+
+
+def test_an_item_name_defaults_to_the_first_steps_label(rf):
+    class _Labelled(_Guests):
+        add_another = GUESTS.replace(
+            wizard=Wizard().step(GuestForm, name="guest", label="Party guest"),
+            item_name=None,
+        )
+
+    assert _page(_Labelled, rf).get_item_name() == "Party guest"
+
+
+def test_an_item_title_field_no_step_declares_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="'nickname', a field no step"):
+
+        class _Nameless(_Guests):
+            add_another = GUESTS.replace(item_title="nickname")
+
+
+def test_an_item_title_field_two_steps_declare_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="steps guest, plus_one all declare"):
+
+        class _Ambiguous(_Guests):
+            add_another = GUESTS.replace(
+                wizard=Wizard()
+                .step(GuestForm, name="guest")
+                .step(GuestForm, name="plus_one")
+            )
+
+
+def test_an_item_title_on_a_per_request_item_wizard_is_taken_on_trust(rf):
+    class _PerRequest(ItemViewSet):
+        def get_wizard(self, run):
+            return GUEST
+
+    class _Trusted(_Guests):
+        add_another = GUESTS.replace(
+            wizard=_PerRequest, item_title="anything", item_name=None
+        )
+
+    assert _Trusted.item_viewset.item_title == "anything"
+    # And with no declaration to read a label off, the key names an item.
+    assert _page(_Trusted, rf).get_item_name() == "Guest"
+
+
+def test_an_item_title_on_an_expanding_item_wizard_is_taken_on_trust():
+    class _Growing(_Guests):
+        add_another = GUESTS.replace(
+            wizard=GUEST.expand(lambda context: Wizard()), item_title="anything"
+        )
+
+    assert _Growing.item_viewset.item_title == "anything"
+
+
+def test_a_step_view_that_picks_its_form_at_request_time_declares_no_fields():
+    class _Undecided(StepFormView):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_form_class(self):
+            return GuestForm
+
+    with pytest.raises(ImproperlyConfigured, match="a field no step"):
+
+        class _Unreadable(_Guests):
+            add_another = GUESTS.replace(
+                wizard=Wizard().step(_Undecided, name="guest"), item_title="name"
+            )
 
 
 def test_a_task_list_builds_an_add_another_beneath_itself():
@@ -678,7 +759,15 @@ def test_an_item_whose_naming_step_is_off_the_route_falls_back(rf):
     numbers itself instead."""
 
     class _Elsewhere(_Guests):
-        add_another = GUESTS.replace(item_title=("not-on-this-route", "name"))
+        add_another = GUESTS.replace(
+            wizard=GUEST.branch(
+                condition(
+                    lambda context: False,
+                    Wizard().step(NewsletterForm, name="newsletter"),
+                )
+            ),
+            item_title="email",
+        )
 
     view = _item_view(
         rf,

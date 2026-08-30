@@ -261,12 +261,14 @@ class AddAnother(Entry):
     """A list the user grows, one run of `wizard` per item.
 
     `item_name` is what an unfinished item is called on the page ("Budget
-    line 2"); `item_title` — a `(step, field)`, or a callable handed the
-    finished run — is what names a finished one. `min_items` is how many
-    a declared-done list needs before it counts as complete. `reopen_at`
-    names the step a finished item re-opens at. `label` is every item's
-    stash label. `template_name` and `remove_template_name` are the page
-    and the remove confirmation.
+    line 2"); it defaults to the item wizard's first step label, else the
+    key made singular. `item_title` — a field name read off the finished
+    run, or a callable handed the run — is what names a finished one.
+    `min_items` is how many a declared-done list needs before it counts as
+    complete. `reopen_at` names the step a finished item re-opens at.
+    `label` is every item's stash label. The page's templates are the
+    `TaskListViewSet`'s `add_another_template_name` and
+    `remove_template_name`, as a section's is its `section_template_name`.
     """
 
     def __init__(
@@ -275,12 +277,10 @@ class AddAnother(Entry):
         *,
         title: StrOrPromise | None = None,
         item_name: StrOrPromise | None = None,
-        item_title: tuple[str, str] | Callable[[Run], str] | None = None,
+        item_title: str | Callable[[Run], str] | None = None,
         min_items: int = 0,
         reopen_at: str | None = None,
         label: str | None = None,
-        template_name: str | None = None,
-        remove_template_name: str | None = None,
         key: str = "",
         viewset: type[Any] | None = None,
         url_kwargs: dict[str, Any] | None = None,
@@ -293,8 +293,6 @@ class AddAnother(Entry):
         self.item_title = item_title
         self.min_items = min_items
         self.reopen_at = reopen_at
-        self.template_name = template_name
-        self.remove_template_name = remove_template_name
 
     def facts(self) -> dict[str, Any]:
         return {
@@ -304,8 +302,6 @@ class AddAnother(Entry):
             "item_title": self.item_title,
             "min_items": self.min_items,
             "reopen_at": self.reopen_at,
-            "template_name": self.template_name,
-            "remove_template_name": self.remove_template_name,
         }
 
 
@@ -743,6 +739,11 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     #: The template this list's sections render with when their `Wizard`
     #: carries none of its own.
     section_template_name: str | None = None
+    #: The templates every add-another page in the tree renders with — the
+    #: list, and the confirmation before an item is removed — unless the
+    #: page's own class names its own.
+    add_another_template_name: str | None = None
+    remove_template_name: str | None = None
     #: The base every add-another page in this tree is built on; `None`
     #: means `gandalf.add_another.AddAnotherViewSet`.
     add_another_viewset_class: type[Any] | None = None
@@ -907,6 +908,13 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             "section_template_name": cls.section_template_name,
         }
         base = cls.add_another_viewset_class or AddAnotherViewSet
+        for own, theirs in (
+            ("add_another_template_name", "template_name"),
+            ("remove_template_name", "remove_template_name"),
+        ):
+            declared = getattr(cls, own)
+            if declared is not None and getattr(base, theirs, None) is None:
+                attrs[theirs] = declared
         return type(class_name_for(key, "AddAnotherViewSet"), (base,), attrs)
 
     @classmethod
