@@ -119,7 +119,7 @@ re-opening; `data` is for reading back.
 
 ### An ending
 
-`tasklist.is_complete` says the submit button may appear; a POST to the
+`task_list.is_complete` says the submit button may appear; a POST to the
 page presses it:
 
 ```python
@@ -148,7 +148,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     url_name = "readme-apply"
     template_name = "testapp/journey_hub.html"
     section_template_name = "testapp/linear_wizard.html"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 
     def journey_done(self, page, store):
         application = Application.objects.create()
@@ -165,7 +165,7 @@ class GrantApplicationViewSet(TaskListViewSet):
 ```
 
 ```django
-{% if tasklist.is_complete %}
+{% if task_list.is_complete %}
   <form method="post">
     {% csrf_token %}
     <button type="submit">Submit application</button>

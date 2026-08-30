@@ -68,4 +68,4 @@ class GatedViewSet(TaskListViewSet):
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-gated"
-    tasklist = Gated
+    task_list = Gated

@@ -28,7 +28,7 @@ Declared as an entry of a task list —
         url_name = "vehicles"
         key = "vehicles"
         add_another = AddAnother(vehicle, item_name="Vehicle", ...)
-        tasklist_url_name = "quote"   # where Continue goes
+        task_list_url_name = "quote"   # where Continue goes
 
 Completeness is declared, not derived: no reading of storage can say
 whether the user has more to add, so the page asks, and the answer is kept

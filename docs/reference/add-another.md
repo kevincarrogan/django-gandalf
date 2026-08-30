@@ -73,11 +73,11 @@ class BudgetViewSet(AddAnotherViewSet):
     url_name = "budget"
     key = "budget"
     add_another = budget
-    tasklist_url_name = "apply"      # where Continue goes
+    task_list_url_name = "apply"      # where Continue goes
 ```
 
 A page listed by a task list is built by the list, which sets all four. A
-root page sets them itself: `tasklist_url_name` is where *Continue*
+root page sets them itself: `task_list_url_name` is where *Continue*
 returns to — a task list, or any page — and leaving it `None` makes the
 page end the journey, which requires `journey_done()`.
 
@@ -90,12 +90,12 @@ defaults and additions:
 | `url_name` | `None` | Name of the page pattern; `-item`, `-remove`, `-item-run` and `-item-step` are derived from it. Required. |
 | `key` | `None` | The key items are registered and keyed under, and the key a parent task list lists this page by. **Required** — never `None`, whether or not a task list above lists it. |
 | `item_viewset` | generated | The `ItemViewSet` subclass built from `add_another.wizard`, for a driver that addresses an item. |
-| `tasklist_url_name` | `None` | Where *Continue* goes. `None` makes the page a *root*: `submit()` then ends the journey. |
+| `task_list_url_name` | `None` | Where *Continue* goes. `None` makes the page a *root*: `submit()` then ends the journey. |
 | `template_name` / `remove_template_name` | from the entry | The page and the confirmation page. |
 | `section_template_name` | `None` | The template the item wizard renders with when its `Wizard` carries none. |
 | `form_class` | `AddAnotherForm` | The form the page POST is validated with. |
 | `items_context_name` | `"items"` | Where the `AddAnotherPage` lands in the template context. |
-| `page_context_name` | `None` | Suppresses the task list's `tasklist` context object: one page, one status. |
+| `page_context_name` | `None` | Suppresses the task list's `task_list` context object: one page, one status. |
 | `entry_url_kwarg` | `"item"` | The URL kwarg carrying the item id on the door and remove routes. |
 | `journey_store_class` | `SessionCollectionStore` | Must satisfy `gandalf.types.CollectionStore`. |
 
@@ -427,10 +427,10 @@ class Project(TaskList):
 
 
 class ProjectViewSet(TaskListViewSet):
-    template_name = "grants/tasklist.html"
+    template_name = "grants/task_list.html"
     section_template_name = "grants/step.html"
     url_name = "apply"
-    tasklist = Project
+    task_list = Project
 ```
 
 The task list's `Budget` row links straight at the page (`apply/budget/`,
@@ -512,7 +512,7 @@ class VehiclesViewSet(AddAnotherViewSet):
     url_name = "vehicles"
     key = "vehicles"
     add_another = AddAnother(VehicleItem, item_name="Vehicle", item_title=("vehicle", "registration"))
-    tasklist_url_name = "quote"          # Continue returns to the quote wizard
+    task_list_url_name = "quote"          # Continue returns to the quote wizard
 
 
 urlpatterns = [path("vehicles/", include(VehiclesViewSet.urls()))]
@@ -566,8 +566,8 @@ explanation instead of a bare redirect.
 
 ### `ImproperlyConfigured: ... has nothing to do when its journey is submitted`
 
-The page has no `tasklist_url_name`, so it is a root and *Continue* ends
-the journey. Either set `tasklist_url_name` to where *Continue* should go,
+The page has no `task_list_url_name`, so it is a root and *Continue* ends
+the journey. Either set `task_list_url_name` to where *Continue* should go,
 or override `journey_done(page, store)`.
 
 ### `ImproperlyConfigured: ... has no list to show`

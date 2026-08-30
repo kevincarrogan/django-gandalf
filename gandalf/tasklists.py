@@ -12,8 +12,8 @@ Declared as a class body, and mounted by a viewset:
 
     class GrantApplicationViewSet(TaskListViewSet):
         url_name = "apply"
-        template_name = "apply/tasklist.html"
-        tasklist = GrantApplication
+        template_name = "apply/task_list.html"
+        task_list = GrantApplication
 
         def journey_done(self, page, store): ...
 
@@ -37,7 +37,7 @@ two — the same rule a wizard has for a `Form` and a `FormView`.
 
 The page asks the same three questions of every entry — what is it called,
 how far has it got, and where does its link go — and `TaskListViewSet`
-answers them once. The template gets a `tasklist`: one `Row` per entry,
+answers them once. The template gets a `task_list`: one `Row` per entry,
 carrying its title, its status, and one URL that does the right thing
 whichever state it is in, wrapped in a `TaskListPage` that says how far
 the whole page has got.
@@ -317,7 +317,7 @@ class Group(Entry):
 
     def __init__(
         self,
-        tasklist: type[TaskList],
+        task_list: type[TaskList],
         *,
         title: StrOrPromise | None = None,
         template_name: str | None = None,
@@ -326,13 +326,13 @@ class Group(Entry):
         url_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(title=title, key=key, viewset=viewset, url_kwargs=url_kwargs)
-        self.tasklist = tasklist
+        self.task_list = task_list
         self.template_name = template_name
 
     def facts(self) -> dict[str, Any]:
         return {
             "title": self.title,
-            "tasklist": self.tasklist,
+            "task_list": self.task_list,
             "template_name": self.template_name,
         }
 
@@ -421,7 +421,7 @@ class TaskList:
         if cls.viewset is None:
             raise ImproperlyConfigured(
                 f"{cls.__name__} is not mounted: no TaskListViewSet declares "
-                f"tasklist = {cls.__name__}, so it has no page to begin a journey on."
+                f"task_list = {cls.__name__}, so it has no page to begin a journey on."
             )
         return cls.viewset
 
@@ -545,7 +545,7 @@ class JourneyScoped:
     key: str | None = None
     #: The page finishing returns to — the parent's `url_name`. `None` for
     #: a root task list.
-    tasklist_url_name: str | None = None
+    task_list_url_name: str | None = None
     #: One store class for the whole tree. The collection store is the
     #: journey store plus an item registry, so it serves a list with no
     #: add-another entries just as well, and one class means every entry
@@ -567,7 +567,7 @@ class JourneyScoped:
     def is_nested(self) -> bool:
         """Whether something above lists this — the difference between a
         submit that ends the journey and one that returns to the parent."""
-        return self.tasklist_url_name is not None
+        return self.task_list_url_name is not None
 
     def get_journey(self) -> str:
         url_kwargs = getattr(self, "kwargs", None) or {}
@@ -584,12 +584,12 @@ class JourneyScoped:
     def get_tasklist_url(self) -> str:
         """Where finishing sends the user back to: the page above, under the
         URL kwargs `get_tasklist_url_kwargs()` supplies."""
-        if self.tasklist_url_name is None:
+        if self.task_list_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"Set tasklist_url_name (or override get_tasklist_url) on {name}."
+                f"Set task_list_url_name (or override get_tasklist_url) on {name}."
             )
-        return reverse(self.tasklist_url_name, kwargs=self.get_tasklist_url_kwargs())
+        return reverse(self.task_list_url_name, kwargs=self.get_tasklist_url_kwargs())
 
     @abstractmethod
     def get_tasklist_url_kwargs(self) -> dict[str, Any]:
@@ -661,7 +661,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
     `run_done()` is what runs once per edit.
     """
 
-    tasklist_viewset: type[TaskListViewSet] | None = None
+    task_list_viewset: type[TaskListViewSet] | None = None
     label: str | None = None
 
     def get_key(self) -> str:
@@ -727,7 +727,7 @@ def class_name_for(key: str, suffix: str) -> str:
 class TaskListViewSet(JourneyScoped, TemplateView):
     """The page listing a `TaskList`'s entries, and the door into each.
 
-    Set `tasklist` and `url_name`. The entries, their viewsets, their keys,
+    Set `task_list` and `url_name`. The entries, their viewsets, their keys,
     their return URLs and the whole URL tree beneath the page are built
     when the class is created. A `Group`'s page becomes a subclass of
     *this* class, so an override here — a status label, a title rule,
@@ -737,7 +737,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     `storage_class` and `journey_store_class` set here reach every entry.
     """
 
-    tasklist: type[TaskList] | None = None
+    task_list: type[TaskList] | None = None
     #: The run storage every section of this tree uses.
     storage_class: StorageClass = SessionStorage
     #: The template this list's sections render with when their `Wizard`
@@ -750,7 +750,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     entries: list[Entry] = []
     #: Where the `TaskListPage` lands in the template context. `None`
     #: publishes nothing, for a page with a context object of its own.
-    page_context_name: str | None = "tasklist"
+    page_context_name: str | None = "task_list"
     entry_url_name: str | None = None
     entry_url_kwarg = "entry"
     url_name: str | None = None
@@ -763,12 +763,12 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             cls.materialise()
         # A root viewset is the list's way into a journey; a group's page
         # (built below, with a key) is reached only through its root.
-        if cls.tasklist is not None and cls.key is None:
-            cls.tasklist.mount(cls)
+        if cls.task_list is not None and cls.key is None:
+            cls.task_list.mount(cls)
 
     @classmethod
     def declared_entries(cls) -> dict[str, Entry] | None:
-        return None if cls.tasklist is None else cls.tasklist.entries
+        return None if cls.task_list is None else cls.task_list.entries
 
     # --- from declaration to classes --------------------------------------
 
@@ -827,8 +827,8 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         return {
             "__module__": cls.__module__,
             "url_name": url_name,
-            "tasklist_url_name": cls.url_name,
-            "tasklist_viewset": cls,
+            "task_list_url_name": cls.url_name,
+            "task_list_viewset": cls,
             "journey": cls.journey,
             "journey_url_kwarg": cls.journey_url_kwarg,
             "journey_store_class": cls.journey_store_class,
@@ -915,10 +915,10 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     ) -> type[TaskListViewSet]:
         """A group's page is a subclass of this one — its hooks apply — over
         the group's own entries and template."""
-        assert entry.tasklist is not None
+        assert entry.task_list is not None
         attrs = {
             **cls.scoped_attrs(url_name),
-            "tasklist": entry.tasklist,
+            "task_list": entry.task_list,
             "key": full_key,
             "section_template_name": cls.section_template_name,
             "template_name": entry.template_name or cls.template_name,
@@ -1023,13 +1023,13 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     # --- the entries this page lists ------------------------------------------
 
     def get_declaration(self) -> type[TaskList]:
-        if self.tasklist is None:
+        if self.task_list is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"{name} has no entries to list. Set {name}.tasklist to a "
+                f"{name} has no entries to list. Set {name}.task_list to a "
                 f"TaskList, or override {name}.get_entries()."
             )
-        return self.tasklist
+        return self.task_list
 
     def get_entries(self) -> list[Entry]:
         """The entries this page lists, in the order they are shown.
@@ -1344,12 +1344,12 @@ class Journey:
 
     def __init__(
         self,
-        tasklist_viewset: type[TaskListViewSet],
+        task_list_viewset: type[TaskListViewSet],
         request: HttpRequest,
         id: str,
         url_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        self.tasklist_viewset = tasklist_viewset
+        self.task_list_viewset = task_list_viewset
         self.request = request
         self.id = id
         self.url_kwargs = dict(url_kwargs or {})
@@ -1358,7 +1358,7 @@ class Journey:
     def page_kwargs(self) -> dict[str, Any]:
         """The kwargs the page is reversed with: the mount prefix and, when
         the page is mounted under a journey segment, this journey."""
-        viewset = self.tasklist_viewset
+        viewset = self.task_list_viewset
         kwargs = {**self.url_kwargs, viewset.journey_url_kwarg: self.id}
         try:
             reverse(cast(str, viewset.url_name), kwargs=kwargs)
@@ -1370,20 +1370,20 @@ class Journey:
     @property
     def url(self) -> str:
         return reverse(
-            cast(str, self.tasklist_viewset.url_name), kwargs=self.page_kwargs
+            cast(str, self.task_list_viewset.url_name), kwargs=self.page_kwargs
         )
 
     @property
     def store(self) -> JourneyStore:
         return cast(
             JourneyStore,
-            self.tasklist_viewset.journey_store_class(
+            self.task_list_viewset.journey_store_class(
                 WizardContext.from_request(self.request), self.id
             ),
         )
 
     def finish(self, section: str, run: Run) -> None:
         """Record `run`'s finished run as `section`."""
-        view = self.tasklist_viewset.viewset_for(section)()
+        view = self.task_list_viewset.viewset_for(section)()
         view.setup(self.request, **self.page_kwargs)
         view.done(run)

@@ -114,7 +114,7 @@ def test_the_hub_reads_every_status_off_model_storage(logged_in):
 
 
 def _status(client):
-    (row,) = client.get(HUB_URL).context["tasklist"].rows
+    (row,) = client.get(HUB_URL).context["task_list"].rows
     return row.status
 
 
@@ -132,7 +132,7 @@ def test_a_half_answered_member_survives_the_session_being_lost(logged_in, user)
     logged_in.force_login(user)
 
     response = logged_in.get(HUB_URL)
-    assert response.context["tasklist"].rows[0].status == INCOMPLETE
+    assert response.context["task_list"].rows[0].status == INCOMPLETE
     assertRedirects(logged_in.get(DOOR_URL), _step_url(run.pk, "second"))
 
 
@@ -173,7 +173,7 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
     # Not this session's run, so the wizard answers exactly as it would for a
     # run that never existed: back to the start.
     assertRedirects(response, DOOR_URL, fetch_redirect_response=False)
-    assert client.get(HUB_URL).context["tasklist"].rows[0].status == NOT_STARTED
+    assert client.get(HUB_URL).context["task_list"].rows[0].status == NOT_STARTED
 
 
 # --- the storage protocol's own contracts ------------------------------------

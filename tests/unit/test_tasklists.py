@@ -75,7 +75,7 @@ class _Page(TaskListViewSet):
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"
-    tasklist = _Contact
+    task_list = _Contact
 
 
 class _JourneyPage(_Page):
@@ -84,7 +84,7 @@ class _JourneyPage(_Page):
     url_name = "readme-apply"
 
 
-def _view(tasklist, **attributes):
+def _view(task_list, **attributes):
     """A page over an inline list, with the test app's templates."""
     return type(
         "_ViewSet",
@@ -94,10 +94,10 @@ def _view(tasklist, **attributes):
             "section_template_name": "testapp/linear_wizard.html",
             "url_name": "readme-hub",
             # Each throwaway page gets its own list: one list, one page.
-            "tasklist": (
-                tasklist
-                if tasklist is None or tasklist.viewset is None
-                else type(tasklist.__name__, (tasklist,), {})
+            "task_list": (
+                task_list
+                if task_list is None or task_list.viewset is None
+                else type(task_list.__name__, (task_list,), {})
             ),
             **attributes,
         },
@@ -136,7 +136,7 @@ class _Pair(TaskList):
 
 
 class _PairPage(_Page):
-    tasklist = _Pair
+    task_list = _Pair
 
 
 @pytest.fixture
@@ -191,7 +191,7 @@ def test_the_entries_become_the_pages_entries_in_body_order():
     assert entries["contact"].title == "Contact details"
     assert issubclass(entries["contact"].viewset, SectionViewSet)
     assert entries["contact"].viewset.key == "contact"
-    assert entries["contact"].viewset.tasklist_url_name == "readme-hub"
+    assert entries["contact"].viewset.task_list_url_name == "readme-hub"
     assert entries["contact"].viewset.url_name == "readme-hub-contact"
     assert entries["contact"].viewset.template_name == "testapp/linear_wizard.html"
 
@@ -216,7 +216,7 @@ def test_an_explicit_key_names_the_entry_and_its_url():
 
     class _HyphenatedPage(_Page):
         url_name = "readme-hyphen"
-        tasklist = _Hyphenated
+        task_list = _Hyphenated
 
     assert list(_Hyphenated.entries) == ["match-funding"]
     (entry,) = _HyphenatedPage.entries
@@ -234,7 +234,7 @@ def test_a_reopen_at_naming_no_declared_step_is_refused():
 
         class _TypoPage(_Page):
             url_name = "readme-typo"
-            tasklist = _Typo
+            task_list = _Typo
 
 
 def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
@@ -250,7 +250,7 @@ def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
 
     class _TrustedPage(_Page):
         url_name = "readme-trusted"
-        tasklist = _Trusted
+        task_list = _Trusted
 
     (entry,) = _TrustedPage.entries
     assert entry.reopen_at == "anything"
@@ -531,7 +531,7 @@ def test_a_section_without_a_title_is_named_from_its_key(rf):
 def test_the_rows_land_in_the_template_context(page):
     context = page().get_context_data()
 
-    assert [row.key for row in context["tasklist"].rows] == ["contact"]
+    assert [row.key for row in context["task_list"].rows] == ["contact"]
 
 
 # --- a section the user cannot start yet ------------------------------------
@@ -798,14 +798,14 @@ def test_a_pages_status_carries_its_own_label(pair_page):
 def test_the_page_lands_in_the_template_context(page):
     context = page().get_context_data()
 
-    assert isinstance(context["tasklist"], TaskListPage)
+    assert isinstance(context["task_list"], TaskListPage)
 
 
 def test_a_page_publishing_no_context_name_publishes_nothing(page):
     view = page()
     view.page_context_name = None
 
-    assert "tasklist" not in view.get_context_data()
+    assert "task_list" not in view.get_context_data()
 
 
 def test_the_rows_are_built_once_per_request(page):
@@ -854,7 +854,7 @@ def test_a_page_without_a_task_list_is_misconfigured(rf):
         template_name = "testapp/hub.html"
         url_name = "readme-hub"
 
-    with pytest.raises(ImproperlyConfigured, match="tasklist"):
+    with pytest.raises(ImproperlyConfigured, match="task_list"):
         _page(_Bare, rf).get_rows()
 
 
@@ -1211,11 +1211,11 @@ def test_a_section_without_a_key_is_misconfigured(rf):
 
 def test_a_section_without_a_page_to_return_to_is_misconfigured(rf):
     class _Homeless(_Page.viewset_for("contact")):
-        tasklist_url_name = None
+        task_list_url_name = None
 
     view = _contact_view(rf, cls=_Homeless)
 
-    with pytest.raises(ImproperlyConfigured, match="tasklist_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
         view.get_tasklist_url()
 
 
@@ -1288,7 +1288,7 @@ def test_a_page_without_a_url_name_is_misconfigured(page):
     with pytest.raises(ImproperlyConfigured, match="url_name"):
 
         class _Nameless(TaskListViewSet):
-            tasklist = type("_Contact", (_Contact,), {})
+            task_list = type("_Contact", (_Contact,), {})
 
         _Nameless.urls()
 
@@ -1345,7 +1345,7 @@ def test_the_page_renders_the_rows(rf):
     response = _readme_page(rf, "/readme/hub/")
 
     assert response.status_code == 200
-    assert [row.key for row in response.context_data["tasklist"].rows] == [
+    assert [row.key for row in response.context_data["task_list"].rows] == [
         "contact",
         "address",
     ]
@@ -1811,7 +1811,7 @@ def test_an_add_another_entry_is_a_page_beneath_the_list():
     assert issubclass(viewset, AddAnotherViewSet)
     assert viewset.key == "guests"
     assert viewset.url_name == "party-hub-guests"
-    assert viewset.tasklist_url_name == "party-hub"
+    assert viewset.task_list_url_name == "party-hub"
     assert viewset.item_viewset.list_key == "guests"
 
 
@@ -1824,7 +1824,7 @@ def test_a_group_entry_is_a_page_beneath_the_list():
     ).viewset_for("inner")
 
     assert issubclass(viewset, TaskListViewSet)
-    assert viewset.tasklist is _Inner
+    assert viewset.task_list is _Inner
     assert viewset.key == "inner"
     assert viewset.template_name == "testapp/nested_hub.html"
 
@@ -1857,14 +1857,14 @@ def test_a_list_mounted_twice_by_unrelated_pages_is_refused():
     class _First(TaskListViewSet):
         url_name = "readme-hub"
         template_name = "testapp/hub.html"
-        tasklist = _Twice
+        task_list = _Twice
 
     with pytest.raises(ImproperlyConfigured, match="already mounted by _First"):
 
         class _Second(TaskListViewSet):
             url_name = "readme-apply"
             template_name = "testapp/hub.html"
-            tasklist = _Twice
+            task_list = _Twice
 
 
 def test_a_subclass_of_the_mounting_page_is_the_same_page():
@@ -1877,7 +1877,7 @@ def test_a_subclass_of_the_mounting_page_is_the_same_page():
     class _Page(TaskListViewSet):
         url_name = "readme-hub"
         template_name = "testapp/hub.html"
-        tasklist = _Once
+        task_list = _Once
 
     class _Refined(_Page):
         url_name = "readme-apply"

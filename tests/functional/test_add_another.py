@@ -420,7 +420,7 @@ def test_a_task_list_links_straight_at_a_list_page(client):
     door — there is no run for the door to walk."""
     response = client.get("/party/")
 
-    rows = {row.key: row for row in response.context["tasklist"].rows}
+    rows = {row.key: row for row in response.context["task_list"].rows}
     assert rows["guests"].url == PAGE
     assert rows["venue"].url == reverse("party-hub-entry", kwargs={"entry": "venue"})
 
@@ -431,7 +431,7 @@ def test_a_task_list_reports_the_lists_own_status(client):
 
     response = client.get("/party/")
 
-    rows = {row.key: row.status for row in response.context["tasklist"].rows}
+    rows = {row.key: row.status for row in response.context["task_list"].rows}
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 
@@ -668,7 +668,7 @@ def test_a_list_with_no_declaration_is_misconfigured(rf, client):
 
 def test_a_list_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
     class _Endless(GuestsViewSet):
-        tasklist_url_name = None
+        task_list_url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _dispatch(rf, client, _Endless, method="post", data={"add_another": "no"})

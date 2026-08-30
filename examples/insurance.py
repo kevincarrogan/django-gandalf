@@ -346,4 +346,4 @@ class VehiclesViewSet(AddAnotherViewSet):
         template_name="hybrid/collection.html",
         remove_template_name="hybrid/remove_item.html",
     )
-    tasklist_url_name = "quote"
+    task_list_url_name = "quote"

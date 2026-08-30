@@ -34,4 +34,4 @@ class GrantApplicationViewSet(TaskListViewSet):
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"
-    tasklist = GrantApplication
+    task_list = GrantApplication

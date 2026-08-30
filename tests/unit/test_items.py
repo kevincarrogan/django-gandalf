@@ -74,7 +74,7 @@ class _Guests(AddAnotherViewSet):
     key = "guests"
     section_template_name = "testapp/linear_wizard.html"
     add_another = GUESTS
-    tasklist_url_name = "party-hub"
+    task_list_url_name = "party-hub"
 
 
 _ItemViewSet = _Guests.item_viewset
@@ -130,11 +130,11 @@ def _list(**entries):
     return type("_List", (TaskList,), entries)
 
 
-def _view(tasklist, **attributes):
+def _view(task_list, **attributes):
     return type(
         "_ViewSet",
         (TaskListViewSet,),
-        {"url_name": "party-hub", "tasklist": tasklist, **attributes},
+        {"url_name": "party-hub", "task_list": task_list, **attributes},
     )
 
 
@@ -145,7 +145,7 @@ def test_an_add_another_builds_its_item_viewset():
     assert issubclass(_ItemViewSet, ItemViewSet)
     assert _ItemViewSet.list_key == "guests"
     assert _ItemViewSet.url_name == "standalone-guests-item"
-    assert _ItemViewSet.tasklist_url_name == "standalone-guests"
+    assert _ItemViewSet.task_list_url_name == "standalone-guests"
     assert _ItemViewSet.item_title == ("guest", "name")
     assert _ItemViewSet.template_name == "testapp/linear_wizard.html"
     assert _Guests.template_name == "testapp/collection.html"
@@ -167,7 +167,7 @@ def test_a_task_list_builds_an_add_another_beneath_itself():
     assert issubclass(viewset, AddAnotherViewSet)
     assert viewset.key == "guests"
     assert viewset.url_name == "party-hub-guests"
-    assert viewset.tasklist_url_name == "party-hub"
+    assert viewset.task_list_url_name == "party-hub"
     assert viewset.item_viewset.list_key == "guests"
 
 
@@ -434,7 +434,7 @@ def test_the_page_publishes_no_task_list_beside_its_items(guests):
     can tell you."""
     view = guests(_seed(items=[(ITEM_A, "Ada")]))
 
-    assert "tasklist" not in view.get_context_data()
+    assert "task_list" not in view.get_context_data()
 
 
 # --- the actions ------------------------------------------------------------
@@ -730,12 +730,12 @@ def test_a_page_without_a_declaration_is_misconfigured(rf):
 
 
 def test_a_page_listed_by_nothing_is_a_root_and_needs_a_journey_done(rf):
-    """No `tasklist_url_name` means nothing above: Continue is then the
+    """No `task_list_url_name` means nothing above: Continue is then the
     journey's submit, and a root with nothing to do at submit is
     misconfigured — the same refusal a root task list gives."""
 
     class _Endless(_Guests):
-        tasklist_url_name = None
+        task_list_url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _page(_Endless, rf).declare_done()
@@ -777,11 +777,11 @@ def test_an_item_wizard_not_mounted_under_an_item_segment_is_misconfigured(rf):
 
 def test_an_item_wizard_without_a_page_to_return_to_is_misconfigured(rf):
     class _Adrift(_ItemViewSet):
-        tasklist_url_name = None
+        task_list_url_name = None
 
     view = _item_view(rf, cls=_Adrift)
 
-    with pytest.raises(ImproperlyConfigured, match="tasklist_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
         view.get_tasklist_url()
 
 

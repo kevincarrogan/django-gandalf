@@ -204,7 +204,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     url_name = "readme-apply"
     template_name = "testapp/journey_hub.html"
     section_template_name = "testapp/linear_wizard.html"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 
     def journey_done(self, page, store):
         application = Application.objects.create()

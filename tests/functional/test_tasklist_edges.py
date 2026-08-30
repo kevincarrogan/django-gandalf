@@ -61,7 +61,7 @@ def test_a_kind_of_entry_the_page_cannot_list_is_refused():
 
         class _Page(TaskListViewSet):
             url_name = "readme-hub"
-            tasklist = _List
+            task_list = _List
 
 
 def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
@@ -78,7 +78,7 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
     class _Page(TaskListViewSet):
         url_name = "readme-hub"
         template_name = "testapp/hub.html"
-        tasklist = _List
+        task_list = _List
 
     viewset = _Page.viewset_for("plain")
     assert issubclass(viewset, _Plain)
@@ -103,7 +103,7 @@ def test_a_reopen_at_naming_no_declared_step_is_refused():
 
         class _TypoPage(GrantApplicationViewSet):
             url_name = "readme-typo"
-            tasklist = _Typo
+            task_list = _Typo
 
 
 def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
@@ -119,7 +119,7 @@ def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
 
     class _TrustedPage(GrantApplicationViewSet):
         url_name = "readme-trusted"
-        tasklist = _Trusted
+        task_list = _Trusted
 
     (entry,) = _TrustedPage.entries
     assert entry.reopen_at == "anything"
@@ -138,7 +138,7 @@ def test_a_second_page_for_one_list_is_refused():
 
         class _Second(TaskListViewSet):
             url_name = "readme-gated"
-            tasklist = GrantApplication
+            task_list = GrantApplication
 
 
 def test_a_refinement_of_the_mounting_page_is_the_same_page():
@@ -147,7 +147,7 @@ def test_a_refinement_of_the_mounting_page_is_the_same_page():
     class _Refined(ScenarioViewSet):
         url_name = "readme-gated"
 
-    assert ScenarioViewSet.tasklist.viewset is ScenarioViewSet
+    assert ScenarioViewSet.task_list.viewset is ScenarioViewSet
 
 
 def test_an_unmounted_list_cannot_begin_a_journey(rf):

@@ -62,7 +62,7 @@ How an entry's status is derived, in precedence order:
 
 | Checked | Result |
 | --- | --- |
-| The section's `hidden()` (or the page's `entry_hidden()`) is true | The entry is not in `tasklist.rows` at all — hidden outranks everything |
+| The section's `hidden()` (or the page's `entry_hidden()`) is true | The entry is not in `task_list.rows` at all — hidden outranks everything |
 | The entry is a `Link` | Whatever its `status` callable returns; nothing below runs |
 | The section's `blocked()` (or the page's `entry_blocked()`) is true | `BLOCKED` — outranks a stash, so a section whose prerequisite was withdrawn after it was answered reports what the user can do now |
 | The entry is a group or an add-another | That page's `status_for()` — derived from its own rows |
@@ -94,7 +94,7 @@ them.
 - `begin(request, journey=None, **url_kwargs)` *(classmethod)* — begin a
   journey on this list through its viewset; see `Journey` below. Raises
   `ImproperlyConfigured` (*"… is not mounted"*) until a viewset declares
-  `tasklist = …`.
+  `task_list = …`.
 
 ### Entries
 
@@ -132,7 +132,7 @@ A list the user grows, one run of `wizard` per item. The row links straight
 at the list's page and reads its declared status. The keyword arguments
 are [Add another](add-another.md)'s.
 
-#### `Group(tasklist, *, title=None, template_name=None)`
+#### `Group(task_list, *, title=None, template_name=None)`
 
 A task list within this one. Its sections are keyed under this entry's key
 in the same journey record, its row here reads its own rows' status, and
@@ -159,23 +159,23 @@ beyond the page's — an item's id.
 ### `TaskListViewSet`
 
 The page listing a `TaskList`'s entries, the door into each, and the whole
-URL tree beneath the page. Set `tasklist` and `url_name`; the entries,
+URL tree beneath the page. Set `task_list` and `url_name`; the entries,
 their viewsets, their keys, their return URLs and their routes are built
 when the class is created.
 
 ```python
 class GrantApplicationViewSet(TaskListViewSet):
-    template_name = "grant/tasklist.html"
+    template_name = "grant/task_list.html"
     section_template_name = "grant/step.html"
     url_name = "grant"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 ```
 
 **Attributes**
 
 | Attribute | Default | Meaning |
 | --- | --- | --- |
-| `tasklist` | `None` | The `TaskList`. Required. |
+| `task_list` | `None` | The `TaskList`. Required. |
 | `url_name` | `None` | The page's URL name, and the prefix of every name beneath it. Required. |
 | `template_name` | — | The page (from `TemplateView`). |
 | `section_template_name` | `None` | The template this list's sections render with when their `Wizard` carries none. |
@@ -186,9 +186,9 @@ class GrantApplicationViewSet(TaskListViewSet):
 | `journey_url_kwarg` | `"journey"` | The URL kwarg the journey is read from when mounted under one. |
 | `key_separator` | `":"` | What joins a group's prefix to an entry's key. |
 | `key` | `None` | The prefix this page keys its entries under — set by the parent on a group's page; `None` at the root. |
-| `tasklist_url_name` | `None` | The URL name of the page above — set by the parent on a group's page; `None` at the root. |
+| `task_list_url_name` | `None` | The URL name of the page above — set by the parent on a group's page; `None` at the root. |
 | `entry_url_kwarg` | `"entry"` | The URL kwarg the door reads the entry key from. |
-| `page_context_name` | `"tasklist"` | Where the `TaskListPage` lands in the context. `None` publishes nothing. |
+| `page_context_name` | `"task_list"` | Where the `TaskListPage` lands in the context. `None` publishes nothing. |
 | `entries` | `[]` | The entries, bound. Read through `get_entries()`. |
 
 A subclass with a task list and a `url_name` is materialised when the
@@ -202,9 +202,9 @@ one. A root viewset registers itself as its list's `viewset`, which is what
 
 | Declared as | Built | URL name | Mounted at |
 | --- | --- | --- | --- |
-| `Section(wizard)` | a `SectionViewSet` subclass with the wizard, the full `key`, `tasklist_url_name` and the stores | `<url_name>-<key>`; its runs `-run` and `-step` | `<key>/` — the bare URL is this page's door for the section; `<key>/<uuid:run_id>/…` is the run |
+| `Section(wizard)` | a `SectionViewSet` subclass with the wizard, the full `key`, `task_list_url_name` and the stores | `<url_name>-<key>`; its runs `-run` and `-step` | `<key>/` — the bare URL is this page's door for the section; `<key>/<uuid:run_id>/…` is the run |
 | `AddAnother(wizard, …)` | an `AddAnotherViewSet` subclass with the entry, the full `key` and the stores | `<url_name>-<key>`; its item `-item`, `-remove`, `-item-run`, `-item-step` | `<key>/` — the list's page |
-| `Group(tasklist)` | a subclass of **this** viewset class over the group's list, with the full `key` and `tasklist_url_name` | `<url_name>-<key>`, and `<url_name>-<key>-<subkey>` beneath it | `<key>/` — the group's page |
+| `Group(task_list)` | a subclass of **this** viewset class over the group's list, with the full `key` and `task_list_url_name` | `<url_name>-<key>`, and `<url_name>-<key>-<subkey>` beneath it | `<key>/` — the group's page |
 | `Link(url_name, status=…)` | nothing | — | — |
 
 A group's page is a subclass of its root, so an override on the root — a
@@ -230,7 +230,7 @@ never runs them.
   `EntryNotFound`.
 - `begin(request, journey=None, **url_kwargs)` *(classmethod)* — a
   `Journey` on this page; see below.
-- `declared_entries()` *(classmethod)* — `tasklist.entries`, or `None`.
+- `declared_entries()` *(classmethod)* — `task_list.entries`, or `None`.
 - `materialise()` / `materialise_entry()` / `build_section()` /
   `build_add_another()` / `build_group()` *(classmethods)* — the
   generation, one hook per kind, for a subclass that needs a different base.
@@ -238,7 +238,7 @@ never runs them.
 **Identity and nesting**
 
 - `get_key()` — `key`; `None` for a root.
-- `is_nested` — property; `tasklist_url_name is not None`.
+- `is_nested` — property; `task_list_url_name is not None`.
 - `full_key(entry)` — the entry's key in the store: `entry.key` under a
   root, `compose_key(key, entry.key)` under a group. Every read and write
   about an entry goes through here.
@@ -254,8 +254,8 @@ never runs them.
 - `get_journey()` — the URL's `journey_url_kwarg` when present, otherwise
   `journey`, as a string.
 - `get_journey_store()` — `journey_store_class(WizardContext.from_request(request), get_journey())`.
-- `get_tasklist_url()` — `reverse(tasklist_url_name, kwargs=get_tasklist_url_kwargs())`,
-  the page *above*. Raises `ImproperlyConfigured` when `tasklist_url_name`
+- `get_tasklist_url()` — `reverse(task_list_url_name, kwargs=get_tasklist_url_kwargs())`,
+  the page *above*. Raises `ImproperlyConfigured` when `task_list_url_name`
   is `None`.
 - `dispatch()` — reads `store.is_complete()` once per request. For a
   submitted journey a group's page redirects to the page above, and the
@@ -382,8 +382,8 @@ class ProjectSection(SectionViewSet):
 Nothing about the task list changes between the two. Reach a built one
 with `viewset_for(key)`.
 
-**Attributes** — `tasklist_viewset` (the page that built it), `key` (the
-full key), `tasklist_url_name`, `label`, and the journey and store
+**Attributes** — `task_list_viewset` (the page that built it), `key` (the
+full key), `task_list_url_name`, `label`, and the journey and store
 attributes of its page.
 
 **Methods**
@@ -438,7 +438,7 @@ kwargs, if any.
 
 **Attributes** — `id`; `store` (the page's `journey_store_class` for this
 id); `url` (the page under this id, or the page's one URL for a list not
-mounted under a journey segment); `tasklist_viewset`; `request`.
+mounted under a journey segment); `task_list_viewset`; `request`.
 
 - `finish(section, run)` — record a finished run as `section`,
   exactly as finishing it from the page would: stashed under the section's
@@ -471,7 +471,7 @@ The page as a whole. Frozen.
 | `blocked` | How many rows are `BLOCKED` |
 | `is_not_started` / `is_incomplete` / `is_complete` | `status` compared to the constant |
 
-`tasklist.status` comes from `get_page_status()`: `COMPLETE` when there is
+`task_list.status` comes from `get_page_status()`: `COMPLETE` when there is
 at least one row and every row is complete; `NOT_STARTED` when every row
 is not started or blocked (so a list listing nothing, or a fresh list with
 a locked section, has not started); `INCOMPLETE` otherwise. A blocked row
@@ -517,10 +517,10 @@ class GrantApplication(TaskList):
 
 
 class GrantApplicationViewSet(TaskListViewSet):
-    template_name = "grant/tasklist.html"
+    template_name = "grant/task_list.html"
     section_template_name = "grant/step.html"
     url_name = "grant"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 
 
 urlpatterns = [path("grant/", include(GrantApplicationViewSet.urls()))]
@@ -531,9 +531,9 @@ door), `grant-contact` and `grant-organisation` (each section's door under
 its own name) and `grant-contact-run` / `grant-contact-step` (the runs).
 
 ```django
-<p>You have completed {{ tasklist.completed }} of {{ tasklist.count }} sections.</p>
+<p>You have completed {{ task_list.completed }} of {{ task_list.count }} sections.</p>
 <ul>
-{% for row in tasklist.rows %}
+{% for row in task_list.rows %}
   <li>
     <a href="{{ row.url }}">{{ row.title }}</a>
     <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
@@ -600,9 +600,9 @@ from gandalf.tasklists import TaskListViewSet
 
 
 class GrantApplicationViewSet(TaskListViewSet):
-    template_name = "grant/tasklist.html"
+    template_name = "grant/task_list.html"
     url_name = "apply"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 
     def journey_done(self, page, store):
         application = Application.objects.create()
@@ -615,7 +615,7 @@ class GrantApplicationViewSet(TaskListViewSet):
 ```
 
 ```django
-{% if tasklist.is_complete %}
+{% if task_list.is_complete %}
   <form method="post">{% csrf_token %}<button type="submit">Submit application</button></form>
 {% endif %}
 ```
@@ -705,12 +705,12 @@ page with nothing to do at submit should not render a submit button.
 
 ### `ImproperlyConfigured: … has no entries to list`
 
-The viewset has no `tasklist`. Set it to a `TaskList`.
+The viewset has no `task_list`. Set it to a `TaskList`.
 
 ### `ImproperlyConfigured: … is not mounted`
 
 `TaskList.begin()` was called before any `TaskListViewSet` declared
-`tasklist = …`. Mount the list, or call `begin()` on the viewset.
+`task_list = …`. Mount the list, or call `begin()` on the viewset.
 
 ### `Http404: Journey 'app-1' has been submitted.`
 

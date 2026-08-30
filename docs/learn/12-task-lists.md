@@ -36,7 +36,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"
-    tasklist = GrantApplication
+    task_list = GrantApplication
 ```
 
 A wizard chains because it is a sequence. A task list is a *set* — the
@@ -60,9 +60,9 @@ urlpatterns = [
 ```
 
 ```django
-<p>You have completed {{ tasklist.completed }} of {{ tasklist.count }} sections.</p>
+<p>You have completed {{ task_list.completed }} of {{ task_list.count }} sections.</p>
 
-{% for row in tasklist.rows %}
+{% for row in task_list.rows %}
   <li>
     <a href="{{ row.url }}">{{ row.title }}</a>
     <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
@@ -70,7 +70,7 @@ urlpatterns = [
 {% endfor %}
 ```
 
-`tasklist.status` is derived for the set — **Complete** when every row
+`task_list.status` is derived for the set — **Complete** when every row
 is, **Not started** when none has been touched, **Incomplete** in between —
 so the button that submits the whole thing reads one flag rather than
 counting rows.

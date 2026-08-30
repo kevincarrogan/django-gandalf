@@ -49,7 +49,7 @@ def _door(member):
 
 
 def _statuses(response):
-    return {row.key: row.status for row in response.context["tasklist"].rows}
+    return {row.key: row.status for row in response.context["task_list"].rows}
 
 
 def _complete_contact(client):
@@ -145,7 +145,7 @@ GATED_URL = "/gated-hub/"
 
 def _gated_statuses(client):
     return {
-        row.key: row.status for row in client.get(GATED_URL).context["tasklist"].rows
+        row.key: row.status for row in client.get(GATED_URL).context["task_list"].rows
     }
 
 
@@ -167,7 +167,7 @@ def test_a_member_waiting_on_another_renders_as_cannot_start_yet(client):
     assert _gated_statuses(client) == {"first": NOT_STARTED, "second": BLOCKED}
     assertContains(response, 'class="tag tag--blocked">Cannot start yet</strong>')
 
-    hub = response.context["tasklist"]
+    hub = response.context["task_list"]
     assert (hub.blocked, hub.remaining) == (1, 2)
     assert hub.is_not_started
 
@@ -193,7 +193,7 @@ def test_a_member_unlocks_once_its_prerequisite_is_finished(client):
 
 
 def test_a_fresh_hub_reports_the_whole_page_as_not_started(client):
-    hub = client.get(HUB_URL).context["tasklist"]
+    hub = client.get(HUB_URL).context["task_list"]
 
     assert (hub.count, hub.completed, hub.remaining) == (2, 0, 2)
     assert hub.is_not_started
@@ -202,7 +202,7 @@ def test_a_fresh_hub_reports_the_whole_page_as_not_started(client):
 def test_one_finished_member_makes_the_whole_page_incomplete(client):
     _complete_contact(client)
 
-    hub = client.get(HUB_URL).context["tasklist"]
+    hub = client.get(HUB_URL).context["task_list"]
 
     assert (hub.count, hub.completed, hub.remaining) == (2, 1, 1)
     assert hub.is_incomplete
@@ -213,7 +213,7 @@ def test_a_hub_is_complete_only_once_every_member_is(client):
     _complete_contact(client)
     _complete_address(client)
 
-    hub = client.get(HUB_URL).context["tasklist"]
+    hub = client.get(HUB_URL).context["task_list"]
 
     assert (hub.completed, hub.remaining) == (2, 0)
     assert hub.is_complete
@@ -550,7 +550,7 @@ def test_a_hub_forwards_its_mount_prefix_into_every_url_it_builds(client):
     response = client.get("/org/acme/hub/")
 
     assert response.status_code == HTTPStatus.OK
-    rows = {row.key: row for row in response.context["tasklist"].rows}
+    rows = {row.key: row for row in response.context["task_list"].rows}
     assert rows["details"].url == "/org/acme/hub/details/"
     assert (rows["org_guests"].url, rows["org_guests"].status) == (
         "/org/acme/hub/org_guests/",
@@ -584,7 +584,7 @@ def test_a_row_reports_its_status_as_a_boolean_per_state(client):
     )
     _complete_contact(client)
 
-    rows = {row.key: row for row in client.get(HUB_URL).context["tasklist"].rows}
+    rows = {row.key: row for row in client.get(HUB_URL).context["task_list"].rows}
 
     assert (rows["contact"].is_complete, rows["contact"].is_incomplete) == (True, False)
     assert rows["address"].is_incomplete
@@ -598,14 +598,14 @@ def _list(**entries):
     return type("_List", (TaskList,), entries)
 
 
-def _view(tasklist=None, **attributes):
+def _view(task_list=None, **attributes):
     return type(
         "_ViewSet",
         (TaskListViewSet,),
         {
             "template_name": "testapp/hub.html",
             "section_template_name": "testapp/linear_wizard.html",
-            "tasklist": tasklist,
+            "task_list": task_list,
             **attributes,
         },
     )
@@ -623,7 +623,7 @@ def _dispatch(rf, client, view, path="/readme/hub/", **kwargs):
 def test_a_page_with_no_task_list_is_misconfigured(rf, client):
     view = _view(url_name="readme-hub")
 
-    with pytest.raises(ImproperlyConfigured, match="tasklist"):
+    with pytest.raises(ImproperlyConfigured, match="task_list"):
         _dispatch(rf, client, view)
 
 
@@ -681,7 +681,7 @@ def test_a_link_links_past_the_door_and_answers_for_itself(rf, client):
 
     response = _dispatch(rf, client, view)
 
-    (row,) = response.context_data["tasklist"].rows
+    (row,) = response.context_data["task_list"].rows
     assert (row.title, row.status, row.url) == ("Elsewhere", COMPLETE, HUB_URL)
 
 
@@ -704,12 +704,12 @@ def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
 
 def test_a_section_without_a_page_to_return_to_cannot_send_the_user_back(rf):
     class _Homeless(ContactSectionViewSet):
-        tasklist_url_name = None
+        task_list_url_name = None
 
     view = _Homeless()
     view.setup(rf.get("/readme/hub/contact/"))
 
-    with pytest.raises(ImproperlyConfigured, match="tasklist_url_name"):
+    with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
         view.get_tasklist_url()
 
 
@@ -737,7 +737,7 @@ def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
         template_name = "testapp/hub.html"
         section_template_name = "testapp/linear_wizard.html"
         url_name = "readme-hub"
-        tasklist = _list(contact=Section(contact, label="contact-v2"))
+        task_list = _list(contact=Section(contact, label="contact-v2"))
 
         def stash_unusable(self, entry, error):
             self.get_journey_store().delete_stash(entry.key)
@@ -755,7 +755,7 @@ def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
 def test_a_section_without_a_title_is_named_from_its_key(client):
     response = client.get(reverse("scenario-hub"))
 
-    titles = {row.key: row.title for row in response.context["tasklist"].rows}
+    titles = {row.key: row.title for row in response.context["task_list"].rows}
     assert titles == {"plain": "Plain", "advancing": "Advancing"}
 
 
@@ -792,7 +792,7 @@ def test_a_pages_entries_are_chosen_once_per_request(rf, client):
         template_name = "testapp/hub.html"
         section_template_name = "testapp/linear_wizard.html"
         url_name = "readme-hub"
-        tasklist = _list(contact=Section(contact))
+        task_list = _list(contact=Section(contact))
 
         def get_entries(self):
             calls.append(1)

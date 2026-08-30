@@ -59,7 +59,7 @@ def _supporting(journey):
 
 def _statuses(client, journey, hub="readme-apply"):
     response = client.get(reverse(hub, kwargs={"journey": journey}))
-    return {row.key: row.status for row in response.context["tasklist"].rows}
+    return {row.key: row.status for row in response.context["task_list"].rows}
 
 
 def _finish(client, journey, member, url_name, steps, hub="readme-apply"):
@@ -266,7 +266,7 @@ def test_a_nested_hubs_row_and_door_both_land_on_its_page(client):
     journey = _start(client)
 
     response = client.get(_hub(journey))
-    rows = {row.key: row for row in response.context["tasklist"].rows}
+    rows = {row.key: row for row in response.context["task_list"].rows}
 
     assert rows["supporting"].url == _supporting(journey)
     # A nested hub's segment under its parent *is* its page.
@@ -330,18 +330,18 @@ def test_the_submit_button_appears_only_once_every_member_is_complete(client):
     _complete_everything(client, journey)
 
     response = client.get(_hub(journey))
-    assert response.context["tasklist"].is_complete
+    assert response.context["task_list"].is_complete
     assertContains(response, "Submit application")
 
 
 def test_an_organisation_has_to_upload_its_document_too(client, isolated_media_root):
     journey = _start(client, "organisation")
     _complete_everything(client, journey)
-    assert not client.get(_hub(journey)).context["tasklist"].is_complete
+    assert not client.get(_hub(journey)).context["task_list"].is_complete
 
     _finish_documents(client, journey)
 
-    assert client.get(_hub(journey)).context["tasklist"].is_complete
+    assert client.get(_hub(journey)).context["task_list"].is_complete
 
 
 def test_submitting_early_is_refused(client):

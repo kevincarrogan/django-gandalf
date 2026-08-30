@@ -113,8 +113,8 @@ class Gated(TaskList):
     referees = Section(RefereesSection, title="Referees")
 ```
 
-A hidden section is gone for that request: not in `tasklist.rows`, not in
-`tasklist.count`, and its door refuses a stale link. A list of three
+A hidden section is gone for that request: not in `task_list.rows`, not in
+`task_list.count`, and its door refuses a stale link. A list of three
 sections with one hidden is a list of two, and finishing those two
 completes it. Hidden outranks blocked, since a section that does not exist
 cannot also be waiting.

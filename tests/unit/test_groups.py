@@ -101,14 +101,14 @@ def test_nesting_composes_to_any_depth():
 
     class _RootViewSet(TaskListViewSet):
         url_name = "readme-apply"
-        tasklist = _Root
+        task_list = _Root
 
     more = _RootViewSet.viewset_for("supporting").viewset_for("more")
 
     assert more.key == "supporting:more"
     assert more.viewset_for("x").key == "supporting:more:x"
     assert more.url_name == "readme-apply-supporting-more"
-    assert more.tasklist_url_name == "readme-apply-supporting"
+    assert more.task_list_url_name == "readme-apply-supporting"
 
 
 def test_a_page_knows_an_entry_that_is_a_group():
@@ -127,9 +127,9 @@ def test_a_page_knows_an_entry_that_is_a_group():
 
 
 def test_a_group_returns_to_the_page_that_lists_it():
-    assert SupportingViewSet.tasklist_url_name == "readme-apply"
+    assert SupportingViewSet.task_list_url_name == "readme-apply"
     assert SupportingViewSet.url_name == "readme-apply-supporting"
-    assert RefereesSectionViewSet.tasklist_url_name == "readme-apply-supporting"
+    assert RefereesSectionViewSet.task_list_url_name == "readme-apply-supporting"
 
 
 def test_a_group_shares_its_parents_journey_and_stores():
@@ -145,7 +145,7 @@ def test_a_group_shares_its_parents_journey_and_stores():
 
 
 def test_a_group_takes_its_page_from_its_entry_and_its_entries_from_its_list():
-    assert SupportingViewSet.tasklist is SupportingInformation
+    assert SupportingViewSet.task_list is SupportingInformation
     assert SupportingViewSet.template_name == "testapp/nested_hub.html"
     assert GrantApplicationViewSet.template_name == "testapp/journey_hub.html"
 
@@ -160,7 +160,7 @@ def test_a_group_without_a_page_of_its_own_renders_with_its_roots():
     class _RootViewSet(TaskListViewSet):
         url_name = "readme-apply"
         template_name = "testapp/hub.html"
-        tasklist = type("_Root", (_Root,), {})
+        task_list = type("_Root", (_Root,), {})
 
     assert _RootViewSet.viewset_for("inner").template_name == "testapp/hub.html"
 

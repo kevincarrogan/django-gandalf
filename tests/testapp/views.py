@@ -2032,7 +2032,7 @@ class ScenarioViewSet(TaskListViewSet):
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "scenario-hub"
-    tasklist = Scenario
+    task_list = Scenario
 
 
 GUESTS = AddAnother(
@@ -2058,7 +2058,7 @@ class OrgViewSet(TaskListViewSet):
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "org-hub"
-    tasklist = Org
+    task_list = Org
 
 
 COUNTING = (
@@ -2082,7 +2082,7 @@ class CountingViewSet(TaskListViewSet):
     description = "Task list over counting sections, for asserting a row's cost."
     template_name = "testapp/hub.html"
     url_name = "counting-hub"
-    tasklist = Counting
+    task_list = Counting
     builds = 0
 
     def build_rows(self):
@@ -2119,7 +2119,7 @@ class DurableViewSet(TaskListViewSet):
     url_name = "durable-hub"
     storage_class = ModelStorage
     journey_store_class = ModelJourneyStore
-    tasklist = Durable
+    task_list = Durable
 
 
 # --- Gated, and beside an add-another --------------------------------------------
@@ -2143,7 +2143,7 @@ class GatedViewSet(TaskListViewSet):
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "gated-hub"
-    tasklist = Gated
+    task_list = Gated
 
 
 class Party(TaskList):
@@ -2156,7 +2156,7 @@ class PartyViewSet(TaskListViewSet):
     template_name = "testapp/hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "party-hub"
-    tasklist = Party
+    task_list = Party
 
 
 # --- Add-another pages mounted on their own -------------------------------------
@@ -2171,7 +2171,7 @@ class GuestsViewSet(AddAnotherViewSet):
     url_name = "standalone-guests"
     key = "standalone-guests"
     add_another = GUESTS
-    tasklist_url_name = "party-hub"
+    task_list_url_name = "party-hub"
 
 
 class LockedGuestsViewSet(GuestsViewSet):
@@ -2249,7 +2249,7 @@ class DurableGuestsViewSet(GuestsViewSet):
     key = "durable-guests"
     storage_class = ModelStorage
     journey_store_class = ModelCollectionStore
-    tasklist_url_name = "durable-hub"
+    task_list_url_name = "durable-hub"
 
 
 # --- Journeys ----------------------------------------------------------------
@@ -2279,7 +2279,7 @@ class SubmitViewSet(TaskListViewSet):
     section_template_name = "testapp/linear_wizard.html"
     url_name = "submit-hub"
     journey_store_class = ShortMemoryJourneyStore
-    tasklist = Submit
+    task_list = Submit
 
     def journey_done(self, page, store):
         return HttpResponse(f"submitted {self.get_journey()}")

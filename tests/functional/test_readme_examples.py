@@ -570,7 +570,7 @@ def test_chapter_12_lists_members_and_drives_one_to_complete(client, wizard_driv
     response = client.get(hub_url)
 
     assert response.status_code == HTTPStatus.OK
-    assert [(row.title, row.status) for row in response.context["tasklist"].rows] == [
+    assert [(row.title, row.status) for row in response.context["task_list"].rows] == [
         ("Contact details", "not-started"),
         ("Address", "not-started"),
     ]
@@ -660,11 +660,11 @@ def test_chapter_13_adds_changes_and_removes_budget_lines(client):
     # above it reads that status without walking anything.
     assertRedirects(client.post(page, {"add_another": "no"}), reverse("readme-project"))
     hub = client.get(reverse("readme-project"))
-    assert [(row.title, row.status) for row in hub.context["tasklist"].rows] == [
+    assert [(row.title, row.status) for row in hub.context["task_list"].rows] == [
         ("Project", "not-started"),
         ("Budget", "complete"),
     ]
-    assert hub.context["tasklist"].rows[1].url == page
+    assert hub.context["task_list"].rows[1].url == page
 
 
 def test_chapter_13_an_empty_budget_cannot_be_declared_complete(client):
@@ -674,7 +674,7 @@ def test_chapter_13_an_empty_budget_cannot_be_declared_complete(client):
     client.post(page, {"add_another": "no"})
 
     hub = client.get(reverse("readme-project"))
-    assert hub.context["tasklist"].rows[1].status == "incomplete"
+    assert hub.context["task_list"].rows[1].status == "incomplete"
 
 
 # --- Chapter 14: locked and hidden -------------------------------------------
@@ -690,7 +690,7 @@ def _finish_project(client, amount):
 
 def _gated_statuses(client):
     response = client.get(reverse("readme-gated"))
-    return {row.key: row.status for row in response.context["tasklist"].rows}
+    return {row.key: row.status for row in response.context["task_list"].rows}
 
 
 def test_chapter_14_referees_are_locked_until_the_project_is_described(client):
