@@ -1,16 +1,47 @@
 # Chapter 5 — A wizard per request
 
-The fund runs two programmes, arts and sport, and each has its own
-application link: `/readme/funds/arts/` and `/readme/funds/sport/`. The
-forms are the same except that the arts programme also asks for a link to
-your work.
+Some things are known at the front door, before the first question is
+asked: who is signed in, which link they came in through, what the date is.
+The applicant is never asked them — they are already true when the run
+starts — and the shape of the wizard can depend on them all the same.
 
-So far, every fork in the flow has turned on an *answer*: whether they are
-an organisation, which kind. This one is different. The applicant is never
-asked which programme they are applying to — the link they clicked already
-said. That is a fact about the request, not about the run, so a branch
-cannot see it; a predicate reads answers. Instead the viewset builds a
-different wizard for each request, in `get_wizard()`:
+A fund officer sometimes keys in an application that arrived on paper.
+Signed in as staff, they are asked one thing an applicant never is: the
+date it was received.
+
+```python
+class ReceivedOnForm(forms.Form):
+    received_on = forms.DateField(label="Date the paper application was received")
+
+
+class PaperApplicationViewSet(WizardViewSet):
+    url_name = "readme-paper"
+    template_name = "testapp/linear_wizard.html"
+
+    def get_wizard(self, run):
+        wizard = ch02.applicant(organisation=ch04.organisation_details)
+        if self.request.user.is_staff:
+            wizard = wizard.step(ReceivedOnForm, name="received-on")
+        return wizard.step(EmailForm, name="contact")
+```
+
+Every fork so far — chapters 2, 3 and 4 — turned on an *answer*, and so
+lived in the declaration. This one cannot: whether the person is staff is
+not in any answer, so no predicate can read it. Instead the viewset builds
+the wizard itself, on every request, in `get_wizard()`. The default
+`get_wizard()` just returns the `wizard` attribute; overriding it is how a
+viewset says "the wizard depends on who is asking".
+
+The rule of thumb: when the shape depends on the *request* — who is signed
+in, which tenant, which plan, a feature flag, even the clock — build it in
+`get_wizard()`. When it depends on an *answer*, it belongs in the
+declaration: `.branch()`, `.switch()` or `.expand()`.
+
+### Mount prefixes that capture kwargs
+
+The front door can also be a URL. The fund runs two programmes, arts and
+sport, each with its own application link, and the arts programme also
+wants a link to your work:
 
 ```python
 class FundApplicationViewSet(WizardViewSet):
@@ -31,21 +62,12 @@ urlpatterns = [
 ```
 
 `<slug:fund>` in the mount is what puts `"arts"` or `"sport"` in
-`self.kwargs["fund"]`; the section below says how that stays put for the
-whole run.
-
-The rule of thumb: when the shape depends on the *request* — which URL,
-which tenant, which plan, who is logged in, a feature flag — build it in
-`get_wizard()`. When it depends on an *answer*, it belongs in the
-declaration: `.branch()`, `.switch()` or `.expand()`.
-
-### Mount prefixes that capture kwargs
-
-The mount prefix can capture kwargs of its own, and inside the wizard you
-never pass them by hand: whatever the request captured is forwarded into
-every redirect, so a run started at `/readme/funds/arts/` stays under
-`/readme/funds/arts/` for the whole walk, and `self.kwargs["fund"]` is there
-on each request of the run. From outside, reverse with the kwargs:
+`self.kwargs["fund"]`. The mount prefix can capture kwargs of its own, and
+inside the wizard you never pass them by hand: whatever the request
+captured is forwarded into every redirect, so a run started at
+`/readme/funds/arts/` stays under `/readme/funds/arts/` for the whole walk,
+and `self.kwargs["fund"]` is there on each request of the run. From
+outside, reverse with the kwargs:
 
 ```python
 reverse("readme-fund", kwargs={"fund": "arts"})     # "/readme/funds/arts/"
@@ -55,8 +77,10 @@ Mounting under a URL namespace, changing how step segments are spelled, or
 writing the patterns by hand instead of `urls()` are all possible and all
 documented in the [`WizardViewSet` reference](../reference/viewsets.md#wizardviewseturls-classmethod).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/funds/sport/ or
-> [/arts/](http://127.0.0.1:8000/readme/funds/arts/) &nbsp;·&nbsp; **Source:** [`ch05_funds.py`](../../tests/testapp/readme/ch05_funds.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/paper/ — then
+> [sign in as staff](http://127.0.0.1:8000/readme/staff/sign-in/) and start
+> again; the funds are at [/funds/sport/](http://127.0.0.1:8000/readme/funds/sport/)
+> and [/funds/arts/](http://127.0.0.1:8000/readme/funds/arts/) &nbsp;·&nbsp; **Source:** [`ch05_per_request.py`](../../tests/testapp/readme/ch05_per_request.py)
 
 ---
 

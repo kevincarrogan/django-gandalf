@@ -76,6 +76,10 @@ class TrusteeForm(forms.Form):
 # --- Chapter 5: different funds, different questions ------------------------
 
 
+class ReceivedOnForm(forms.Form):
+    received_on = forms.DateField(label="Date the paper application was received")
+
+
 class PortfolioForm(forms.Form):
     portfolio_url = forms.URLField(label="A link to your portfolio")
 

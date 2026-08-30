@@ -6,7 +6,7 @@ from .readme import (
     ch02_branching,
     ch03_switch,
     ch04_expand,
-    ch05_funds,
+    ch05_per_request,
     ch06_review,
     ch07_step_views,
     ch08_uploads,
@@ -33,8 +33,12 @@ urlpatterns = [
     ),
     path("readme/switch/", include(ch03_switch.SwitchingApplicationViewSet.urls())),
     path("readme/expand/", include(ch04_expand.ExpandingApplicationViewSet.urls())),
+    path("readme/paper/", include(ch05_per_request.PaperApplicationViewSet.urls())),
+    path("readme/staff/sign-in/", views.staff_sign_in, name="readme-staff-sign-in"),
+    path("readme/staff/sign-out/", views.staff_sign_out, name="readme-staff-sign-out"),
     path(
-        "readme/funds/<slug:fund>/", include(ch05_funds.FundApplicationViewSet.urls())
+        "readme/funds/<slug:fund>/",
+        include(ch05_per_request.FundApplicationViewSet.urls()),
     ),
     path("readme/review/", include(ch06_review.ReviewedApplicationViewSet.urls())),
     path(

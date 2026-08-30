@@ -14,6 +14,7 @@ from gandalf.viewsets import WizardViewSet
 from http import HTTPStatus
 
 
+from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
@@ -2282,3 +2283,19 @@ class SubmitViewSet(TaskListViewSet):
 
     def journey_done(self, page, store):
         return HttpResponse(f"submitted {self.get_journey()}")
+
+
+def staff_sign_in(request):
+    """Chapter 5's demo door: sign in as a staff member so `readme-paper`
+    asks the extra question. A real project has a login; this one mints a
+    staff user on the spot and comes straight back."""
+    user, _ = get_user_model().objects.get_or_create(
+        username="fund-officer", defaults={"is_staff": True}
+    )
+    login(request, user)
+    return redirect("readme-paper")
+
+
+def staff_sign_out(request):
+    logout(request)
+    return redirect("readme-paper")

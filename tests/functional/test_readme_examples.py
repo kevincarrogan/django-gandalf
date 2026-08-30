@@ -194,6 +194,38 @@ def test_chapter_4_grows_one_step_per_trustee(wizard_driver):
 # --- Chapter 5: different funds, different questions -------------------------
 
 
+def test_chapter_5_an_applicant_is_not_asked_when_the_paper_arrived(wizard_driver):
+    response, _ = wizard_driver("readme-paper").drive(
+        [
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Coach"}),
+            ("contact", {"email": "ada@example.com"}),
+        ]
+    )
+
+    assert response.content == b"Application from ada@example.com"
+
+
+def test_chapter_5_a_staff_member_is_asked_when_the_paper_arrived(
+    client, django_user_model, wizard_driver
+):
+    officer = django_user_model.objects.create_user("officer", is_staff=True)
+    client.force_login(officer)
+
+    response, _ = wizard_driver("readme-paper").drive(
+        [
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Coach"}),
+            ("received-on", {"received_on": "2026-08-01"}),
+            ("contact", {"email": "ada@example.com"}),
+        ]
+    )
+
+    assert (
+        response.content == b"Application from ada@example.com, received on 2026-08-01"
+    )
+
+
 def test_chapter_5_the_sport_fund_asks_no_portfolio(wizard_driver):
     response, _ = wizard_driver("readme-fund", fund="sport").drive(
         [

@@ -85,6 +85,12 @@ GROUPS = (
             ),
             Example("readme-expand", note="Chapter 4. One trustee step per trustee."),
             Example(
+                "readme-paper",
+                note="Chapter 5. Sign in at /readme/staff/sign-in/ and a staff "
+                "member is asked the date the paper application was received; "
+                "/readme/staff/sign-out/ takes the step away again.",
+            ),
+            Example(
                 "readme-fund",
                 url_kwargs={"fund": "sport"},
                 title="FundApplicationViewSet (sport fund)",
