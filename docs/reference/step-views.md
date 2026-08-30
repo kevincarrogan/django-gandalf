@@ -68,6 +68,11 @@ not one. Everything reading a run's answers goes through
 [`RuntimeStep.answer`](run.md), so a step's answer has one shape rather than
 a shape per reader.
 
+**`get_answer_fields(form)`** — the bound fields this step's answer reads
+as, in display order, which is what a summary page lists. A `BaseForm`
+yields its own. Override beside a form object that is not one, so the page
+shows the answers rather than iterating something that is not a bound field.
+
 **`get_answer_schema(form)`** — the step as JSON Schema, which is what an
 agent is told it asks. Override it beside a form object
 `form_json_schema()` cannot read: that walks `form.fields`, which only a
@@ -106,6 +111,18 @@ the field name, `"0-email"`, because `"email"` names nothing when several
 people are being asked at once. Errors belonging to the formset itself
 rather than to any row — `min_num`, `max_num`, a `clean()` on the formset —
 keep Django's own `__all__`.
+
+**`get_answer_fields(form)`** — every row's fields, row by row, in the order
+they were entered. A formset declares no fields at step level — they belong
+to each of the n rows it repeats — so iterating it yields *forms*, and a
+page listing those would be listing the wrong objects.
+
+Flattening the rows is plain rather than pretty, and deliberately so. What
+three organisers should read like on a check-your-answers page is the
+page's decision, made with
+[`SummaryMixin.build_summary_row()`](summary.md). What a default must not
+do is show *nothing*: then the answers cannot be checked, which is what the
+page is for, and nobody can see that they are missing.
 
 **`get_answer_schema(form)`** — an array of rows rather than an object of
 fields. The row schema comes from the formset's `empty_form`, so it

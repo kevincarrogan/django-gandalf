@@ -268,6 +268,12 @@ What the step was answered with, as its view reports it —
 Asked of `step_view.get_answer()` so a step's answer has one shape for every
 reader rather than a shape each reader infers.
 
+### `RuntimeStep.answer_fields`
+
+The bound fields this step's answer reads as, in display order — `iter(form)`
+for all but a repeated step, whose fields belong to its rows. Asked of
+`step_view.get_answer_fields()`; a summary page lists these.
+
 ### `RuntimeStep.errors`
 
 What the step refused, by field name, in `get_json_data()` shape, and empty

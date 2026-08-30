@@ -2107,16 +2107,26 @@ class OpeningHoursStepView(FormSetStepView):
 
 
 class OpeningHoursWizardViewSet(WizardViewSet):
+    """A formset step, and a check-your-answers page over one.
+
+    The first step is declared with a bare Django `FormView` rather than a
+    `StepFormView`, which is the other half of what the summary has to
+    survive: a step with no say in how its answer reads, beside one that
+    has plenty.
+    """
+
     description = (
         "A formset step: seven compact rows on one page, rather than seven "
-        "pages. Its bounds are enforced, so its schema states them."
+        "pages. Its bounds are enforced, so its schema states them, and the "
+        "summary lists every row."
     )
     url_name = "opening-hours-wizard"
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(FirstStepForm, name="who", label="Who you are")
+        .step(FirstStepFromFormView, name="who", label="Who you are")
         .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+        .step(SummaryStepView, name="summary")
     )
 
     def done(self, run):

@@ -55,7 +55,7 @@ do not special-case:
 | `check_summary_fields()` | `None` | raises `ImproperlyConfigured` for a `summary_fields` key naming no declared step (see below) |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
-| `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields in form order with its specs folded in: a `Group` takes the place of its first field and swallows the rest, a `Hide` yields nothing |
+| `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in: a `Group` takes the place of its first field and swallows the rest, a `Hide` yields nothing |
 | `get_field_specs(step)` | `Sequence[FieldSpec]` | `summary_fields.get(step.name, ())`; override to decide per run |
 | `build_summary_field(step, form, bound_field)` | `SummaryField` | one answer on a line of its own |
 | `build_group_field(step, form, spec)` | `SummaryField` | several answers on one line (see `Group`) |
@@ -84,6 +84,39 @@ do not special-case:
   [Walk costs](walk-costs.md).
 - The mixin reads `self.request.run`, so it works only on a view
   dispatched inside a wizard.
+
+### A step whose answer is not one form's worth
+
+A summary lists `step.answer_fields`, which the step's own view decides —
+so a step holding a formset lists every row's fields, row by row, rather
+than iterating the formset and finding sub-*forms* where bound fields were
+expected (see [Step views](step-views.md)).
+
+That default is plain rather than pretty on purpose. How three organisers
+should read on a check-your-answers page is this page's decision, and
+`build_summary_row(step)` is where to make it:
+
+```python
+from gandalf.summary import SummaryField, SummaryMixin, SummaryRow
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    def build_summary_row(self, step):
+        if step.name != "opening-hours":
+            return super().build_summary_row(step)
+        return SummaryRow(
+            step=step,
+            label="Opening hours",
+            fields=tuple(
+                SummaryField(name=f"row-{index}", label=row["day"], value=row["opens"])
+                for index, row in enumerate(step.answer)
+            ),
+        )
+```
+
+`summary_fields` specs address a step's *own* declared fields, and a
+formset step declares none at step level, so `Group` and `Hide` do not
+reach into its rows — `build_summary_row()` does.
 
 ### `summary_fields` validation
 

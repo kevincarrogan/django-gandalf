@@ -372,7 +372,7 @@ class SummaryMixin(_SummaryMixinBase):
         of its own."""
         by_field = self._specs_by_field(step, self.get_field_specs(step))
         grouped: set[int] = set()
-        for bound_field in form:
+        for bound_field in step.answer_fields:
             if not self.include_summary_field(step, bound_field):
                 continue
             found = by_field.get(bound_field.name)
@@ -414,8 +414,16 @@ class SummaryMixin(_SummaryMixinBase):
     def build_summary_field(
         self, step: RuntimeStep, form: BaseForm, bound_field: BoundField
     ) -> SummaryField:
-        """One answer, on a line of its own."""
-        value = self.format_value(bound_field, form.cleaned_data.get(bound_field.name))
+        """One answer, on a line of its own.
+
+        The cleaned value comes from the bound field's *own* form, which is
+        `form` itself for all but a repeated step — where the fields belong
+        to a row rather than to the step, and the step's own `cleaned_data`
+        is the list of rows.
+        """
+        value = self.format_value(
+            bound_field, bound_field.form.cleaned_data.get(bound_field.name)
+        )
         return SummaryField(
             name=bound_field.name,
             label=bound_field.label,

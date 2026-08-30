@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field, replace
@@ -472,6 +472,21 @@ class RuntimeStep:
         if reader is None:
             return self.form.cleaned_data
         return reader(self.form)
+
+    @property
+    def answer_fields(self) -> Iterable[Any]:
+        """The bound fields this step's answer reads as, in display order.
+
+        `iter(form)` for all but a repeated step: only the view knows what
+        kind of object its `get_form()` returned, and iterating a formset
+        yields *forms*, so a page listing them would be listing the wrong
+        objects. A step declared with a bare Django `FormView` has no say
+        and is iterated directly.
+        """
+        reader = getattr(self.step_view, "get_answer_fields", None)
+        if reader is None:
+            return list(self.form)
+        return cast("Iterable[Any]", reader(self.form))
 
     @property
     def errors(self) -> dict[str, list[dict[str, Any]]]:

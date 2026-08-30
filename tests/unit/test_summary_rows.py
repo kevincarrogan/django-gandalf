@@ -13,7 +13,14 @@ from gandalf.context import WizardContext
 from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide, SummaryMixin, format_value
+from gandalf.summary import (
+    Group,
+    Hide,
+    SummaryField,
+    SummaryMixin,
+    SummaryRow,
+    format_value,
+)
 from gandalf.wizard import Wizard, condition
 from tests.testapp.forms import (
     AccountTypeForm,
@@ -22,7 +29,7 @@ from tests.testapp.forms import (
     FirstStepForm,
     SummaryFieldsForm,
 )
-from tests.testapp.views import OpeningHoursStepView
+from tests.testapp.views import FirstStepFromFormView, OpeningHoursStepView
 
 
 def _bound_field(form, name):
@@ -548,6 +555,94 @@ def test_a_formset_step_elsewhere_does_not_stop_the_check(
     rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
 
     assert rows[1].fields[2].value == "Ely, CB7 4AA"
+
+
+HOURS = {
+    "form-TOTAL_FORMS": "2",
+    "form-INITIAL_FORMS": "0",
+    "form-MIN_NUM_FORMS": "0",
+    "form-MAX_NUM_FORMS": "7",
+    "form-0-day": "Monday",
+    "form-0-opens": "09:00",
+    "form-1-day": "Tuesday",
+    "form-1-opens": "10:00",
+}
+
+
+def test_a_formset_step_summarises_every_row(summary_view_for):
+    """A check-your-answers page exists so the answers can be checked, so a
+    step holding several rows shows all of them rather than none. Plain
+    rather than pretty — the page can say more with `build_summary_row()`,
+    and what three organisers should read like is its decision — but an
+    answer nobody can see on the page is the one thing this must not do."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}])
+    rows = view.get_context_data()["summary"]
+
+    assert rows[1].label == "Opening hours"
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Day", "Monday"),
+        ("Opens", "09:00"),
+        ("Day", "Tuesday"),
+        ("Opens", "10:00"),
+    ]
+
+
+def test_a_step_with_a_plain_form_view_is_iterated_directly(summary_view_for):
+    """A step declared with a bare Django `FormView` carries no
+    `get_answer_fields`, so it has no say and the page iterates its form —
+    which is right, because a `BaseForm` yields its own bound fields."""
+    wizard = (
+        Wizard()
+        .step(FirstStepFromFormView, name="who", label="Who you are")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}])
+    rows = view.get_context_data()["summary"]
+
+    assert [(field.label, field.value) for field in rows[0].fields] == [("Name", "Ada")]
+
+
+def test_a_page_can_say_how_a_formset_step_reads(summary_view_for):
+    """The reference's worked override: the library shows every row plainly,
+    and the page says what they mean. `step.answer` is the rows."""
+
+    class _View(_SummaryView):
+        def build_summary_row(self, step):
+            if step.name != "opening-hours":
+                return super().build_summary_row(step)
+            return SummaryRow(
+                step=step,
+                label="Opening hours",
+                fields=tuple(
+                    SummaryField(
+                        name=f"row-{index}", label=row["day"], value=row["opens"]
+                    )
+                    for index, row in enumerate(step.answer)
+                ),
+            )
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
+    rows = view.get_context_data()["summary"]
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Monday", "09:00"),
+        ("Tuesday", "10:00"),
+    ]
 
 
 def test_specs_can_be_chosen_per_run(address_rows):

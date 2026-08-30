@@ -378,3 +378,36 @@ def test_a_group_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
     rows = address_run.get_step("summary").context["summary"]
 
     assert rows[1].fields[0].value == "12 High Street, CB7 4AA"
+
+
+def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
+    """The acceptance case for a repeated step on a check-your-answers
+    page: the answers are all on it, and the page is reached over HTTP the
+    way a person reaches it. The first step is a bare Django `FormView`,
+    which has no say in how its answer reads, so both halves are exercised
+    at once."""
+    run = wizard_driver("opening-hours-wizard").start()
+    run.post_step("who", {"name": "Ada"})
+    run.post_step(
+        "opening-hours",
+        {
+            "form-TOTAL_FORMS": "2",
+            "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0",
+            "form-MAX_NUM_FORMS": "7",
+            "form-0-day": "Monday",
+            "form-0-opens": "09:00",
+            "form-1-day": "Tuesday",
+            "form-1-opens": "10:00",
+        },
+    )
+
+    rows = run.get_step("summary").context["summary"]
+
+    assert [field.value for field in rows[0].fields] == ["Ada"]
+    assert [field.value for field in rows[1].fields] == [
+        "Monday",
+        "09:00",
+        "Tuesday",
+        "10:00",
+    ]

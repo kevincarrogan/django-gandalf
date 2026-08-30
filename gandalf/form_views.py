@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from django import forms
@@ -101,6 +102,16 @@ class StepFormView(_StepFormViewBase):
         """
         return form.cleaned_data
 
+    def get_answer_fields(self, form: Any) -> Iterable[Any]:
+        """The bound fields this step's answer reads as, in display order.
+
+        A `BaseForm` yields its own, which is what a summary page lists.
+        Override beside a form object that is not one, so that the page
+        shows the answers rather than iterating something that is not a
+        bound field at all.
+        """
+        return list(form)
+
     def get_answer_schema(self, form: Any) -> dict[str, Any]:
         """This step as a JSON Schema — what an agent is told it asks.
 
@@ -147,6 +158,20 @@ class FormSetStepView(StepFormView):
         if non_form:
             errors["__all__"] = non_form.get_json_data()
         return errors
+
+    def get_answer_fields(self, form: Any) -> Iterable[Any]:
+        """Every row's fields, row by row, in the order they were entered.
+
+        A formset declares no fields at step level — they belong to each of
+        the n rows it repeats — so iterating it yields *forms*, and a page
+        listing them would be listing the wrong objects. Flattening the rows
+        is plain rather than pretty, and deliberately so: what three
+        organisers should read like on a check-your-answers page is the
+        page's decision, made with `SummaryMixin.build_summary_row()`. What
+        it must not do is show nothing, because then the answers cannot be
+        checked and nobody can see that they are missing.
+        """
+        return [bound_field for row in form for bound_field in row]
 
     def get_answer_schema(self, form: Any) -> dict[str, Any]:
         """An array of rows, rather than an object of fields.
