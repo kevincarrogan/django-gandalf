@@ -227,19 +227,22 @@ def test_an_item_title_on_an_expanding_item_wizard_is_taken_on_trust():
     assert _Growing.item_viewset.item_title == "anything"
 
 
-def test_a_step_view_that_picks_its_form_at_request_time_declares_no_fields():
+def test_an_item_title_on_a_step_that_picks_its_form_per_request_is_trusted():
+    """What such a step asks cannot be read off the declaration, so the
+    field name is taken on trust rather than refused for not being there."""
+
     class _Undecided(StepFormView):
         template_name = "testapp/linear_wizard.html"
 
         def get_form_class(self):
             return GuestForm
 
-    with pytest.raises(ImproperlyConfigured, match="a field no step"):
+    class _Trusted(_Guests):
+        add_another = GUESTS.replace(
+            wizard=Wizard().step(_Undecided, name="guest"), item_title="name"
+        )
 
-        class _Unreadable(_Guests):
-            add_another = GUESTS.replace(
-                wizard=Wizard().step(_Undecided, name="guest"), item_title="name"
-            )
+    assert _Trusted.item_viewset.item_title == "name"
 
 
 def test_a_task_list_builds_an_add_another_beneath_itself():

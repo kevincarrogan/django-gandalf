@@ -41,7 +41,7 @@ from django.utils.translation import gettext
 from gandalf.form_views import StepFormView
 from gandalf.runtime import RuntimeStep
 from gandalf.types import StrOrPromise
-from gandalf.wizard import declared_step_names
+from gandalf.wizard import declared_step_fields, declared_step_names
 
 
 if TYPE_CHECKING:
@@ -287,6 +287,7 @@ class SummaryMixin(_SummaryMixinBase):
 
     def get_summary_rows(self) -> list[SummaryRow]:
         self.check_summary_fields()
+        self.check_summary_field_names()
         return [self.build_summary_row(step) for step in self.get_summary_steps()]
 
     def check_summary_fields(self) -> None:
@@ -312,6 +313,41 @@ class SummaryMixin(_SummaryMixinBase):
             f"declare: {', '.join(unknown)}. Declared steps: "
             f"{', '.join(sorted(declared))}."
         )
+
+    def check_summary_field_names(self) -> None:
+        """Refuse a `Group` or `Hide` naming a field its step does not have.
+
+        At render a field a step does not offer is skipped, deliberately —
+        a dynamic `get_form_class()` may ask for less and a group has to
+        survive that. Which is exactly why a *typo* needs catching here: a
+        misspelt `Hide` hides nothing, and the answer it was meant to keep
+        off the page is rendered onto it. Checked only where the
+        declaration knows the fields: a step whose view picks its form per
+        request is taken on trust.
+        """
+        if not self.summary_fields:
+            return
+        fields = declared_step_fields(self.request.wizard.wizard)
+        if fields is None:
+            return
+        for step_name, specs in self.summary_fields.items():
+            declared = fields.get(step_name)
+            if declared is None:
+                continue
+            named = {
+                field
+                for spec in specs
+                for field in spec.fields
+                if field not in declared
+            }
+            if not named:
+                continue
+            name = self.__class__.__name__
+            raise ImproperlyConfigured(
+                f"{name}.summary_fields shapes fields step {step_name!r} does "
+                f"not declare: {', '.join(sorted(named))}. Its fields: "
+                f"{', '.join(sorted(declared))}."
+            )
 
     def get_declared_step_names(self) -> set[str] | None:
         """Every step name the wizard declares, or None when the declaration

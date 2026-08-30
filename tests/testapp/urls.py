@@ -22,6 +22,14 @@ from .readme import (
 
 urlpatterns = [
     path(
+        "off-route-switch-wizard/",
+        include(views.OffRouteSwitchWizardViewSet.urls()),
+    ),
+    path(
+        "dynamic-summary-wizard/",
+        include(views.DynamicSummaryWizardViewSet.urls()),
+    ),
+    path(
         "",
         views.IndexView.as_view(),
         name="index",

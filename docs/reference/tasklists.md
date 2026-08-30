@@ -132,6 +132,13 @@ A list the user grows, one run of `wizard` per item. The row links straight
 at the list's page and reads its declared status. The keyword arguments
 are [Add another](add-another.md)'s.
 
+A `Link`'s `status` callable must return one of the four statuses: the page
+renders a label for every row, so anything else is refused with
+`ImproperlyConfigured` naming the status, rather than taking the whole page
+down with a `KeyError`. Its `url_name` is reversed when the row is built,
+and a name that does not reverse is likewise refused by entry key rather
+than as a bare `NoReverseMatch`.
+
 #### `Group(task_list, *, title=None, template_name=None)`
 
 A task list within this one. Its sections are keyed under this entry's key

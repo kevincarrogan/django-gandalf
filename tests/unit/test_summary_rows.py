@@ -12,6 +12,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from gandalf.context import WizardContext
 from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
+from gandalf.form_views import StepFormView
 from gandalf.summary import Group, Hide, SummaryMixin, format_value
 from gandalf.wizard import Wizard, condition
 from tests.testapp.forms import (
@@ -480,23 +481,37 @@ def test_a_group_skips_a_field_the_page_leaves_off(address_rows):
     assert rows[1].fields[0].value == "12 High Street, CB7 4AA"
 
 
-def test_a_group_skips_a_field_the_step_does_not_ask(address_rows):
+def test_a_group_skips_a_field_the_step_does_not_ask(summary_view_for, address_state):
     """A dynamic `get_form_class()` need not offer every field a group
-    names, so a group has to survive asking for less."""
+    names. The declaration cannot say what such a step asks, so the names
+    are taken on trust and the group survives asking for less."""
+
+    class _Dynamic(StepFormView):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_form_class(self):
+            return AddressForm
 
     class _View(_SummaryView):
         summary_fields = {"address": [Group("town", "county", "postcode")]}
 
-    rows = address_rows(_View)
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(_Dynamic, name="address", label="Address")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
 
     assert rows[1].fields[2].value == "Ely, CB7 4AA"
 
 
-def test_a_group_naming_nothing_the_step_asks_leaves_the_row_alone(
+def test_a_group_naming_fields_a_declared_step_has_not_got_is_refused(
     summary_view_for, address_state
 ):
-    """A group is reached through its own fields, so one that names none of
-    a step's fields never speaks for it."""
+    """Where the declaration knows what a step asks, a field it does not
+    have is a typo, and a group built on one could never speak for it."""
 
     class _View(_SummaryView):
         summary_fields = {"who": [Group("line_1", "town")]}
@@ -508,9 +523,8 @@ def test_a_group_naming_nothing_the_step_asks_leaves_the_row_alone(
         .configure(template_name="testapp/linear_wizard.html")
     )
 
-    rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
-
-    assert [field.name for field in rows[0].fields] == ["name"]
+    with pytest.raises(ImproperlyConfigured, match="line_1, town"):
+        summary_view_for(wizard, address_state, _View).get_context_data()
 
 
 def test_specs_can_be_chosen_per_run(address_rows):

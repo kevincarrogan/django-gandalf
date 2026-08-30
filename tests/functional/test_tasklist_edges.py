@@ -125,6 +125,45 @@ def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
     assert entry.reopen_at == "anything"
 
 
+def _rows_of(rf, client, page_class, **kwargs):
+    request = rf.get("/")
+    request.session = client.session
+    view = page_class()
+    view.setup(request, **kwargs)
+    return view.get_rows()
+
+
+def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf, client):
+    """A link's status is arbitrary code and every row gets a label, so a
+    status outside the four is refused by name rather than taking the whole
+    page down with a KeyError."""
+
+    class _Odd(TaskList):
+        pay = Link("readme-hub", status=lambda request, kwargs: "half-done")
+
+    class _OddPage(TaskListViewSet):
+        url_name = "odd-status-page"
+        task_list = _Odd
+
+    with pytest.raises(ImproperlyConfigured, match="half-done"):
+        _rows_of(rf, client, _OddPage)
+
+
+def test_a_link_pointing_at_a_url_that_does_not_reverse_names_the_entry(rf, client):
+    """Otherwise every row on the page dies of one entry's NoReverseMatch,
+    with nothing to say which declaration is wrong."""
+
+    class _Broken(TaskList):
+        pay = Link("no-such-url-name", status=lambda request, kwargs: COMPLETE)
+
+    class _BrokenPage(TaskListViewSet):
+        url_name = "broken-link-page"
+        task_list = _Broken
+
+    with pytest.raises(ImproperlyConfigured, match="no-such-url-name"):
+        _rows_of(rf, client, _BrokenPage)
+
+
 def test_two_entries_under_one_key_are_refused():
     with pytest.raises(ImproperlyConfigured, match="two entries under the key 'pay'"):
 

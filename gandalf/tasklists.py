@@ -1160,12 +1160,20 @@ class TaskListViewSet(JourneyScoped, TemplateView):
 
     def get_status_label(self, status: str) -> StrOrPromise:
         """The status as display text. Override for your own wording."""
-        return {
+        labels = {
             NOT_STARTED: gettext("Not started"),
             INCOMPLETE: gettext("Incomplete"),
             COMPLETE: gettext("Complete"),
             BLOCKED: gettext("Cannot start yet"),
-        }[status]
+        }
+        if status in labels:
+            return labels[status]
+        raise ImproperlyConfigured(
+            f"{self.__class__.__name__} cannot label the status {status!r}. "
+            f"A Link's status callable returns one of "
+            f"{', '.join(repr(known) for known in labels)}; override "
+            "get_status_label() to add wording of your own."
+        )
 
     def get_entry_url(self, entry: Entry) -> str:
         """Where a row links: a group's own page, a link's target, or the
@@ -1176,7 +1184,13 @@ class TaskListViewSet(JourneyScoped, TemplateView):
                 kwargs=self.entry_url_kwargs(entry),
             )
         if entry.url_name is not None:
-            return reverse(entry.url_name, kwargs=self.entry_url_kwargs(entry))
+            try:
+                return reverse(entry.url_name, kwargs=self.entry_url_kwargs(entry))
+            except NoReverseMatch as exc:
+                raise ImproperlyConfigured(
+                    f"{self.__class__.__name__}.{entry.key} links to "
+                    f"{entry.url_name!r}, which does not reverse: {exc}"
+                ) from exc
         if self.entry_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(

@@ -93,13 +93,21 @@ do not special-case:
 | Condition | Message |
 | --- | --- |
 | a key names a step the wizard does not declare | `<View>.summary_fields shapes steps this wizard does not declare: <keys>. Declared steps: <names>.` |
+| a spec names a field its step does not declare | `<View>.summary_fields shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
 | a field name appears in two specs for the same step | `<View>.summary_fields names '<field>' more than once for step '<step>'; a field belongs to one spec.` |
 
-The first check is against what the wizard *declares*, not what this run
-walked, so a key naming a step on the arm not taken is fine. It is skipped
-entirely for a wizard containing an `.expand()`, because a name that looks
-unknown may simply not have been grown yet. A field a spec names that the
-step's form does not offer is skipped, not refused.
+Both name checks read the *declaration*, not what this run walked, so a key
+naming a step on the arm not taken is fine. Both are skipped entirely for a
+wizard containing an `.expand()`, because a name that looks unknown may
+simply not have been grown yet, and the field check is skipped for a step
+whose view chooses its form class per request — what such a step asks
+cannot be read off the declaration.
+
+That last exemption is the point of the check. At render, a field a spec
+names but the step does not offer is skipped rather than refused, so a
+group survives a dynamic form asking for less. Where the fields *are*
+declared, the same silence would swallow a typo: a misspelt `Hide` hides
+nothing and renders the answer it was meant to keep off the page.
 
 ### `Group(*fields, label=None, separator=", ")`
 

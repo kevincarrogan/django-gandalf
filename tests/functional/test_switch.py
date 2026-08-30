@@ -6,7 +6,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 
-from gandalf.wizard import Wizard, on_field, switch
+from gandalf.wizard import Wizard, declared_step_fields, on_field, switch
 from tests.testapp import views
 from tests.testapp.forms import BusinessDetailsForm
 
@@ -83,13 +83,55 @@ def test_a_switch_case_cannot_be_called_default():
         )
 
 
-def test_on_field_names_the_step_it_could_not_find(wizard_driver):
-    """A selector reading a step that is not on the route is a declaration
-    mistake, and says which step it wanted."""
-    driver = wizard_driver("misdeclared-switch-wizard")
-    run = driver.start()
+def test_on_field_naming_no_field_of_its_step_is_refused():
+    """The value of a field nothing asks is "", which names no case, so the
+    run would take `default` with nothing going wrong out loud."""
+    with pytest.raises(ImproperlyConfigured, match="names no field of step"):
+        (
+            Wizard()
+            .step(views.AccountKindForm, name="account_kind")
+            .switch(
+                on_field("account_kind", "nonexistent"),
+                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
 
+
+def test_an_unnamed_step_is_not_a_name_a_selector_can_be_checked_against():
+    """A step with no name cannot be addressed, so it is absent from what
+    the declaration offers a selector."""
+    wizard = (
+        Wizard()
+        .step(BusinessDetailsForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert declared_step_fields(wizard) == {}
+
+
+def test_configure_refuses_a_key_it_does_not_read():
+    with pytest.raises(ImproperlyConfigured, match="does not read observer_clas"):
+        Wizard().step(BusinessDetailsForm, name="business").configure(
+            template_name="testapp/linear_wizard.html", observer_clas=object
+        )
+
+
+def test_on_field_naming_an_undeclared_step_is_refused_before_any_walk(
+    wizard_driver,
+):
+    """The wizard cannot be configured at all: a step name nothing declares
+    can only ever read `""`, which names no case."""
     with pytest.raises(ImproperlyConfigured, match="nowhere"):
+        wizard_driver("misdeclared-switch-wizard").start()
+
+
+def test_on_field_names_a_declared_step_this_run_did_not_walk(wizard_driver):
+    """The declaration is sound — the step is real — so it is the walk that
+    finds nothing, and it says which step the selector wanted."""
+    run = wizard_driver("off-route-switch-wizard").start()
+
+    with pytest.raises(ImproperlyConfigured, match="never_walked"):
         run.post_step("account_kind", {"kind": "business"})
 
 

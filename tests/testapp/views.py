@@ -15,6 +15,7 @@ from http import HTTPStatus
 
 
 from django.contrib.auth import get_user_model, login, logout
+from django import forms
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
@@ -486,9 +487,8 @@ def _always_the_second_case(request):
 
 class MisdeclaredSwitchWizardViewSet(WizardViewSet):
     description = (
-        "A switch whose on_field() names a step that is not on its route, "
-        "which is a declaration mistake: the selector says which step it "
-        "wanted rather than failing as an attribute error."
+        "ImproperlyConfigured: a switch whose on_field() names a step the "
+        "wizard does not declare, refused when the wizard is configured."
     )
     template_name = "testapp/linear_wizard.html"
     wizard = (
@@ -501,6 +501,31 @@ class MisdeclaredSwitchWizardViewSet(WizardViewSet):
     )
 
     url_name = "misdeclared-switch-wizard"
+
+
+class OffRouteSwitchWizardViewSet(WizardViewSet):
+    description = (
+        "A switch whose on_field() names a declared step that this run did "
+        "not walk: the declaration is sound, so it is the walk that says "
+        "which step the selector wanted."
+    )
+    template_name = "testapp/linear_wizard.html"
+    url_name = "off-route-switch-wizard"
+    wizard = (
+        Wizard()
+        .step(AccountKindForm, name="account_kind")
+        .branch(
+            condition(
+                lambda context: False,
+                Wizard().step(BusinessDetailsForm, name="never_walked"),
+            ),
+            default=Wizard(),
+        )
+        .switch(
+            on_field("never_walked", "business_name"),
+            {"acme": Wizard().step(PersonalDetailsForm, name="personal")},
+        )
+    )
 
 
 class SwitchEntryWizardViewSet(WizardViewSet):
@@ -1940,6 +1965,46 @@ class SummaryDisplayWizardViewSet(WizardViewSet):
         Wizard()
         .step(SummaryDisplayForm, name="delivery")
         .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
+class ShorterAddressForm(forms.Form):
+    """The address a dynamic step asks for when it asks for less."""
+
+    line_1 = forms.CharField(label="Address line 1")
+    postcode = forms.CharField(label="Postcode")
+
+
+class DynamicAddressStepView(StepFormView):
+    """A step that picks its form per request, so what it asks cannot be
+    read off the declaration."""
+
+    template_name = "testapp/linear_wizard.html"
+
+    def get_form_class(self):
+        return ShorterAddressForm
+
+
+class DynamicSummaryStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "testapp/summary_wizard.html"
+    summary_fields = {"address": [Group("line_1", "town", "postcode", separator=", ")]}
+
+
+class DynamicSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary over a step that chooses its form per request: a group "
+        "names more than the step asks, and survives it."
+    )
+    url_name = "dynamic-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(DynamicAddressStepView, name="address", label="Address")
+        .step(DynamicSummaryStepView, name="summary")
     )
 
     def done(self, run):

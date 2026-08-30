@@ -54,7 +54,7 @@ from django.utils.text import capfirst
 from django.utils.translation import gettext, gettext_lazy as _
 
 from gandalf import tree
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, Wizard, declared_step_fields
 from gandalf.runtime import Run
 from gandalf.storage import RunNotFound
 from gandalf.tasklists import (
@@ -158,19 +158,6 @@ def first_step_label(entry: AddAnother) -> StrOrPromise | None:
     if not steps:
         return None
     return (steps[0].context or {}).get("label")
-
-
-def declared_fields(node: tree.Step) -> set[str]:
-    """The field names a step's form declares, or none when the step's
-    view decides its form at request time."""
-    declaration: Any = node.declaration
-    if isinstance(declaration, type) and issubclass(declaration, forms.BaseForm):
-        form_class: Any = declaration
-    else:
-        form_class = getattr(declaration, "form_class", None)
-    if form_class is None:
-        return set()
-    return set(form_class.base_fields)
 
 
 # --- one item ------------------------------------------------------------------
@@ -324,21 +311,22 @@ class AddAnotherViewSet(TaskListViewSet):
         """Refuse an `item_title` field that no step of the item wizard
         declares, or that two of them do — the second would be answered by
         whichever step came first on the route, silently. Skipped for a
-        wizard the declaration cannot see: one grown by `.expand()`, or one
-        a step view builds its form for at request time."""
+        wizard the declaration cannot see: one grown by `.expand()`, one a
+        viewset builds per request, or one whose step view chooses its form
+        class per request."""
         field = entry.item_title
         if not isinstance(field, str):
             return
         wizard = item_wizard(entry)
         if wizard is None:
             return
-        nodes = list(tree.iter_nodes(wizard.tree))
-        if any(isinstance(node, tree.Expand) for node in nodes):
+        fields = declared_step_fields(wizard)
+        if fields is None or any(declared is None for declared in fields.values()):
             return
         declaring = [
-            (node.context or {}).get("name") or "?"
-            for node in nodes
-            if isinstance(node, tree.Step) and field in declared_fields(node)
+            name
+            for name, declared in fields.items()
+            if declared is not None and field in declared
         ]
         if len(declaring) == 1:
             return

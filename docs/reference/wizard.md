@@ -257,10 +257,18 @@ answer. A frozen dataclass; instances are callable.
 - Called with a `WizardContext`, it finds the step by name on
   `context.run.path` and returns `str(cleaned_data.get(field, ""))` — a
   field the form did not clean yields `""`.
+- Checked when the wizard is configured, and raises `ImproperlyConfigured`
+  for a `step` the declaration does not name (*"names no step of this
+  wizard"*) or a `field` that step's form does not declare (*"names no
+  field of step"*). A field nothing answers reads `""`, which names no
+  case, so the run would take `default` — or fall past the switch — with
+  nothing going wrong out loud. Skipped for a wizard containing an
+  `.expand()`, and for a step whose view chooses its form class per
+  request.
 - Raises `ImproperlyConfigured` *"on_field(…) found no answered step named
-  … before this switch."* when the named step is not on the validated
-  prefix — because it is not answered, was renamed, or sits on another
-  arm.
+  … before this switch."* when the named step is declared but not on the
+  validated prefix — because it is not answered yet, or sits on an arm
+  this run did not take.
 - Scalar answers only. A multi-valued field has no single value to switch
   on; route those with a selector of your own or a predicate `.branch()`.
 

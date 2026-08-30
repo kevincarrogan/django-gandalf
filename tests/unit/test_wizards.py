@@ -12,6 +12,7 @@ import gandalf.wizard
 from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.file_storage import WizardFileStorage
+from gandalf.form_views import StepFormView
 from gandalf.runtime import Run, StepNotFound
 from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
@@ -3757,6 +3758,89 @@ def test_on_field_names_the_answer_it_reads():
     assert "account_type" in selector.__name__
 
 
+def test_on_field_naming_an_undeclared_step_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="names no step of this wizard"):
+        (
+            Wizard()
+            .step(AccountTypeForm, name="account_type")
+            .switch(
+                gandalf.wizard.on_field("nowhere", "account_type"),
+                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+
+def test_on_field_naming_no_field_of_its_step_is_refused():
+    """The value of a field nothing asks is "", which names no case."""
+    with pytest.raises(ImproperlyConfigured, match="names no field of step"):
+        (
+            Wizard()
+            .step(AccountTypeForm, name="account_type")
+            .switch(
+                gandalf.wizard.on_field("account_type", "nonexistent"),
+                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+
+def test_on_field_on_a_step_that_picks_its_form_per_request_is_trusted():
+    class _Undecided(StepFormView):
+        template_name = "testapp/linear_wizard.html"
+
+        def get_form_class(self):
+            return AccountTypeForm
+
+    wizard = (
+        Wizard()
+        .step(_Undecided, name="account_type")
+        .switch(
+            gandalf.wizard.on_field("account_type", "whatever"),
+            {"business": Wizard().step(BusinessDetailsForm, name="business")},
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert wizard.tree is not None
+
+
+def test_on_field_in_an_expanding_wizard_is_trusted():
+    """An expansion grows names mid-walk, so none can be known now."""
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .expand(lambda context: Wizard())
+        .switch(
+            gandalf.wizard.on_field("grown_later", "whatever"),
+            {"business": Wizard().step(BusinessDetailsForm, name="business")},
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert wizard.tree is not None
+
+
+def test_an_unnamed_step_is_not_a_name_the_declaration_offers():
+    """A step with no name cannot be addressed, so it is absent from the
+    fields a selector or a summary checks itself against."""
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm)
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert gandalf.wizard.declared_step_fields(wizard) == {}
+
+
+def test_configure_refuses_a_key_it_does_not_read():
+    """Stored and never applied is the failure a typo would otherwise buy."""
+    with pytest.raises(ImproperlyConfigured, match="does not read observer_clas"):
+        Wizard().step(AccountTypeForm, name="account_type").configure(
+            template_name="testapp/linear_wizard.html", observer_clas=object
+        )
+
+
 def test_on_field_says_which_step_it_could_not_find(request_with_session_factory):
     """A selector naming a step the run has not answered is a declaration
     mistake, and says so rather than failing as an attribute error."""
@@ -3764,8 +3848,15 @@ def test_on_field_says_which_step_it_could_not_find(request_with_session_factory
     wizard = (
         Wizard()
         .step(AccountTypeForm, name="account_type")
+        .branch(
+            gandalf.wizard.condition(
+                lambda context: False,
+                Wizard().step(BusinessDetailsForm, name="nonexistent"),
+            ),
+            default=Wizard(),
+        )
         .switch(
-            gandalf.wizard.on_field("nonexistent", "account_type"),
+            gandalf.wizard.on_field("nonexistent", "business_name"),
             {"business": Wizard().step(BusinessDetailsForm, name="business")},
         )
         .configure(template_name="testapp/linear_wizard.html")

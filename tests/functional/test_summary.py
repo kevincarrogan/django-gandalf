@@ -18,7 +18,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.summary import Group
+from gandalf.summary import Group, Hide
 from tests.testapp import views
 from tests.testapp.counting import counting_walks
 
@@ -341,17 +341,31 @@ def test_a_field_named_by_two_specs_is_refused(monkeypatch, address_run):
         address_run.get_step("summary")
 
 
-def test_a_group_survives_a_step_that_asks_for_less(monkeypatch, address_run):
-    """A dynamic `get_form_class()` need not offer every field a group names."""
+def test_a_group_survives_a_step_that_asks_for_less(wizard_driver):
+    """A dynamic `get_form_class()` need not offer every field a group
+    names, so the declaration cannot be checked and the group has to
+    survive asking for less: `town` is named, never asked, and dropped."""
+    run = wizard_driver("dynamic-summary-wizard").start()
+    run.post_step("address", {"line_1": "12 High Street", "postcode": "CB7 4AA"})
+
+    rows = run.get_step("summary").context["summary"]
+
+    assert rows[0].fields[0].value == "12 High Street, CB7 4AA"
+
+
+def test_a_group_naming_a_field_a_declared_step_has_not_got_is_refused(
+    monkeypatch, address_run
+):
+    """Where the declaration does know the fields, a name it does not have
+    is a typo — and a typo in a Hide leaves the answer on the page."""
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
         "summary_fields",
-        {"address": [Group("town", "county", "postcode")]},
+        {"address": [Hide("lookup_taken")]},
     )
 
-    rows = address_run.get_step("summary").context["summary"]
-
-    assert rows[1].fields[2].value == "Ely, CB7 4AA"
+    with pytest.raises(ImproperlyConfigured, match="lookup_taken"):
+        address_run.get_step("summary")
 
 
 def test_a_group_skips_a_field_the_page_leaves_off(monkeypatch, address_run):

@@ -25,9 +25,11 @@ Optional: a `WizardViewSet` configures a bare `Wizard` itself, passing only
 its own `template_name`. Call it when any other key is needed, and then
 give `template_name` here too — a pre-configured wizard is taken as-is.
 
-**Parameters** — every key below is optional and independent. Unknown keys
-are stored in `ConfiguredWizard.configuration` and otherwise ignored, so a
-misspelt key does not raise.
+**Parameters** — every key below is optional and independent. A key not
+listed here is refused with `ImproperlyConfigured` (*"Wizard.configure()
+does not read …"*), since one that is stored and never applied is a
+misspelling that would otherwise go unnoticed. A `ConfiguredWizard`
+subclass that reads more extends `configuration_keys`.
 
 | Key | Default | Replacement must be |
 | --- | --- | --- |

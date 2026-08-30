@@ -595,6 +595,29 @@ def test_a_link_reporting_blocked_under_its_own_steam_is_refused_too(rf):
     assert view.enter(view.get_entry("contact")) is None
 
 
+def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf):
+    """A link's status is arbitrary code, and the page renders a label for
+    every row — so a status outside the four is refused by name rather than
+    taking the whole page down with a KeyError."""
+    odd = _list(contact=Link("readme-hub", status=lambda request, kwargs: "half-done"))
+    view = _page(_view(odd), rf)
+
+    with pytest.raises(ImproperlyConfigured, match="half-done"):
+        view.get_rows()
+
+
+def test_a_link_pointing_at_a_url_that_does_not_reverse_names_the_entry(rf):
+    """Otherwise every row on the page dies of one entry's NoReverseMatch,
+    with nothing to say which declaration is wrong."""
+    broken = _list(
+        contact=Link("no-such-url-name", status=lambda request, kwargs: COMPLETE)
+    )
+    view = _page(_view(broken), rf)
+
+    with pytest.raises(ImproperlyConfigured, match="no-such-url-name"):
+        view.get_rows()
+
+
 def test_an_unblocked_section_still_enters(gated_page):
     view = gated_page({"stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}})
 

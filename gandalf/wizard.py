@@ -4,6 +4,7 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from django import forms
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
@@ -38,6 +39,7 @@ __all__ = [
     "WizardObserver",
     "branch",
     "condition",
+    "declared_step_fields",
     "declared_step_names",
     "form_view_factory",
     "on_field",
@@ -132,6 +134,28 @@ class on_field:
     def __name__(self) -> str:
         return f"{self.step}.{self.field}"
 
+    def check(self, wizard: Wizard | ConfiguredWizard) -> None:
+        """Refuse a step or field this wizard does not declare.
+
+        The value of a field nothing answers is `""`, which names no case, so
+        the run would take `default` — or fall past the switch — without
+        anything going wrong out loud."""
+        fields = declared_step_fields(wizard)
+        if fields is None:
+            return
+        if self.step not in fields:
+            raise ImproperlyConfigured(
+                f"on_field({self.step!r}, {self.field!r}) names no step of "
+                f"this wizard. Declared steps: {', '.join(sorted(fields))}."
+            )
+        declared = fields[self.step]
+        if declared is None or self.field in declared:
+            return
+        raise ImproperlyConfigured(
+            f"on_field({self.step!r}, {self.field!r}) names no field of step "
+            f"{self.step!r}. Its fields: {', '.join(sorted(declared))}."
+        )
+
     def __call__(self, context: WizardContext) -> str:
         run = cast("Run", context.run)
         found = run.path.find_step(name=self.step)
@@ -157,6 +181,44 @@ def declared_step_names(wizard: Wizard | ConfiguredWizard) -> set[str] | None:
         if isinstance(node, tree.Step)
     )
     return {name for name in names if name is not None}
+
+
+def check_selectors(wizard: Wizard | ConfiguredWizard) -> None:
+    """Let every `on_field` selector in the tree check itself."""
+    for node in tree.iter_nodes(wizard.tree):
+        selector = getattr(node, "selector", None)
+        if isinstance(selector, on_field):
+            selector.check(wizard)
+
+
+def declared_step_fields(
+    wizard: Wizard | ConfiguredWizard,
+) -> dict[str, dict[str, Any] | None] | None:
+    """The fields each named step declares, by step name.
+
+    `None` for the whole wizard when an `.expand()` grows steps mid-walk, so
+    no name can be known before the walk reaches them; `None` for one step
+    when its view chooses a form class per request. Either way the answer is
+    "the declaration is not the whole story here", and a caller checking a
+    field name against it takes the name on trust rather than refusing it.
+    """
+    nodes = list(tree.iter_nodes(wizard.tree))
+    if any(isinstance(node, tree.Expand) for node in nodes):
+        return None
+    fields: dict[str, dict[str, Any] | None] = {}
+    for node in nodes:
+        if not isinstance(node, tree.Step):
+            continue
+        name = (node.context or {}).get("name")
+        if name is None:
+            continue
+        declaration: Any = node.declaration
+        if isinstance(declaration, type) and issubclass(declaration, forms.BaseForm):
+            form_class: Any = declaration
+        else:
+            form_class = getattr(declaration, "form_class", None)
+        fields[name] = None if form_class is None else dict(form_class.base_fields)
+    return fields
 
 
 def _outline(node: tree.Node | None) -> list[dict[str, Any]]:
@@ -333,6 +395,20 @@ class Wizard:
 
 
 class ConfiguredWizard:
+    #: Every key `configure()` reads. A subclass that reads more extends it,
+    #: so an unknown key is still refused rather than silently ignored.
+    configuration_keys = frozenset(
+        {
+            "template_name",
+            "form_view_factory",
+            "file_storage_class",
+            "observer_class",
+            "cursor_walker_class",
+            "step_dispatcher_class",
+            "state_serializer_class",
+            "step_router_class",
+        }
+    )
     file_storage_class = WizardFileStorage
     observer_class = WizardObserver
     cursor_walker_class = CursorWalker
@@ -350,11 +426,19 @@ class ConfiguredWizard:
                 "so the wizard cannot supply it. Set "
                 "WizardViewSet.storage_class instead."
             )
+        unknown = sorted(set(configuration) - self.configuration_keys)
+        if unknown:
+            raise ImproperlyConfigured(
+                f"Wizard.configure() does not read {', '.join(unknown)}. "
+                f"It reads {', '.join(sorted(self.configuration_keys))} — a "
+                "key it does not read would be stored and never applied."
+            )
         self.configuration = configuration
         self.form_view_factory = configuration.get(
             "form_view_factory", self.form_view_factory
         )
         self.tree = self._configure_tree(tree)
+        check_selectors(self)
         self.file_storage_class = configuration.get(
             "file_storage_class", self.file_storage_class
         )

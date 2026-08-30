@@ -232,6 +232,11 @@ GROUPS = (
                 "switch-entry-wizard",
                 note="The switch is the very first node.",
             ),
+            Example(
+                "off-route-switch-wizard",
+                note="A switch reading a declared step this run did not "
+                "walk: the declaration is sound, the walk is not.",
+            ),
             Example("branching-merged-payload-wizard"),
             Example("runtime-tree-branching-merge-wizard"),
             Example("empty-branch-arm-merged-payload-wizard"),
@@ -340,6 +345,11 @@ GROUPS = (
             Example("custom-summary-wizard"),
             Example("summary-display-wizard"),
             Example("grouped-summary-wizard"),
+            Example(
+                "dynamic-summary-wizard",
+                note="A group naming more than a per-request form asks: the "
+                "declaration cannot check it, so it survives asking for less.",
+            ),
             Example("expanded-summary-wizard"),
         ),
     ),
@@ -525,8 +535,8 @@ GROUPS = (
             ),
             Example(
                 "misdeclared-switch-wizard",
-                note="ImproperlyConfigured: a switch reading a step that is "
-                "not on its route.",
+                note="ImproperlyConfigured: a switch reading a step the "
+                "wizard does not declare, refused before any walk.",
             ),
             Example(
                 "duplicate-context-wizard",
