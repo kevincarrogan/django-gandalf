@@ -74,6 +74,22 @@ just test-django 3.12 6.0
 The `test-django` recipe runs the suite with uv using the requested Python version
 and a compatible-release Django constraint.
 
+Check the documentation's own links with:
+
+```bash
+just check-docs
+```
+
+The `check-docs` recipe runs `tools/check_docs.py` over every Markdown file
+in `docs/`, `examples/` and the repository root: it resolves each relative
+link and each `#anchor` against the headings the target file actually has.
+Both failures are silent otherwise — a dead link still renders as a link,
+and a stale anchor scrolls to the top of the right page, which looks like
+it worked. External `http(s)` links are left alone, so the check never
+fails because someone else's site is down. A heading a chapter links to is
+therefore part of that chapter's contract: rename it and this is what
+tells you.
+
 Check types with:
 
 ```bash

@@ -388,7 +388,7 @@ there. Step metadata is that fact, and the rule above is what reads it.
 ## What the evaluation measured
 
 **Taken at `6b6e33d`, and history rather than the current state** — see
-[#78](../../issues/78). Sonnet 5, five repeats per scenario, $1.93; Haiku
+[#78](https://github.com/kevincarrogan/django-gandalf/issues/78). Sonnet 5, five repeats per scenario, $1.93; Haiku
 4.5 the same for $0.58.
 
 - Front-loading works: 0 questions when the context has the answers,

@@ -28,6 +28,14 @@ coverage-functional:
 # pydantic-ai, and mypy cannot check what it cannot resolve. Without it
 # this passes locally for anyone who has the extra and fails in CI, which
 # is the worst of both.
+# Every link between the Markdown files, and every #anchor. A rename moves
+# a heading as easily as a file, and both failures are silent: a dead link
+# still renders as a link, and a stale anchor scrolls to the top of the
+# right page, which looks like it worked. External URLs are left alone —
+# CI that fails when someone else's site is down is CI nobody trusts.
+check-docs:
+    uv run python tools/check_docs.py
+
 typecheck:
     uv run --group lint --extra agent mypy
 
