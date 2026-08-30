@@ -459,3 +459,54 @@ def test_a_formset_step_advertises_the_bounds_it_enforces():
     # Nothing enforces a minimum here, so the schema states none — the
     # organisers step is the other way round, and states only `minItems`.
     assert "minItems" not in schema
+
+
+def test_one_declaration_answers_every_reader():
+    """#109's criterion, stated as a test.
+
+    `OpeningHoursStepView` says one thing — that it is a `FormSetStepView`
+    — and that one declaration is what the merge, the driver's answers, its
+    schema, its errors and the summary page all read through. None of them
+    is taught separately what a formset is, and none of them guesses from
+    the shape of what it is holding.
+    """
+    driver = RunDriver.begin(OpeningHoursWizardViewSet)
+    driver.submit({"name": "Ada"}, step="who")
+
+    # What it asks.
+    assert driver.describe().schema["type"] == "array"
+
+    # What it refuses, and that a valid answer is not read as a refusal.
+    refused = driver.submit(
+        {
+            "form-TOTAL_FORMS": "1",
+            "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0",
+            "form-MAX_NUM_FORMS": "7",
+            "form-0-day": "Monday",
+            "form-0-opens": "",
+        },
+        step="opening-hours",
+    )
+    assert refused.status == "invalid"
+    assert list(refused.errors) == ["0-opens"]
+
+    accepted = driver.submit(
+        {
+            "form-TOTAL_FORMS": "1",
+            "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0",
+            "form-MAX_NUM_FORMS": "7",
+            "form-0-day": "Monday",
+            "form-0-opens": "09:00",
+        },
+        step="opening-hours",
+    )
+    assert accepted.status == "advanced"
+
+    # What it was answered with.
+    assert driver.answers()["opening-hours"] == [{"day": "Monday", "opens": "09:00"}]
+
+    # And how it reads on the page the person checks.
+    rows = driver.run.path.find_step(name="opening-hours").answer_fields
+    assert [field.value() for field in rows] == ["Monday", "09:00"]
