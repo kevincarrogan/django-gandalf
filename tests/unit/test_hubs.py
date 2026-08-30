@@ -1469,6 +1469,49 @@ def test_finishing_a_member_writes_what_it_decided_where_the_hub_reads_it(rf):
     assert SessionJourneyStore(context, "default").data["name"] == "Ada"
 
 
+# --- minting a journey --------------------------------------------------------
+
+
+def test_minting_records_the_run_as_a_section_and_lands_on_the_new_journey(rf):
+    """The first wizard's finished run becomes one of the hub's members —
+    stashed under its key, recorded like any finish — under an id the hub
+    mints, and the response is the page under that id."""
+    view = _contact_view(
+        rf, {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+
+    response = _JourneyHub.mint(view.request, _retrieved(view), section="contact")
+
+    assert response.status_code == 302
+    journey = response["Location"].rstrip("/").rsplit("/", 1)[-1]
+    assert response["Location"] == f"/readme/apply/{journey}/"
+    store = SessionJourneyStore(WizardContext.from_request(view.request), journey)
+    assert store.get_stash("contact")["state"] == [{"step": {"name": "Ada"}}]
+    assert store.get_run("contact") is None
+
+
+def test_minting_can_be_given_the_journey(rf):
+    response = _JourneyHub.mint(_page(_Hub, rf).request, journey="app-9")
+
+    assert response["Location"] == "/readme/apply/app-9/"
+
+
+def test_minting_a_run_without_saying_which_section_is_misconfigured(rf):
+    view = _contact_view(
+        rf, {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="section="):
+        _JourneyHub.mint(view.request, _retrieved(view))
+
+
+def test_minting_for_a_hub_not_under_a_journey_lands_on_its_one_page(rf):
+    """One journey per session: there is no segment to put the id in."""
+    response = _Hub.mint(_page(_Hub, rf).request)
+
+    assert response["Location"] == "/readme/hub/"
+
+
 # --- submitting the journey ---------------------------------------------------
 
 
