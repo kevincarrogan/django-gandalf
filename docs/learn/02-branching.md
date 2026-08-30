@@ -23,11 +23,11 @@ class OrganisationForm(forms.Form):
 
 
 def is_organisation(context):
-    applying_as = context.run.path.find_step(name="applying_as")
+    applying_as = context.run.path.find_step(name="applying-as")
     return applying_as.form.cleaned_data["applying_as"] == "organisation"
 
 
-individual_details = Wizard().step(AboutYouForm, name="about_you")
+individual_details = Wizard().step(AboutYouForm, name="about-you")
 organisation_details = Wizard().step(OrganisationForm, name="organisation")
 
 
@@ -35,7 +35,7 @@ def applicant(organisation=organisation_details, individual=individual_details):
     """Who is applying: the question, then the arm the answer selects."""
     return (
         Wizard()
-        .step(ApplyingAsForm, name="applying_as")
+        .step(ApplyingAsForm, name="applying-as")
         .branch(condition(is_organisation, organisation), default=individual)
     )
 

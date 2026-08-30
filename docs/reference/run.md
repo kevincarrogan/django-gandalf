@@ -386,7 +386,7 @@ from gandalf.context import WizardContext
 
 
 def is_organisation(context: WizardContext) -> bool:
-    step = context.run.path.find_step(name="applying_as")
+    step = context.run.path.find_step(name="applying-as")
     return step is not None and step.form.cleaned_data["applying_as"] == "organisation"
 ```
 

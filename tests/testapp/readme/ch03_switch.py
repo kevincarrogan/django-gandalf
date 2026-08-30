@@ -12,12 +12,12 @@ from .forms import CharityNumberForm, CompanyNumberForm, EmailForm, Organisation
 #: Chapter 2's organisation arm, grown. `ch02.organisation_details` is
 #: untouched — every call on a Wizard returns a new one.
 organisation_details = ch02.organisation_details.step(
-    OrganisationTypeForm, name="organisation_type"
+    OrganisationTypeForm, name="organisation-type"
 ).switch(
-    on_field("organisation_type", "organisation_type"),
+    on_field("organisation-type", "organisation_type"),
     {
-        "charity": Wizard().step(CharityNumberForm, name="charity_number"),
-        "company": Wizard().step(CompanyNumberForm, name="company_number"),
+        "charity": Wizard().step(CharityNumberForm, name="charity-number"),
+        "company": Wizard().step(CompanyNumberForm, name="company-number"),
     },
     # A community group has no number to give, so there is no default
     # arm: the walk continues past the switch.

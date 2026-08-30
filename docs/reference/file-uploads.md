@@ -175,11 +175,11 @@ class OrganisationViewSet(WizardViewSet):
     wizard = (
         Wizard()
         .step(OrganisationForm, name="organisation")
-        .step(GoverningDocumentForm, name="governing_document")
+        .step(GoverningDocumentForm, name="governing-document")
     )
 
     def done(self, run):
-        document = run.path.find_step(name="governing_document")
+        document = run.path.find_step(name="governing-document")
         return HttpResponse(f"Received {document.files['document']['name']}")
 ```
 
@@ -195,7 +195,7 @@ class OrganisationViewSet(WizardViewSet):
     ...
 
     def done(self, run):
-        step = run.path.find_step(name="governing_document")
+        step = run.path.find_step(name="governing-document")
         organisation = Organisation.objects.get(pk=run.metadata["organisation_id"])
         organisation.governing_document.save(
             step.files["document"]["name"],
@@ -224,7 +224,7 @@ class TenantFileStorage(WizardFileStorage):
 
 wizard = (
     Wizard()
-    .step(GoverningDocumentForm, name="governing_document")
+    .step(GoverningDocumentForm, name="governing-document")
     .configure(file_storage_class=TenantFileStorage)
 )
 ```

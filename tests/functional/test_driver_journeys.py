@@ -89,9 +89,9 @@ def test_an_earlier_answer_can_be_corrected_and_the_walk_re_routes():
     driver = RunDriver.begin(BranchingApplicationViewSet, may_finish=True)
     driver.submit({"applying_as": "organisation"})
 
-    driver.submit({"applying_as": "individual"}, step="applying_as")
+    driver.submit({"applying_as": "individual"}, step="applying-as")
 
-    assert driver.describe().step == "about_you"
+    assert driver.describe().step == "about-you"
 
 
 def test_a_driver_can_tell_its_own_answers_from_a_persons():

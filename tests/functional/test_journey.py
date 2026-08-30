@@ -428,7 +428,7 @@ def test_an_observer_counts_the_answers_applicants_get_wrong(client):
 
     # One event per placement: the rejected answer, and not the replays of
     # the accepted one on the requests that followed it.
-    assert ch14_journey.rejections == ["applying_as"]
+    assert ch14_journey.rejections == ["applying-as"]
 
 
 # --- the machinery, on a hub with nothing to say ---------------------------

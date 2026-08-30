@@ -11,7 +11,7 @@ class GoverningDocumentForm(forms.Form):
 
 
 organisation_details = ch04.organisation_details.step(
-    GoverningDocumentForm, name="governing_document", label="Governing document"
+    GoverningDocumentForm, name="governing-document", label="Governing document"
 )
 
 
@@ -21,7 +21,7 @@ class DocumentedApplicationViewSet(WizardViewSet):
     wizard = with_contact_and_review(ch02.applicant(organisation=organisation_details))
 
     def done(self, run):
-        document = run.path.find_step(name="governing_document")
+        document = run.path.find_step(name="governing-document")
         if document is None:
             return HttpResponse("Application received (no document needed)")
         return HttpResponse(f"Received {document.files['document']['name']}")

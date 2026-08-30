@@ -445,16 +445,16 @@ from gandalf.wizard import Wizard, condition
 
 
 def is_organisation(context):
-    applying_as = context.run.path.find_step(name="applying_as")
+    applying_as = context.run.path.find_step(name="applying-as")
     return applying_as.form.cleaned_data["applying_as"] == "organisation"
 
 
-individual_details = Wizard().step(AboutYouForm, name="about_you")
+individual_details = Wizard().step(AboutYouForm, name="about-you")
 organisation_details = Wizard().step(OrganisationForm, name="organisation")
 
 application = (
     Wizard()
-    .step(ApplyingAsForm, name="applying_as")
+    .step(ApplyingAsForm, name="applying-as")
     .branch(condition(is_organisation, organisation_details), default=individual_details)
     .step(EmailForm, name="contact")
 )
@@ -471,12 +471,12 @@ from gandalf.wizard import Wizard, on_field
 
 organisation_details = (
     Wizard()
-    .step(OrganisationTypeForm, name="organisation_type")
+    .step(OrganisationTypeForm, name="organisation-type")
     .switch(
-        on_field("organisation_type", "organisation_type"),
+        on_field("organisation-type", "organisation_type"),
         {
-            "charity": Wizard().step(CharityNumberForm, name="charity_number"),
-            "company": Wizard().step(CompanyNumberForm, name="company_number"),
+            "charity": Wizard().step(CharityNumberForm, name="charity-number"),
+            "company": Wizard().step(CompanyNumberForm, name="company-number"),
         },
         # No default: a community group has no number to give, so the walk
         # continues past the switch.

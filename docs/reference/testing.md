@@ -438,8 +438,8 @@ part of every URL the driver reverses:
 def test_the_arts_fund_inserts_a_portfolio_step(wizard_driver):
     response, _ = wizard_driver("readme-fund", fund="arts").drive(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("portfolio", {"portfolio_url": "https://ada.example.com"}),
             ("contact", {"email": "ada@example.com"}),
         ]
@@ -460,7 +460,7 @@ def test_stores_the_governing_document(wizard_driver, isolated_media_root):
         "constitution.pdf", b"bytes", content_type="application/pdf"
     )
 
-    response = run.post_step("governing_document", {"document": document}, follow=True)
+    response = run.post_step("governing-document", {"document": document}, follow=True)
 
     assert response.status_code == HTTPStatus.OK
 ```

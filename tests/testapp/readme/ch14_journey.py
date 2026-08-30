@@ -52,7 +52,7 @@ class CountRejections(WizardObserver):
 def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
-    step = run.path.find_step(name="applying_as")
+    step = run.path.find_step(name="applying-as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 
 
@@ -68,7 +68,7 @@ def record_email(store, run):
 
 setup = (
     Wizard()
-    .step(ApplyingAsForm, name="applying_as", label="Applying as")
+    .step(ApplyingAsForm, name="applying-as", label="Applying as")
     .configure(
         template_name="testapp/linear_wizard.html",
         observer_class=CountRejections,

@@ -44,12 +44,12 @@ class ApplicationWizard(SessionWizardView):
 
 # gandalf — the condition lives next to the step it guards
 def is_organisation(context):
-    applying_as = context.run.path.find_step(name="applying_as")
+    applying_as = context.run.path.find_step(name="applying-as")
     return applying_as.form.cleaned_data["applying_as"] == "organisation"
 
 application = (
     Wizard()
-    .step(ApplyingAsForm, name="applying_as")
+    .step(ApplyingAsForm, name="applying-as")
     .branch(
         condition(is_organisation, Wizard().step(OrganisationForm, name="organisation")),
         default=None,  # skip it when the condition is false
@@ -69,12 +69,12 @@ class ApplicationWizard(SessionWizardView):
         ...  # custom, dynamic next-step logic
 
 # gandalf — the shape is the declaration
-organisation_details = Wizard().step(OrganisationForm, name="organisation").step(OrganisationTypeForm, name="organisation_type")
-individual_details = Wizard().step(AboutYouForm, name="about_you")
+organisation_details = Wizard().step(OrganisationForm, name="organisation").step(OrganisationTypeForm, name="organisation-type")
+individual_details = Wizard().step(AboutYouForm, name="about-you")
 
 application = (
     Wizard()
-    .step(ApplyingAsForm, name="applying_as")
+    .step(ApplyingAsForm, name="applying-as")
     .branch(condition(is_organisation, organisation_details), default=individual_details)
     .step(EmailForm, name="contact")
 )

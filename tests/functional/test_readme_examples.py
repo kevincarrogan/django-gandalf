@@ -33,10 +33,10 @@ ADDRESS = {
 }
 
 ORGANISATION = [
-    ("applying_as", {"applying_as": "organisation"}),
+    ("applying-as", {"applying_as": "organisation"}),
     ("organisation", {"organisation_name": "Ely Rowing Club"}),
-    ("organisation_type", {"organisation_type": "charity"}),
-    ("charity_number", {"charity_number": "1234567"}),
+    ("organisation-type", {"organisation_type": "charity"}),
+    ("charity-number", {"charity_number": "1234567"}),
     ("trustees", {"trustees": "2"}),
     ("trustee-0", {"name": "Ada"}),
     ("trustee-1", {"name": "Grace"}),
@@ -114,7 +114,7 @@ def test_chapter_1_first_answer_advances_and_stores(wizard_driver):
 def test_chapter_2_takes_the_organisation_arm(wizard_driver):
     response, _ = wizard_driver("readme-branching").drive(
         [
-            ("applying_as", {"applying_as": "organisation"}),
+            ("applying-as", {"applying_as": "organisation"}),
             ("organisation", {"organisation_name": "Ely Rowing Club"}),
             ("contact", {"email": "club@example.com"}),
         ]
@@ -127,8 +127,8 @@ def test_chapter_2_takes_the_organisation_arm(wizard_driver):
 def test_chapter_2_takes_the_individual_arm(wizard_driver):
     response, _ = wizard_driver("readme-branching").drive(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("contact", {"email": "ada@example.com"}),
         ]
     )
@@ -143,8 +143,8 @@ def test_chapter_2_takes_the_individual_arm(wizard_driver):
 @pytest.mark.parametrize(
     "organisation_type, number_step, number, expected",
     [
-        ("charity", "charity_number", {"charity_number": "1234567"}, "(1234567)"),
-        ("company", "company_number", {"company_number": "09876543"}, "(09876543)"),
+        ("charity", "charity-number", {"charity_number": "1234567"}, "(1234567)"),
+        ("company", "company-number", {"company_number": "09876543"}, "(09876543)"),
     ],
 )
 def test_chapter_3_asks_the_number_the_kind_of_organisation_has(
@@ -152,9 +152,9 @@ def test_chapter_3_asks_the_number_the_kind_of_organisation_has(
 ):
     response, _ = wizard_driver("readme-switch").drive(
         [
-            ("applying_as", {"applying_as": "organisation"}),
+            ("applying-as", {"applying_as": "organisation"}),
             ("organisation", {"organisation_name": "Ely Rowing Club"}),
-            ("organisation_type", {"organisation_type": organisation_type}),
+            ("organisation-type", {"organisation_type": organisation_type}),
             (number_step, number),
             ("contact", {"email": "club@example.com"}),
         ]
@@ -170,9 +170,9 @@ def test_chapter_3_a_community_group_has_no_number_to_give(wizard_driver):
 
     response = run.post_steps(
         [
-            ("applying_as", {"applying_as": "organisation"}),
+            ("applying-as", {"applying_as": "organisation"}),
             ("organisation", {"organisation_name": "Ely Allotments"}),
-            ("organisation_type", {"organisation_type": "community"}),
+            ("organisation-type", {"organisation_type": "community"}),
         ]
     )
 
@@ -197,8 +197,8 @@ def test_chapter_4_grows_one_step_per_trustee(wizard_driver):
 def test_chapter_5_the_sport_fund_asks_no_portfolio(wizard_driver):
     response, _ = wizard_driver("readme-fund", fund="sport").drive(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Coach"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Coach"}),
             ("contact", {"email": "ada@example.com"}),
         ]
     )
@@ -209,8 +209,8 @@ def test_chapter_5_the_sport_fund_asks_no_portfolio(wizard_driver):
 def test_chapter_5_the_arts_fund_inserts_a_portfolio_step(wizard_driver):
     response, _ = wizard_driver("readme-fund", fund="arts").drive(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("portfolio", {"portfolio_url": "https://ada.example.com"}),
             ("contact", {"email": "ada@example.com"}),
         ]
@@ -225,8 +225,8 @@ def test_chapter_5_the_arts_fund_inserts_a_portfolio_step(wizard_driver):
 def _individual(run):
     return run.post_steps(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("contact", {"email": "ada@example.com"}),
             ("address", ADDRESS),
         ]
@@ -235,11 +235,11 @@ def _individual(run):
 
 def test_chapter_6_renders_a_completed_step_prefilled(wizard_driver):
     run = wizard_driver("readme-review").start()
-    run.post_step("applying_as", {"applying_as": "individual"}, follow=True)
+    run.post_step("applying-as", {"applying_as": "individual"}, follow=True)
 
     # A completed step's own URL renders it again, pre-filled — this is the
     # edit affordance the summary links to.
-    response = run.get_step("applying_as", follow=True)
+    response = run.get_step("applying-as", follow=True)
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, 'value="individual" selected')
@@ -254,8 +254,8 @@ def test_chapter_6_lists_every_answer_with_a_change_link(wizard_driver):
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
     assert [(row.label, row.url) for row in rows] == [
-        ("Applying as", run.step_url("applying_as")),
-        ("About you", run.step_url("about_you")),
+        ("Applying as", run.step_url("applying-as")),
+        ("About you", run.step_url("about-you")),
         ("Email", run.step_url("contact")),
         ("Address", run.step_url("address")),
     ]
@@ -287,15 +287,15 @@ def test_chapter_6_restores_a_dormant_arm_answer(wizard_driver):
     # Organisation arm: answer the type and the organisation's name.
     run.post_steps(
         [
-            ("applying_as", {"applying_as": "organisation"}),
+            ("applying-as", {"applying_as": "organisation"}),
             ("organisation", {"organisation_name": "Ely Rowing Club"}),
         ]
     )
 
     # Edit the type to individual — the organisation arm goes dormant.
-    run.post_step("applying_as", {"applying_as": "individual"}, follow=True)
+    run.post_step("applying-as", {"applying_as": "individual"}, follow=True)
     # Flip back — the dormant name is restored, not re-asked.
-    run.post_step("applying_as", {"applying_as": "organisation"}, follow=True)
+    run.post_step("applying-as", {"applying_as": "organisation"}, follow=True)
 
     prefilled = run.get_step("organisation", follow=True)
     assertContains(prefilled, "Ely Rowing Club")
@@ -317,8 +317,8 @@ def test_chapter_6_confirms_and_finishes(wizard_driver):
 def _to_contact(run):
     return run.post_steps(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
         ]
     )
 
@@ -391,7 +391,7 @@ def test_chapter_8_stores_and_reports_the_upload(wizard_driver, isolated_media_r
     response = run.post_steps(
         ORGANISATION
         + [
-            ("governing_document", {"document": _document()}),
+            ("governing-document", {"document": _document()}),
             ("contact", {"email": "club@example.com"}),
             ("website", {"website": ""}),
             ("address", ADDRESS),
@@ -406,8 +406,8 @@ def test_chapter_8_stores_and_reports_the_upload(wizard_driver, isolated_media_r
 def test_chapter_8_an_individual_is_never_asked_for_a_document(wizard_driver):
     response, _ = wizard_driver("readme-upload").drive(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("contact", {"email": "ada@example.com"}),
             ("website", {"website": ""}),
             ("address", ADDRESS),
@@ -429,8 +429,8 @@ def test_chapter_9_opens_a_record_at_the_start_and_submits_it_at_the_end(wizard_
 
     response = run.post_steps(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("contact", {"email": "ada@example.com"}),
             ("website", {"website": ""}),
             ("address", ADDRESS),
@@ -450,8 +450,8 @@ def test_chapter_9_a_revisit_after_completion_still_names_the_record(wizard_driv
     run = wizard_driver("readme-record").start()
     run.post_steps(
         [
-            ("applying_as", {"applying_as": "individual"}),
-            ("about_you", {"occupation": "Sculptor"}),
+            ("applying-as", {"applying_as": "individual"}),
+            ("about-you", {"occupation": "Sculptor"}),
             ("contact", {"email": "ada@example.com"}),
             ("website", {"website": ""}),
             ("address", ADDRESS),

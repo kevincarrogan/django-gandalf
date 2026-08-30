@@ -9,10 +9,10 @@ A configured wizard can describe itself, as data:
 
 ```python
 ExpandingApplicationViewSet.wizard.configure(template_name="...").outline()
-# [{"kind": "step", "name": "applying_as", ...},
+# [{"kind": "step", "name": "applying-as", ...},
 #  {"kind": "branch", "arms": [{"steps": [..., {"kind": "switch", ...},
 #                                         ..., {"kind": "expand"}]}],
-#   "default": [{"kind": "step", "name": "about_you", ...}]},
+#   "default": [{"kind": "step", "name": "about-you", ...}]},
 #  {"kind": "step", "name": "contact", ...}]
 ```
 

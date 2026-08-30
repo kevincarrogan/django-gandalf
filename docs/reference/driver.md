@@ -412,7 +412,7 @@ rejected.errors["email"][0]["code"]  # "invalid"
 driver.submit({"email": "ada@example.org"})
 
 # Re-answer the step that chose the branch; the walk re-routes from it.
-driver.submit({"applying_as": "organisation"}, step="applying_as")
+driver.submit({"applying_as": "organisation"}, step="applying-as")
 driver.describe().step             # "organisation"
 ```
 

@@ -17,10 +17,10 @@ from gandalf.wizard import Wizard, condition
 
 application = (
     Wizard()
-    .step(ApplyingAsForm, name="applying_as")
+    .step(ApplyingAsForm, name="applying-as")
     .branch(
         condition(is_organisation, Wizard().step(OrganisationForm, name="organisation")),
-        default=Wizard().step(AboutYouForm, name="about_you"),
+        default=Wizard().step(AboutYouForm, name="about-you"),
     )
     .step(EmailForm, name="contact")
 )
