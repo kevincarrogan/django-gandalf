@@ -2232,6 +2232,19 @@ class ReshapedGuestsViewSet(GuestsViewSet):
     add_another = GUESTS.replace(label="guests-v2", item_name=None)
 
 
+class TitledGuestsViewSet(GuestsViewSet):
+    """Items named by a callable of the finished run, not one field."""
+
+    description = "Items named by a callable rather than a field."
+    url_name = "titled-guests"
+    key = "titled-guests"
+    add_another = GUESTS.replace(
+        item_title=lambda bound_wizard: bound_wizard.path.find_step(name="guest")
+        .form.cleaned_data["name"]
+        .upper()
+    )
+
+
 class DurableGuestsViewSet(GuestsViewSet):
     """Items on model-backed storage — both stores swapped, which is what a
     list the user grows over days needs."""

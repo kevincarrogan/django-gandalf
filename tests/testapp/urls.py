@@ -305,6 +305,7 @@ urlpatterns = [
     path("advancing-guests/", include(views.AdvancingGuestsViewSet.urls())),
     path("anonymous-guests/", include(views.AnonymousGuestsViewSet.urls())),
     path("off-route-guests/", include(views.OffRouteGuestsViewSet.urls())),
+    path("titled-guests/", include(views.TitledGuestsViewSet.urls())),
     path("durable-guests/", include(views.DurableGuestsViewSet.urls())),
     path("reshaped-guests/", include(views.ReshapedGuestsViewSet.urls())),
 ]

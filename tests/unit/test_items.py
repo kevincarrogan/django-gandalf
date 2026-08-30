@@ -196,13 +196,6 @@ def test_an_add_another_in_a_group_is_keyed_under_the_groups_prefix():
     assert viewset.item_viewset.list_key == "supporting:guests"
 
 
-def test_an_add_another_entry_reopens_a_finished_item_where_it_says():
-    entry = GUESTS.replace(reopen="review").bound("guests")
-
-    assert entry.reopen_step == "review"
-    assert GUESTS.reopen_step is None
-
-
 def test_an_item_viewset_in_the_slot_carries_the_items_behaviour():
     class _Saved(ItemViewSet):
         wizard = GUEST

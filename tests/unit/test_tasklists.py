@@ -1165,14 +1165,6 @@ def test_a_section_without_a_page_to_return_to_is_misconfigured(rf):
         view.get_tasklist_url()
 
 
-def test_a_section_under_a_submitted_journey_sends_the_user_up(rf):
-    view = _contact_view(rf, {"completed": True})
-
-    response = view.submitted(view.get_journey_store())
-
-    assert response["Location"] == "/readme/hub/"
-
-
 # --- URLs ------------------------------------------------------------------
 
 

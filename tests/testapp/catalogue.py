@@ -475,6 +475,7 @@ GROUPS = (
         (
             Example("durable-hub", note="Start here; its runs survive a restart."),
             Example("durable-hub-durable"),
+            Example("titled-guests"),
             Example(
                 "durable-guests",
                 note="A collection whose registry is a table, so two tabs "

@@ -311,10 +311,6 @@ class AddAnother(Entry):
             "remove_template_name": self.remove_template_name,
         }
 
-    @property
-    def reopen_step(self) -> str | None:  # type: ignore[override]
-        return self.reopen
-
 
 class Group(Entry):
     """A task list within this one: its sections are keyed under this
@@ -685,9 +681,6 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
 
     def get_tasklist_url_kwargs(self) -> dict[str, Any]:
         return self.get_url_kwargs()
-
-    def submitted(self, store: JourneyStore) -> HttpResponseBase:
-        return redirect(self.get_tasklist_url())
 
     def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
         """Record the section as finished, then hand off to `run_done()`.
