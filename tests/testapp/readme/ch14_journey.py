@@ -1,14 +1,11 @@
 """Chapter 14 — one application, start to submit. Everything so far, scoped
 to one journey, with an ending."""
 
-import uuid
-
 from django.shortcuts import redirect, render
 
 from gandalf.collections import Collection
 from gandalf.hubs import Hub, HubViewSet
 from gandalf.observers import WizardObserver
-from gandalf.storage import SessionJourneyStore
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -186,17 +183,15 @@ class GrantApplicationViewSet(HubViewSet):
 
 
 class ApplicationStartViewSet(WizardViewSet):
-    """The first wizard. There is no journey yet, so `done()` mints one,
-    stashes these answers as its first member, and sends the applicant to
-    the hub under the new id."""
+    """The first wizard. There is no journey yet, so `done()` begins one,
+    records these answers as its `setup` member — stashed, `run_done()`
+    run — and sends the applicant to the hub under the new id."""
 
     description = "Chapter 14: the setup wizard that mints an application."
     url_name = "readme-apply-start"
     wizard = setup
 
     def done(self, bound_wizard):
-        journey = uuid.uuid4().hex
-        store = SessionJourneyStore(self.context_for(self.request), journey)
-        store.put_stash("setup", bound_wizard.stash(label="setup"))
-        record_applying_as(store, bound_wizard)
-        return redirect("readme-apply", journey=journey)
+        journey = GrantApplicationViewSet.begin(self.request)
+        journey.finish("setup", bound_wizard)
+        return redirect(journey.url)

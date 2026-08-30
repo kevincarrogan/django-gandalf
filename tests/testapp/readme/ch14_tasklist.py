@@ -120,9 +120,8 @@ class GrantApplication(TaskList):
 
 
 class TaskListStartViewSet(WizardViewSet):
-    """The first wizard, before there is a journey to be a section of.
-    `mint()` records its run as the `setup` section — stashed, its
-    `run_done()` run — and lands on the list under the new id."""
+    """The first wizard, before there is a journey to be a section of:
+    begin one, record this run as its `setup` section, go there."""
 
     description = (
         "Chapter 14 as a task list: the setup wizard that mints an application."
@@ -131,4 +130,6 @@ class TaskListStartViewSet(WizardViewSet):
     wizard = setup
 
     def done(self, bound_wizard):
-        return GrantApplication.mint(self.request, bound_wizard, section="setup")
+        journey = GrantApplication.begin(self.request)
+        journey.finish("setup", bound_wizard)
+        return redirect(journey.url)

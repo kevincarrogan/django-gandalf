@@ -101,6 +101,7 @@ __all__ = [
     "Hub",
     "HubPage",
     "HubViewSet",
+    "Journey",
     "JourneyScoped",
     "Member",
     "MemberDeclaration",
@@ -857,47 +858,23 @@ class HubViewSet(JourneyScoped, TemplateView):
         return patterns
 
     @classmethod
-    def mint(
-        cls,
-        request: HttpRequest,
-        bound_wizard: BoundWizard | None = None,
-        *,
-        section: str | None = None,
-        journey: str | None = None,
-        **url_kwargs: Any,
-    ) -> HttpResponseBase:
-        """Begin a journey and send the user to its page.
-
-        For a hub mounted under a `<journey>` segment, something has to
-        mint the id before the page has a URL — usually the first wizard's
-        `done()`. Handed that wizard's finished run and the `section` it
-        counts as, this records it exactly as finishing the section from
-        the hub would have: stashed under the section's key and label, its
-        `run_done()` run, so it arrives on the page already complete and
-        re-openable like any other row.
+    def begin(
+        cls, request: HttpRequest, journey: str | None = None, **url_kwargs: Any
+    ) -> Journey:
+        """Begin a journey on this hub and hand back a `Journey`: its id,
+        its store, its page's URL, and `finish()` for recording a run as
+        one of the sections — the whole of what a start wizard needs:
 
             def done(self, bound_wizard):
-                return GrantApplication.mint(self.request, bound_wizard, section="setup")
+                journey = GrantApplication.begin(self.request)
+                journey.finish("setup", bound_wizard)
+                return redirect(journey.url)
 
-        `journey` is minted when not given. `url_kwargs` are the page's
-        mount-prefix kwargs, if it has any.
+        Nothing about it needs a wizard: an "apply again" link, a command
+        or an agent begins one the same way. `journey` is made up when not
+        given; `url_kwargs` are the page's mount-prefix kwargs, if any.
         """
-        journey = journey or uuid.uuid4().hex
-        kwargs = {**url_kwargs, cls.journey_url_kwarg: journey}
-        if bound_wizard is not None:
-            if section is None:
-                raise ImproperlyConfigured(
-                    "mint() needs the section a finished run counts as: "
-                    f"{cls.__name__}.mint(request, bound_wizard, section=...)."
-                )
-            view = cls.viewset_for(section)()
-            view.setup(request, **kwargs)
-            view.done(bound_wizard)
-        try:
-            return redirect(reverse(cls.url_name, kwargs=kwargs))
-        except NoReverseMatch:
-            # Not mounted under a journey segment: one journey per session.
-            return redirect(reverse(cls.url_name, kwargs=url_kwargs))
+        return Journey(cls, request, journey or uuid.uuid4().hex, url_kwargs)
 
     @classmethod
     def viewset_for(cls, key: str) -> type[Any]:
@@ -1259,3 +1236,57 @@ class HubViewSet(JourneyScoped, TemplateView):
         if url is None:
             return self.member_unavailable(key)
         return redirect(url)
+
+
+class Journey:
+    """A journey begun on a hub, from outside the hub's own requests.
+
+    `id` is the journey's identity, `store` its record, `url` the hub's
+    page for it. `finish()` records a finished run as one of the hub's
+    sections exactly as finishing it from the page would — stashed under
+    the section's key and label, its `run_done()` run — so it arrives
+    complete and re-openable like any other row.
+    """
+
+    def __init__(
+        self,
+        hub: type[HubViewSet],
+        request: HttpRequest,
+        id: str,
+        url_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        self.hub = hub
+        self.request = request
+        self.id = id
+        self.url_kwargs = dict(url_kwargs or {})
+
+    @property
+    def page_kwargs(self) -> dict[str, Any]:
+        """The kwargs the hub's page is reversed with: the mount prefix and,
+        when the hub is mounted under a journey segment, this journey."""
+        kwargs = {**self.url_kwargs, self.hub.journey_url_kwarg: self.id}
+        try:
+            reverse(cast(str, self.hub.url_name), kwargs=kwargs)
+        except NoReverseMatch:
+            # One journey per session: no segment to put the id in.
+            return self.url_kwargs
+        return kwargs
+
+    @property
+    def url(self) -> str:
+        return reverse(cast(str, self.hub.url_name), kwargs=self.page_kwargs)
+
+    @property
+    def store(self) -> JourneyStore:
+        return cast(
+            JourneyStore,
+            self.hub.journey_store_class(
+                WizardContext.from_request(self.request), self.id
+            ),
+        )
+
+    def finish(self, section: str, bound_wizard: BoundWizard) -> None:
+        """Record `bound_wizard`'s finished run as `section`."""
+        view = self.hub.viewset_for(section)()
+        view.setup(self.request, **self.page_kwargs)
+        view.done(bound_wizard)
