@@ -35,7 +35,7 @@ from gandalf.testing import (
     stored_section_stash,
     stored_section_stashes,
 )
-from tests.testapp.readme.ch11_hub import GrantApplicationViewSet, contact
+from tests.testapp.readme.ch12_hub import GrantApplicationViewSet, contact
 
 
 ContactSectionViewSet = GrantApplicationViewSet.viewset_for("contact")

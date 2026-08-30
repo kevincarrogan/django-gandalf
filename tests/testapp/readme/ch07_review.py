@@ -1,4 +1,4 @@
-"""Chapter 6 — check your answers. Editing is a link, and a summary page is
+"""Chapter 7 — check your answers. Editing is a link, and a summary page is
 the same three questions asked of every answer."""
 
 from django.http import HttpResponse
@@ -41,7 +41,7 @@ def with_contact_and_review(wizard):
 
 class ReviewedApplicationViewSet(WizardViewSet):
     description = (
-        "Chapter 6: edit links, a check-your-answers page, and dormant memory."
+        "Chapter 7: edit links, a check-your-answers page, and dormant memory."
     )
     url_name = "readme-review"
     template_name = "testapp/linear_wizard.html"

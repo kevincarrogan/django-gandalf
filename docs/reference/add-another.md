@@ -603,4 +603,4 @@ Set `remove_template_name` on the entry, or on a root viewset.
 
 ---
 
-**Learn:** [Chapter 12 — Add another](../learn/12-add-another.md) · **Related:** [Task lists](tasklists.md), [Journey store](journey-store.md), [Stashing](stashing.md), [Testing](testing.md), [`WizardViewSet`](viewsets.md)
+**Learn:** [Chapter 13 — Add another](../learn/13-add-another.md) · **Related:** [Task lists](tasklists.md), [Journey store](journey-store.md), [Stashing](stashing.md), [Testing](testing.md), [`WizardViewSet`](viewsets.md)

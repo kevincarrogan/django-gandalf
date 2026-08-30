@@ -1,8 +1,8 @@
-# Chapter 11 — Task lists: sections in any order
+# Chapter 12 — Task lists: sections in any order
 
 An application is not one wizard. Contact details, an address, the project,
 the budget, referees — each is its own thing, finished on its own, in any
-order, and re-opened later. Chapter 10 did the stashing by hand; a **task
+order, and re-opened later. Chapter 11 did the stashing by hand; a **task
 list** is that pattern with the bookkeeping owned by the library. Declare
 the sections, and the page renders a row per section carrying its title,
 its status and one URL that does the right thing whichever state it is in.
@@ -107,8 +107,8 @@ the classmethods the page uses to bind a wizard from outside its own
 request (`begin()`, `inspect()`, `reopen()`) are public in their own
 right. All of it is in the [Task lists reference](../reference/tasklists.md).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`ch11_hub.py`](../../tests/testapp/readme/ch11_hub.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/hub/ &nbsp;·&nbsp; **Source:** [`ch12_hub.py`](../../tests/testapp/readme/ch12_hub.py)
 
 ---
 
-[← Chapter 10 — Stashing: leave and come back](10-stashing.md) · [Learn](README.md) · [Chapter 12 — Add another: a list the user grows →](12-add-another.md)
+[← Chapter 11 — Stashing: leave and come back](11-stashing.md) · [Learn](README.md) · [Chapter 13 — Add another: a list the user grows →](13-add-another.md)

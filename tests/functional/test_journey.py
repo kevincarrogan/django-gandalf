@@ -30,7 +30,7 @@ from gandalf.testing import (
     stored_section_stashes,
 )
 from tests.testapp.models import Application
-from tests.testapp.readme import ch14_journey
+from tests.testapp.readme import ch15_journey
 
 
 pytestmark = pytest.mark.django_db
@@ -415,11 +415,11 @@ def test_submitting_one_journey_leaves_another_untouched(client):
     assert not stored_journey(client, second).get("completed")
 
 
-# --- watching it (chapter 15) ------------------------------------------------
+# --- watching it (chapter 16) ------------------------------------------------
 
 
 def test_an_observer_counts_the_answers_applicants_get_wrong(client):
-    ch14_journey.rejections.clear()
+    ch15_journey.rejections.clear()
     response = client.get(reverse("readme-apply-start"), follow=True)
     run_url = response.redirect_chain[-1][0]
 
@@ -428,7 +428,7 @@ def test_an_observer_counts_the_answers_applicants_get_wrong(client):
 
     # One event per placement: the rejected answer, and not the replays of
     # the accepted one on the requests that followed it.
-    assert ch14_journey.rejections == ["applying-as"]
+    assert ch15_journey.rejections == ["applying-as"]
 
 
 # --- the machinery, on a hub with nothing to say ---------------------------
@@ -503,7 +503,7 @@ def test_a_post_to_a_door_submits_nothing(client):
 
 
 def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
-    """Chapter 11's task list has no `journey_done()`: a complete hub can be
+    """Chapter 12's task list has no `journey_done()`: a complete hub can be
     submitted, and the library refuses to pretend that meant something."""
     for key in ("contact", "address"):
         seed_section_stash(client, key, {"version": 1, "label": key, "state": []})

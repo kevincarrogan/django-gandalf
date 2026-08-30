@@ -58,7 +58,7 @@ troubleshooting. Come here when you know what you are looking for.
 | build my first wizard | [Learn, chapter 1](docs/learn/01-steps-and-completion.md) |
 | see every builder method | [Reference: Wizard](docs/reference/wizard.md) |
 | override a viewset hook | [Reference: WizardViewSet](docs/reference/viewsets.md) |
-| build a task list of wizards | [Learn, chapter 11](docs/learn/11-task-lists.md) · [Reference: Task lists](docs/reference/tasklists.md) |
+| build a task list of wizards | [Learn, chapter 12](docs/learn/12-task-lists.md) · [Reference: Task lists](docs/reference/tasklists.md) |
 | test a wizard | [Reference: Testing](docs/reference/testing.md) |
 | migrate from `django-formtools` | [Coming from formtools](docs/learn/coming-from-django-formtools.md) |
 | know what replaying costs | [Reference: Walk costs](docs/reference/walk-costs.md) |

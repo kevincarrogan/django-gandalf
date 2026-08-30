@@ -84,4 +84,4 @@ documented in the [`WizardViewSet` reference](../reference/viewsets.md#wizardvie
 
 ---
 
-[← Chapter 4 — Expanding from an answer](04-expanding.md) · [Learn](README.md) · [Chapter 6 — The summary: check your answers →](06-the-summary.md)
+[← Chapter 4 — Expanding from an answer](04-expanding.md) · [Learn](README.md) · [Chapter 6 — Step views: bring your own `FormView` →](06-step-views.md)

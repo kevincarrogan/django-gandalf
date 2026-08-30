@@ -1304,7 +1304,7 @@ def test_a_link_publishes_no_routes():
 def _readme_page(rf, path, **kwargs):
     """The README's task list, dispatched directly — one view over two
     routes."""
-    from tests.testapp.readme.ch11_hub import GrantApplicationViewSet
+    from tests.testapp.readme.ch12_hub import GrantApplicationViewSet
 
     request = rf.get(path)
     request.session = _session()
@@ -1680,7 +1680,7 @@ def test_a_page_says_a_submitted_journey_is_gone_by_default(rf):
 
 def _apply(rf, method, path, session=None, **kwargs):
     """The README's application, dispatched directly under a journey."""
-    from tests.testapp.readme.ch14_journey import GrantApplicationViewSet
+    from tests.testapp.readme.ch15_journey import GrantApplicationViewSet
 
     request = getattr(rf, method)(path)
     request.session = _session(session, journey="app-1")
@@ -1757,7 +1757,7 @@ def test_a_submitted_journeys_door_is_refused(rf):
 
 def test_a_submitted_journeys_section_wizard_refuses_a_bookmarked_url(rf):
     """A stale run URL must not re-open a section into a tombstone."""
-    from tests.testapp.readme.ch14_journey import GrantApplicationViewSet
+    from tests.testapp.readme.ch15_journey import GrantApplicationViewSet
 
     request = rf.get("/readme/apply/app-1/contact/run-1/")
     request.session = _session({"completed": True}, journey="app-1")

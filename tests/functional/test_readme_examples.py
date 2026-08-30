@@ -251,7 +251,7 @@ def test_chapter_5_the_arts_fund_inserts_a_portfolio_step(wizard_driver):
     assert response.content == b"Application to the arts fund from ada@example.com"
 
 
-# --- Chapter 6: check your answers -------------------------------------------
+# --- Chapter 7: check your answers -------------------------------------------
 
 
 def _individual(run):
@@ -265,7 +265,7 @@ def _individual(run):
     )
 
 
-def test_chapter_6_renders_a_completed_step_prefilled(wizard_driver):
+def test_chapter_7_renders_a_completed_step_prefilled(wizard_driver):
     run = wizard_driver("readme-review").start()
     run.post_step("applying-as", {"applying_as": "individual"}, follow=True)
 
@@ -277,7 +277,7 @@ def test_chapter_6_renders_a_completed_step_prefilled(wizard_driver):
     assertContains(response, 'value="individual" selected')
 
 
-def test_chapter_6_lists_every_answer_with_a_change_link(wizard_driver):
+def test_chapter_7_lists_every_answer_with_a_change_link(wizard_driver):
     run = wizard_driver("readme-review").start()
     _individual(run)
 
@@ -298,7 +298,7 @@ def test_chapter_6_lists_every_answer_with_a_change_link(wizard_driver):
     )
 
 
-def test_chapter_6_reads_an_address_back_as_one_line(wizard_driver):
+def test_chapter_7_reads_an_address_back_as_one_line(wizard_driver):
     # README "Shaping a row" snippet: four fields grouped, the lookup's own
     # answer hidden, and the row still labelled by the step.
     run = wizard_driver("readme-review").start()
@@ -313,7 +313,7 @@ def test_chapter_6_reads_an_address_back_as_one_line(wizard_driver):
     assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 
-def test_chapter_6_restores_a_dormant_arm_answer(wizard_driver):
+def test_chapter_7_restores_a_dormant_arm_answer(wizard_driver):
     run = wizard_driver("readme-review").start()
 
     # Organisation arm: answer the type and the organisation's name.
@@ -333,7 +333,7 @@ def test_chapter_6_restores_a_dormant_arm_answer(wizard_driver):
     assertContains(prefilled, "Ely Rowing Club")
 
 
-def test_chapter_6_confirms_and_finishes(wizard_driver):
+def test_chapter_7_confirms_and_finishes(wizard_driver):
     run = wizard_driver("readme-review").start()
     _individual(run)
 
@@ -343,7 +343,7 @@ def test_chapter_6_confirms_and_finishes(wizard_driver):
     assert response.content == b"Application from Sculptor confirmed"
 
 
-# --- Chapter 7: a step with a view of its own -------------------------------
+# --- Chapter 6: a step with a view of its own -------------------------------
 
 
 def _to_contact(run):
@@ -355,7 +355,7 @@ def _to_contact(run):
     )
 
 
-def test_chapter_7_the_website_step_uses_its_own_template(wizard_driver):
+def test_chapter_6_the_website_step_uses_its_own_template(wizard_driver):
     run = wizard_driver("readme-step-view").start()
     _to_contact(run)
 
@@ -366,7 +366,7 @@ def test_chapter_7_the_website_step_uses_its_own_template(wizard_driver):
     assertTemplateUsed(response, "testapp/other_linear_wizard.html")
 
 
-def test_chapter_7_the_website_step_prefills_from_the_email(wizard_driver):
+def test_chapter_6_the_website_step_prefills_from_the_email(wizard_driver):
     run = wizard_driver("readme-step-view").start()
     _to_contact(run)
 
@@ -376,7 +376,25 @@ def test_chapter_7_the_website_step_prefills_from_the_email(wizard_driver):
     assert response.context["form"]["website"].value() == "https://example.com"
 
 
-def test_chapter_7_the_website_step_survives_being_walked_past(wizard_driver):
+def test_chapter_6_a_revisit_shows_the_stored_answer_not_the_guess(wizard_driver):
+    # Chapter 8's wizard, because it has steps after the website one to come
+    # back from; the view under test is chapter 6's.
+    run = wizard_driver("readme-escape").start()
+    _to_contact(run)
+    run.post_steps(
+        [
+            ("contact", {"email": "ada@example.com"}),
+            ("website", {"website": "https://ada.example.com"}),
+        ]
+    )
+
+    response = run.get_step("website")
+
+    # super().get_initial() carried the stored answer; the guess only fills a gap.
+    assert response.context["form"]["website"].value() == "https://ada.example.com"
+
+
+def test_chapter_6_the_website_step_survives_being_walked_past(wizard_driver):
     # The step's get_initial() reads run state, and every later request
     # replays the step — re-entering that read from inside the walk.
     run = wizard_driver("readme-step-view").start()
@@ -385,8 +403,6 @@ def test_chapter_7_the_website_step_survives_being_walked_past(wizard_driver):
         [
             ("contact", {"email": "ada@example.com"}),
             ("website", {"website": "https://ada.example.com"}),
-            ("address", ADDRESS),
-            ("review", {}),
         ]
     )
 
@@ -396,8 +412,11 @@ def test_chapter_7_the_website_step_survives_being_walked_past(wizard_driver):
     )
 
 
-def test_chapter_7_parks_a_known_email_at_the_login_page(wizard_driver):
-    run = wizard_driver("readme-step-view").start()
+# --- Chapter 8: an answer that means "not here" -----------------------------
+
+
+def test_chapter_8_parks_a_known_email_at_the_login_page(wizard_driver):
+    run = wizard_driver("readme-escape").start()
     _to_contact(run)
 
     response = run.post_step("contact", {"email": "existing@example.com"})
@@ -408,7 +427,7 @@ def test_chapter_7_parks_a_known_email_at_the_login_page(wizard_driver):
     assert len(run.state) == 2
 
 
-# --- Chapter 8: proof it exists ----------------------------------------------
+# --- Chapter 9: proof it exists ----------------------------------------------
 
 
 def _document():
@@ -417,7 +436,7 @@ def _document():
     )
 
 
-def test_chapter_8_stores_and_reports_the_upload(wizard_driver, isolated_media_root):
+def test_chapter_9_stores_and_reports_the_upload(wizard_driver, isolated_media_root):
     run = wizard_driver("readme-upload").start()
 
     response = run.post_steps(
@@ -435,7 +454,7 @@ def test_chapter_8_stores_and_reports_the_upload(wizard_driver, isolated_media_r
     assert response.content == b"Received constitution.pdf"
 
 
-def test_chapter_8_an_individual_is_never_asked_for_a_document(wizard_driver):
+def test_chapter_9_an_individual_is_never_asked_for_a_document(wizard_driver):
     response, _ = wizard_driver("readme-upload").drive(
         [
             ("applying-as", {"applying_as": "individual"}),
@@ -450,11 +469,13 @@ def test_chapter_8_an_individual_is_never_asked_for_a_document(wizard_driver):
     assert response.content == b"Application received (no document needed)"
 
 
-# --- Chapter 9: finishing, and what it leaves behind -------------------------
+# --- Chapter 10: finishing, and what it leaves behind -------------------------
 
 
 @pytest.mark.django_db
-def test_chapter_9_opens_a_record_at_the_start_and_submits_it_at_the_end(wizard_driver):
+def test_chapter_10_opens_a_record_at_the_start_and_submits_it_at_the_end(
+    wizard_driver,
+):
     run = wizard_driver("readme-record").start()
     application = Application.objects.get()
     assert application.submitted is False
@@ -478,7 +499,7 @@ def test_chapter_9_opens_a_record_at_the_start_and_submits_it_at_the_end(wizard_
 
 
 @pytest.mark.django_db
-def test_chapter_9_a_revisit_after_completion_still_names_the_record(wizard_driver):
+def test_chapter_10_a_revisit_after_completion_still_names_the_record(wizard_driver):
     run = wizard_driver("readme-record").start()
     run.post_steps(
         [
@@ -498,10 +519,10 @@ def test_chapter_9_a_revisit_after_completion_still_names_the_record(wizard_driv
     assert run.data == {"completed": True, "meta": {"run": {"application_id": 1}}}
 
 
-# --- Chapter 10: coming back later -------------------------------------------
+# --- Chapter 11: coming back later -------------------------------------------
 
 
-def test_chapter_10_completes_reopens_and_recompletes_with_an_edit(
+def test_chapter_11_completes_reopens_and_recompletes_with_an_edit(
     client, wizard_driver
 ):
     driver = wizard_driver("readme-stash")
@@ -531,7 +552,7 @@ def test_chapter_10_completes_reopens_and_recompletes_with_an_edit(
     assert payload["state"][0] == {"step": {"full_name": "Grace"}}
 
 
-def test_chapter_10_reopening_without_a_stash_starts_fresh(client, wizard_driver):
+def test_chapter_11_reopening_without_a_stash_starts_fresh(client, wizard_driver):
     response = client.get(reverse("readme-stash-reopen"))
 
     assertRedirects(
@@ -541,10 +562,10 @@ def test_chapter_10_reopening_without_a_stash_starts_fresh(client, wizard_driver
     )
 
 
-# --- Chapter 11: a task list --------------------------------------------------
+# --- Chapter 12: a task list --------------------------------------------------
 
 
-def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driver):
+def test_chapter_12_lists_members_and_drives_one_to_complete(client, wizard_driver):
     hub_url = reverse("readme-hub")
     response = client.get(hub_url)
 
@@ -579,7 +600,7 @@ def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driv
     }
 
 
-def test_chapter_11_reopens_a_completed_member_on_its_review_page(
+def test_chapter_12_reopens_a_completed_member_on_its_review_page(
     client, wizard_driver
 ):
     door = reverse("readme-hub-entry", kwargs={"entry": "address"})
@@ -600,10 +621,10 @@ def test_chapter_11_reopens_a_completed_member_on_its_review_page(
     assertNotContains(response, "Change Review")
 
 
-# --- Chapter 12: budget lines -------------------------------------------------
+# --- Chapter 13: budget lines -------------------------------------------------
 
 
-def test_chapter_12_adds_changes_and_removes_budget_lines(client):
+def test_chapter_13_adds_changes_and_removes_budget_lines(client):
     """The README's add-another example, driven the way the page drives it:
     every action is a POST to the collection, and every link it hands out is
     one of its own routes."""
@@ -646,7 +667,7 @@ def test_chapter_12_adds_changes_and_removes_budget_lines(client):
     assert hub.context["tasklist"].rows[1].url == page
 
 
-def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
+def test_chapter_13_an_empty_budget_cannot_be_declared_complete(client):
     """`min_items = 1`: saying "no more" with nothing added is not a budget."""
     page = reverse("readme-project-budget")
 
@@ -656,7 +677,7 @@ def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
     assert hub.context["tasklist"].rows[1].status == "incomplete"
 
 
-# --- Chapter 13: locked and hidden -------------------------------------------
+# --- Chapter 14: locked and hidden -------------------------------------------
 
 
 def _finish_project(client, amount):
@@ -672,7 +693,7 @@ def _gated_statuses(client):
     return {row.key: row.status for row in response.context["tasklist"].rows}
 
 
-def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
+def test_chapter_14_referees_are_locked_until_the_project_is_described(client):
     assert _gated_statuses(client)["referees"] == "blocked"
     door = reverse("readme-gated-entry", kwargs={"entry": "referees"})
     assertRedirects(client.get(door), reverse("readme-gated"))
@@ -682,7 +703,7 @@ def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
     assert _gated_statuses(client)["referees"] == "not-started"
 
 
-def test_chapter_13_match_funding_appears_above_the_threshold(client):
+def test_chapter_14_match_funding_appears_above_the_threshold(client):
     assert "match-funding" not in _gated_statuses(client)
 
     _finish_project(client, 25_000)
@@ -691,7 +712,7 @@ def test_chapter_13_match_funding_appears_above_the_threshold(client):
     assertContains(client.get(reverse("readme-gated")), "Match funding")
 
 
-def test_chapter_13_match_funding_stays_hidden_below_it(client):
+def test_chapter_14_match_funding_stays_hidden_below_it(client):
     _finish_project(client, 5_000)
 
     assert "match-funding" not in _gated_statuses(client)

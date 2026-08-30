@@ -1,10 +1,10 @@
-"""Chapter 11 — a task list. The application becomes several wizards the
+"""Chapter 12 — a task list. The application becomes several wizards the
 applicant can do in any order."""
 
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch06_review import AddressReviewStepView, ReviewStepView
+from .ch07_review import AddressReviewStepView, ReviewStepView
 from .forms import AddressForm, ApplicantForm, EmailForm
 
 
@@ -30,7 +30,7 @@ class GrantApplication(TaskList):
 
 
 class GrantApplicationViewSet(TaskListViewSet):
-    description = "Chapter 11: a task list over two independent sections."
+    description = "Chapter 12: a task list over two independent sections."
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"

@@ -1,4 +1,4 @@
-# Chapter 12 — Add another: a list the user grows
+# Chapter 13 — Add another: a list the user grows
 
 A budget is not one answer but a list of them, and the applicant decides how
 long the list is. `AddAnother` is the "add another" pattern — a page
@@ -122,8 +122,8 @@ The three URLs the page publishes, the exact order a removal takes, how to
 give an item behaviour of its own, how to mount a page on its own, and
 every hook are in the [Add another reference](../reference/add-another.md).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch12_budget.py`](../../tests/testapp/readme/ch12_budget.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/project/ &nbsp;·&nbsp; **Source:** [`ch13_budget.py`](../../tests/testapp/readme/ch13_budget.py)
 
 ---
 
-[← Chapter 11 — Task lists: sections in any order](11-task-lists.md) · [Learn](README.md) · [Chapter 13 — Blocked and hidden sections →](13-blocked-and-hidden.md)
+[← Chapter 12 — Task lists: sections in any order](12-task-lists.md) · [Learn](README.md) · [Chapter 14 — Blocked and hidden sections →](14-blocked-and-hidden.md)

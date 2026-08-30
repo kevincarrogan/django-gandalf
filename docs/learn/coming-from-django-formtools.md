@@ -87,4 +87,4 @@ multiply.
 
 ---
 
-[← Chapter 15 — Outline, observers and the driver](15-outline-observers-and-the-driver.md) · [Learn](README.md) · **Reference:** [Wizard](../reference/wizard.md)
+[← Chapter 16 — Outline, observers and the driver](16-outline-observers-and-the-driver.md) · [Learn](README.md) · **Reference:** [Wizard](../reference/wizard.md)

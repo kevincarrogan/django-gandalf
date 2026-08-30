@@ -285,4 +285,4 @@ project's to add.
 
 ---
 
-**Learn:** [Chapter 8 — File uploads](../learn/08-file-uploads.md) · **Related:** [`Run`](run.md), [Configuration](configuration.md), [Escapes](escapes.md), [Stashing](stashing.md), [Driver](driver.md), [Walk costs](walk-costs.md)
+**Learn:** [Chapter 9 — File uploads](../learn/09-file-uploads.md) · **Related:** [`Run`](run.md), [Configuration](configuration.md), [Escapes](escapes.md), [Stashing](stashing.md), [Driver](driver.md), [Walk costs](walk-costs.md)

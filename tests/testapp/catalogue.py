@@ -30,7 +30,7 @@ from gandalf.viewsets import WizardViewSet
 # is mount-prefix context that only the catalogue can supply.
 RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "entry", "item"})
 
-#: The journey the walkthrough's chapter 14 examples are listed under. Any slug
+#: The journey the walkthrough's chapter 15 examples are listed under. Any slug
 #: works — a journey is minted by the setup wizard, and the index only needs
 #: the URLs to reverse.
 JOURNEY = {"journey": "example"}
@@ -103,70 +103,74 @@ GROUPS = (
                 note="Chapter 5. The same viewset asks for a portfolio too.",
             ),
             Example(
-                "readme-review",
-                note="Chapter 6. Change an answer from the summary; flip the arm and back.",
+                "readme-step-view",
+                note="Chapter 6. The website step is pre-filled from the email's domain.",
             ),
             Example(
-                "readme-step-view",
-                note="Chapter 7. Answer existing@example.com to be parked at the login page.",
+                "readme-review",
+                note="Chapter 7. Change an answer from the summary; flip the arm and back.",
+            ),
+            Example(
+                "readme-escape",
+                note="Chapter 8. Answer existing@example.com to be parked at the login page.",
             ),
             Example(
                 "readme-upload",
-                note="Chapter 8. An organisation uploads its governing document.",
+                note="Chapter 9. An organisation uploads its governing document.",
             ),
             Example(
                 "readme-record",
-                note="Chapter 9. A draft record opened at the start, submitted at the end.",
+                note="Chapter 10. A draft record opened at the start, submitted at the end.",
             ),
             Example(
                 "readme-stash",
-                note="Chapter 10. Finish this first; it fills the stash.",
+                note="Chapter 11. Finish this first; it fills the stash.",
             ),
             Example(
                 "readme-stash-reopen",
                 title="reopen_contact_details",
                 description="Re-opens the stashed contact details in a fresh run.",
-                note="Chapter 10. Only works once the wizard above has completed.",
+                note="Chapter 11. Only works once the wizard above has completed.",
             ),
             Example(
                 "readme-hub",
-                note="Chapter 11. The task list; enter the members from here.",
+                note="Chapter 12. The task list; enter the members from here.",
             ),
             Example(
                 "readme-hub-contact",
-                note="Chapter 11. A member, reached from the task list.",
+                note="Chapter 12. A member, reached from the task list.",
             ),
             Example(
                 "readme-hub-address",
-                note="Chapter 11. A member, reached from the task list.",
+                note="Chapter 12. A member, reached from the task list.",
             ),
             Example(
                 "readme-project",
-                note="Chapter 12. A task list whose second row is a collection.",
+                note="Chapter 13. A task list whose second row is a collection.",
             ),
             Example(
                 "readme-project-project",
-                note="Chapter 12. The project member beside the budget.",
+                note="Chapter 13. The project member beside the budget.",
             ),
             Example(
                 "readme-project-budget",
-                note="Chapter 12. Add a few budget lines, then change and remove them.",
+                note="Chapter 13. Add a few budget lines, then change and remove them.",
             ),
             Example(
                 "readme-gated",
-                note="Chapter 13. Ask for over 10,000 and a member appears.",
+                note="Chapter 14. Ask for over 10,000 and a member appears.",
             ),
             Example("readme-gated-project"),
             Example("readme-gated-referees"),
             Example("readme-gated-match-funding"),
             Example(
                 "readme-apply-start",
-                note="Chapter 14. Start here — it mints an application and lands on its hub.",
+                note="Chapter 15. Start here — it mints an application and lands on its hub.",
             ),
             Example(
                 "readme-apply",
                 url_kwargs=JOURNEY,
-                note="Chapter 14. The hub of one application. Reach it from the setup wizard.",
+                note="Chapter 15. The hub of one application. Reach it from the setup wizard.",
             ),
             Example("readme-apply-setup", url_kwargs=JOURNEY),
             Example("readme-apply-contact", url_kwargs=JOURNEY),

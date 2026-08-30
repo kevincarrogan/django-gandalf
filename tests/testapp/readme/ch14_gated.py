@@ -1,10 +1,10 @@
-"""Chapter 13 — locked and hidden. One section waits on another; one is not
+"""Chapter 14 — locked and hidden. One section waits on another; one is not
 there until an answer says it should be."""
 
 from gandalf.tasklists import Section, SectionViewSet, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch06_review import ReviewStepView
+from .ch07_review import ReviewStepView
 from .forms import MatchFundingForm, ProjectForm, RefereeForm
 
 
@@ -64,7 +64,7 @@ class Gated(TaskList):
 
 
 class GatedViewSet(TaskListViewSet):
-    description = "Chapter 13: a task list with a locked row and a hidden one."
+    description = "Chapter 14: a task list with a locked row and a hidden one."
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-gated"

@@ -582,4 +582,4 @@ distinct name — *"Wizard step names must be unique"* is the same check.
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · [Chapter 5 — A wizard per request](../learn/05-a-wizard-per-request.md) · [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`Wizard`](wizard.md), [`Run`](run.md), [Storage](storage.md), [Stashing](stashing.md), [Escapes](escapes.md), [Step views](step-views.md), [Run metadata](run-metadata.md), [Driver](driver.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · [Chapter 5 — A wizard per request](../learn/05-a-wizard-per-request.md) · [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [`Wizard`](wizard.md), [`Run`](run.md), [Storage](storage.md), [Stashing](stashing.md), [Escapes](escapes.md), [Step views](step-views.md), [Run metadata](run-metadata.md), [Driver](driver.md)

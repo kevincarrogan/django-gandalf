@@ -1,4 +1,4 @@
-# Chapter 14 — Journeys: scope, memory, groups and an ending
+# Chapter 15 — Journeys: scope, memory, groups and an ending
 
 Everything so far, put together. A task list's sections add up to
 something — this application — and that something is a **journey**. It has
@@ -62,7 +62,7 @@ class ApplicationStartViewSet(WizardViewSet):
     begin one, record this run as its `setup` section, go there."""
 
     description = (
-        "Chapter 14 as a task list: the setup wizard that mints an application."
+        "Chapter 15 as a task list: the setup wizard that mints an application."
     )
     url_name = "readme-apply-start"
     wizard = setup
@@ -95,7 +95,7 @@ management command or an agent begins a journey the same way.
 
 `store.data` is the journey's record of what its sections decided — the
 facts the rest of the journey turns on, kept where every section reads
-them without a walk. It is the same bag chapter 9's `run.metadata`
+them without a walk. It is the same bag chapter 10's `run.metadata`
 is, kept for the journey rather than for one run, with per-section sub-bags
 so sections cannot tread on each other. `record_applying_as` writes
 *individual* or *organisation* there, and the governing document section
@@ -113,7 +113,7 @@ class DocumentsSection(SectionViewSet):
 ```
 
 The project section writes the amount and match funding reads it, exactly
-as in chapter 13; contact writes the email address, which is how
+as in chapter 14; contact writes the email address, which is how
 `journey_done()` below can submit without reading a stash. A stash is for
 re-opening; `data` is for reading back.
 
@@ -144,7 +144,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     the page, the doors, each section beneath it — reads the same journey,
     and two applications are two URLs."""
 
-    description = "Chapter 14: the application's task list, with a submit."
+    description = "Chapter 15: the application's task list, with a submit."
     url_name = "readme-apply"
     template_name = "testapp/journey_hub.html"
     section_template_name = "testapp/linear_wizard.html"
@@ -227,8 +227,8 @@ beneath it gets the same one. The
 [Journey store reference](../reference/journey-store.md) has the contract
 and points at the worked durable store in the test app.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch14_journey.py`](../../tests/testapp/readme/ch14_journey.py) &nbsp;·&nbsp; **Reference:** [Task lists](../reference/tasklists.md)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch15_journey.py`](../../tests/testapp/readme/ch15_journey.py) &nbsp;·&nbsp; **Reference:** [Task lists](../reference/tasklists.md)
 
 ---
 
-[← Chapter 13 — Blocked and hidden sections](13-blocked-and-hidden.md) · [Learn](README.md) · [Chapter 15 — Outline, observers and the driver →](15-outline-observers-and-the-driver.md)
+[← Chapter 14 — Blocked and hidden sections](14-blocked-and-hidden.md) · [Learn](README.md) · [Chapter 16 — Outline, observers and the driver →](16-outline-observers-and-the-driver.md)

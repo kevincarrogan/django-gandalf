@@ -1,4 +1,4 @@
-# Chapter 10 — Stashing: leave and come back
+# Chapter 11 — Stashing: leave and come back
 
 Completion is terminal — `done()` fires once and the run's answers are gone.
 An application is not filled in one sitting, though: the contact details
@@ -60,8 +60,8 @@ What rides in the payload (metadata) and what does not (uploaded files), and
 what happens to a required file field on re-open, are in the
 [Stashing reference](../reference/stashing.md).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/stash/ &nbsp;·&nbsp; **Source:** [`ch10_stash.py`](../../tests/testapp/readme/ch10_stash.py)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/stash/ &nbsp;·&nbsp; **Source:** [`ch11_stash.py`](../../tests/testapp/readme/ch11_stash.py)
 
 ---
 
-[← Chapter 9 — Completion hooks and run metadata](09-completion-hooks-and-metadata.md) · [Learn](README.md) · [Chapter 11 — Task lists: sections in any order →](11-task-lists.md)
+[← Chapter 10 — Completion hooks and run metadata](10-completion-hooks-and-metadata.md) · [Learn](README.md) · [Chapter 12 — Task lists: sections in any order →](12-task-lists.md)

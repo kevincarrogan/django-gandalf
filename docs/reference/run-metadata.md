@@ -233,4 +233,4 @@ storage's `set_run_metadata` is not writing through. See [Storage](storage.md).
 
 ---
 
-**Learn:** [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)

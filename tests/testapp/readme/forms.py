@@ -84,7 +84,7 @@ class PortfolioForm(forms.Form):
     portfolio_url = forms.URLField(label="A link to your portfolio")
 
 
-# --- Chapter 6: check your answers ------------------------------------------
+# --- Chapter 7: check your answers ------------------------------------------
 
 
 class AddressForm(forms.Form):
@@ -98,12 +98,22 @@ class AddressForm(forms.Form):
     lookup_token = forms.CharField(label="Lookup token", required=False)
 
 
+# --- Chapter 6: a step with a view of its own --------------------------------
+
+
+class WebsiteForm(forms.Form):
+    website = forms.URLField(label="Website", required=False)
+
+
+# --- Chapter 7: check your answers ------------------------------------------
+
+
 class ConfirmForm(forms.Form):
     """A check-your-answers step's form: no fields at all. The button *is*
     the confirmation."""
 
 
-# --- Chapter 7: a step with a view of its own --------------------------------
+# --- Chapter 8: an answer that means "not here" -----------------------------
 
 
 class EmailLookupForm(forms.Form):
@@ -118,11 +128,7 @@ class EmailLookupForm(forms.Form):
         return cleaned_data
 
 
-class WebsiteForm(forms.Form):
-    website = forms.URLField(label="Website", required=False)
-
-
-# --- Chapter 8: proof it exists ----------------------------------------------
+# --- Chapter 9: proof it exists ----------------------------------------------
 
 
 class GoverningDocumentForm(forms.Form):

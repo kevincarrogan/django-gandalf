@@ -330,4 +330,4 @@ session half do not agree across sessions.
 
 ---
 
-**Learn:** [Chapter 14 — Journeys](../learn/14-journeys.md) · **Related:** [Task lists](tasklists.md), [Add another](add-another.md), [Stashing](stashing.md), [Run metadata](run-metadata.md), [Storage](storage.md)
+**Learn:** [Chapter 15 — Journeys](../learn/15-journeys.md) · **Related:** [Task lists](tasklists.md), [Add another](add-another.md), [Stashing](stashing.md), [Run metadata](run-metadata.md), [Storage](storage.md)

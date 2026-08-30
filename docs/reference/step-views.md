@@ -332,4 +332,4 @@ returns it.
 
 ---
 
-**Learn:** [Chapter 7 — Step views and escapes](../learn/07-step-views-and-escapes.md) · **Related:** [Escapes](escapes.md), [`Run`](run.md), [Summary](summary.md), [Walk costs](walk-costs.md), [Configuration](configuration.md)
+**Learn:** [Chapter 6 — Step views](../learn/06-step-views.md) · **Related:** [Escapes](escapes.md), [`Run`](run.md), [Summary](summary.md), [Walk costs](walk-costs.md), [Configuration](configuration.md)

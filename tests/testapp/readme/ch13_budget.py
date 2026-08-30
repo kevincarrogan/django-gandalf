@@ -1,10 +1,10 @@
-"""Chapter 12 — budget lines. A list the applicant grows, one wizard per
+"""Chapter 13 — budget lines. A list the applicant grows, one wizard per
 line, on a task list beside the project itself."""
 
 from gandalf.tasklists import AddAnother, Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch06_review import ReviewStepView
+from .ch07_review import ReviewStepView
 from .forms import BudgetLineForm, ProjectForm
 
 
@@ -39,7 +39,7 @@ class Project(TaskList):
 
 
 class ProjectViewSet(TaskListViewSet):
-    description = "Chapter 12: a task list whose second row is an add-another."
+    description = "Chapter 13: a task list whose second row is an add-another."
     template_name = "testapp/readme_hub.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-project"

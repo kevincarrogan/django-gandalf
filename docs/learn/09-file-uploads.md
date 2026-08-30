@@ -1,4 +1,4 @@
-# Chapter 8 — File uploads
+# Chapter 9 — File uploads
 
 An organisation uploads its governing document. Uploaded bytes cannot live in
 the session, so Gandalf persists them through a companion
@@ -43,8 +43,8 @@ The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere by subclassing `WizardFileStorage` and
 passing it to `.configure(file_storage_class=...)`.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/upload/ &nbsp;·&nbsp; **Source:** [`ch08_uploads.py`](../../tests/testapp/readme/ch08_uploads.py) &nbsp;·&nbsp; **Reference:** [File uploads](../reference/file-uploads.md)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/upload/ &nbsp;·&nbsp; **Source:** [`ch09_uploads.py`](../../tests/testapp/readme/ch09_uploads.py) &nbsp;·&nbsp; **Reference:** [File uploads](../reference/file-uploads.md)
 
 ---
 
-[← Chapter 7 — Step views and escapes](07-step-views-and-escapes.md) · [Learn](README.md) · [Chapter 9 — Completion hooks and run metadata →](09-completion-hooks-and-metadata.md)
+[← Chapter 8 — Escapes](08-escapes.md) · [Learn](README.md) · [Chapter 10 — Completion hooks and run metadata →](10-completion-hooks-and-metadata.md)

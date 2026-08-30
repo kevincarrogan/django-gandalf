@@ -89,7 +89,7 @@ actually is, so a stale link can never land an answer on the wrong step.
 not "how far you got". The walk replays the stored answers through their
 forms up to the first missing or no-longer-valid one, and that is where the
 run is. Which step is current, which branch was taken (chapter 2), editing an
-earlier answer (chapter 6) and completion all fall out of that single walk,
+earlier answer (chapter 7) and completion all fall out of that single walk,
 so stale state is impossible. (What a walk costs is in
 [Walk costs](../reference/walk-costs.md).)
 

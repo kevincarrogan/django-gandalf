@@ -1,4 +1,4 @@
-"""Chapter 14 — one application, start to submit. Everything so far, scoped
+"""Chapter 15 — one application, start to submit. Everything so far, scoped
 to one journey, with an ending."""
 
 from django.shortcuts import redirect, render
@@ -16,8 +16,8 @@ from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 from ..models import Application
-from .ch06_review import ReviewStepView
-from .ch13_gated import MATCH_FUNDING_THRESHOLD, record_amount
+from .ch07_review import ReviewStepView
+from .ch14_gated import MATCH_FUNDING_THRESHOLD, record_amount
 from .forms import (
     ApplicantForm,
     ApplyingAsForm,
@@ -30,7 +30,7 @@ from .forms import (
 )
 
 
-# --- watching it (chapter 15) -------------------------------------------------
+# --- watching it (chapter 16) -------------------------------------------------
 
 
 #: What the observer below has seen, for the README's test to read back.
@@ -200,7 +200,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     the page, the doors, each section beneath it — reads the same journey,
     and two applications are two URLs."""
 
-    description = "Chapter 14: the application's task list, with a submit."
+    description = "Chapter 15: the application's task list, with a submit."
     url_name = "readme-apply"
     template_name = "testapp/journey_hub.html"
     section_template_name = "testapp/linear_wizard.html"
@@ -228,7 +228,7 @@ class ApplicationStartViewSet(WizardViewSet):
     begin one, record this run as its `setup` section, go there."""
 
     description = (
-        "Chapter 14 as a task list: the setup wizard that begins an application."
+        "Chapter 15 as a task list: the setup wizard that begins an application."
     )
     url_name = "readme-apply-start"
     wizard = setup

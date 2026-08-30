@@ -80,7 +80,7 @@ once drops into several branches, and a wizard is a value you can pass
 around.
 
 A de-selected arm's answers are not thrown away either — see
-[dormant memory](06-the-summary.md#dormant-memory) in chapter 6.
+[dormant memory](07-the-summary.md#dormant-memory) in chapter 7.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/branching/ &nbsp;·&nbsp; **Source:** [`ch02_branching.py`](../../tests/testapp/readme/ch02_branching.py) &nbsp;·&nbsp; **Reference:** [`Wizard.branch()`](../reference/wizard.md)
 

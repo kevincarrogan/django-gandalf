@@ -351,4 +351,4 @@ a second time.
 
 ---
 
-**Learn:** [Chapter 6 — The summary](../learn/06-the-summary.md) · **Related:** [Step views](step-views.md), [`Run`](run.md), [Walk costs](walk-costs.md)
+**Learn:** [Chapter 7 — The summary](../learn/07-the-summary.md) · **Related:** [Step views](step-views.md), [`Run`](run.md), [Walk costs](walk-costs.md)

@@ -84,7 +84,7 @@ organisation_details = (
 
 `on_field(step, field)` is `organisation_kind` said declaratively. It does
 the same thing, and it also says so: because the route *is* an answer rather
-than a computation over one, `outline()` (chapter 15) can report which step
+than a computation over one, `outline()` (chapter 16) can report which step
 and field decide it. Reach for it when the selector would only read a field;
 write the function for anything more.
 

@@ -398,4 +398,4 @@ and relies on the middleware to persist it.
 
 ---
 
-**Learn:** [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [Wizard](wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [File uploads](file-uploads.md), [Observers](observers.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [Wizard](wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [File uploads](file-uploads.md), [Observers](observers.md), [Journey store](journey-store.md)

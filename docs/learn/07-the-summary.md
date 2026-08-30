@@ -1,4 +1,4 @@
-# Chapter 6 — The summary: check your answers
+# Chapter 7 — The summary: check your answers
 
 Before an application goes anywhere, the applicant should see what they said
 and be able to change it. This chapter adds an address and a review step.
@@ -31,7 +31,8 @@ link):
 
 A "check your answers" step asks the same three questions of every answer —
 what is it called, what does it say, and where do I go to change it — so
-`SummaryMixin` answers them once. Mix it into the step's `FormView` and the
+`SummaryMixin` answers them once. Mix it into the step's view — a
+`StepFormView`, as in chapter 6 — and the
 template gets a `summary` list, one row per answered step:
 
 ```python
@@ -130,8 +131,8 @@ re-validated and restored if you flip back, so the user never re-types an
 answer they already gave.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/review/ (pick organisation,
-> name it, then change the first answer to individual and back) &nbsp;·&nbsp; **Source:** [`ch06_review.py`](../../tests/testapp/readme/ch06_review.py)
+> name it, then change the first answer to individual and back) &nbsp;·&nbsp; **Source:** [`ch07_review.py`](../../tests/testapp/readme/ch07_review.py)
 
 ---
 
-[← Chapter 5 — A wizard per request](05-a-wizard-per-request.md) · [Learn](README.md) · [Chapter 7 — Step views and escapes →](07-step-views-and-escapes.md)
+[← Chapter 6 — Step views](06-step-views.md) · [Learn](README.md) · [Chapter 8 — Escapes →](08-escapes.md)

@@ -1,30 +1,19 @@
-"""Chapter 7 — a step with a view of its own, and a step that says the
-user should not be here at all."""
+"""Chapter 8 — a step that says the user should not be here at all."""
 
 from django.http import HttpResponse
 
-from gandalf.form_views import StepFormView
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
-from .ch06_review import AddressReviewStepView
-from .forms import AddressForm, EmailLookupForm, WebsiteForm
-
-
-class WebsiteStepView(StepFormView):
-    form_class = WebsiteForm
-    template_name = "testapp/other_linear_wizard.html"
-
-    def get_initial(self):
-        initial = super().get_initial()
-        contact = self.request.wizard.path.find_step(name="contact")
-        domain = contact.form.cleaned_data["email"].partition("@")[2]
-        initial["website"] = f"https://{domain}"
-        return initial
+from .ch06_step_views import WebsiteStepView
+from .ch07_review import AddressReviewStepView
+from .forms import AddressForm, EmailLookupForm
 
 
 def with_contact_and_review(wizard):
+    """The tail chapters 9 and 10 share: a contact step that may escape, the
+    website step, the address, and the summary."""
     return (
         wizard.step(EmailLookupForm, name="contact", label="Email")
         .step(WebsiteStepView, name="website", label="Website")
@@ -33,9 +22,9 @@ def with_contact_and_review(wizard):
     )
 
 
-class LookedUpApplicationViewSet(WizardViewSet):
-    description = "Chapter 7: a step view that prefills, and an escape to log in."
-    url_name = "readme-step-view"
+class EscapingApplicationViewSet(WizardViewSet):
+    description = "Chapter 8: an email with an account is sent to log in."
+    url_name = "readme-escape"
     template_name = "testapp/linear_wizard.html"
     wizard = with_contact_and_review(
         ch02.applicant(organisation=ch04.organisation_details)

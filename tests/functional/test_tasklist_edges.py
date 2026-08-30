@@ -23,8 +23,8 @@ from gandalf.testing import stored_items
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 from tests.testapp.forms import FirstStepForm
-from tests.testapp.readme.ch11_hub import GrantApplication, contact
-from tests.testapp.readme.ch14_journey import GrantApplicationViewSet
+from tests.testapp.readme.ch12_hub import GrantApplication, contact
+from tests.testapp.readme.ch15_journey import GrantApplicationViewSet
 from tests.testapp.views import GuestsViewSet, ScenarioViewSet
 
 FIRST = Wizard().step(FirstStepForm, name="first")
@@ -90,7 +90,7 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
 
 
 def test_an_explicit_key_is_the_url_segment(client):
-    """Chapter 13's `match_funding` attribute is mounted at /match-funding/."""
+    """Chapter 14's `match_funding` attribute is mounted at /match-funding/."""
     assert reverse("readme-gated-match-funding").endswith("/match-funding/")
 
 

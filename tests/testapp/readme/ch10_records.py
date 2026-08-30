@@ -1,4 +1,4 @@
-"""Chapter 9 — finishing, and what it leaves behind. done() runs once; a
+"""Chapter 10 — finishing, and what it leaves behind. done() runs once; a
 record opened at the start is remembered for the rest of the run."""
 
 from django.http import Http404
@@ -9,13 +9,13 @@ from gandalf.wizard import MergeCleanedData
 
 from ..models import Application
 from . import ch02_branching as ch02
-from .ch07_step_views import with_contact_and_review
-from .ch08_uploads import organisation_details
+from .ch08_escapes import with_contact_and_review
+from .ch09_uploads import organisation_details
 
 
 class RecordedApplicationViewSet(WizardViewSet):
     description = (
-        "Chapter 9: a draft record opened at run_started(), submitted at done()."
+        "Chapter 10: a draft record opened at run_started(), submitted at done()."
     )
     url_name = "readme-record"
     template_name = "testapp/file_upload_wizard.html"

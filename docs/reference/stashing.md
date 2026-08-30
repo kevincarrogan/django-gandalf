@@ -291,4 +291,4 @@ should stay re-openable, and `pop()` only when re-opening consumes it.
 
 ---
 
-**Learn:** [Chapter 10 — Stashing: leave and come back](../learn/10-stashing.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 11 — Stashing: leave and come back](../learn/11-stashing.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)

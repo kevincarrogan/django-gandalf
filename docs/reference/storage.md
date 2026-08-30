@@ -300,4 +300,4 @@ both — see [Journey store](journey-store.md).
 
 ---
 
-**Learn:** [Chapter 9 — Completion hooks and run metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md), [Journey store](journey-store.md), [Stashing](stashing.md), [File uploads](file-uploads.md)
+**Learn:** [Chapter 10 — Completion hooks and run metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md), [Journey store](journey-store.md), [Stashing](stashing.md), [File uploads](file-uploads.md)

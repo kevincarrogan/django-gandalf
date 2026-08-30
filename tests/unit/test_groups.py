@@ -24,7 +24,7 @@ from gandalf.tasklists import (
     TaskListViewSet,
 )
 from tests.testapp.forms import FirstStepForm
-from tests.testapp.readme.ch14_journey import (
+from tests.testapp.readme.ch15_journey import (
     GrantApplicationViewSet,
     SupportingInformation,
 )

@@ -142,4 +142,4 @@ kwargs must be given them: `Park("account-detail", pk=account.pk)`.
 
 ---
 
-**Learn:** [Chapter 7 — Step views and escapes](../learn/07-step-views-and-escapes.md) · **Related:** [Step views](step-views.md), [`WizardViewSet`](viewsets.md)
+**Learn:** [Chapter 8 — Escapes](../learn/08-escapes.md) · **Related:** [Step views](step-views.md), [`WizardViewSet`](viewsets.md)

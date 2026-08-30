@@ -1,4 +1,4 @@
-# Chapter 13 — Blocked and hidden sections
+# Chapter 14 — Blocked and hidden sections
 
 Most task lists are not a flat set. Referees cannot be asked for until the
 project has been described. And an application for more than £10,000 has to
@@ -8,7 +8,7 @@ says which it is **itself**.
 
 ### A section with behaviour
 
-Chapter 11's sections were plain wizards, wrapped by the library. A
+Chapter 12's sections were plain wizards, wrapped by the library. A
 section that has something to say — when it may be opened, what to do when
 it finishes — declares its own `SectionViewSet` and goes in the same slot.
 Nothing about the task list changes; this is the `Form` to `FormView` step,
@@ -126,8 +126,8 @@ spanning rows — or one that needs the request — the viewset has
 [Task lists reference](../reference/tasklists.md).
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/gated/ (ask for more than
-> 10,000 and a section appears) &nbsp;·&nbsp; **Source:** [`ch13_gated.py`](../../tests/testapp/readme/ch13_gated.py)
+> 10,000 and a section appears) &nbsp;·&nbsp; **Source:** [`ch14_gated.py`](../../tests/testapp/readme/ch14_gated.py)
 
 ---
 
-[← Chapter 12 — Add another: a list the user grows](12-add-another.md) · [Learn](README.md) · [Chapter 14 — Journeys: scope, memory, groups and an ending →](14-journeys.md)
+[← Chapter 13 — Add another: a list the user grows](13-add-another.md) · [Learn](README.md) · [Chapter 15 — Journeys: scope, memory, groups and an ending →](15-journeys.md)

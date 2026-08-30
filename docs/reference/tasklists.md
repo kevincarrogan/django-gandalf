@@ -720,4 +720,4 @@ By design: the door is `GET`-only. Submit by POSTing to the page URL.
 
 ---
 
-**Learn:** [Chapter 11 — Task lists](../learn/11-task-lists.md), [Chapter 13 — Blocked and hidden](../learn/13-blocked-and-hidden.md), [Chapter 14 — Journeys](../learn/14-journeys.md) · **Related:** [Journey store](journey-store.md), [Add another](add-another.md), [Stashing](stashing.md), [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md)
+**Learn:** [Chapter 12 — Task lists](../learn/12-task-lists.md), [Chapter 14 — Blocked and hidden](../learn/14-blocked-and-hidden.md), [Chapter 15 — Journeys](../learn/15-journeys.md) · **Related:** [Journey store](journey-store.md), [Add another](add-another.md), [Stashing](stashing.md), [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md)

@@ -4,7 +4,7 @@ This is a walkthrough, not a manual. It builds one thing — a community grant
 fund's application form — a chapter at a time. Chapter 1 asks two questions
 in a row. Each chapter after it adds one thing the application needs, says
 why that thing exists, and leaves a runnable application behind. By chapter
-14 the whole thing is there, and chapter 15 is about knowing what you built.
+15 the whole thing is there, and chapter 16 is about knowing what you built.
 
 It deliberately does not list every hook, every attribute or every edge case.
 Where a chapter touches something with more to it, it links to the
@@ -37,22 +37,23 @@ running.
 3. [Switching on a choice](03-switching.md) — `.switch()` for *which*, not *whether*
 4. [Expanding from an answer](04-expanding.md) — `.expand()` grows the tree mid-walk
 5. [A wizard per request](05-a-wizard-per-request.md) — `get_wizard()` and mount prefixes
-6. [The summary: check your answers](06-the-summary.md) — editing is a link; `SummaryMixin`
-7. [Step views and escapes](07-step-views-and-escapes.md) — bring your own `FormView`; `Park`, `Advance`, `Obliterate`
-8. [File uploads](08-file-uploads.md) — bytes outside the session
-9. [Completion hooks and run metadata](09-completion-hooks-and-metadata.md) — `run_started()`, `done()` once, the metadata bag
-10. [Stashing: leave and come back](10-stashing.md) — save answers and re-open them
+6. [Step views: bring your own `FormView`](06-step-views.md) — `StepFormView`, and what a step's view can see and do
+7. [The summary: check your answers](07-the-summary.md) — editing is a link; `SummaryMixin`
+8. [Escapes: leaving the wizard](08-escapes.md) — `Park`, `Advance`, `Obliterate`
+9. [File uploads](09-file-uploads.md) — bytes outside the session
+10. [Completion hooks and run metadata](10-completion-hooks-and-metadata.md) — `run_started()`, `done()` once, the metadata bag
+11. [Stashing: leave and come back](11-stashing.md) — save answers and re-open them
 
 ## A task list of wizards
 
-11. [Task lists: sections in any order](11-task-lists.md) — sections, statuses, one door
-12. [Add another: a list the user grows](12-add-another.md) — items, change and remove
-13. [Blocked and hidden sections](13-blocked-and-hidden.md) — sections that unlock or appear
-14. [Journeys: scope, memory, groups and an ending](14-journeys.md) — everything, put together
+12. [Task lists: sections in any order](12-task-lists.md) — sections, statuses, one door
+13. [Add another: a list the user grows](13-add-another.md) — items, change and remove
+14. [Blocked and hidden sections](14-blocked-and-hidden.md) — sections that unlock or appear
+15. [Journeys: scope, memory, groups and an ending](15-journeys.md) — everything, put together
 
 ## Knowing what you built
 
-15. [Outline, observers and the driver](15-outline-observers-and-the-driver.md) — the shape, the events, and no browser
+16. [Outline, observers and the driver](16-outline-observers-and-the-driver.md) — the shape, the events, and no browser
 
 ## Also
 

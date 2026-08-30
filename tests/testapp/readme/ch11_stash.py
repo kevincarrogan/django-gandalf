@@ -1,4 +1,4 @@
-"""Chapter 10 — coming back later. The wizard finishes, and the answers
+"""Chapter 11 — coming back later. The wizard finishes, and the answers
 stay editable."""
 
 from django.http import HttpResponse
@@ -13,7 +13,7 @@ from .forms import ApplicantForm, EmailForm
 
 
 class ContactDetailsViewSet(WizardViewSet):
-    description = "Chapter 10: done() stashes the answers so they can be re-opened."
+    description = "Chapter 11: done() stashes the answers so they can be re-opened."
     url_name = "readme-stash"
     template_name = "testapp/linear_wizard.html"
     wizard = (

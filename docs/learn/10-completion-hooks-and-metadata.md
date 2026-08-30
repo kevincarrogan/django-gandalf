@@ -1,4 +1,4 @@
-# Chapter 9 — Completion hooks and run metadata
+# Chapter 10 — Completion hooks and run metadata
 
 An application is a record in a database, not a string in a response. This
 chapter opens one when the run starts, submits it when the run finishes, and
@@ -49,7 +49,7 @@ accumulates: the record it opened somewhere else. Nobody typed it, no form
 validates it, and doing it twice is the bug.
 
 `run_started(run)` fires when a fresh run is minted, and only then.
-Re-opening a stash (chapter 10) does not fire it — a re-opened run brings
+Re-opening a stash (chapter 11) does not fire it — a re-opened run brings
 its metadata back with it, so the record it created is already there.
 
 ### `run.metadata`: what it remembers
@@ -76,8 +76,8 @@ policy. Instead `storage_class` on the viewset is a seam small enough to
 swap; a worked, tested `ModelStorage` lives in the test app. The contract is
 in the [Storage reference](../reference/storage.md).
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/record/ &nbsp;·&nbsp; **Source:** [`ch09_records.py`](../../tests/testapp/readme/ch09_records.py) &nbsp;·&nbsp; **Reference:** [`WizardViewSet` hooks](../reference/viewsets.md)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/record/ &nbsp;·&nbsp; **Source:** [`ch10_records.py`](../../tests/testapp/readme/ch10_records.py) &nbsp;·&nbsp; **Reference:** [`WizardViewSet` hooks](../reference/viewsets.md)
 
 ---
 
-[← Chapter 8 — File uploads](08-file-uploads.md) · [Learn](README.md) · [Chapter 10 — Stashing: leave and come back →](10-stashing.md)
+[← Chapter 9 — File uploads](09-file-uploads.md) · [Learn](README.md) · [Chapter 11 — Stashing: leave and come back →](11-stashing.md)

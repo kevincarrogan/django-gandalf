@@ -66,7 +66,7 @@ change is *how many*: there is no way to say "remove the second trustee",
 because with answers kept in order, taking one out of the middle would slide
 every later answer up a place and put the wrong name against the wrong
 trustee. A list the user grows and prunes over time — budget lines, in
-[chapter 12](12-add-another.md) — needs each item to be its own run, and
+[chapter 13](13-add-another.md) — needs each item to be its own run, and
 that is a different tool.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`ch04_expand.py`](../../tests/testapp/readme/ch04_expand.py) &nbsp;·&nbsp; **Reference:** [`Wizard.expand()`](../reference/wizard.md)

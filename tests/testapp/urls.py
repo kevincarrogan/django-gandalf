@@ -7,15 +7,16 @@ from .readme import (
     ch03_switch,
     ch04_expand,
     ch05_per_request,
-    ch06_review,
-    ch07_step_views,
-    ch08_uploads,
-    ch09_records,
-    ch10_stash,
-    ch11_hub,
-    ch12_budget,
-    ch13_gated,
-    ch14_journey,
+    ch06_step_views,
+    ch07_review,
+    ch08_escapes,
+    ch09_uploads,
+    ch10_records,
+    ch11_stash,
+    ch12_hub,
+    ch13_budget,
+    ch14_gated,
+    ch15_journey,
 )
 
 
@@ -40,36 +41,37 @@ urlpatterns = [
         "readme/funds/<slug:fund>/",
         include(ch05_per_request.FundApplicationViewSet.urls()),
     ),
-    path("readme/review/", include(ch06_review.ReviewedApplicationViewSet.urls())),
     path(
-        "readme/step-view/", include(ch07_step_views.LookedUpApplicationViewSet.urls())
+        "readme/step-view/", include(ch06_step_views.WebsiteApplicationViewSet.urls())
     ),
-    path("readme/login/", ch07_step_views.login_placeholder, name="readme-login"),
-    path("readme/upload/", include(ch08_uploads.DocumentedApplicationViewSet.urls())),
-    path("readme/record/", include(ch09_records.RecordedApplicationViewSet.urls())),
+    path("readme/review/", include(ch07_review.ReviewedApplicationViewSet.urls())),
+    path("readme/escape/", include(ch08_escapes.EscapingApplicationViewSet.urls())),
+    path("readme/login/", ch08_escapes.login_placeholder, name="readme-login"),
+    path("readme/upload/", include(ch09_uploads.DocumentedApplicationViewSet.urls())),
+    path("readme/record/", include(ch10_records.RecordedApplicationViewSet.urls())),
     path(
         "readme/received/<int:pk>/",
-        ch09_records.application_received,
+        ch10_records.application_received,
         name="readme-received",
     ),
-    path("readme/stash/", include(ch10_stash.ContactDetailsViewSet.urls())),
+    path("readme/stash/", include(ch11_stash.ContactDetailsViewSet.urls())),
     path(
         "readme/stash-reopen/",
-        ch10_stash.reopen_contact_details,
+        ch11_stash.reopen_contact_details,
         name="readme-stash-reopen",
     ),
     # A task list owns every URL beneath it: its page, a door per entry, and
     # the entries themselves.
-    path("readme/hub/", include(ch11_hub.GrantApplicationViewSet.urls())),
-    path("readme/project/", include(ch12_budget.ProjectViewSet.urls())),
-    path("readme/gated/", include(ch13_gated.GatedViewSet.urls())),
+    path("readme/hub/", include(ch12_hub.GrantApplicationViewSet.urls())),
+    path("readme/project/", include(ch13_budget.ProjectViewSet.urls())),
+    path("readme/gated/", include(ch14_gated.GatedViewSet.urls())),
     # A journey: the setup wizard mints an id, and the whole application is
     # mounted under it. "new" is listed before the journey pattern so it is
     # never read as an id.
-    path("readme/apply/new/", include(ch14_journey.ApplicationStartViewSet.urls())),
+    path("readme/apply/new/", include(ch15_journey.ApplicationStartViewSet.urls())),
     path(
         "readme/apply/<slug:journey>/",
-        include(ch14_journey.GrantApplicationViewSet.urls()),
+        include(ch15_journey.GrantApplicationViewSet.urls()),
     ),
     path(
         "path-aware-walked-past-wizard/",

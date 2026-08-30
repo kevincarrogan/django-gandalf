@@ -1,4 +1,4 @@
-# Chapter 15 — Outline, observers and the driver
+# Chapter 16 — Outline, observers and the driver
 
 The application is done. Three things are worth knowing about it from the
 outside.
@@ -27,7 +27,7 @@ test that pins a wizard's shape.
 
 Which step do applicants get wrong most often? Declare an observer and it is
 told what happens, for every run of that wizard — over HTTP, from a script,
-or from a test. Chapter 14's setup wizard carries one:
+or from a test. Chapter 15's setup wizard carries one:
 
 ```python
 from gandalf.observers import WizardObserver
@@ -89,4 +89,4 @@ which ships beside the library rather than inside it.
 
 ---
 
-[← Chapter 14 — Journeys: scope, memory, groups and an ending](14-journeys.md) · [Learn](README.md) · [Coming from `django-formtools` →](coming-from-django-formtools.md)
+[← Chapter 15 — Journeys: scope, memory, groups and an ending](15-journeys.md) · [Learn](README.md) · [Coming from `django-formtools` →](coming-from-django-formtools.md)

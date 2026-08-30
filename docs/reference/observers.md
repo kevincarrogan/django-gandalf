@@ -222,4 +222,4 @@ HTTP call). Only a placement that records metadata carries any:
 
 ---
 
-**Learn:** [Chapter 15 — Outline, observers and the driver](../learn/15-outline-observers-and-the-driver.md) · **Related:** [Driver](driver.md), [`WizardViewSet`](viewsets.md), [Configuration](configuration.md), [Run metadata](run-metadata.md)
+**Learn:** [Chapter 16 — Outline, observers and the driver](../learn/16-outline-observers-and-the-driver.md) · **Related:** [Driver](driver.md), [`WizardViewSet`](viewsets.md), [Configuration](configuration.md), [Run metadata](run-metadata.md)
