@@ -37,6 +37,7 @@ their answers.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -218,8 +219,12 @@ class ItemViewSet(SectionViewSet):
         if callable(self.item_title):
             return str(self.item_title(run))
         for step in run.path:
-            if self.item_title in step.form.cleaned_data:
-                return str(step.form.cleaned_data[self.item_title])
+            answer = step.answer
+            # A step whose answer is not a mapping declares no field to be
+            # named by — `check_item_title` refuses one at configure time —
+            # so it simply contributes no candidate here.
+            if isinstance(answer, Mapping) and self.item_title in answer:
+                return str(answer[self.item_title])
         return ""
 
     def run_recorded(self, run: Run, store: JourneyStore, key: str) -> None:

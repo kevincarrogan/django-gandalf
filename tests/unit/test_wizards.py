@@ -3974,10 +3974,10 @@ def test_on_field_on_a_step_that_picks_its_form_per_request_is_trusted():
 
 
 def test_a_formset_step_declares_no_step_level_fields():
-    """A formset has no `base_fields` because it declares nothing at step
-    level — its fields belong to each of the n forms it repeats. That is
-    the same `None` a step choosing its form per request gets: the
-    declaration is not the whole story, so take the name on trust."""
+    """A formset declares nothing at step level — its fields belong to each
+    of the n rows it repeats — and that is a different answer from the
+    `None` a step choosing its form per request gets. One is "no fields",
+    which can be checked against; the other is "unknown", which cannot."""
     wizard = (
         Wizard()
         .step(FirstStepForm, name="first")
@@ -3988,7 +3988,7 @@ def test_a_formset_step_declares_no_step_level_fields():
     fields = gandalf.wizard.declared_step_fields(wizard)
 
     assert set(fields["first"]) == {"name"}
-    assert fields["opening-hours"] is None
+    assert fields["opening-hours"] == {}
 
 
 def test_on_field_beside_a_formset_step_still_checks_the_step_it_names():
@@ -4005,6 +4005,44 @@ def test_on_field_beside_a_formset_step_still_checks_the_step_it_names():
             )
             .configure(template_name="testapp/linear_wizard.html")
         )
+
+
+def test_on_field_naming_a_formset_step_is_refused():
+    """A formset answers with a row per entry, so there is no single value
+    to route on. Before the declaration could say "no fields" rather than
+    "unknown" this passed configuration and died mid-walk, on the
+    `cleaned_data.get()` of a list."""
+    with pytest.raises(ImproperlyConfigured, match="no fields of its own"):
+        (
+            Wizard()
+            .step(OpeningHoursStepView, name="opening-hours")
+            .switch(
+                gandalf.wizard.on_field("opening-hours", "day"),
+                {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+
+def test_a_selector_of_your_own_can_route_on_a_formset_answer():
+    """The way out the refusal names. `.switch()` takes any callable, so a
+    step whose answer `on_field` cannot read is routed by reading it."""
+
+    def opens_on_monday(context):
+        rows = context.run.path.find_step(name="opening-hours").answer
+        return "monday" if any(row["day"] == "Monday" for row in rows) else "other"
+
+    wizard = (
+        Wizard()
+        .step(OpeningHoursStepView, name="opening-hours")
+        .switch(
+            opens_on_monday,
+            {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert wizard.tree is not None
 
 
 def test_on_field_in_an_expanding_wizard_is_trusted():

@@ -264,11 +264,18 @@ answer. A frozen dataclass; instances are callable.
   case, so the run would take `default` — or fall past the switch — with
   nothing going wrong out loud. Skipped for a wizard containing an
   `.expand()`, and for a step whose view chooses its form class per
-  request.
+  request — in both cases the declaration is not the whole story, and a
+  name it cannot see is taken on trust rather than refused.
 - Raises `ImproperlyConfigured` *"on_field(…) found no answered step named
   … before this switch."* when the named step is declared but not on the
   validated prefix — because it is not answered yet, or sits on an arm
   this run did not take.
+- Raises `ImproperlyConfigured` *"names a step that declares no fields of
+  its own"* for a **repeated** step. A formset declares nothing at step
+  level — its fields belong to each of the n rows it repeats — so it
+  answers with a row per entry and a row's field has no single value to
+  route on. Route those with a selector of your own, which can read the
+  rows and decide.
 - Scalar answers only. A multi-valued field has no single value to switch
   on; route those with a selector of your own or a predicate `.branch()`.
 
@@ -669,6 +676,18 @@ error surfaces on the request that reaches the expansion.
 Two steps in the declared tree reverse to the same segment — including
 steps on different arms of a branch, which the walk would never both reach
 but the URL cannot tell apart. Rename one.
+
+### `ImproperlyConfigured: on_field('hours', 'day') names a step that declares no fields of its own`
+
+The step is a formset. It answers with a row per entry, so `"day"` has as
+many values as there are rows and no single one to route on. `.switch()`
+takes any callable, so read the rows and decide:
+
+```python
+def opens_on_monday(context):
+    rows = context.run.path.find_step(name="hours").answer
+    return "monday" if any(row["day"] == "Monday" for row in rows) else "other"
+```
 
 ### `ImproperlyConfigured: … context= is no longer how to pass one`
 

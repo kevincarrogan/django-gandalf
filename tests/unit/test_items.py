@@ -222,18 +222,32 @@ def test_an_item_title_on_a_per_request_item_wizard_is_taken_on_trust(rf):
     assert _page(_Trusted, rf).get_item_name() == "Guest"
 
 
-def test_an_item_title_beside_a_formset_step_is_taken_on_trust():
-    """A formset step declares no fields at step level, so the item
-    wizard's declaration stops being the whole story and the title is
-    taken on trust rather than crashing the check."""
+def test_an_item_title_a_formset_step_cannot_supply_is_refused():
+    """A formset step declares no fields at step level and answers with a
+    row per entry, so no `item_title` can be read from it. Saying "no
+    fields" rather than "unknown" is what lets this be caught: before, the
+    check skipped the whole wizard and every item was left unnamed at run
+    time, silently."""
+    with pytest.raises(ImproperlyConfigured, match="'day', a field no step"):
+
+        class _Repeated(_Guests):
+            add_another = GUESTS.replace(
+                wizard=GUEST.step(OpeningHoursStepView, name="opening-hours"),
+                item_title="day",
+            )
+
+
+def test_an_item_title_a_form_step_supplies_survives_a_formset_beside_it():
+    """The formset contributes no candidate rather than stopping the check
+    — the guest step still names the item."""
 
     class _Repeated(_Guests):
         add_another = GUESTS.replace(
             wizard=GUEST.step(OpeningHoursStepView, name="opening-hours"),
-            item_title="anything",
+            item_title="name",
         )
 
-    assert _Repeated.item_viewset.item_title == "anything"
+    assert _Repeated.item_viewset.item_title == "name"
 
 
 def test_an_item_title_on_an_expanding_item_wizard_is_taken_on_trust():

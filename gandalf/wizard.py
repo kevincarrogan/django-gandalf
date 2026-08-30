@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from django import forms
+from django.forms import BaseFormSet
 from django.core.exceptions import ImproperlyConfigured
 
 from gandalf import tree
@@ -151,6 +152,14 @@ class on_field:
         declared = fields[self.step]
         if declared is None or self.field in declared:
             return
+        if not declared:
+            raise ImproperlyConfigured(
+                f"on_field({self.step!r}, {self.field!r}) names a step that "
+                f"declares no fields of its own. A repeated step — a formset "
+                f"— answers with a row per entry, and a row's field has no "
+                f"single value to route on. Switch on a selector of your own "
+                f"instead, which can read the rows and decide."
+            )
         raise ImproperlyConfigured(
             f"on_field({self.step!r}, {self.field!r}) names no field of step "
             f"{self.step!r}. Its fields: {', '.join(sorted(declared))}."
@@ -198,11 +207,14 @@ def declared_step_fields(
 
     `None` for the whole wizard when an `.expand()` grows steps mid-walk, so
     no name can be known before the walk reaches them; `None` for one step
-    when its view chooses a form class per request, or when it is a formset,
-    which declares no fields at step level because its fields belong to each
-    of the n forms it repeats. Either way the answer is "the declaration is
-    not the whole story here", and a caller checking a field name against it
-    takes the name on trust rather than refusing it.
+    when its view chooses a form class per request. Both mean "the
+    declaration is not the whole story here", and a caller checking a field
+    name against `None` takes the name on trust rather than refusing it.
+
+    An empty mapping is a different answer, and a definite one: this step
+    declares no fields of its own. A formset is the case — its fields belong
+    to each of the n rows it repeats — and a caller may refuse a field name
+    against it, because no such field will ever be answered here.
     """
     nodes = list(tree.iter_nodes(wizard.tree))
     if any(isinstance(node, tree.Expand) for node in nodes):
@@ -220,7 +232,16 @@ def declared_step_fields(
         else:
             form_class = getattr(declaration, "form_class", None)
         declared = getattr(form_class, "base_fields", None)
-        fields[name] = None if declared is None else dict(declared)
+        if declared is not None:
+            fields[name] = dict(declared)
+        elif isinstance(form_class, type) and issubclass(form_class, BaseFormSet):
+            # Not "unknown": a formset declares no fields *at step level*,
+            # because its fields belong to each of the n rows it repeats.
+            # Saying so rather than shrugging is what lets a caller refuse a
+            # field name that could never be answered here.
+            fields[name] = {}
+        else:
+            fields[name] = None
     return fields
 
 

@@ -335,7 +335,7 @@ attributes of the page.
 | `get_item_id()` | `self.kwargs["item"]` as a string, or `ImproperlyConfigured` when not mounted under an item segment |
 | `get_key()` | `"<list_key>:<item_id>"` — the same string the page's `full_key()` composes |
 | `default_label()` | the *list's* key, not the item's, so every item stamps one label |
-| `get_item_title(run)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
+| `get_item_title(run)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. A step answering with something other than a mapping — a formset — offers no candidate, and is refused at configure time instead. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
 | `run_recorded(run, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
 | `run_done(run)` | back to the page; override to save the item first |
 | `item_removed(store)` | nothing; override to undo what `run_done()` did. Runs while the item is still listed, on a viewset set up for it, so `get_item_id()` says which |

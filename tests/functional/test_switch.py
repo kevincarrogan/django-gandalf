@@ -98,6 +98,31 @@ def test_on_field_naming_no_field_of_its_step_is_refused():
         )
 
 
+def test_on_field_naming_a_repeated_step_is_refused():
+    """A formset answers with a row per entry, so a row's field has no
+    single value to switch on. The declaration says "no fields at step
+    level" rather than "unknown", which is the difference between refusing
+    this now and dying mid-walk on the `cleaned_data.get()` of a list."""
+    wizard = (
+        Wizard()
+        .step(views.OpeningHoursStepView, name="opening-hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    assert declared_step_fields(wizard) == {"opening-hours": {}}
+
+    with pytest.raises(ImproperlyConfigured, match="no fields of its own"):
+        (
+            Wizard()
+            .step(views.OpeningHoursStepView, name="opening-hours")
+            .switch(
+                on_field("opening-hours", "day"),
+                {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+
+
 def test_an_unnamed_step_is_not_a_name_a_selector_can_be_checked_against():
     """A step with no name cannot be addressed, so it is absent from what
     the declaration offers a selector."""
