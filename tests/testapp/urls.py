@@ -16,6 +16,7 @@ from .readme import (
     ch12_budget,
     ch13_gated,
     ch14_journey,
+    ch14_tasklist,
 )
 
 
@@ -66,6 +67,12 @@ urlpatterns = [
     path(
         "readme/apply/<slug:journey>/",
         include(ch14_journey.GrantApplicationViewSet.urls()),
+    ),
+    # Chapter 14 again, as a class body.
+    path("readme/tasklist/new/", include(ch14_tasklist.TaskListStartViewSet.urls())),
+    path(
+        "readme/tasklist/<slug:journey>/",
+        include(ch14_tasklist.GrantApplication.urls()),
     ),
     path(
         "path-aware-walked-past-wizard/",

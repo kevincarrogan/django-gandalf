@@ -1,0 +1,177 @@
+"""A task list declared as a class body.
+
+    class GrantApplication(TaskList):
+        url_name = "apply"
+        template_name = "apply/hub.html"
+
+        contact = Section(contact, title="Contact details", reopen="review")
+        project = Section(ProjectMember, title="Project", reopen="review")
+        budget = AddAnother(budget_line, title="Budget", min_items=1)
+        supporting = Group(SupportingInformation, title="Supporting information")
+
+        def journey_done(self, hub, store): ...
+
+The attribute name is the row's key; the body's order is the page's order,
+the way a form's fields are. A row carries *facts* — a title, where a
+finished section re-opens — and the thing in its slot carries *behaviour*:
+a `Wizard`, which the library wraps in a `MemberViewSet`, or your own
+`MemberViewSet` subclass when the section has something to do when it
+finishes (`run_done()`) or a reason not to be open yet (`blocked()`,
+`hidden()`). Nothing about the task list changes between the two — the
+same rule a wizard has for a `Form` and a `FormView`.
+
+A `TaskList` is a `HubViewSet`: the engine, the hooks and the URL tree are
+the same. What this module adds is the class-body declaration and the
+page's own words for its rows.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Callable
+
+from django.http import HttpRequest
+
+from gandalf.collections import Collection
+from gandalf.hubs import Hub, HubViewSet, MemberDeclaration, WizardLike
+from gandalf.types import StrOrPromise
+
+__all__ = ["AddAnother", "Group", "Link", "Section", "TaskList"]
+
+
+class Row:
+    """One row of a task list. The subclasses say what kind."""
+
+    def declare(self, key: str) -> MemberDeclaration:
+        raise NotImplementedError
+
+
+class Section(Row):
+    """A wizard the user finishes on its own and can come back to. `wizard`
+    is a `Wizard`, or a `MemberViewSet` subclass with the section's
+    behaviour on it."""
+
+    def __init__(
+        self,
+        wizard: WizardLike,
+        /,
+        *,
+        title: StrOrPromise | None = None,
+        reopen: str | None = None,
+        label: str | None = None,
+    ) -> None:
+        self.wizard = wizard
+        self.title = title
+        self.reopen = reopen
+        self.label = label
+
+    def declare(self, key: str) -> MemberDeclaration:
+        return MemberDeclaration(
+            "wizard",
+            key,
+            title=self.title,
+            wizard=self.wizard,
+            reopen=self.reopen,
+            label=self.label,
+        )
+
+
+class AddAnother(Row):
+    """A list the user grows, one run of `wizard` per item. Takes the
+    `Collection` keyword arguments."""
+
+    def __init__(
+        self,
+        wizard: WizardLike | Collection,
+        /,
+        *,
+        title: StrOrPromise | None = None,
+        **options: Any,
+    ) -> None:
+        self.collection = (
+            wizard if isinstance(wizard, Collection) else Collection(wizard, **options)
+        )
+        self.title = title
+
+    def declare(self, key: str) -> MemberDeclaration:
+        return MemberDeclaration(
+            "collection", key, title=self.title, collection=self.collection
+        )
+
+
+class Group(Row):
+    """A task list within this one: its sections are keyed under this row's
+    key in the same journey, and its Continue returns here."""
+
+    def __init__(
+        self, tasklist: type[TaskList], /, *, title: StrOrPromise | None = None
+    ) -> None:
+        self.tasklist = tasklist
+        self.title = title
+
+    def declare(self, key: str) -> MemberDeclaration:
+        return MemberDeclaration("hub", key, title=self.title, hub=self.tasklist.hub)
+
+
+class Link(Row):
+    """A row that links somewhere the task list does not run, with `status`
+    deciding what the row says of it."""
+
+    def __init__(
+        self,
+        url_name: str,
+        /,
+        *,
+        title: StrOrPromise | None = None,
+        status: Callable[[HttpRequest, dict[str, Any]], str] | None = None,
+    ) -> None:
+        self.url_name = url_name
+        self.title = title
+        self.status = status
+
+    def declare(self, key: str) -> MemberDeclaration:
+        return MemberDeclaration(
+            "link", key, title=self.title, url_name=self.url_name, status=self.status
+        )
+
+
+class TaskList(HubViewSet):
+    """A `HubViewSet` whose members are the `Row`s in its class body."""
+
+    declaration_name = "rows"
+    #: The rows this class and its bases declare, in definition order.
+    rows: dict[str, Row] = {}
+    #: The nested task lists, by row key, for building their pages.
+    _groups: dict[str, type[TaskList]] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        own = {name: row for name, row in cls.__dict__.items() if isinstance(row, Row)}
+        # A row is a key, not an attribute: left on the class it would
+        # shadow the view's own methods (`setup`, `get`, `post`, ...).
+        for name in own:
+            delattr(cls, name)
+        if own:
+            cls.rows = {**cls.rows, **own}
+            cls._groups = {
+                key: row.tasklist
+                for key, row in cls.rows.items()
+                if isinstance(row, Group)
+            }
+            hub = Hub()
+            for key, row in cls.rows.items():
+                hub = hub._with(row.declare(key))
+            cls.hub = hub
+        super().__init_subclass__(**kwargs)
+
+    @classmethod
+    def build_nested_hub(
+        cls, declaration: MemberDeclaration, full_key: str, url_name: str
+    ) -> type[HubViewSet]:
+        """A group's page is its own class — its template, its hooks — made
+        a subclass of this one too, so an override here applies to it."""
+        group = cls._groups[declaration.key]
+        attrs = {
+            **cls.scoped_attrs(url_name),
+            "member_key": full_key,
+            "member_template_name": cls.member_template_name,
+        }
+        return type(group.__name__, (group, cls), attrs)

@@ -530,6 +530,23 @@ class JourneyScoped:
         looks like."""
         raise Http404(f"Journey {self.get_journey()!r} has been submitted.")
 
+    @classmethod
+    def blocked(cls, store: JourneyStore) -> bool:
+        """Whether this member is listed but not open to the user yet — the
+        row reads *Cannot start yet* and the door refuses it. One read of
+        the journey's store; `False` by default. A classmethod because the
+        hub asks before any instance exists, exactly as it asks `begin()`
+        and `inspect()`: the point of the question is that there must not
+        be a run."""
+        return False
+
+    @classmethod
+    def hidden(cls, store: JourneyStore) -> bool:
+        """Whether this member should not be listed for this request at all
+        — not in the rows, not in the counts, its door refusing a stale
+        link. One read of the store; `False` by default."""
+        return False
+
 
 class MemberViewSet(JourneyScoped, WizardViewSet):
     """The viewset a hub runs a wizard member with. Built by `HubViewSet`
@@ -987,14 +1004,20 @@ class HubViewSet(JourneyScoped, TemplateView):
 
     def member_blocked(self, member: Member, store: JourneyStore) -> bool:
         """Whether the user cannot start this member yet: the member's own
-        `blocked` rule. Override for a rule spanning rows, or one that
-        needs the request."""
-        return member.blocked is not None and bool(member.blocked(store))
+        `blocked` rule, or its viewset's `blocked()`. Override for a rule
+        spanning rows, or one that needs the request."""
+        if member.blocked is not None and member.blocked(store):
+            return True
+        gate = getattr(member.viewset, "blocked", None)
+        return gate is not None and bool(gate(store))
 
     def member_hidden(self, member: Member, store: JourneyStore) -> bool:
         """Whether this member should not be listed for this request: the
-        member's own `hidden` rule."""
-        return member.hidden is not None and bool(member.hidden(store))
+        member's own `hidden` rule, or its viewset's `hidden()`."""
+        if member.hidden is not None and member.hidden(store):
+            return True
+        gate = getattr(member.viewset, "hidden", None)
+        return gate is not None and bool(gate(store))
 
     def get_member_state(self, member: Member, store: JourneyStore) -> State:
         run_id = store.get_run(self.full_key(member))
