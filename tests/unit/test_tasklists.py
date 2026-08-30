@@ -208,6 +208,32 @@ def test_an_entry_stays_readable_on_the_declaration():
     assert View.setup is not _Named.setup
 
 
+def test_an_explicit_key_names_the_entry_and_its_url():
+    """An attribute name cannot carry a hyphen; the key can."""
+
+    class _Hyphenated(TaskList):
+        match_funding = Section(CONTACT, title="Match funding", key="match-funding")
+
+    class _HyphenatedPage(_Page):
+        url_name = "readme-hyphen"
+        tasklist = _Hyphenated
+
+    assert list(_Hyphenated.entries) == ["match-funding"]
+    (entry,) = _HyphenatedPage.entries
+    assert entry.key == "match-funding"
+    assert entry.viewset.key == "match-funding"
+    assert entry.viewset.url_name == "readme-hyphen-match-funding"
+    assert isinstance(_Hyphenated.match_funding, Section)
+
+
+def test_two_entries_under_one_key_are_refused():
+    with pytest.raises(ImproperlyConfigured, match="two entries under the key 'pay'"):
+
+        class _Clash(TaskList):
+            pay = Section(CONTACT)
+            pay_again = Section(CONTACT, key="pay")
+
+
 def test_a_declaration_is_inherited_and_extended_by_a_subclass():
     class _More(_Pair):
         extra = Section(CONTACT)

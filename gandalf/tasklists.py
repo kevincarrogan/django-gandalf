@@ -163,9 +163,10 @@ class Entry:
     """One entry of a task list — something the user can enter, leave, and
     come back to. `Section`, `AddAnother`, `Group` and `Link` are the kinds.
 
-    Declared in a `TaskList` body with no key: the attribute name is the
-    key, bound when the list is built (`bound()`), along with the viewset
-    that runs it. `title` is what the page renders; without one the key is
+    Declared in a `TaskList` body: the attribute name is the key unless
+    `key=` says otherwise — the key is the URL segment, and an attribute
+    name cannot carry a hyphen — bound when the list is built (`bound()`),
+    along with the viewset that runs it. `title` is what the page renders; without one the key is
     made readable. `label` is the stash's shape-identity, bumped when a
     deploy reshapes the wizard so an old payload is refused rather than
     walked; it defaults to the full key. `url_kwargs` are the extra kwargs
@@ -390,11 +391,17 @@ class TaskList:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        own = {
-            name: entry
-            for name, entry in cls.__dict__.items()
-            if isinstance(entry, Entry)
-        }
+        own: dict[str, Entry] = {}
+        for name, entry in cls.__dict__.items():
+            if not isinstance(entry, Entry):
+                continue
+            key = entry.key or name
+            if key in own:
+                raise ImproperlyConfigured(
+                    f"{cls.__name__} declares two entries under the key {key!r}. "
+                    "An explicit key= must not collide with another entry's."
+                )
+            own[key] = entry
         cls.entries = {**cls.entries, **own}
         cls.viewset = None
 

@@ -99,7 +99,12 @@ them.
 ### Entries
 
 Every entry is a frozen dataclass with `title` and `label`, and, once the
-page has built it, `key` and `viewset`. `title` is what the row renders;
+page has built it, `key` and `viewset`. The key is the attribute name the
+entry is declared under, unless `key=` is given — the key is also the URL
+segment, and an attribute name cannot carry a hyphen, so
+`match_funding = Section(..., key="match-funding")` is how that section
+gets the URL it should. Two entries under one key raise
+`ImproperlyConfigured`. `title` is what the row renders;
 default: the key made readable (`"home_address"` → `"Home address"`).
 `label` is the label the entry's stash is expected to carry, checked when
 the stash is re-opened; default: the full key. Bump it when a deploy

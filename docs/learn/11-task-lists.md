@@ -41,8 +41,9 @@ class GrantApplicationViewSet(TaskListViewSet):
 
 A wizard chains because it is a sequence. A task list is a *set* — the
 applicant does its sections in whatever order they like — so it is a class
-body, the way a form's fields are: the attribute name is the section's key,
-and the body's order is the order on the page. Nothing about it says
+body, the way a form's fields are: the attribute name is the section's key
+(and so its URL segment — pass `key="match-funding"` where the name would
+put an underscore in the URL), and the body's order is the order on the page. Nothing about it says
 "first this, then that", because nothing about a task list means that.
 
 It is the same split a wizard has. `GrantApplication` is a value — what

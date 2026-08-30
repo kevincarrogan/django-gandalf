@@ -89,6 +89,19 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
 # --- one list, one page -----------------------------------------------------------
 
 
+def test_an_explicit_key_is_the_url_segment(client):
+    """Chapter 13's `match_funding` attribute is mounted at /match-funding/."""
+    assert reverse("readme-gated-match-funding").endswith("/match-funding/")
+
+
+def test_two_entries_under_one_key_are_refused():
+    with pytest.raises(ImproperlyConfigured, match="two entries under the key 'pay'"):
+
+        class _Clash(TaskList):
+            pay = Section(contact)
+            pay_again = Section(contact, key="pay")
+
+
 def test_a_second_page_for_one_list_is_refused():
     with pytest.raises(ImproperlyConfigured, match="already mounted"):
 

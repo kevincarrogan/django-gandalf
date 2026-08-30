@@ -651,17 +651,17 @@ def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
 
 
 def test_chapter_13_match_funding_appears_above_the_threshold(client):
-    assert "match_funding" not in _gated_statuses(client)
+    assert "match-funding" not in _gated_statuses(client)
 
     _finish_project(client, 25_000)
 
-    assert _gated_statuses(client)["match_funding"] == "not-started"
+    assert _gated_statuses(client)["match-funding"] == "not-started"
     assertContains(client.get(reverse("readme-gated")), "Match funding")
 
 
 def test_chapter_13_match_funding_stays_hidden_below_it(client):
     _finish_project(client, 5_000)
 
-    assert "match_funding" not in _gated_statuses(client)
-    door = reverse("readme-gated-entry", kwargs={"entry": "match_funding"})
+    assert "match-funding" not in _gated_statuses(client)
+    door = reverse("readme-gated-entry", kwargs={"entry": "match-funding"})
     assertRedirects(client.get(door), reverse("readme-gated"))

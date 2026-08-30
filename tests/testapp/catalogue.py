@@ -152,7 +152,7 @@ GROUPS = (
             ),
             Example("readme-gated-project"),
             Example("readme-gated-referees"),
-            Example("readme-gated-match_funding"),
+            Example("readme-gated-match-funding"),
             Example(
                 "readme-apply-start",
                 note="Chapter 14. Start here — it mints an application and lands on its hub.",
@@ -166,7 +166,7 @@ GROUPS = (
             Example("readme-apply-contact", url_kwargs=JOURNEY),
             Example("readme-apply-project", url_kwargs=JOURNEY),
             Example("readme-apply-budget", url_kwargs=JOURNEY),
-            Example("readme-apply-match_funding", url_kwargs=JOURNEY),
+            Example("readme-apply-match-funding", url_kwargs=JOURNEY),
             Example("readme-apply-supporting-referees", url_kwargs=JOURNEY),
             Example("readme-apply-supporting-documents", url_kwargs=JOURNEY),
             Example("readme-apply-supporting", url_kwargs=JOURNEY),

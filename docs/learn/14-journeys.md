@@ -131,7 +131,7 @@ class GrantApplication(TaskList):
     contact = Section(ContactSection, title="Contact details", reopen="review")
     project = Section(ProjectSection, title="Project", reopen="review")
     budget = budget
-    match_funding = Section(MatchFundingSection, title="Match funding")
+    match_funding = Section(MatchFundingSection, title="Match funding", key="match-funding")
     supporting = Group(
         SupportingInformation,
         title="Supporting information",

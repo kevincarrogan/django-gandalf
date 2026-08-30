@@ -168,7 +168,7 @@ def test_two_journeys_in_one_session_never_see_each_other(client):
 def test_a_member_that_does_not_apply_is_not_on_the_page(client):
     journey = _start(client, "individual")
 
-    assert "match_funding" not in _statuses(client, journey)
+    assert "match-funding" not in _statuses(client, journey)
     assertContains(client.get(_hub(journey)), "of 5 sections")
     nested = _statuses(client, journey, "readme-apply-supporting")
     assert "documents" not in nested
@@ -202,19 +202,19 @@ def test_a_member_appears_once_another_members_answer_reveals_it(client):
 
     _finish_project(client, journey, 25_000)
 
-    assert _statuses(client, journey)["match_funding"] == NOT_STARTED
+    assert _statuses(client, journey)["match-funding"] == NOT_STARTED
     assert stored_journey_data(client, journey)["journey"]["amount"] == 25_000
 
 
 def test_a_member_disappears_again_when_the_answer_is_withdrawn(client):
     journey = _start(client)
     _finish_project(client, journey, 25_000)
-    assert "match_funding" in _statuses(client, journey)
+    assert "match-funding" in _statuses(client, journey)
 
     # Re-open the project and ask for less.
     _finish_project(client, journey, 5_000)
 
-    assert "match_funding" not in _statuses(client, journey)
+    assert "match-funding" not in _statuses(client, journey)
 
 
 def test_a_member_waiting_on_another_is_listed_but_cannot_start(client):
@@ -520,7 +520,7 @@ def test_a_seeded_answer_reveals_a_member_without_driving_the_wizard(client):
 
     seed_journey_data(client, {"amount": 20_000}, journey=journey)
 
-    assert "match_funding" in _statuses(client, journey)
+    assert "match-funding" in _statuses(client, journey)
     assert stored_journey_data(client, journey)["journey"] == {
         "applying_as": "individual",
         "amount": 20_000,
