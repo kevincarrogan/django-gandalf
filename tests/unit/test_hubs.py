@@ -1074,7 +1074,7 @@ def test_a_member_without_a_hub_url_name_is_misconfigured(rf):
 def test_a_member_under_a_submitted_journey_sends_the_user_up(rf):
     view = _contact_view(rf, {"completed": True})
 
-    response = view.journey_completed(view.get_journey_store())
+    response = view.submitted(view.get_journey_store())
 
     assert response["Location"] == "/readme/hub/"
 
@@ -1588,7 +1588,7 @@ def test_a_hub_says_a_submitted_journey_is_gone_by_default(rf):
     page = _page(_Hub, rf, {"completed": True})
 
     with pytest.raises(Http404):
-        page.journey_completed(page.get_journey_store())
+        page.submitted(page.get_journey_store())
 
 
 def _apply(rf, method, path, session=None, **kwargs):

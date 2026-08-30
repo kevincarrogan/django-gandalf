@@ -134,7 +134,7 @@ class GrantApplicationViewSet(HubViewSet):
         store.data["reference"] = application.reference
         return redirect(self.get_page_url())
 
-    def journey_completed(self, store):
+    def submitted(self, store):
         return render(
             self.request,
             "testapp/journey_done.html",
@@ -155,7 +155,7 @@ class GrantApplicationViewSet(HubViewSet):
 the application's work, and the one thing with no default — and only once
 that has returned tombstones the journey. A `journey_done()` that raises
 leaves every member resumable. After that, the runs and stashes are gone;
-the hub page answers with `journey_completed()`, which is `Http404` until
+the hub page answers with `submitted()`, which is `Http404` until
 you say what a submitted journey looks like. Anything the done page needs
 goes in `store.data`, which the tombstone keeps.
 

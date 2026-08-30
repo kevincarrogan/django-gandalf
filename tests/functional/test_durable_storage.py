@@ -370,7 +370,7 @@ def test_completing_a_journey_deletes_its_members_and_keeps_its_row(user):
 
 
 def test_a_submitted_durable_journey_is_gone_from_its_hub(logged_in, user):
-    """The default `journey_completed()`: a tombstone is a 404 until the hub
+    """The default `submitted()`: a tombstone is a 404 until the hub
     says what a submitted journey looks like."""
     ModelJourneyStore(WizardContext(actor=user), "default").complete()
 

@@ -523,13 +523,14 @@ class JourneyScoped:
         if store.is_complete():
             if self.is_nested:
                 return redirect(self.get_hub_url())
-            return self.journey_completed(store)
+            return self.submitted(store)
         return cast(HttpResponseBase, super().dispatch(request, *args, **kwargs))  # type: ignore[misc]
 
-    def journey_completed(self, store: JourneyStore) -> HttpResponseBase:
-        """Response for a request that reaches a root after its journey was
-        submitted. `Http404` until the app says what a submitted journey
-        looks like."""
+    def submitted(self, store: JourneyStore) -> HttpResponseBase:
+        """The page for a journey that has been submitted — what any request
+        reaching the root after the tombstone gets. `Http404` until the app
+        says what a submitted journey looks like; `store.data` is what the
+        tombstone kept."""
         raise Http404(f"Journey {self.get_journey()!r} has been submitted.")
 
     @classmethod
@@ -587,7 +588,7 @@ class MemberViewSet(JourneyScoped, WizardViewSet):
     def get_hub_url_kwargs(self) -> dict[str, Any]:
         return self.get_url_kwargs()
 
-    def journey_completed(self, store: JourneyStore) -> HttpResponseBase:
+    def submitted(self, store: JourneyStore) -> HttpResponseBase:
         return redirect(self.get_hub_url())
 
     def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
@@ -638,7 +639,7 @@ class HubViewSet(JourneyScoped, TemplateView):
     the declaration when the class is created. A nested hub in the
     declaration becomes a subclass of *this* class, so an override here —
     a status label, a title rule, `stash_unusable()` — applies to the whole
-    tree. `journey_done()` and `journey_completed()` are the root's alone.
+    tree. `journey_done()` and `submitted()` are the root's alone.
 
     `storage_class` and `journey_store_class` set here reach every member.
     """

@@ -185,7 +185,7 @@ derived from the new one.
 
 A nested hub is a subclass of its root, so an override on the root — a
 status label, a title rule, `stash_unusable()` — applies to the whole tree.
-`journey_done()` and `journey_completed()` are the root's alone: a nested
+`journey_done()` and `submitted()` are the root's alone: a nested
 hub never runs them.
 
 - `urls()` *(classmethod)* — requires `url_name`. Publishes the page, then
@@ -233,7 +233,7 @@ hub never runs them.
   `None`.
 - `dispatch()` — reads `store.is_complete()` once per request. For a
   submitted journey a nested hub redirects to the hub above, and the root
-  returns `journey_completed(store)`, instead of dispatching.
+  returns `submitted(store)`, instead of dispatching.
 
 **Members**
 
@@ -321,7 +321,7 @@ hub never runs them.
   submitted"*). Anything the done page needs goes into `store.data`, which
   the tombstone keeps.
 - `hub_incomplete(hub)` — default `redirect(get_page_url())`.
-- `journey_completed(store)` — the root's response after submission, for
+- `submitted(store)` — the root's response after submission, for
   the page and every door beneath it. Raises `Http404` by default. Override
   to render a done page from `store.data`.
 
@@ -359,7 +359,7 @@ full key), `hub_url_name`, `member_label`, `member_done` (the declared
   still readable. A plain member records nothing; an item caches its title.
 - `run_done(bound_wizard)` — the declared `done`, then
   `redirect(get_hub_url())`.
-- `dispatch()` / `journey_completed(store)` — a bookmarked run URL under a
+- `dispatch()` / `submitted(store)` — a bookmarked run URL under a
   submitted journey is sent back to the hub.
 
 Re-opening a completed member seeds a fresh run from its stash with every
@@ -526,7 +526,7 @@ class GrantApplicationViewSet(HubViewSet):
         store.data["reference"] = application.reference   # the tombstone keeps this
         return redirect(self.get_page_url())
 
-    def journey_completed(self, store):
+    def submitted(self, store):
         return render(self.request, "grant/done.html", {"reference": store.data["reference"]})
 ```
 
@@ -627,7 +627,7 @@ The viewset has no `hub`. Set `hub` to a `Hub()` declaration.
 
 ### `Http404: Journey 'app-1' has been submitted.`
 
-The default `journey_completed()` on a root hub. Override it to render a
+The default `submitted()` on a root hub. Override it to render a
 done page from `store.data`.
 
 ### POST to the door returns 405

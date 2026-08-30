@@ -123,7 +123,7 @@ the journey rather than one run; the bag semantics are in
 
 Write here from a member's `done` (the run is still readable) and read
 back from `blocked` / `hidden` rules, `journey_done()` and
-`journey_completed()`. The tombstone keeps it.
+`submitted()`. The tombstone keeps it.
 
 ### `SessionCollectionStore(context, journey)`
 

@@ -2242,7 +2242,7 @@ class ShortMemoryJourneyStore(SessionJourneyStore):
 
 class SubmitHubViewSet(HubViewSet):
     """A journey-mounted hub whose submit records nothing: the tombstone it
-    leaves is the bare one, and its default `journey_completed()` is the
+    leaves is the bare one, and its default `submitted()` is the
     404 the library ships."""
 
     description = (

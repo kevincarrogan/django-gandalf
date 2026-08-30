@@ -172,7 +172,7 @@ The actions:
 | `hub_done(hub, store)` | redirect to `get_hub_url()` | work that runs once per submit of this part |
 | `hub_incomplete(hub)` | redirect to `get_page_url()` | render the page with an error |
 | `journey_done(hub, store)` | `ImproperlyConfigured` | required on a root collection |
-| `journey_completed(store)` | root: `Http404`; nested: redirect up | a done page |
+| `submitted(store)` | root: `Http404`; nested: redirect up | a done page |
 | `member_unavailable(key)` | redirect to `get_page_url()` | raise `Http404` |
 | `enter(member)` / `resume_member()` / `reopen_member()` / `start_member()` / `stash_unusable()` | `HubViewSet`'s | see [Hubs](hubs.md) |
 

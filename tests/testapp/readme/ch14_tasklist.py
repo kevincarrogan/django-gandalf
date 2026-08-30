@@ -118,7 +118,7 @@ class GrantApplicationViewSet(TaskListViewSet):
         store.data["reference"] = application.reference
         return redirect(self.get_page_url())
 
-    def journey_completed(self, store):
+    def submitted(self, store):
         return render(
             self.request,
             "testapp/journey_done.html",

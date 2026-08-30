@@ -467,7 +467,7 @@ def test_a_journey_that_decided_nothing_leaves_a_bare_tombstone(client):
 
 
 def test_a_submitted_journey_is_gone_until_the_hub_says_otherwise(client):
-    """The default `journey_completed()` is a 404: the library cannot know
+    """The default `submitted()` is a 404: the library cannot know
     what a submitted journey looks like."""
     _submit_everything(client, "app-1")
     client.post(_submit_hub("app-1"))

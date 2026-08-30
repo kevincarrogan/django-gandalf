@@ -274,7 +274,7 @@ def test_hub_done_is_the_nested_hubs_hook(rf):
 
 
 def test_a_nested_hub_under_a_submitted_journey_sends_the_user_up(rf):
-    """The root's `journey_completed()` renders the done page; a nested hub
+    """The root's `submitted()` renders the done page; a nested hub
     inherits that method but never fires it — dispatch sends the user up
     to the root, which is the page that can say what submitted looks like."""
     request = _request(
