@@ -1,0 +1,22 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/two_factor_code.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.run.back_url %}
+            <p><a href="{{ request.run.back_url }}">Back</a></p>
+        {% endif %}
+        {# Standing in for an authenticator app, so the demo is completable. #}
+        <p class="meta">Your code is <strong>{{ code }}</strong></p>
+        {# The code verifies once. This says whether the check has been made #}
+        {# and still stands — go back and change an earlier answer to watch #}
+        {# it go from proved to voided. #}
+        <p class="meta">Proof: {{ proof }}</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}

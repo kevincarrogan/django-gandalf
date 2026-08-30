@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from . import views
+from .from_formtools import djangogirls, squest, two_factor
 from .readme import (
     ch01_first_wizard,
     ch02_branching,
@@ -114,6 +115,18 @@ urlpatterns = [
     path(
         "one-time-token-wizard/",
         include(views.OneTimeTokenWizardViewSet.urls()),
+    ),
+    # Real formtools wizards, translated (tests/testapp/from_formtools/,
+    # driven by tests/functional/test_from_formtools.py).
+    path(
+        "from-formtools/djangogirls/",
+        include(djangogirls.OrganiseAnEventViewSet.urls()),
+    ),
+    path("from-formtools/squest/", include(squest.RequestAServiceViewSet.urls())),
+    path("from-formtools/two-factor/", include(two_factor.SetupViewSet.urls())),
+    path(
+        "from-formtools/two-factor-single/",
+        include(two_factor.SingleMethodSetupViewSet.urls()),
     ),
     path("linear-wizard/", include(views.LinearWizardViewSet.urls())),
     path("done-linear-wizard/", include(views.DoneLinearWizardViewSet.urls())),

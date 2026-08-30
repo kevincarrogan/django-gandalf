@@ -85,6 +85,53 @@ together, arms are reusable sub-wizards, and the whole flow is visible in one
 declaration instead of growing bespoke navigation plumbing as branches
 multiply.
 
+### Three real wizards, ported
+
+Snippets prove a mapping is legible. They do not prove it survives contact
+with a wizard someone ships. These three are ported whole from projects that
+do, and driven end to end by `tests/functional/test_from_formtools.py`:
+
+| Wizard | Upstream | What the port turns on |
+| --- | --- | --- |
+| [organise an event](../../tests/testapp/from_formtools/djangogirls.py) | Django Girls, `organize/views.py` | a three-entry `condition_dict` becomes two `.branch()` nodes |
+| [request a service](../../tests/testapp/from_formtools/squest.py) | Squest, `service_catalog/views/catalog_views.py` | a later form built from an earlier answer |
+| [two-factor setup](../../tests/testapp/from_formtools/two_factor.py) | django-two-factor-auth, `two_factor/views/core.py` | a shape decided per request, and a check that consumes what it checks |
+
+Each module's docstring says what stops being the application's problem.
+Three things are worth knowing before you start a port of your own.
+
+**A `condition_dict` cannot express a fork.** It says whether a step is *in*,
+so a two-way choice is written as two predicates that must stay opposites —
+Django Girls has `skip_workshop_if_remote` and
+`skip_workshop_remote_if_in_person`, and nothing checks they agree. One
+`.branch()` with two arms cannot show both or neither. A condition that
+really is a skip stays one, as `.branch(..., default=None)`.
+
+**Reading an earlier answer stops being a storage detail.** Squest's second
+form needs the first step's answers, and `get_form_kwargs()` runs before
+there is a validated answer to read, so it indexes the raw session:
+`self.storage.data['step_data']['0']['0-quota_scope'][0]` — position, prefix
+and a list-of-one, all load-bearing. A step view is dispatched behind a
+validated prefix, so it is `find_step(name=...).form.cleaned_data`.
+
+**A check that consumes what it checks needs a
+[proof](../reference/proofs.md).** Re-proving every answer on every request
+assumes validating twice gives the same answer twice. A one-time password
+breaks that, which is why django-two-factor-auth carries an
+`IdempotentSessionWizardView` at all. `run.proof()` is the seam.
+
+Two rough edges the ports met, both worth knowing:
+
+- **Formsets work, and `MergeCleanedData` does not follow them.** `.step()`
+  takes a `FormView`, and `FormView` builds a formset the way it builds a
+  form, so Django Girls' organisers step needed nothing special. Reducing
+  that path afterwards raises `TypeError: 'list' object is not a mapping` —
+  a formset answers with a list. Gather per step in `done()` instead.
+- **A `ModelForm` is not a `forms.Form`.** `.step()` tests
+  `issubclass(declaration, forms.Form)`, and a `ModelForm` subclasses
+  `BaseForm`. Wrap it in a [`StepFormView`](../reference/step-views.md);
+  most real wizards are ModelForm-based, so expect to write one per step.
+
 ---
 
 [← Chapter 16 — Outline, observers and the driver](16-outline-observers-and-the-driver.md) · [Learn](README.md) · **Reference:** [Wizard](../reference/wizard.md)

@@ -580,6 +580,41 @@ GROUPS = (
             ),
         ),
     ),
+    Group(
+        "Ported from django-formtools",
+        "Three wizards taken from projects that ship, translated whole from "
+        "django-formtools and driven by tests/functional/test_from_formtools.py. "
+        "Each one lands in a different half of the library, and each module's "
+        "docstring says what stops being the application's problem once the "
+        "port is done.",
+        (
+            Example(
+                "formtools-djangogirls",
+                note="Django Girls' organise-an-event application. Upstream "
+                "needs two opposite predicates for the workshop question; "
+                "here it is one branch with two arms. The organisers step is "
+                "a formset.",
+            ),
+            Example(
+                "formtools-squest",
+                note="Squest's request-a-service wizard. The survey form is "
+                "built from the first step's answer — read by name, where "
+                "upstream indexes into raw session storage by position.",
+            ),
+            Example(
+                "formtools-two-factor",
+                note="django-two-factor-auth's setup wizard. The shape comes "
+                "from a method registry, and the code verifies once: enter it, "
+                "then go back and change an answer to watch the proof void.",
+            ),
+            Example(
+                "formtools-two-factor-single",
+                note="The same wizard with one method registered. Upstream "
+                "deletes the step and forges its answer into storage; here "
+                "the step is simply never declared.",
+            ),
+        ),
+    ),
 )
 
 

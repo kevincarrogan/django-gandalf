@@ -1,0 +1,19 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/formset_step.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.run.back_url %}
+            <p><a href="{{ request.run.back_url }}">Back</a></p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {# A formset renders its own management form through as_p, which #}
+            {# is the whole reason a formset step needs no special handling: #}
+            {# the stored submission is the POST the browser sent. #}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}

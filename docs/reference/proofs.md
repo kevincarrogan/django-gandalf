@@ -206,6 +206,15 @@ Written against `metadata.for_step()` this needs a guard comparing the
 number it last sent to, by hand, and gets it wrong the day a second thing
 starts mattering. The proof's scope is every earlier answer at once.
 
+### The whole thing, ported from a real wizard
+
+`tests/testapp/from_formtools/two_factor.py` is django-two-factor-auth's
+setup wizard translated whole — a registry deciding the shape per request, a
+minted key in `run.metadata`, and the code step above. It is the case this
+primitive was built for, and
+[Coming from django-formtools](../learn/coming-from-django-formtools.md)
+walks through what it replaced.
+
 ### Reading it at the end
 
 ```python
