@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from django import forms
 from django.views.generic.edit import FormView
@@ -69,6 +69,60 @@ class StepFormView(_StepFormViewBase):
 
     def get_success_url(self) -> str:
         return self.request.path
+
+    def get_answer_errors(self, form: Any) -> dict[str, list[dict[str, Any]]]:
+        """What this step refused, by field name, in `get_json_data()` shape.
+
+        Empty when the step is satisfied — callers read the emptiness, not
+        the underlying attribute, which is the whole point of asking here.
+        `BaseForm.errors` answers both questions at once because an
+        `ErrorDict` is falsy when empty; a formset's is a *list* of one
+        entry per row and is truthy even when every row is valid, so a
+        caller testing it directly concludes the opposite of the truth.
+
+        Override alongside a form object that is not a `BaseForm`, so that
+        the driver, and anything else asking whether this step is settled,
+        gets an answer from the step rather than from a Django attribute it
+        has assumed the shape of.
+        """
+        return cast(
+            "dict[str, list[dict[str, Any]]]",
+            form.errors.get_json_data(),
+        )
+
+
+class FormSetStepView(StepFormView):
+    """A step whose form object is a formset rather than a form.
+
+    `FormView` builds a formset from `data`, `files`, `initial` and `prefix`
+    exactly as it builds a form, so a formset step needs no special handling
+    to be *served* — that much works with a plain `StepFormView`. What it
+    needs is somewhere to say how the reads a formset answers differently
+    should be read, and this is that place:
+
+        from gandalf.form_views import FormSetStepView
+
+
+        class OpeningHoursStepView(FormSetStepView):
+            form_class = OpeningHoursFormSet
+            template_name = "hours/step.html"
+
+    A row's errors are keyed by the row's index and the field name —
+    `"0-email"` — because `"email"` names nothing when several people are
+    being asked at once. Errors belonging to the formset itself rather than
+    to any row (`min_num`, `max_num`, a `clean()` on the formset) keep
+    Django's own `__all__`.
+    """
+
+    def get_answer_errors(self, form: Any) -> dict[str, list[dict[str, Any]]]:
+        errors: dict[str, list[dict[str, Any]]] = {}
+        for index, row in enumerate(form.errors):
+            for field, messages in row.get_json_data().items():
+                errors[f"{index}-{field}"] = messages
+        non_form = form.non_form_errors()
+        if non_form:
+            errors["__all__"] = non_form.get_json_data()
+        return errors
 
 
 def form_view_factory(

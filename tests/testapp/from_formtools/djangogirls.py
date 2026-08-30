@@ -36,7 +36,7 @@ and `organisers` arrives as the list it always was.
 from django import forms
 from django.http import HttpResponse
 
-from gandalf.form_views import StepFormView
+from gandalf.form_views import FormSetStepView
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData, Wizard, condition
 
@@ -101,7 +101,7 @@ class RemoteWorkshopForm(forms.Form):
     tools = forms.CharField(label="Which tools will you use?", widget=forms.Textarea)
 
 
-class OrganisersStepView(StepFormView):
+class OrganisersStepView(FormSetStepView):
     """A formset step.
 
     `.step()` takes a `FormView` and asks nothing else of it, and Django's
@@ -109,6 +109,11 @@ class OrganisersStepView(StepFormView):
     `prefix` exactly as it does a form. The replay works for the reason the
     rest of the walk works: the stored submission is the POST the browser
     sent, management form and all.
+
+    Serving it needs no more than that. `FormSetStepView` is what makes the
+    step readable by everything that is *not* a browser — the driver, and so
+    the agent — because those ask the view what the step refused rather than
+    reading a `BaseForm` attribute off an object that has not got one.
     """
 
     form_class = OrganisersFormSet

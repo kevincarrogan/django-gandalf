@@ -37,6 +37,8 @@ from gandalf.types import (
 
 
 if TYPE_CHECKING:
+    from django.views.generic.edit import FormView
+
     from gandalf.form_views import StepViewClass
     from gandalf.viewsets import WizardViewSet
     from gandalf.wizard import ConfiguredWizard
@@ -429,6 +431,24 @@ class RuntimeStep:
         Raise from `form_valid()` instead when the answer must stay wholly
         readable afterwards.
         """
+        form: BaseForm = self.step_view.get_form()
+        try:
+            form.is_valid()
+        except Escape:
+            pass
+        return form
+
+    @cached_property
+    def step_view(self) -> FormView[Any]:
+        """The step's view, set up with the stored submission.
+
+        Built once per node, and the seam an application answers through:
+        `form` is what this view's `get_form()` returned, so anything the
+        library reads *about* that object — what the step refused, what it
+        asks — belongs on the view, which knows what kind of object it
+        built. Reading it off the object directly means guessing, and a
+        formset is where the guess is wrong.
+        """
         form_view_class = cast("StepViewClass", self.declaration.form_view)
         run = cast("Run", self.run)
         request = run.dispatcher.build_request(
@@ -438,12 +458,24 @@ class RuntimeStep:
         )
         view = form_view_class()
         view.setup(request)
-        form: BaseForm = view.get_form()
-        try:
-            form.is_valid()
-        except Escape:
-            pass
-        return form
+        return view
+
+    @property
+    def errors(self) -> dict[str, list[dict[str, Any]]]:
+        """What this step refused, by field name, empty when it is settled.
+
+        Asked of `step_view` rather than read off `form.errors`, because a
+        formset's `errors` is truthy when every row is valid, so a caller
+        testing that directly concludes the opposite of the truth. A step
+        declared with a plain Django `FormView` rather than a
+        `StepFormView` has no say, and gets the `BaseForm` reading.
+        """
+        reader = getattr(self.step_view, "get_answer_errors", None)
+        if reader is None:
+            return cast(
+                "dict[str, list[dict[str, Any]]]", self.form.errors.get_json_data()
+            )
+        return cast("dict[str, list[dict[str, Any]]]", reader(self.form))
 
     def matches_context(self, **context: Any) -> bool:
         return self.declaration.matches_context(**context)

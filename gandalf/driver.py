@@ -496,8 +496,9 @@ class RunDriver:
             return self._escaped(escape, walk, stored_files)
         run.persist(walk)
         next_cursor = self._refresh(walk)
-        if target.form.errors:
-            self._last_errors = cast(Errors, target.form.errors.get_json_data())
+        errors = target.errors
+        if errors:
+            self._last_errors = errors
             return SubmitResult(
                 status="invalid",
                 errors=self._last_errors,

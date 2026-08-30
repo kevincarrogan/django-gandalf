@@ -253,6 +253,22 @@ Dataclass; nodes are built by the walk and by `path`.
 | `declaration` | The `tree.Step` — `declaration.context` is the full context dict, `declaration.form_view` the step view class. |
 | `next` | The next node in the chain. |
 
+### `RuntimeStep.step_view`
+
+The step's view, set up with the stored submission, built once per node.
+`form` is what this view's `get_form()` returned, so anything the library
+reads *about* that object — what the step refused, what it asks — is asked
+of the view, which knows what kind of object it built. An application
+answers here; see [Step views](step-views.md).
+
+### `RuntimeStep.errors`
+
+What the step refused, by field name, in `get_json_data()` shape, and empty
+when the step is settled. Asked of `step_view.get_answer_errors()` rather
+than read off `form.errors`, because a formset's `errors` is truthy when
+every row is valid. A step declared with a bare Django `FormView` has no
+say and gets the `BaseForm` reading.
+
 ### `RuntimeStep.matches_context(**context)`
 
 **Returns** whether this step's declared context satisfies every lookup

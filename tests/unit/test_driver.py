@@ -1847,3 +1847,77 @@ def test_addressing_a_url_keeps_the_session_the_context_was_using():
     driver = RunDriver.begin(_SignupViewSet, context=context, item="v1")
 
     assert driver.run.context.session is context.session
+
+
+# --- A formset step, which is not a form ------------------------------------
+
+ORGANISERS = {
+    "form-TOTAL_FORMS": "1",
+    "form-INITIAL_FORMS": "0",
+    "form-MIN_NUM_FORMS": "1",
+    "form-MAX_NUM_FORMS": "10",
+    "form-0-email": "ada@example.com",
+    "form-0-first_name": "Ada",
+}
+
+
+@pytest.fixture
+def organisers_driver():
+    """A driver over the one ported wizard with a formset step in it."""
+    from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
+
+    driver = RunDriver.begin(OrganiseAnEventViewSet, session=SessionStore())
+    driver.submit(
+        {"has_organised_before": "yes", "previous_event": "Lisbon 2019"},
+        step="previous-event",
+    )
+    return driver
+
+
+def test_a_formset_step_accepts_a_valid_submission(organisers_driver):
+    """A valid formset's `errors` is `[{}]`, which is truthy, so the driver
+    took the invalid path on an answer the HTTP path accepts happily — and
+    then read `get_json_data()` off a list. Whether a step is satisfied is
+    the step view's to say, not a truth test on a Django attribute."""
+    result = organisers_driver.submit(ORGANISERS, step="organisers")
+
+    assert result.status == "advanced"
+    assert result.errors == {}
+    assert result.next_step == "workshop-type"
+
+
+def test_a_formset_step_reports_which_row_was_wrong(organisers_driver):
+    """Errors keyed by row and field, because "email" alone names nothing
+    when three people are being asked at once."""
+    result = organisers_driver.submit(
+        {**ORGANISERS, "form-0-email": ""}, step="organisers"
+    )
+
+    assert result.status == "invalid"
+    assert "0-email" in result.errors
+
+
+def test_a_formset_reports_its_own_refusal_apart_from_any_rows(organisers_driver):
+    """`min_num` belongs to the formset, not to row zero, so it keeps
+    Django's `__all__` rather than being blamed on a row."""
+    result = organisers_driver.submit(
+        {**ORGANISERS, "form-TOTAL_FORMS": "0", "form-0-email": ""},
+        step="organisers",
+    )
+
+    assert result.status == "invalid"
+    assert "__all__" in result.errors
+
+
+def test_a_step_with_a_plain_form_view_has_no_say_in_how_its_errors_read():
+    """A bare Django `FormView` carries no `get_answer_errors`, so the
+    reading falls back to the `BaseForm` one rather than requiring every
+    step view to be a `StepFormView`."""
+    from tests.testapp.views import PathAwareFormViewFirstStepWizardViewSet
+
+    driver = RunDriver.begin(PathAwareFormViewFirstStepWizardViewSet)
+
+    result = driver.submit({}, step="first")
+
+    assert result.status == "invalid"
+    assert list(result.errors) == ["name"]

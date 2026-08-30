@@ -12,7 +12,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from gandalf.driver import ConfirmationRequired, RunDriver
 from tests.testapp.readme.ch01_first_wizard import FirstApplicationViewSet
 from tests.testapp.readme.ch02_branching import BranchingApplicationViewSet
-from tests.testapp.views import FileUploadingWizardViewSet
+from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
+from tests.testapp.views import (
+    FileUploadingWizardViewSet,
+    PathAwareFormViewFirstStepWizardViewSet,
+)
 
 
 def _is_the_drivers_own(driver, step):
@@ -341,3 +345,77 @@ def test_the_fleet_is_where_the_driver_goes_quiet():
     assert result.unknown == ["vehicle-0"]
     # And it never asks for one, because from here there is nothing to ask.
     assert "fleet" not in result.missing
+
+
+ORGANISERS = {
+    "form-TOTAL_FORMS": "2",
+    "form-INITIAL_FORMS": "0",
+    "form-MIN_NUM_FORMS": "1",
+    "form-MAX_NUM_FORMS": "10",
+    "form-0-email": "ada@example.com",
+    "form-0-first_name": "Ada",
+    "form-1-email": "grace@example.com",
+    "form-1-first_name": "Grace",
+}
+
+
+def _at_the_organisers(may_finish=False):
+    driver = RunDriver.begin(OrganiseAnEventViewSet, may_finish=may_finish)
+    driver.submit(
+        {"has_organised_before": "yes", "previous_event": "Lisbon 2019"},
+        step="previous-event",
+    )
+    return driver
+
+
+def test_an_agent_drives_a_wizard_with_a_formset_step_to_done():
+    """The acceptance case: a real ported wizard, a formset step in the
+    middle of it, driven start to `done()` without a browser. Before
+    `FormSetStepView` the driver could not get past the formset at all — a
+    valid formset's `errors` is `[{}]`, so every submission read as
+    invalid."""
+    driver = _at_the_organisers(may_finish=True)
+
+    driver.submit(ORGANISERS, step="organisers")
+    driver.submit({"remote": "remote"}, step="workshop-type")
+    driver.submit({"city": "Lisbon", "tools": "Zoom"}, step="workshop-remote")
+
+    assert driver.finish().content == (
+        b"Application from ada@example.com for Lisbon, 2 organiser(s)"
+    )
+
+
+def test_an_agent_is_told_which_row_of_a_formset_was_wrong():
+    """ "email" names nothing when two people are being asked at once."""
+    driver = _at_the_organisers()
+
+    result = driver.submit({**ORGANISERS, "form-1-email": ""}, step="organisers")
+
+    assert result.status == "invalid"
+    assert list(result.errors) == ["1-email"]
+
+
+def test_an_agent_is_told_what_the_formset_itself_refused():
+    """`min_num` is the formset's own rule, not any row's, so it keeps
+    Django's `__all__` rather than being blamed on row zero."""
+    driver = _at_the_organisers()
+
+    result = driver.submit(
+        {**ORGANISERS, "form-TOTAL_FORMS": "0", "form-0-email": ""},
+        step="organisers",
+    )
+
+    assert result.status == "invalid"
+    assert "__all__" in result.errors
+
+
+def test_a_step_declared_with_a_plain_form_view_still_reports_its_errors():
+    """A step that brings a bare Django `FormView` rather than a
+    `StepFormView` has no `get_answer_errors` to ask, so it has no say in
+    how its errors read and gets the `BaseForm` reading."""
+    driver = RunDriver.begin(PathAwareFormViewFirstStepWizardViewSet)
+
+    result = driver.submit({}, step="first")
+
+    assert result.status == "invalid"
+    assert list(result.errors) == ["name"]

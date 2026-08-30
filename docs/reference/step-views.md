@@ -54,6 +54,58 @@ generates answer a submission the same way.
   `form_valid()`, `form_invalid()`, `get_context_data()` — works as it does
   anywhere.
 
+**`get_answer_errors(form)`** — what this step refused, by field name, in
+`ErrorDict.get_json_data()` shape, and empty when the step is satisfied.
+Callers read the *emptiness* rather than testing a Django attribute, which
+is the point of asking the view: `BaseForm.errors` answers both questions at
+once because an empty `ErrorDict` is falsy, and a form object that is not a
+`BaseForm` need not behave that way. Override it beside such an object; the
+[`RuntimeStep.errors`](run.md) every reader goes through asks here.
+
+A step declared with a bare Django `FormView` rather than a `StepFormView`
+carries no `get_answer_errors` and gets the `BaseForm` reading, so nothing
+has to change to keep working.
+
+### `FormSetStepView`
+
+A step whose `get_form()` returns a formset rather than a form.
+
+Serving one needs nothing special and never did — `.step()` takes a
+`FormView`, and `FormView` builds a formset from `data`, `files`, `initial`
+and `prefix` exactly as it builds a form, so the browser path works with a
+plain `StepFormView`. `FormSetStepView` is what makes the step readable by
+everything that is *not* a browser.
+
+```python
+from django import forms
+
+from gandalf.form_views import FormSetStepView
+
+
+OpeningHoursFormSet = forms.formset_factory(OpeningHoursForm, extra=1)
+
+
+class OpeningHoursStepView(FormSetStepView):
+    form_class = OpeningHoursFormSet
+    template_name = "hours/step.html"
+```
+
+**`get_answer_errors(form)`** — a row's errors keyed by the row's index and
+the field name, `"0-email"`, because `"email"` names nothing when several
+people are being asked at once. Errors belonging to the formset itself
+rather than to any row — `min_num`, `max_num`, a `clean()` on the formset —
+keep Django's own `__all__`.
+
+**Why it is needed at all.** A valid formset's `errors` is `[{}]` — a list
+holding one empty dict per row — which is **truthy**. Code written as `if
+form.errors:` therefore reads a perfectly valid formset as invalid, and
+type-checks while doing it. That is not something a caller can guard
+against without knowing what kind of object it holds, which is exactly what
+the step view knows and nothing downstream does.
+
+**Choosing between a formset step and the other ways to say "many"** —
+[Chapter 13](../learn/13-add-another.md#three-ways-to-say-many).
+
 ### `form_view_factory(form_class, *, template_name)`
 
 Generate the `StepFormView` subclass behind a step declared with a bare
