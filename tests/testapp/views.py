@@ -210,6 +210,99 @@ class RunMetadataWizardViewSet(WizardViewSet):
         )
 
 
+#: Tokens this process has already verified. Stands in for the counter a
+#: real one-time password keeps on the device it belongs to: the check moves
+#: the counter forward, so the same token never verifies twice.
+SPENT_TOKENS: set[str] = set()
+
+#: How many times the consuming check was actually performed, as opposed to
+#: re-checked against its proof. The number a proof exists to hold at one.
+VERIFICATIONS: list[str] = []
+
+
+class OneTimeTokenForm(forms.Form):
+    """A token that can be *proved* once and re-checked for ever after.
+
+    The shape of every consuming check — a one-time password, a card
+    authorisation, a claimed reference. `already_proven` is what the step
+    established last time; given it, this form re-checks a fact instead of
+    performing an act.
+    """
+
+    token = forms.CharField()
+
+    def __init__(self, already_proven=None, **kwargs):
+        super().__init__(**kwargs)
+        self.already_proven = already_proven
+
+    def clean_token(self):
+        token = self.cleaned_data["token"]
+        if token == self.already_proven:
+            return token
+        VERIFICATIONS.append(token)
+        if token in SPENT_TOKENS:
+            raise forms.ValidationError("That token has already been used.")
+        SPENT_TOKENS.add(token)
+        return token
+
+
+class OneTimeTokenStepView(StepFormView):
+    """Reads the step's proof on the way in, records it on the way out.
+
+    Both halves are unconditional: the walk replays this step on every later
+    request, and writing the same proof again behind the same answers is a
+    write of what is already there.
+    """
+
+    form_class = OneTimeTokenForm
+    template_name = "testapp/one_time_token.html"
+
+    def get_form_kwargs(self):
+        proof = self.request.run.proof("token")
+        return {**super().get_form_kwargs(), "already_proven": proof.get("token")}
+
+    def get_context_data(self, **kwargs):
+        # A template cannot call `run.proof(name)` itself, and the state a
+        # proof is in is the one thing worth seeing on this page.
+        context = super().get_context_data(**kwargs)
+        context["proof"] = self.request.run.proof("token")
+        return context
+
+    def form_valid(self, form):
+        self.request.run.proof("token")["token"] = form.cleaned_data["token"]
+        return super().form_valid(form)
+
+
+class OneTimeTokenWizardViewSet(WizardViewSet):
+    description = (
+        "Three-step wizard whose middle step performs a check that consumes "
+        "what it checks, and holds it with run.proof()."
+    )
+    template_name = "testapp/linear_wizard.html"
+    url_name = "one-time-token-wizard"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(OneTimeTokenStepView, name="token")
+        .step(SecondStepForm, name="second")
+        # Counting classes because the cost of a proof is part of its
+        # contract: it reads stored submissions, so it must not add a
+        # dispatch or rebuild a form. They are inert outside
+        # `counting_walks()`.
+        .configure(
+            template_name="testapp/linear_wizard.html",
+            step_dispatcher_class=CountingStepDispatcher,
+            cursor_walker_class=CountingCursorWalker,
+        )
+    )
+
+    def done(self, run):
+        # Readable here too: a proof is scoped to the answers before its
+        # step, and `done()` holds the same ones the step's own dispatch did.
+        proven = run.proof("token").get("token")
+        return HttpResponse(f"verified {len(VERIFICATIONS)} time(s) as {proven}")
+
+
 class SingleStepWizardWithoutDoneViewSet(WizardViewSet):
     description = "Single-step wizard with no done() override (falls back to default)."
     template_name = "testapp/single_step_wizard.html"

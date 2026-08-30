@@ -280,6 +280,13 @@ GROUPS = (
                 "run's metadata; the second step reads it back on every "
                 "request, and done() names it.",
             ),
+            Example(
+                "one-time-token-wizard",
+                note="the token step consumes what it checks, so it holds "
+                "the result in run.proof() and re-checks that instead. Go "
+                "back and change the first answer to watch the proof fall "
+                "away and the check be performed again.",
+            ),
         ),
     ),
     Group(

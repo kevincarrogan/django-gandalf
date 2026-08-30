@@ -393,6 +393,36 @@ def test_stash_carries_the_runs_metadata_but_not_an_empty_bag(request_factory):
     assert bound.stash()["meta"] == {"run": {"record_id": "abc"}}
 
 
+def _proved(bound, step, **facts):
+    """Record a proof through storage.
+
+    `run.proof()` needs a walk to know what the fact stands behind, and
+    these tests are about what a stash carries rather than about scoping.
+    """
+    envelope = bound.storage.get_run_metadata(bound.run_id) or {}
+    envelope.setdefault("proofs", {})[step] = {"digest": "d", "data": facts}
+    bound.storage.set_run_metadata(bound.run_id, envelope)
+
+
+def test_stash_leaves_a_proof_behind(request_factory):
+    """The metadata rides and the proofs do not, and the split is the point
+    of each. A record id names something that outlives the run; a proof is a
+    claim about *this* run's answers, so a consuming step re-proves itself
+    in the run that resurrects them."""
+    bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
+    bound.metadata["record_id"] = "abc"
+    _proved(bound, "first", verified=True)
+
+    assert bound.stash()["meta"] == {"run": {"record_id": "abc"}}
+
+
+def test_a_stash_of_nothing_but_proofs_carries_no_metadata_key(request_factory):
+    bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
+    _proved(bound, "first", verified=True)
+
+    assert "meta" not in bound.stash()
+
+
 def test_resurrecting_restores_what_the_stashed_run_had_recorded(request_factory):
     bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
     bound.metadata["record_id"] = "abc"

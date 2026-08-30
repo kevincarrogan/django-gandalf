@@ -111,6 +111,10 @@ urlpatterns = [
         "run-metadata-wizard/",
         include(views.RunMetadataWizardViewSet.urls()),
     ),
+    path(
+        "one-time-token-wizard/",
+        include(views.OneTimeTokenWizardViewSet.urls()),
+    ),
     path("linear-wizard/", include(views.LinearWizardViewSet.urls())),
     path("done-linear-wizard/", include(views.DoneLinearWizardViewSet.urls())),
     path("multi-value-wizard/", include(views.MultiValueWizardViewSet.urls())),

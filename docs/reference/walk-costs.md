@@ -54,12 +54,36 @@ Measured on a 2023 laptop with `just bench`, for a linear wizard:
 Gandalf's own share is about a millisecond per request at 30 steps;
 everything else is your forms.
 
+## When re-proving is not a cost but a bug
+
+Everything above is about how *much* work re-proving does. There is one
+case where the problem is not the work:
+
+> A step's `clean()` must be a pure function of its submission and durable
+> state.
+
+Some checks are not. Proving them consumes them — a one-time password, a
+card authorisation, a redeemed voucher — so the second dispatch of the same
+answer fails where the first succeeded. That is not a slow wizard, it is a
+wizard that does not walk: the POST placing the answer dispatches the step,
+the request after it dispatches the step again, and the user is parked at a
+step they have already passed with no way through.
+
+Put the durable half of such a check in a [proof](proofs.md): perform it
+once, record what it established, re-check that on every later dispatch.
+Validation still runs and still decides — the step is handed what it needs
+to succeed again.
+
+A check that is merely *expensive* and repeatable does not need this; the
+tactics below are enough.
+
 ## Keeping it cheap
 
 - Move expensive work into `done()`, where it runs once.
 - Store a cheaply-recheckable token rather than re-running the check — a
   lookup result written to [`run.metadata`](run-metadata.md) is read
-  back for free.
+  back for free, and a [proof](proofs.md) is the same trick scoped to the
+  answers it was established behind.
 - Accept that some checks belong only at submission time.
 - A [task list](tasklists.md) row deliberately pays none of this: two storage
   reads and a `reverse()`, never a walk. That is why what a section decided is written to
@@ -71,4 +95,4 @@ pins the counts so they cannot regress unnoticed.
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [The run](run.md), [Summary](summary.md), [Task lists](tasklists.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [The run](run.md), [Proofs](proofs.md), [Summary](summary.md), [Task lists](tasklists.md)

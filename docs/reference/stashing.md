@@ -34,7 +34,7 @@ the final state is still readable there.
 | --- | --- | --- |
 | `version` | always | `STASH_VERSION` (currently `1`) |
 | `state` | always | the stored state list, stripped as below |
-| `meta` | when the run's metadata bag is non-empty | the whole bag envelope, as `get_run_metadata()` returns it |
+| `meta` | when the run's metadata bag is non-empty | the bag envelope, as `get_run_metadata()` returns it, minus the `proofs` bucket |
 | `label` | when `label` was given | the label |
 
 What the state keeps and drops, at every depth — active and dormant branch
@@ -47,6 +47,10 @@ arms, the legacy bare-list branch shape, and expansion sub-lists:
   not — completion deletes them — so a payload must not carry refs to files
   that no longer exist.
 - A `csrfmiddlewaretoken` stored by an earlier version is swept out.
+- [Proofs](proofs.md) stay behind. The metadata rides because a record id
+  outlives the run that opened it; a proof is a claim about *this* run's
+  answers, so a step whose check cannot be performed twice re-proves itself
+  in the run that resurrects them.
 
 The stored state is never mutated; the payload is built from new
 structures.
@@ -291,4 +295,4 @@ should stay re-openable, and `pop()` only when re-opening consumes it.
 
 ---
 
-**Learn:** [Chapter 11 — Stashing: leave and come back](../learn/11-stashing.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 11 — Stashing: leave and come back](../learn/11-stashing.md) · **Related:** [`Run`](run.md), [Proofs](proofs.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)

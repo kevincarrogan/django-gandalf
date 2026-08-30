@@ -29,14 +29,20 @@ step view's handle always agree.
 
 A `MetadataBag` over the run's metadata envelope, which storage keeps
 *beside* the state — `get_run_metadata(run_id)` / `set_run_metadata(run_id,
-metadata)` — never in it. The envelope has two buckets:
+metadata)` — never in it. The envelope has three buckets, two of them this
+bag's:
 
 ```python
 {
-    "run":   {"application_id": 42},                      # the run's own keys
-    "steps": {"referees": {"emailed": True}},             # one sub-bag per step name
+    "run":    {"application_id": 42},                     # the run's own keys
+    "steps":  {"referees": {"emailed": True}},            # one sub-bag per step name
+    "proofs": {"token": {"digest": "9f86d0…", "data": …}},  # see Proofs
 }
 ```
+
+The third is [`run.proof()`](proofs.md)'s, and it is the opposite of this
+one: a proof is void the moment the answers before its step change. Facts
+that must survive an edit go here; facts that must not go there.
 
 ### `RunMetadata.for_step(name)`
 
@@ -122,7 +128,7 @@ speculative, do the work on first answer from the first step's
 
 `gandalf.storage.JourneyData` is the same `MetadataBag`, reached as
 `store.data` on a journey store, with buckets `"journey"` and `"members"`
-and `for_member(key)` in place of `for_step(name)`. It is where a section's
+and `for_section(key)` in place of `for_step(name)`. It is where a section's
 `run_done()` records what the rest of the journey needs to know, and what
 its `blocked()` and `hidden()` read without paying a walk. See [Journey
 store](journey-store.md).
@@ -233,4 +239,4 @@ storage's `set_run_metadata` is not writing through. See [Storage](storage.md).
 
 ---
 
-**Learn:** [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [Proofs](proofs.md), [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)

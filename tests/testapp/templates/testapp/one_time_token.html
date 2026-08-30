@@ -1,0 +1,20 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/one_time_token.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        {% if request.run.back_url %}
+            <p><a href="{{ request.run.back_url }}">Back</a></p>
+        {% endif %}
+        {# The three states a proof can be in, which is the thing worth #}
+        {# watching here: go back and change the first answer to see this #}
+        {# one go from proved to voided. #}
+        <p class="meta">Proof: {{ proof }}</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+{% endblock %}

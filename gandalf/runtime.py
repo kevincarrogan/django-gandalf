@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -163,12 +165,28 @@ def _stripped_for_stash(entries):
     return stripped
 
 
-#: The two buckets a run's metadata bag is kept in: the run's own keys, and
-#: one sub-bag per step name. Two rather than one so a step-scoped key can
-#: never collide with a run-scoped one, and so `for_step` can hand back a
-#: mapping rather than a naming convention.
+#: The buckets a run's metadata envelope is kept in: the run's own keys, one
+#: sub-bag per step name, and one proof per step name. Separate rather than
+#: one so a step-scoped key can never collide with a run-scoped one, so
+#: `for_step` can hand back a mapping rather than a naming convention, and so
+#: a proof — which storage may drop out from under its reader when the
+#: answers behind it change — can never be mistaken for a durable fact.
 RUN_BUCKET = "run"
 STEP_BUCKET = "steps"
+PROOF_BUCKET = "proofs"
+
+
+def _without_proofs(envelope: Metadata | None) -> Metadata:
+    """The metadata envelope with the proof bucket removed.
+
+    A proof is scoped to the answers it was established behind, and a stash
+    is answers travelling to a *different* run. Carrying proofs across would
+    assert that a consuming check made in the old run still stands in the
+    new one, which is the one thing a proof exists to deny.
+    """
+    return {
+        key: value for key, value in (envelope or {}).items() if key != PROOF_BUCKET
+    }
 
 
 class RunMetadata(MetadataBag):
@@ -240,6 +258,99 @@ class RunMetadata(MetadataBag):
         than a nesting nobody asked for.
         """
         return type(self)(self._storage, self._run_id, (STEP_BUCKET, name))
+
+
+class StepProof(MetadataBag):
+    """What a step's dispatch established, kept only while the answers
+    behind it are unchanged.
+
+    Re-proving every answer on every request is what lets Gandalf store
+    submissions rather than a position: change an early answer and every
+    later one is re-decided, with nothing stale left standing. It assumes a
+    form's `clean()` is a pure function of its submission and durable
+    state. Some checks are not. A one-time password, a card authorisation,
+    a claimed reference number — proving it *consumes* it, so the second
+    dispatch of the same answer fails where the first succeeded, and the
+    user is parked at a step they have already passed with no way through.
+
+    A proof is where the durable half of such a check goes. The step records
+    what it established, reads it back on the next dispatch, and re-checks
+    it cheaply instead of performing it again. Validation still runs, the
+    step still produces `cleaned_data`, and the walk still decides the
+    position: the step is handed what it needs to *succeed* again, not
+    excused from trying.
+
+    What makes this a proof rather than a note in
+    `metadata.for_step()` is the scope. Each write is stamped with a digest
+    of the answers proved before the step it names, and a read whose digest
+    no longer matches sees an empty bag. So a proof is void the moment
+    anything ahead of it changes — go back, pick a different device, and
+    the token proved against the old one stops standing on its own,
+    without a line of invalidation code. That is the property a durable bag
+    cannot offer and the reason this is not a convention over
+    `metadata.for_step()`: written by hand, forgetting it is a security
+    bug, and every wizard would have to remember.
+
+    The mapping is `MetadataBag`'s in every other respect: JSON-safe
+    values, deep copies out, only assignment writes through, `update()` for
+    several keys at once.
+    """
+
+    def __init__(
+        self,
+        storage: WizardStorage,
+        run_id: str,
+        name: str,
+        digest: str,
+    ) -> None:
+        self._name = name
+        self._digest = digest
+        super().__init__(
+            read=lambda: storage.get_run_metadata(run_id),
+            write=lambda envelope: storage.set_run_metadata(run_id, envelope),
+            path=(PROOF_BUCKET, name),
+        )
+
+    def _bucket(self) -> Metadata:
+        recorded = super()._bucket()
+        if recorded.get("digest") != self._digest:
+            # Not an error and not a hole to repair: the answers this was
+            # established behind are gone, so as far as anyone reading is
+            # concerned nothing was ever proved here.
+            return {}
+        return cast("Metadata", recorded.get("data") or {})
+
+    def _write(self, mutate: Any) -> None:
+        envelope = self._read() or {}
+        recorded = envelope.setdefault(PROOF_BUCKET, {}).setdefault(self._name, {})
+        stale = recorded.get("digest") != self._digest
+        data = {} if stale else recorded.get("data") or {}
+        # Mutating first keeps a `KeyError` from `__delitem__` out of
+        # storage, exactly as the base class does.
+        mutate(data)
+        recorded["digest"] = self._digest
+        recorded["data"] = data
+        self._write_envelope(envelope)
+
+    def __repr__(self) -> str:
+        """Says which of the three states this is in.
+
+        A voided proof and one that was never written both read as an empty
+        bag, which is right for the code reading it and useless for the
+        person debugging it — "my proof is always empty" has two very
+        different causes. The contents of a voided one are deliberately not
+        shown: it is void, and what it used to hold is usually the sort of
+        thing that should not turn up in a log.
+        """
+        recorded = MetadataBag._bucket(self)
+        if not recorded:
+            return f"{type(self).__name__}({self._name!r}, nothing proved)"
+        if recorded.get("digest") != self._digest:
+            return (
+                f"{type(self).__name__}({self._name!r}, voided by a change "
+                f"to the answers before it)"
+            )
+        return f"{type(self).__name__}({self._name!r}, {self._bucket()!r})"
 
 
 # Sentinel for "no tree is pinned" — no walk in progress, and no finished
@@ -483,6 +594,19 @@ def _iter_route_steps(node: RuntimeNode | None) -> Iterator[RuntimeStep]:
         else:
             yield from _iter_route_steps(node.selected_arm)
         node = node.next
+
+
+def _takewhile_before(steps: Iterator[RuntimeStep], name: str) -> Iterator[RuntimeStep]:
+    """Yield steps up to but excluding the one called `name`.
+
+    A name no step on the route carries yields the whole route — which is
+    the right answer for a proof read inside its own step's dispatch, where
+    the step being proved is not on the walked prefix yet.
+    """
+    for step in steps:
+        if step.name == name:
+            return
+        yield step
 
 
 def first_route_step(state: RuntimeNode | None) -> RuntimeStep | None:
@@ -749,6 +873,41 @@ class Run:
         """
         return RunMetadata(self.storage, self.run_id)
 
+    def proof(self, name: str) -> StepProof:
+        """This run's proof bag for the step `name` names — what that step's
+        dispatch established, void once the answers behind it change.
+
+        For a check that cannot be performed twice: record what it proved,
+        read it back on the next dispatch, re-check it cheaply. See
+        `StepProof`.
+
+        Scoped to the prefix in hand, so it reads the same inside the step's
+        own dispatch, inside a later step's, and in `done()`. Costs one pass
+        over the answers before the step — their stored submissions, not
+        their forms — so unlike reading `path` it rebuilds nothing.
+        """
+        return StepProof(self.storage, self.run_id, name, self._prefix_digest(name))
+
+    def _prefix_digest(self, name: str) -> str:
+        """A digest of the answers proved before the step `name` names.
+
+        Taken from the stored submissions on the runtime tree rather than
+        from `path`, which would build a form per step. Inside a walk the
+        tree is the prefix validated so far and the named step is not on it
+        yet, so the whole prefix is hashed; from a later step or from
+        `done()` the walk stops at the named step and hashes the same thing.
+
+        CSRF tokens are dropped: a rotated token says nothing about whether
+        an answer changed, and voiding every proof in the run when one
+        rotates would be a mystery to debug.
+        """
+        prefix = [
+            [node.name, _without_csrf(node.data), node.files]
+            for node in _takewhile_before(_iter_route_steps(self.runtime_tree), name)
+        ]
+        canonical = json.dumps(prefix, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
     def stash(self, label: str | None = None) -> Stash:
         """A caller-owned, JSON-safe payload of this run's answers.
 
@@ -767,8 +926,11 @@ class Run:
         # Unlike the file refs, the metadata rides. A ref names bytes that
         # completion deletes; a record id names something that outlives the
         # run entirely — and a section re-opened from its stash that had
-        # forgotten it would raise a second invoice on the way back in.
-        metadata = self.storage.get_run_metadata(self.run_id)
+        # forgotten it would raise a second invoice on the way back in. The
+        # proofs are the exception in the other direction: they are claims
+        # about the answers of *this* run, so they stay behind and a
+        # consuming step re-proves itself in the run that resurrects them.
+        metadata = _without_proofs(self.storage.get_run_metadata(self.run_id))
         if metadata:
             payload["meta"] = metadata
         if label is not None:
