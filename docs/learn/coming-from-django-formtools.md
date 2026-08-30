@@ -122,11 +122,13 @@ breaks that, which is why django-two-factor-auth carries an
 
 Two rough edges the ports met, both worth knowing:
 
-- **Formsets work, and `MergeCleanedData` does not follow them.** `.step()`
-  takes a `FormView`, and `FormView` builds a formset the way it builds a
-  form, so Django Girls' organisers step needed nothing special. Reducing
-  that path afterwards raises `TypeError: 'list' object is not a mapping` —
-  a formset answers with a list. Gather per step in `done()` instead.
+- **Formsets need nothing special.** `.step()` takes a `FormView`, and
+  `FormView` builds a formset the way it builds a form, so Django Girls'
+  organisers step needed no handling of its own. Its answer is a list rather
+  than a mapping, so `MergeCleanedData` folds it under the step's name —
+  `answers["organisers"]` is the rows. Which of `.expand()`, `AddAnother`
+  and a formset step you want is
+  [Chapter 13](13-add-another.md#three-ways-to-say-many).
 - **A `ModelForm` is not a `forms.Form`.** `.step()` tests
   `issubclass(declaration, forms.Form)`, and a `ModelForm` subclasses
   `BaseForm`. Wrap it in a [`StepFormView`](../reference/step-views.md);

@@ -25,11 +25,12 @@ with `default=None`.
 
 The organisers step is a formset, which Gandalf takes without ceremony
 because `.step()` accepts a `FormView` and `FormView` already builds a
-formset the same way it builds a form. What it does *not* take is
-`MergeCleanedData` afterwards: a formset's `cleaned_data` is a list, and the
-reducer merges mappings. `done()` gathers per step instead, which is what
-you want here anyway — upstream's `done()` also has to pull the organisers
-out of the merged dict and re-shape them.
+formset the same way it builds a form. `MergeCleanedData` follows it: a
+formset has no fields to spread across the merged dict, so its rows land
+whole under the step's name. Upstream's `done()` has to pull the organisers
+back out of its merged dict and re-shape them; here the merge does both
+halves of the work, because `city` arrives from whichever workshop arm ran
+and `organisers` arrives as the list it always was.
 """
 
 from django import forms
@@ -37,7 +38,7 @@ from django.http import HttpResponse
 
 from gandalf.form_views import StepFormView
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import Wizard, condition
+from gandalf.wizard import MergeCleanedData, Wizard, condition
 
 
 PREVIOUS_ORGANISER_CHOICES = (
@@ -157,18 +158,15 @@ class OrganiseAnEventViewSet(WizardViewSet):
     wizard = organise_an_event
 
     def done(self, run):
-        """Gathered per step rather than merged.
+        """One merge over a formset and a branch.
 
-        `MergeCleanedData` would raise `TypeError: 'list' object is not a
-        mapping` on the organisers step. A formset answers with a list, and
-        merging is for mappings.
+        `city` is declared by both workshop arms and merges from whichever
+        one the run took; `organisers` is a formset, so its rows fold under
+        the step's name rather than spreading across the dict.
         """
-        answers = {
-            step.name: step.form.cleaned_data for step in run.path.filter_steps()
-        }
+        answers = MergeCleanedData().reduce(run.path)
         organisers = answers["organisers"]
-        city = (answers.get("workshop") or answers["workshop-remote"])["city"]
         return HttpResponse(
             f"Application from {organisers[0]['email']} "
-            f"for {city}, {len(organisers)} organiser(s)"
+            f"for {answers['city']}, {len(organisers)} organiser(s)"
         )

@@ -27,6 +27,7 @@ from tests.testapp.forms import (
     SecondStepForm,
     ToppingsForm,
 )
+from tests.testapp.views import OpeningHoursStepView
 
 
 def _replay(run, *args, **kwargs):
@@ -2889,6 +2890,81 @@ def test_merge_cleaned_data_folds_path_into_dict(
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
 
+def _formset_run(request_with_session_factory):
+    """A finished run whose second step is a formset, so its answer is a
+    list of one entry per form rather than a mapping."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(OpeningHoursStepView, name="opening-hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {
+                            "step": {
+                                "form-TOTAL_FORMS": "1",
+                                "form-INITIAL_FORMS": "0",
+                                "form-MIN_NUM_FORMS": "0",
+                                "form-MAX_NUM_FORMS": "1000",
+                                "form-0-day": "Monday",
+                                "form-0-opens": "09:00",
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+    )
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    return run
+
+
+def test_merge_cleaned_data_folds_a_formset_under_its_step_name(
+    request_with_session_factory,
+):
+    """A formset answers with one entry per form, so it has no fields to
+    spread across the dict — its rows land under the step's own name. The
+    fold stays total: every answer reaches the merged dict, which is what
+    skipping the step would have cost."""
+    from gandalf.wizard import MergeCleanedData
+
+    run = _formset_run(request_with_session_factory)
+
+    payload = MergeCleanedData().reduce(run.path)
+
+    assert payload == {
+        "name": "Ada",
+        "opening-hours": [{"day": "Monday", "opens": "09:00"}],
+    }
+
+
+def test_merge_cleaned_data_lets_a_subclass_choose_another_key(
+    request_with_session_factory,
+):
+    """The step name is a default, not a rule — `visit_step` is the seam
+    for an application that wants those rows somewhere else."""
+    from gandalf.wizard import MergeCleanedData
+
+    class MergeUnderOneKey(MergeCleanedData):
+        def visit_step(self, runtime_step):
+            cleaned_data = runtime_step.form.cleaned_data
+            if isinstance(cleaned_data, list):
+                return {"rows": cleaned_data}
+            return super().visit_step(runtime_step)
+
+    run = _formset_run(request_with_session_factory)
+
+    payload = MergeUnderOneKey().reduce(run.path)
+
+    assert payload == {"name": "Ada", "rows": [{"day": "Monday", "opens": "09:00"}]}
+
+
 def test_merge_cleaned_data_folds_runtime_tree_across_branch(
     request_with_session_factory,
 ):
@@ -3803,6 +3879,40 @@ def test_on_field_on_a_step_that_picks_its_form_per_request_is_trusted():
     )
 
     assert wizard.tree is not None
+
+
+def test_a_formset_step_declares_no_step_level_fields():
+    """A formset has no `base_fields` because it declares nothing at step
+    level — its fields belong to each of the n forms it repeats. That is
+    the same `None` a step choosing its form per request gets: the
+    declaration is not the whole story, so take the name on trust."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(OpeningHoursStepView, name="opening-hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    fields = gandalf.wizard.declared_step_fields(wizard)
+
+    assert set(fields["first"]) == {"name"}
+    assert fields["opening-hours"] is None
+
+
+def test_on_field_beside_a_formset_step_still_checks_the_step_it_names():
+    """The formset is taken on trust; the step the selector actually names
+    is not, so a typo two steps away is still caught."""
+    with pytest.raises(ImproperlyConfigured, match="names no field of step"):
+        (
+            Wizard()
+            .step(AccountTypeForm, name="account_type")
+            .step(OpeningHoursStepView, name="opening-hours")
+            .switch(
+                gandalf.wizard.on_field("account_type", "nonexistent"),
+                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            )
+            .configure(template_name="testapp/linear_wizard.html")
+        )
 
 
 def test_on_field_in_an_expanding_wizard_is_trusted():

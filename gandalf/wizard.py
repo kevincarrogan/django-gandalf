@@ -198,9 +198,11 @@ def declared_step_fields(
 
     `None` for the whole wizard when an `.expand()` grows steps mid-walk, so
     no name can be known before the walk reaches them; `None` for one step
-    when its view chooses a form class per request. Either way the answer is
-    "the declaration is not the whole story here", and a caller checking a
-    field name against it takes the name on trust rather than refusing it.
+    when its view chooses a form class per request, or when it is a formset,
+    which declares no fields at step level because its fields belong to each
+    of the n forms it repeats. Either way the answer is "the declaration is
+    not the whole story here", and a caller checking a field name against it
+    takes the name on trust rather than refusing it.
     """
     nodes = list(tree.iter_nodes(wizard.tree))
     if any(isinstance(node, tree.Expand) for node in nodes):
@@ -217,7 +219,8 @@ def declared_step_fields(
             form_class: Any = declaration
         else:
             form_class = getattr(declaration, "form_class", None)
-        fields[name] = None if form_class is None else dict(form_class.base_fields)
+        declared = getattr(form_class, "base_fields", None)
+        fields[name] = None if declared is None else dict(declared)
     return fields
 
 

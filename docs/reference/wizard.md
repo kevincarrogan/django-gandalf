@@ -381,6 +381,47 @@ into one dict, last write wins on key collisions.
   and `visit_expand()` return their sub-fold; `initial()` is `{}` and
   `combine()` is `{**accumulator, **value}`. Override any of them for a
   different merge policy.
+- A step answering with something other than a mapping folds under its own
+  name. A formset is the one you will meet: it answers with one entry per
+  form, so it has no fields to spread across the dict, and three organisers
+  cannot share one `email` key. Its rows land whole instead:
+
+```python
+{"previous-event": ..., "organisers": [{"email": ...}, {"email": ...}]}
+```
+
+The fold stays total — every answer reaches the merged dict — which is the
+property worth protecting. Skipping the step would hand `done()` a dict that
+looked complete with those answers missing from it.
+
+One thing follows: the step's name is now a key in the merged dict, so a
+field of another step sharing that name collides, on the reducer's usual
+last-write-wins terms.
+
+The name is a default, not a rule. `visit_step()` is the seam for putting
+those rows somewhere else:
+
+```python
+from gandalf.wizard import MergeCleanedData
+
+
+class MergeUnderOneKey(MergeCleanedData):
+    """Every repeated step's rows under one `rows` key, wherever they came from."""
+
+    def visit_step(self, runtime_step):
+        cleaned_data = runtime_step.form.cleaned_data
+        if isinstance(cleaned_data, list):
+            return {"rows": cleaned_data}
+        return super().visit_step(runtime_step)
+```
+
+Or step out of the merge altogether and gather per step, which keeps every
+answer in whatever shape its step gave it:
+
+```python
+def done(self, run):
+    answers = {step.name: step.form.cleaned_data for step in run.path.filter_steps()}
+```
 
 `gandalf.tree.Reducer` is the public base: a bottom-up fold whose `reduce()`
 walks a chain (a `Path`, or a runtime head) calling each node's `visit_*`

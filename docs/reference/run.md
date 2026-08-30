@@ -264,6 +264,9 @@ A reducer that folds every step's `form.cleaned_data` on a path into one
 dict, last write wins: `MergeCleanedData().reduce(run.path)`.
 Subclass and override `combine`, `visit_step`, `visit_branch` or
 `visit_expand` for another policy. Costs one validation per answered step.
+A step answering with something other than a mapping — a formset answers
+with one entry per form — folds under its own name rather than spreading
+across the dict; see [`MergeCleanedData`](wizard.md#mergecleaneddata).
 
 ### `WizardContext`
 

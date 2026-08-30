@@ -35,7 +35,11 @@ from gandalf.tasklists import (
 from gandalf.wizard import Wizard, condition
 
 from tests.testapp.forms import GuestForm, NewsletterForm
-from tests.testapp.views import GuestsViewSet, LockedGuestsViewSet
+from tests.testapp.views import (
+    GuestsViewSet,
+    LockedGuestsViewSet,
+    OpeningHoursStepView,
+)
 
 
 class _Session(dict):
@@ -216,6 +220,20 @@ def test_an_item_title_on_a_per_request_item_wizard_is_taken_on_trust(rf):
     assert _Trusted.item_viewset.item_title == "anything"
     # And with no declaration to read a label off, the key names an item.
     assert _page(_Trusted, rf).get_item_name() == "Guest"
+
+
+def test_an_item_title_beside_a_formset_step_is_taken_on_trust():
+    """A formset step declares no fields at step level, so the item
+    wizard's declaration stops being the whole story and the title is
+    taken on trust rather than crashing the check."""
+
+    class _Repeated(_Guests):
+        add_another = GUESTS.replace(
+            wizard=GUEST.step(OpeningHoursStepView, name="opening-hours"),
+            item_title="anything",
+        )
+
+    assert _Repeated.item_viewset.item_title == "anything"
 
 
 def test_an_item_title_on_an_expanding_item_wizard_is_taken_on_trust():

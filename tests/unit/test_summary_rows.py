@@ -22,6 +22,7 @@ from tests.testapp.forms import (
     FirstStepForm,
     SummaryFieldsForm,
 )
+from tests.testapp.views import OpeningHoursStepView
 
 
 def _bound_field(form, name):
@@ -525,6 +526,28 @@ def test_a_group_naming_fields_a_declared_step_has_not_got_is_refused(
 
     with pytest.raises(ImproperlyConfigured, match="line_1, town"):
         summary_view_for(wizard, address_state, _View).get_context_data()
+
+
+def test_a_formset_step_elsewhere_does_not_stop_the_check(
+    summary_view_for, address_state
+):
+    """A formset declares no fields at step level, so it is taken on trust
+    — rather than stopping the page shaping every other step."""
+
+    class _View(_SummaryView):
+        summary_fields = {"address": [Group("town", "postcode")]}
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(AddressForm, name="address", label="Address")
+        .step(OpeningHoursStepView, name="opening-hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
+
+    assert rows[1].fields[2].value == "Ely, CB7 4AA"
 
 
 def test_specs_can_be_chosen_per_run(address_rows):

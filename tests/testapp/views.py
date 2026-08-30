@@ -62,6 +62,7 @@ from .forms import (
     ItemCountForm,
     ItemForm,
     NewsletterForm,
+    OpeningHoursFormSet,
     OptionalPhotoForm,
     PersonalDetailsForm,
     ProfilePhotoForm,
@@ -2095,6 +2096,14 @@ class DynamicAddressStepView(StepFormView):
 
     def get_form_class(self):
         return ShorterAddressForm
+
+
+class OpeningHoursStepView(StepFormView):
+    """A formset step, which declares no step-level fields of its own —
+    the other way the declaration is not the whole story."""
+
+    form_class = OpeningHoursFormSet
+    template_name = "testapp/formset_step.html"
 
 
 class DynamicSummaryStepView(SummaryMixin, StepFormView):

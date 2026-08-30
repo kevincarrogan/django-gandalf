@@ -117,6 +117,28 @@ that *is* the user changing their mind. *Continue* is the page's submit:
 with an item half-done or `min_items` unmet it is refused and the page
 shows why; otherwise it goes up to the task list that lists it.
 
+### Three ways to say "many"
+
+`AddAnother` is one of three, and they are not a matter of taste — each
+answers a different question about where the repetition lives.
+
+| | What repeats | Where the user is |
+| --- | --- | --- |
+| [`.expand()`](04-expanding.md) | n steps, grown from a count already answered | walking them, a page each |
+| `AddAnother` | items the user adds, changes and removes | a page of its own per item |
+| a formset step | n rows of one form | all of them on one page |
+
+Ask who decides how many, and whether a row is worth a page of its own.
+*How many directors?* answered up front and then a page each is `.expand()`.
+*Add another director*, grown and pruned as they go, is `AddAnother` — a
+budget line earns its own page because it has a review step behind it.
+Opening hours do not: seven compact rows nobody wants seven pages for is a
+formset, and a formset step needs nothing special because `.step()` takes a
+`FormView` and `FormView` builds a formset exactly as it builds a form. Its
+answer is a list, one entry per row, which is why
+[`MergeCleanedData`](../reference/wizard.md#mergecleaneddata) folds it under
+the step's name instead of spreading it across the merged dict.
+
 The three URLs the page publishes, the exact order a removal takes, how to
 give an item behaviour of its own, how to mount a page on its own, and
 every hook are in the [Add another reference](../reference/add-another.md).

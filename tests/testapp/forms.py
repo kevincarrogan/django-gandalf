@@ -233,3 +233,14 @@ class GuestForm(forms.Form):
 
     name = forms.CharField()
     dietary_requirements = forms.CharField(required=False)
+
+
+class OpeningHoursForm(forms.Form):
+    """One row of a formset step: the compact "many on one page" shape,
+    as opposed to a collection grown across a task list."""
+
+    day = forms.CharField()
+    opens = forms.CharField()
+
+
+OpeningHoursFormSet = forms.formset_factory(OpeningHoursForm, extra=1)

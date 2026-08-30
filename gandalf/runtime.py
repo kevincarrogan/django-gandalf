@@ -1715,6 +1715,13 @@ class MergeCleanedData(tree.Reducer):
     `step.form.cleaned_data`, and any branch sub-fold is merged into the
     accumulator. Subclass and override `combine`, `visit_step`, or
     `visit_branch` for a different merge policy.
+
+    A step whose answer is not a mapping — a formset answers with one entry
+    per form — has no fields to spread across the dict, so it contributes
+    under its own name instead: `{"opening-hours": [{...}, {...}]}`. That
+    keeps the fold total, which is the property worth having; a step it
+    skipped would leave the merged dict looking complete with those answers
+    missing from it.
     """
 
     def initial(self) -> dict[str, Any]:
@@ -1726,7 +1733,16 @@ class MergeCleanedData(tree.Reducer):
         return {**accumulator, **value}
 
     def visit_step(self, runtime_step: RuntimeStep) -> dict[str, Any]:
-        return runtime_step.form.cleaned_data
+        # `RuntimeStep.form` is annotated `BaseForm`, which a formset step's
+        # form is not, so the mapping that annotation implies is not a
+        # narrowing to trust here.
+        cleaned_data: Any = runtime_step.form.cleaned_data
+        if isinstance(cleaned_data, dict):
+            return cleaned_data
+        # A step answering with anything else has no fields to spread, so it
+        # folds under its own name. Named, because a step served over HTTP
+        # has to be: the viewset refuses a wizard with an unnamed step.
+        return {cast(str, runtime_step.name): cleaned_data}
 
     def visit_branch(
         self, runtime_branch: RuntimeBranch, sub_result: dict[str, Any]
