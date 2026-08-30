@@ -2965,6 +2965,98 @@ def test_merge_cleaned_data_lets_a_subclass_choose_another_key(
     assert payload == {"name": "Ada", "rows": [{"day": "Monday", "opens": "09:00"}]}
 
 
+def test_a_reducer_can_refuse_a_collision_instead_of_last_write_wins(
+    request_with_session_factory, linear_wizard
+):
+    """The smallest contract change the reference documents: `combine`
+    alone, because last-write-wins is a choice and not a law."""
+    from gandalf.wizard import MergeCleanedData
+
+    class MergeRefusingCollisions(MergeCleanedData):
+        def combine(self, accumulator, value):
+            clash = accumulator.keys() & value.keys()
+            if clash:
+                raise ValueError(f"two steps both answered {', '.join(sorted(clash))}")
+            return super().combine(accumulator, value)
+
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
+
+    assert MergeRefusingCollisions().reduce(run.path) == {
+        "name": "Ada",
+        "email": "ada@example.com",
+    }
+
+
+def test_a_reducer_subclass_can_key_answers_by_step(request_with_session_factory):
+    """The reference's worked `AnswersByStep`: `tree.Reducer` is the public
+    base. Folded over the runtime tree rather than the flattened path, so
+    `visit_branch` genuinely fires — and the sub-fold it is handed arrives
+    with a top-level fold's shape, which is what lets returning it unchanged
+    read the arm's steps inline."""
+
+    class AnswersByStep(tree.Reducer):
+        def initial(self):
+            return {}
+
+        def combine(self, accumulator, value):
+            return {**accumulator, **value}
+
+        def visit_step(self, runtime_step):
+            return {runtime_step.name: runtime_step.form.cleaned_data}
+
+        def visit_branch(self, runtime_branch, sub_result):
+            return sub_result
+
+    def is_business(context):
+        account_step = context.run.path.find_step(name="account_type")
+        return account_step.form.cleaned_data["account_type"] == "business"
+
+    wizard = (
+        Wizard()
+        .step(AccountTypeForm, name="account_type")
+        .branch(
+            gandalf.wizard.condition(
+                is_business,
+                Wizard().step(BusinessDetailsForm, name="business"),
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="personal"),
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"account_type": "business"}},
+                        {"branch": [{"step": {"business_name": "Acme"}}]},
+                    ],
+                },
+            },
+        },
+    )
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+
+    assert AnswersByStep().reduce(run.runtime_tree) == {
+        "account_type": {"account_type": "business"},
+        "business": {"business_name": "Acme"},
+    }
+
+
 def test_merge_cleaned_data_folds_runtime_tree_across_branch(
     request_with_session_factory,
 ):

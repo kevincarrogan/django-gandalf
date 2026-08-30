@@ -7,7 +7,7 @@ a pointer back to the [Learn](../learn/README.md) chapter that introduces it.
 
 ## Declaring a wizard
 
-- [Wizard](wizard.md) — the builder: `.step()`, `.branch()`, `.switch()`, `.expand()`, `.configure()`; `condition`, `on_field`, `outline()`, `MergeCleanedData`
+- [Wizard](wizard.md) — the builder: `.step()`, `.branch()`, `.switch()`, `.expand()`, `.configure()`; `condition`, `on_field`, `outline()`, `MergeCleanedData`, `Reducer`
 - [Configuration](configuration.md) — every `.configure()` key and its default; `storage_class`; settings and versions
 
 ## Serving it

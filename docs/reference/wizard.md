@@ -423,14 +423,98 @@ def done(self, run):
     answers = {step.name: step.form.cleaned_data for step in run.path.filter_steps()}
 ```
 
-`gandalf.tree.Reducer` is the public base: a bottom-up fold whose `reduce()`
-walks a chain (a `Path`, or a runtime head) calling each node's `visit_*`
-and combining the results. Its defaults collect a list; override `initial()`
-and `combine()` to fold into any shape. It is not re-exported from
-`gandalf.wizard` — import it from `gandalf.tree`.
-
 **Caveats** — reading `cleaned_data` builds and validates each step's form
 again; see [Walk costs](walk-costs.md).
+
+### `Reducer`
+
+`gandalf.tree.Reducer` is the public base `MergeCleanedData` is one subclass
+of — a bottom-up fold over a chain of runtime nodes. It is not re-exported
+from `gandalf.wizard`; import it from `gandalf.tree`.
+
+**`reduce(root)`** — folds and returns the accumulator. `root` may be
+`run.path`, `run.runtime_tree`, or a raw runtime head; a `Path` is unwrapped
+to its head, so all three are the same call.
+
+Four seams, and which you override is exactly how much of the contract you
+are replacing. Nothing is registered and no `.configure()` key selects a
+reducer — you instantiate your own class where you would have instantiated
+`MergeCleanedData`.
+
+| Hook | Decides | Default |
+| --- | --- | --- |
+| `initial()` | the empty accumulator | `[]` on `Reducer`, `{}` on `MergeCleanedData` |
+| `combine(accumulator, value)` | how one contribution folds in | append; `{**accumulator, **value}` on `MergeCleanedData` |
+| `visit_step(runtime_step)` | what one step contributes | required; `step.form.cleaned_data` on `MergeCleanedData` |
+| `visit_branch(runtime_branch, sub_result)` | what a branch contributes | required; the sub-fold, which lands the arm's answers inline |
+| `visit_expand(runtime_expand, sub_result)` | what an expansion contributes | the sub-fold, as for a branch |
+
+`visit_step` is handed the whole [`RuntimeStep`](run.md), so a policy can
+read `runtime_step.name`, its `.declaration.context` — every keyword `.step()`
+was called with — and `.form`, not just the answers.
+
+**A branch's `sub_result` is a complete nested fold.** `reduce()` is called
+again on the selected arm, with a fresh `initial()`, and the result handed
+to `visit_branch`. So `sub_result` has whatever shape a top-level fold has,
+and returning it unchanged is what makes an arm's answers read as though
+they were declared inline.
+
+Two things worth knowing before you fold over `run.runtime_tree`. Steps
+positioned after the cursor are sealed, and a sealed branch **bypasses the
+reducer entirely** — `PreservedBranch` contributes its raw stored state
+entry without calling any `visit_*` — so an incomplete run yields raw state
+where you expected folded values. And a fold descends into the *selected*
+arm only: the arms not taken never become nodes, and reach `visit_branch`
+as `runtime_branch.dormant_arms`, raw stored state keyed by arm id.
+`run.path` has neither wrinkle — it is the answered route, flattened, with
+branches spliced out, which is also why `visit_branch` never fires over it.
+
+The smallest possible contract change is `combine` alone. Last-write-wins is
+a *choice*, and a wizard where two steps ask the same field name is usually a
+mistake worth hearing about:
+
+```python
+from gandalf.wizard import MergeCleanedData
+
+
+class MergeRefusingCollisions(MergeCleanedData):
+    """Two steps declaring one field name is a bug, not a precedence question."""
+
+    def combine(self, accumulator, value):
+        clash = accumulator.keys() & value.keys()
+        if clash:
+            raise ValueError(f"two steps both answered {', '.join(sorted(clash))}")
+        return super().combine(accumulator, value)
+```
+
+Or replace the shape outright by subclassing `Reducer` instead. Answers
+keyed by step rather than flattened is the common one, and it never has a
+collision to resolve because step names are unique:
+
+```python
+from gandalf import tree
+
+
+class AnswersByStep(tree.Reducer):
+    """`{"who": {...}, "address": {...}}` — one entry per answered step."""
+
+    def initial(self):
+        return {}
+
+    def combine(self, accumulator, value):
+        return {**accumulator, **value}
+
+    def visit_step(self, runtime_step):
+        return {runtime_step.name: runtime_step.form.cleaned_data}
+
+    def visit_branch(self, runtime_branch, sub_result):
+        return sub_result
+```
+
+`gandalf.tree` also carries the other three traversal kinds — `Visitor`,
+`Interpreter` (top-down, controls its own descent into arms) and
+`Transformer` (rebuilds a tree). `Reducer` is the one to reach for when you
+want a value out of a walk rather than a different walk.
 
 ### `InvalidStash`
 
