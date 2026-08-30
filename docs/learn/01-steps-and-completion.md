@@ -74,10 +74,9 @@ build them, are in the [`WizardViewSet` reference](../reference/viewsets.md#wiza
 
 Three ideas carry the rest of the library.
 
-**Every step is named, and every step gets its own URL.** Keyword arguments
-to `.step()` become the step's context, so `name="contact"` is an ordinary
-context entry — the one the router reads to make a URL. A step URL is a
-*claim*: it either renders that step or redirects to wherever the run
+**Every step is named, and every step gets its own URL.** `name` is the one
+keyword `.step()` requires; the router reads it to build the step's URL. A
+step URL is a *claim*: it either renders that step or redirects to wherever the run
 actually is, so a stale link can never land an answer on the wrong step.
 
 **A run re-proves itself on every request.** Gandalf stores raw submissions,

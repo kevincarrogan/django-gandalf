@@ -56,6 +56,13 @@ class BranchingApplicationViewSet(WizardViewSet):
 pairs a `predicate(context)` with the arm it selects. Selection is
 first-match-wins, falling back to `default`, which may be left out.
 
+The `context` a predicate receives is the *run context*: one object per
+request that carries the request, the session-backed run and its resolved
+`path`. Every callable Gandalf hands control to — predicates here, selectors
+in chapter 3, expanders in chapter 4 — takes the same object, so
+`context.run.path.find_step(name=...)` is how each of them reads an earlier
+answer.
+
 A predicate always runs behind a fully-validated prefix — every step before
 the branch has already validated on this same walk — so it can dereference
 `path.find_step(...).form.cleaned_data` without guarding for missing answers.
