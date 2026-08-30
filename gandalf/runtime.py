@@ -20,6 +20,7 @@ from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.escapes import Escape
 from gandalf.file_storage import FileRef, WizardFileStorage
+from gandalf.form_views import answer_errors
 from gandalf.metadata import MetadataBag
 from gandalf.observers import WizardObserver
 from gandalf.types import (
@@ -498,12 +499,7 @@ class RuntimeStep:
         declared with a plain Django `FormView` rather than a
         `StepFormView` has no say, and gets the `BaseForm` reading.
         """
-        reader = getattr(self.step_view, "get_answer_errors", None)
-        if reader is None:
-            return cast(
-                "dict[str, list[dict[str, Any]]]", self.form.errors.get_json_data()
-            )
-        return cast("dict[str, list[dict[str, Any]]]", reader(self.form))
+        return answer_errors(self.step_view, self.form)
 
     def matches_context(self, **context: Any) -> bool:
         return self.declaration.matches_context(**context)

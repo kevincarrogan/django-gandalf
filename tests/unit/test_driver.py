@@ -2006,3 +2006,52 @@ def test_a_step_with_a_plain_form_view_is_read_and_described_as_a_form():
 
     assert driver.answers()["first"] == {"name": "Ada"}
     assert set(driver.describe().schema["properties"]) == {"email"}
+
+
+def test_check_reads_a_formset_steps_errors_through_its_view():
+    """`check()` had the trap `submit()` was fixed for: a valid formset's
+    `errors` is `[{}]`, which is truthy, so a check answered correctly was
+    reported invalid — and then died reading `get_json_data()` off a list."""
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    driver = RunDriver.begin(OpeningHoursWizardViewSet, session=SessionStore())
+
+    result = driver.check(
+        {
+            "who": {"name": "Ada"},
+            "opening-hours": {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "0",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "7",
+                "form-0-day": "Monday",
+                "form-0-opens": "09:00",
+            },
+        }
+    )
+
+    assert result.ok == ["who", "opening-hours"]
+    assert result.invalid == {}
+
+
+def test_check_says_which_row_of_a_formset_is_wrong():
+    """And when a row really is wrong, it is named the way `submit()` names
+    it — by row and field."""
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    driver = RunDriver.begin(OpeningHoursWizardViewSet, session=SessionStore())
+
+    result = driver.check(
+        {
+            "opening-hours": {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "0",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "7",
+                "form-0-day": "Monday",
+                "form-0-opens": "",
+            },
+        }
+    )
+
+    assert list(result.invalid["opening-hours"]) == ["0-opens"]

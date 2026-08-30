@@ -39,6 +39,7 @@ from gandalf import tree
 from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.file_storage import FileRef, StoredUpload
+from gandalf.form_views import answer_errors
 from gandalf.runtime import (
     Run,
     Cursor,
@@ -643,7 +644,8 @@ class RunDriver:
         self, declaration: tree.Step, data: dict[str, Any]
     ) -> tuple[str, Any]:
         try:
-            form = self._bound_form(declaration, data)
+            view = self._bound_view(declaration, data)
+            form = view.get_form()
             form.is_valid()
         except Escape as escape:
             # A check is a question, not a submission: an escape raised
@@ -657,21 +659,28 @@ class RunDriver:
                 "its form cannot be built from the answers available yet "
                 f"({type(error).__name__})"
             )
-        if form.errors:
-            return "invalid", cast(Errors, form.errors.get_json_data())
+        errors = answer_errors(view, form)
+        if errors:
+            return "invalid", errors
         return "ok", {}
 
-    def _bound_form(self, declaration: tree.Step, data: dict[str, Any]) -> BaseForm:
-        """The step's form, bound to `data` — composed exactly as a real
-        placement composes it, so the same overrides apply."""
+    def _bound_view(
+        self, declaration: tree.Step, data: dict[str, Any]
+    ) -> FormView[Any]:
+        """The step's view, set up with `data` — composed exactly as a real
+        placement composes it, so the same overrides apply.
+
+        The view rather than just its form, because what a step refused is
+        the view's to say: a formset's `errors` is truthy when every row is
+        valid, so a check reading it directly concludes the opposite of the
+        truth."""
         form_view_class = cast("StepViewClass", declaration.form_view)
         request = self.run.dispatcher.build_request(
             "POST", submission=self._prefixed(declaration, data)
         )
         view = form_view_class()
         view.setup(request)
-        form: BaseForm = view.get_form()
-        return form
+        return view
 
     def finish(self) -> HttpResponseBase:
         """Fire `done()` and retire the run — `WizardViewSet.finish()`,

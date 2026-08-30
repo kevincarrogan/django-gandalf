@@ -193,6 +193,11 @@ view, so the same overrides apply — and validated alone.
 - An escape raised while validating a candidate is reported under
   `unchecked` and never acted on. So is a form that cannot be built from
   the answers available yet.
+- What a candidate refused is the step view's to say, exactly as it is for
+  [`submit()`](#submitdata--filesnone-stepnone-metadatanone) — so a
+  repeated step's rows are keyed by row and field, and a valid formset
+  reads as `ok` rather than as a refusal (its `errors` is truthy when every
+  row is valid, which is why the view is asked rather than the object).
 
 ### `answers(*, json_safe=False)`
 

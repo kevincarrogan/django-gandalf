@@ -196,6 +196,24 @@ class FormSetStepView(StepFormView):
         return schema
 
 
+def answer_errors(view: Any, form: Any) -> dict[str, list[dict[str, Any]]]:
+    """What a step refused, by field name, empty when it is settled.
+
+    Asked of the step's view, because only the view knows what kind of
+    object its `get_form()` returned. A step declared with a bare Django
+    `FormView` rather than a `StepFormView` carries no `get_answer_errors`,
+    has no say, and gets the `BaseForm` reading.
+
+    The one place this fallback is spelled out: every reader that has a
+    view and a form in hand goes through here, so "a step with no say gets
+    the form's own answer" is a rule rather than a habit.
+    """
+    reader = getattr(view, "get_answer_errors", None)
+    if reader is None:
+        return cast("dict[str, list[dict[str, Any]]]", form.errors.get_json_data())
+    return cast("dict[str, list[dict[str, Any]]]", reader(form))
+
+
 def form_view_factory(
     form_class: type[forms.Form], *, template_name: str
 ) -> type[StepFormView]:
