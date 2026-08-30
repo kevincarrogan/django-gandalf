@@ -67,9 +67,19 @@ values onto one case. When it is only "what did they say", there is a
 shorthand:
 
 ```python
-from gandalf.wizard import on_field
+from gandalf.wizard import Wizard, on_field
 
-.switch(on_field("organisation-type", "organisation_type"), {...})
+
+organisation_details = (
+    ch02.organisation_details.step(OrganisationTypeForm, name="organisation-type")
+    .switch(
+        on_field("organisation-type", "organisation_type"),
+        {
+            "charity": Wizard().step(CharityNumberForm, name="charity-number"),
+            "company": Wizard().step(CompanyNumberForm, name="company-number"),
+        },
+    )
+)
 ```
 
 `on_field(step, field)` is `organisation_kind` said declaratively. It does
