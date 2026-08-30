@@ -143,10 +143,10 @@ def item_wizard(entry: AddAnother) -> Wizard | ConfiguredWizard | None:
     """The entry's item wizard as a declaration, or None when there is none
     to read: an `ItemViewSet` subclass in the slot that builds its wizard
     per request."""
-    wizard = entry.wizard
+    wizard: Any = entry.wizard
     if isinstance(wizard, type):
         wizard = getattr(wizard, "wizard", None)
-    return wizard
+    return cast("Wizard | ConfiguredWizard | None", wizard)
 
 
 def first_step_label(entry: AddAnother) -> StrOrPromise | None:
@@ -164,7 +164,7 @@ def declared_fields(node: tree.Step) -> set[str]:
     view decides its form at request time."""
     declaration: Any = node.declaration
     if isinstance(declaration, type) and issubclass(declaration, forms.BaseForm):
-        form_class = declaration
+        form_class: Any = declaration
     else:
         form_class = getattr(declaration, "form_class", None)
     if form_class is None:
