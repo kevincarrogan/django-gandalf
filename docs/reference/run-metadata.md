@@ -216,7 +216,7 @@ it on the bag, or move it to `run_started()`.
 ### `KeyError` in `run_unavailable()` for a completed run
 
 The key was never written — usually because the run was started through a
-door that does not fire `run_started()` (`reopen`, `resurrect`, `inspect`),
+door that does not fire `run_started()` (`reopen_at`, `resurrect`, `inspect`),
 or because `run_started()` raised before the write. Use `.get()` when the
 key is not guaranteed.
 

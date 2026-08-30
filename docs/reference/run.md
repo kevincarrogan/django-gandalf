@@ -29,7 +29,7 @@ step view reaches the same object as `self.request.wizard`. Walk-time code
 (a branch predicate, a switch selector, an expand builder) receives a
 [`WizardContext`](#wizardcontext) and reaches it as `context.run`. The
 classmethods on [`WizardViewSet`](viewsets.md) (`begin`, `inspect`,
-`reopen`, `resolve`, and their `*_for` variants) return one for programmatic
+`reopen_at`, `resolve`, and their `*_for` variants) return one for programmatic
 use.
 
 ### `Run(context, storage, wizard=None)`

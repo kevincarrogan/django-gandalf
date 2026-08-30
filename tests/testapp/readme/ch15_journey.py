@@ -96,7 +96,7 @@ budget = AddAnother(
     item_name="Budget line",
     item_title=("line", "item"),
     min_items=1,
-    reopen="review",
+    reopen_at="review",
     template_name="testapp/budget.html",
     remove_template_name="testapp/budget_remove.html",
 )
@@ -182,8 +182,8 @@ class GrantApplication(TaskList):
     them. A value — `GrantApplication.begin(request)` starts one."""
 
     setup = Section(SetupSection, title="Applying as")
-    contact = Section(ContactSection, title="Contact details", reopen="review")
-    project = Section(ProjectSection, title="Project", reopen="review")
+    contact = Section(ContactSection, title="Contact details", reopen_at="review")
+    project = Section(ProjectSection, title="Project", reopen_at="review")
     budget = budget
     match_funding = Section(
         MatchFundingSection, title="Match funding", key="match-funding"

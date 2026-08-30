@@ -38,6 +38,7 @@ __all__ = [
     "WizardObserver",
     "branch",
     "condition",
+    "declared_step_names",
     "form_view_factory",
     "on_field",
     "step",
@@ -140,6 +141,22 @@ class on_field:
                 f"step named {self.step!r} before this switch."
             )
         return str(found.form.cleaned_data.get(self.field, ""))
+
+
+def declared_step_names(wizard: Wizard | ConfiguredWizard) -> set[str] | None:
+    """Every step name the wizard declares, or None when the declaration is
+    not the whole story: an `Expand` builds its steps mid-walk, so theirs
+    cannot be known before the walk reaches them, and a name that looks
+    unknown may simply not have been grown yet."""
+    nodes = list(tree.iter_nodes(wizard.tree))
+    if any(isinstance(node, tree.Expand) for node in nodes):
+        return None
+    names = (
+        (node.context or {}).get("name")
+        for node in nodes
+        if isinstance(node, tree.Step)
+    )
+    return {name for name in names if name is not None}
 
 
 def _outline(node: tree.Node | None) -> list[dict[str, Any]]:

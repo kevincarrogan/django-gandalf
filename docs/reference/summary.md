@@ -70,7 +70,7 @@ do not special-case:
   only runs forwards never has its summary step in `path` — the step being
   rendered is the cursor, and the cursor is unanswered. A run that has been
   round the houses does: an edit revisited from a change link, or a stashed
-  section re-opened with `reopen` pointing here, arrives with the
+  section re-opened with `reopen_at` pointing here, arrives with the
   confirmation stored too. `get_summary_steps()` drops it by comparing each
   step's declaration with `request.wizard.rendering`, which is what stops
   the page offering to change itself.

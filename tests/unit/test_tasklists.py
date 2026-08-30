@@ -226,6 +226,36 @@ def test_an_explicit_key_names_the_entry_and_its_url():
     assert isinstance(_Hyphenated.match_funding, Section)
 
 
+def test_a_reopen_at_naming_no_declared_step_is_refused():
+    class _Typo(TaskList):
+        contact = Section(CONTACT, reopen_at="secnod")
+
+    with pytest.raises(ImproperlyConfigured, match="re-opens at 'secnod'"):
+
+        class _TypoPage(_Page):
+            url_name = "readme-typo"
+            tasklist = _Typo
+
+
+def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
+    """A section viewset that builds its wizard in get_wizard() has no
+    declaration to check against, so the name is taken on trust."""
+
+    class _PerRequest(SectionViewSet):
+        def get_wizard(self, run):
+            return CONTACT
+
+    class _Trusted(TaskList):
+        contact = Section(_PerRequest, reopen_at="anything")
+
+    class _TrustedPage(_Page):
+        url_name = "readme-trusted"
+        tasklist = _Trusted
+
+    (entry,) = _TrustedPage.entries
+    assert entry.reopen_at == "anything"
+
+
 def test_two_entries_under_one_key_are_refused():
     with pytest.raises(ImproperlyConfigured, match="two entries under the key 'pay'"):
 
@@ -243,12 +273,12 @@ def test_a_declaration_is_inherited_and_extended_by_a_subclass():
 
 
 def test_binding_an_entry_keeps_its_facts_and_adds_its_key_and_viewset():
-    entry = Section(CONTACT, title="Contact", reopen="second", label="v2")
+    entry = Section(CONTACT, title="Contact", reopen_at="second", label="v2")
 
     bound = entry.bound("contact", _Page)
 
     assert (bound.key, bound.viewset) == ("contact", _Page)
-    assert (bound.title, bound.reopen_step, bound.label) == ("Contact", "second", "v2")
+    assert (bound.title, bound.reopen_at, bound.label) == ("Contact", "second", "v2")
     assert bound.wizard is CONTACT
     assert entry.key == ""
 
@@ -266,7 +296,7 @@ def test_entries_with_the_same_facts_compare_equal():
 def test_a_bare_entry_is_neither_a_link_nor_reopenable():
     entry = Entry(title="Bare").bound("bare")
 
-    assert (entry.reopen_step, entry.url_name, entry.status) == (None, None, None)
+    assert (entry.reopen_at, entry.url_name, entry.status) == (None, None, None)
 
 
 def test_a_link_must_say_how_far_it_has_got():
@@ -951,7 +981,7 @@ def test_a_section_whose_recorded_run_is_gone_starts_again(page):
 
 
 def test_a_section_can_name_the_step_a_reopened_stash_lands_on(rf):
-    landing = _view(_list(contact=Section(CONTACT, reopen="second")))
+    landing = _view(_list(contact=Section(CONTACT, reopen_at="second")))
     view = _page(
         landing, rf, {"stashes": {"contact": _stash([{"step": {"name": "Ada"}}])}}
     )

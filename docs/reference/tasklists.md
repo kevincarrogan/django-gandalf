@@ -79,8 +79,8 @@ What a task list is: its entries, in order. A value, not a view.
 
 ```python
 class GrantApplication(TaskList):
-    contact = Section(contact, title="Contact details", reopen="review")
-    address = Section(address, title="Address", reopen="review")
+    contact = Section(contact, title="Contact details", reopen_at="review")
+    address = Section(address, title="Address", reopen_at="review")
 ```
 
 The attribute name is the entry's key — the URL segment it is mounted at
@@ -111,7 +111,7 @@ the stash is re-opened; default: the full key. Bump it when a deploy
 reshapes the wizard so an old-shape payload is refused rather than walked
 into a tree it no longer fits.
 
-#### `Section(wizard, *, title=None, reopen=None, label=None)`
+#### `Section(wizard, *, title=None, reopen_at=None, label=None)`
 
 A wizard the user finishes on its own and can come back to.
 
@@ -120,10 +120,13 @@ A wizard the user finishes on its own and can come back to.
   `blocked()` / `hidden()` for when it may be opened, `run_started()`, a
   per-request `get_wizard()`. A viewset's own `template_name` and `wizard`
   are used as declared.
-- `reopen` — the step a completed section re-opens at. Default `None`: the
+- `reopen_at` — the step a completed section re-opens at, checked against
+  the wizard's declared steps when the page is built (`ImproperlyConfigured`
+  for a name it does not declare; a wizard with an `.expand()`, or one built
+  in `get_wizard()`, cannot be checked). Default `None`: the
   first step on the route.
 
-#### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen=None, label=None, template_name=None, remove_template_name=None)`
+#### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None, template_name=None, remove_template_name=None)`
 
 A list the user grows, one run of `wizard` per item. The row links straight
 at the list's page and reads its declared status. The keyword arguments
@@ -147,9 +150,9 @@ at declaration otherwise.
 #### `Entry`
 
 The base. `bound(key, viewset=None)` returns the entry with its key and
-viewset set — what `TaskListViewSet.materialise()` does. `reopen_step`,
+viewset set — what `TaskListViewSet.materialise()` does. `reopen_at`,
 `url_name` and `status` are properties every kind answers (a `Section`'s
-`reopen`, a `Link`'s target and callable, `None` elsewhere), so the page
+`reopen_at`, a `Link`'s target and callable, `None` elsewhere), so the page
 reads one shape. `url_kwargs` are the extra kwargs an entry's own URLs take
 beyond the page's — an item's id.
 
@@ -310,7 +313,7 @@ never runs them.
   when there is nowhere to send them. In order: `None` for a link; `None`
   when `get_entry_status()` is `BLOCKED`; a group's page URL;
   `resume_section()` → `entry_url()`; `reopen_section()` →
-  `entry_url(entry.reopen_step)` (an `InvalidStash` goes to
+  `entry_url(entry.reopen_at)` (an `InvalidStash` goes to
   `stash_unusable()`); else `start_section()` → `entry_url()`. Re-opened
   and started runs are recorded with `store.set_run(full_key(entry), run_id)`.
   Every arm ends at a step URL, never a bare run URL — a run whose every
@@ -509,8 +512,8 @@ organisation = (
 
 
 class GrantApplication(TaskList):
-    contact = Section(contact, title="Contact details", reopen="review")
-    organisation = Section(organisation, title="Your organisation", reopen="review")
+    contact = Section(contact, title="Contact details", reopen_at="review")
+    organisation = Section(organisation, title="Your organisation", reopen_at="review")
 
 
 class GrantApplicationViewSet(TaskListViewSet):
@@ -556,7 +559,7 @@ class ProjectSection(SectionViewSet):
 
 
 class GrantApplication(TaskList):
-    project = Section(ProjectSection, title="Project", reopen="review")
+    project = Section(ProjectSection, title="Project", reopen_at="review")
 ```
 
 The `Section` is unchanged; the richer thing goes in the slot. `run_done()`

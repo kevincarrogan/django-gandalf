@@ -5,7 +5,7 @@ Declared as a class body, and mounted by a viewset:
 
     class GrantApplication(TaskList):
         setup = Section(SetupSection, title="Applying as")
-        contact = Section(contact, title="Contact details", reopen="review")
+        contact = Section(contact, title="Contact details", reopen_at="review")
         budget = AddAnother(budget_line, title="Budget", min_items=1)
         supporting = Group(SupportingInformation, title="Supporting information")
 
@@ -108,7 +108,7 @@ from gandalf.storage import (
 )
 from gandalf.types import JourneyStore, State, StorageClass, StrOrPromise
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, Wizard, declared_step_names
 
 if TYPE_CHECKING:
     from gandalf.add_another import AddAnotherViewSet
@@ -173,8 +173,8 @@ class Entry:
     this entry's own URLs take beyond the page's — an item's id.
     """
 
-    #: What names a finished entry's re-opening step, where that applies.
-    reopen_step: str | None = None
+    #: The step a finished entry re-opens at, where that applies.
+    reopen_at: str | None = None
     #: Where a link goes, and what decides its status; `None` for the rest.
     url_name: str | None = None
     status: Callable[[HttpRequest, dict[str, Any]], str] | None = None
@@ -231,7 +231,7 @@ class Section(Entry):
     """A wizard the user finishes on its own and can come back to.
 
     `wizard` is a `Wizard`, or a `SectionViewSet` subclass with the
-    section's behaviour on it. `reopen` names the step a completed section
+    section's behaviour on it. `reopen_at` names the step a completed section
     re-opens at — a review step, so the user lands on their answers rather
     than at step one.
     """
@@ -241,7 +241,7 @@ class Section(Entry):
         wizard: WizardLike,
         *,
         title: StrOrPromise | None = None,
-        reopen: str | None = None,
+        reopen_at: str | None = None,
         label: str | None = None,
         key: str = "",
         viewset: type[Any] | None = None,
@@ -251,14 +251,10 @@ class Section(Entry):
             title=title, label=label, key=key, viewset=viewset, url_kwargs=url_kwargs
         )
         self.wizard = wizard
-        self.reopen = reopen
+        self.reopen_at = reopen_at
 
     def facts(self) -> dict[str, Any]:
-        return {**super().facts(), "wizard": self.wizard, "reopen": self.reopen}
-
-    @property
-    def reopen_step(self) -> str | None:  # type: ignore[override]
-        return self.reopen
+        return {**super().facts(), "wizard": self.wizard, "reopen_at": self.reopen_at}
 
 
 class AddAnother(Entry):
@@ -267,7 +263,7 @@ class AddAnother(Entry):
     `item_name` is what an unfinished item is called on the page ("Budget
     line 2"); `item_title` — a `(step, field)`, or a callable handed the
     finished run — is what names a finished one. `min_items` is how many
-    a declared-done list needs before it counts as complete. `reopen`
+    a declared-done list needs before it counts as complete. `reopen_at`
     names the step a finished item re-opens at. `label` is every item's
     stash label. `template_name` and `remove_template_name` are the page
     and the remove confirmation.
@@ -281,7 +277,7 @@ class AddAnother(Entry):
         item_name: StrOrPromise | None = None,
         item_title: tuple[str, str] | Callable[[Run], str] | None = None,
         min_items: int = 0,
-        reopen: str | None = None,
+        reopen_at: str | None = None,
         label: str | None = None,
         template_name: str | None = None,
         remove_template_name: str | None = None,
@@ -296,7 +292,7 @@ class AddAnother(Entry):
         self.item_name = item_name
         self.item_title = item_title
         self.min_items = min_items
-        self.reopen = reopen
+        self.reopen_at = reopen_at
         self.template_name = template_name
         self.remove_template_name = remove_template_name
 
@@ -307,7 +303,7 @@ class AddAnother(Entry):
             "item_name": self.item_name,
             "item_title": self.item_title,
             "min_items": self.min_items,
-            "reopen": self.reopen,
+            "reopen_at": self.reopen_at,
             "template_name": self.template_name,
             "remove_template_name": self.remove_template_name,
         }
@@ -862,9 +858,32 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         return attrs
 
     @classmethod
+    def check_reopen_at(cls, key: str, entry: Entry, wizard: WizardLike | None) -> None:
+        """Refuse a `reopen_at` naming a step the entry's wizard does not
+        declare. A misspelt step name would not fail: a step URL is a claim,
+        so the section would quietly re-open wherever the run happened to
+        be. Checked against the declaration, so a step on an arm not taken
+        is fine; skipped for a wizard the declaration cannot see — one an
+        `.expand()` grows, or one built per request in `get_wizard()`."""
+        if entry.reopen_at is None:
+            return
+        if isinstance(wizard, type):
+            wizard = getattr(wizard, "wizard", None)
+        if wizard is None:
+            return
+        declared = declared_step_names(wizard)
+        if declared is None or entry.reopen_at in declared:
+            return
+        raise ImproperlyConfigured(
+            f"{cls.__name__}.{key} re-opens at {entry.reopen_at!r}, a step its "
+            f"wizard does not declare. Declared steps: {', '.join(sorted(declared))}."
+        )
+
+    @classmethod
     def build_section(
         cls, key: str, entry: Section, full_key: str, url_name: str
     ) -> type[SectionViewSet]:
+        cls.check_reopen_at(key, entry, entry.wizard)
         bases = cls.wizard_bases(entry.wizard, SectionViewSet)
         attrs = {
             **cls.scoped_attrs(url_name),
@@ -880,6 +899,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     ) -> type[AddAnotherViewSet]:
         from gandalf.add_another import AddAnotherViewSet
 
+        cls.check_reopen_at(key, entry, entry.wizard)
         attrs = {
             **cls.scoped_attrs(url_name),
             "add_another": entry,
@@ -1213,7 +1233,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             return self.stash_unusable(entry, error)
         if reopened is not None:
             store.set_run(self.full_key(entry), reopened.run_id)
-            return reopened.entry_url(entry.reopen_step)
+            return reopened.entry_url(entry.reopen_at)
         started = self.start_section(entry)
         store.set_run(self.full_key(entry), started.run_id)
         return started.entry_url()

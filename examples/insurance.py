@@ -342,7 +342,7 @@ class VehiclesViewSet(AddAnotherViewSet):
         VehicleItem,
         item_name="Vehicle",
         item_title=("vehicle", "registration"),
-        reopen="review",
+        reopen_at="review",
         template_name="hybrid/collection.html",
         remove_template_name="hybrid/remove_item.html",
     )

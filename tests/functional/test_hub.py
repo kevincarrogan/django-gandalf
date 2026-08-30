@@ -352,7 +352,7 @@ def test_reopening_a_completed_member_seeds_a_new_prefilled_run(client):
     reopened = stored_section_run(client, "contact")
     assert reopened != original
     assert response.status_code == HTTPStatus.OK
-    # `reopen_step` lands on the review page, which shows every answer.
+    # `reopen_at` lands on the review page, which shows every answer.
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     assertContains(response, "Ada")
     assert stored_section_stashes(client)["contact"]["state"][0] == {
@@ -382,7 +382,7 @@ def test_one_edit_in_a_reopened_member_re_stashes_and_returns_to_the_hub(client)
     """Re-opening is edit-and-re-save: every stored answer already validates,
     so the next successful submission walks to the end and fires `done()`
     again. A review step does not gate that — landing the user on it (via
-    `reopen_step`) is what gives them the answers to check first."""
+    `reopen_at`) is what gives them the answers to check first."""
     _complete_contact(client)
     client.get(_door("contact"), follow=True)
     run_id = stored_section_run(client, "contact")

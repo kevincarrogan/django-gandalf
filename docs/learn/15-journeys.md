@@ -128,8 +128,8 @@ class GrantApplication(TaskList):
     them. A value — `GrantApplication.begin(request)` starts one."""
 
     setup = Section(SetupSection, title="Applying as")
-    contact = Section(ContactSection, title="Contact details", reopen="review")
-    project = Section(ProjectSection, title="Project", reopen="review")
+    contact = Section(ContactSection, title="Contact details", reopen_at="review")
+    project = Section(ProjectSection, title="Project", reopen_at="review")
     budget = budget
     match_funding = Section(MatchFundingSection, title="Match funding", key="match-funding")
     supporting = Group(

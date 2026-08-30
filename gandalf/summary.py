@@ -38,10 +38,10 @@ from django.utils import formats
 from django.utils.text import capfirst
 from django.utils.translation import gettext
 
-from gandalf import tree
 from gandalf.form_views import StepFormView
 from gandalf.runtime import RuntimeStep
 from gandalf.types import StrOrPromise
+from gandalf.wizard import declared_step_names
 
 
 if TYPE_CHECKING:
@@ -274,7 +274,7 @@ class SummaryMixin(_SummaryMixinBase):
         `path` — the step being rendered is the cursor, and the cursor is by
         definition unanswered. A run that has been round the houses does: an
         edit revisited from a change link, or a stashed member re-opened
-        with `reopen_step` pointing here, both arrive with every answer
+        with `reopen_at` pointing here, both arrive with every answer
         stored, this page's own confirmation included. Dropping it is what
         stops the page offering to change itself.
         """
@@ -319,15 +319,7 @@ class SummaryMixin(_SummaryMixinBase):
         theirs cannot be known before the walk reaches them, and a name that
         looks unknown may simply not have been grown yet.
         """
-        nodes = list(tree.iter_nodes(self.request.wizard.wizard.tree))
-        if any(isinstance(node, tree.Expand) for node in nodes):
-            return None
-        names = (
-            (node.context or {}).get("name")
-            for node in nodes
-            if isinstance(node, tree.Step)
-        )
-        return {name for name in names if name is not None}
+        return declared_step_names(self.request.wizard.wizard)
 
     def build_summary_row(self, step: RuntimeStep) -> SummaryRow:
         form = step.form

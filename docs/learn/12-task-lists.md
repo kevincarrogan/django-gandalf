@@ -28,8 +28,8 @@ address = (
 
 
 class GrantApplication(TaskList):
-    contact = Section(contact, title="Contact details", reopen="review")
-    address = Section(address, title="Address", reopen="review")
+    contact = Section(contact, title="Contact details", reopen_at="review")
+    address = Section(address, title="Address", reopen_at="review")
 
 
 class GrantApplicationViewSet(TaskListViewSet):
@@ -98,7 +98,7 @@ change the row.
 
 A re-opened section arrives with every answer already valid, so the next
 successful submission walks to the end and saves again — the user changed
-something and it saved. `reopen="review"` lands them on their answers with
+something and it saved. `reopen_at="review"` lands them on their answers with
 a change link each, rather than at step one.
 
 Every decision — which sections appear, how a status is derived, how a row

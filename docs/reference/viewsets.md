@@ -224,12 +224,16 @@ resolved, so `get_wizard()` is never asked to read a run that has no state.
   still readable, so a completion page can name what the run created; for
   `"unknown"`, `retrieve()` raised before anything was set, so
   `run.run_id` is `None`; the id asked for is `self.kwargs["run_id"]`.
-- `reason` — one of:
+- `reason` — a `RunUnavailable` (from `gandalf.viewsets`), one of:
 
 | `reason` | Meaning |
 | --- | --- |
-| `"completed"` | The run finished; `done()` has already fired for it. |
-| `"unknown"` | Storage raised `RunNotFound`: never started, obliterated, or lost with an expired session. |
+| `RunUnavailable.COMPLETED` | The run finished; `done()` has already fired for it. |
+| `RunUnavailable.UNKNOWN` | Storage raised `RunNotFound`: never started, obliterated, or lost with an expired session. |
+
+  Each member is also a `str` equal to its lowercase name, so an existing
+  `reason == "completed"` still holds; the member is what a type-checker
+  can vouch for.
 
 **Returns** an `HttpResponseBase`. The default is
 `redirect(self.get_start_url())`, so refreshing a completion page quietly
@@ -482,7 +486,7 @@ class RecordedApplicationViewSet(WizardViewSet):
         return redirect("application-received", pk=application.pk)
 
     def run_unavailable(self, run, reason):
-        if reason == "completed":
+        if reason == RunUnavailable.COMPLETED:
             return redirect(
                 "application-received", pk=run.metadata["application_id"]
             )

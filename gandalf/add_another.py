@@ -17,7 +17,7 @@ Declared as an entry of a task list —
             item_name="Budget line",
             item_title=("line", "item"),
             min_items=1,
-            reopen="review",
+            reopen_at="review",
             template_name="apply/budget.html",
             remove_template_name="apply/budget_remove.html",
         )
@@ -342,7 +342,7 @@ class AddAnotherViewSet(TaskListViewSet):
         return Section(
             self.get_item_viewset(),
             label=self.get_item_label(),
-            reopen=self.get_declaration().reopen,
+            reopen_at=self.get_declaration().reopen_at,
             key=item_id,
             viewset=self.get_item_viewset(),
             url_kwargs={self.entry_url_kwarg: item_id},

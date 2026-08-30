@@ -34,7 +34,7 @@ thing that can be *destroyed*.
 
 ## Reference
 
-### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen=None, label=None, template_name=None, remove_template_name=None)`
+### `AddAnother(wizard, *, title=None, item_name=None, item_title=None, min_items=0, reopen_at=None, label=None, template_name=None, remove_template_name=None)`
 
 The entry: one *add another* list. Declared in a `TaskList` body, which
 mounts the page beneath the list, or set as `add_another` on a root
@@ -55,7 +55,7 @@ variant.
   positional name. Required by the time an item finishes.
 - `min_items` — items required before *no more to add* counts as complete.
   Zero is right for "any other income?"; one for "add at least one".
-- `reopen` — the step a finished item re-opens at (its review step,
+- `reopen_at` — the step a finished item re-opens at (its review step,
   usually). `None` re-opens at the first step.
 - `label` — the stash label every item stamps and the page expects; one
   value for both halves. `None` uses the list's key. Bump it when a deploy
@@ -132,7 +132,7 @@ Items and identity:
 | `get_item_ids()` | `store.item_ids(key)` | build the list from your own records instead of the registry; `get_item()` and `get_entries()` both read it |
 | `new_item_id()` | `str(uuid.uuid4())` | choose identity yourself. Must be opaque and unique; a positional id would renumber survivors on removal, and the routes match `<uuid:item>` |
 | `get_item_label()` | `add_another.label`, else the key | — |
-| `get_item_entry(item_id)` | a `Section` bound to `item_id`, the item viewset, the label, `reopen` and `url_kwargs={"item": item_id}` | — |
+| `get_item_entry(item_id)` | a `Section` bound to `item_id`, the item viewset, the label, `reopen_at` and `url_kwargs={"item": item_id}` | — |
 | `get_entries()` | one `get_item_entry()` per `get_item_ids()` | — |
 | `get_item(item_id)` | the entry, or `ItemNotFound` if `get_item_ids()` does not list it | — |
 | `item_id_for(entry)` | `entry.url_kwargs["item"]` | — |
@@ -411,7 +411,7 @@ from gandalf.wizard import Wizard
 
 
 class Project(TaskList):
-    project = Section(project, title="Project", reopen="review")
+    project = Section(project, title="Project", reopen_at="review")
     budget = AddAnother(
         Wizard()
         .step(BudgetLineForm, name="line", label="Budget line")
@@ -420,7 +420,7 @@ class Project(TaskList):
         item_name="Budget line",
         item_title=("line", "item"),
         min_items=1,
-        reopen="review",
+        reopen_at="review",
         template_name="grants/budget.html",
         remove_template_name="grants/budget_remove.html",
     )

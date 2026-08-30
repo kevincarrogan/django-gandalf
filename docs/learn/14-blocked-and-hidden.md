@@ -108,7 +108,7 @@ simply in the slot:
 
 ```python
 class Gated(TaskList):
-    project = Section(ProjectSection, title="Project", reopen="review")
+    project = Section(ProjectSection, title="Project", reopen_at="review")
     match_funding = Section(MatchFundingSection, title="Match funding", key="match-funding")
     referees = Section(RefereesSection, title="Referees")
 ```

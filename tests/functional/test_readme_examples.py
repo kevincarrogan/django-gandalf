@@ -611,7 +611,7 @@ def test_chapter_12_reopens_a_completed_member_on_its_review_page(
 
     response = client.get(door, follow=True)
 
-    # `reopen_step="review"` lands the user on their answers, not step one.
+    # `reopen_at="review"` lands the user on their answers, not step one.
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "12 High Street")
     assertContains(response, "Check your answers")

@@ -25,8 +25,8 @@ address = (
 
 
 class GrantApplication(TaskList):
-    contact = Section(contact, title="Contact details", reopen="review")
-    address = Section(address, title="Address", reopen="review")
+    contact = Section(contact, title="Contact details", reopen_at="review")
+    address = Section(address, title="Address", reopen_at="review")
 
 
 class GrantApplicationViewSet(TaskListViewSet):

@@ -29,7 +29,7 @@ budget_line = (
 
 
 class Project(TaskList):
-    project = Section(project, title="Project", reopen="review")
+    project = Section(project, title="Project", reopen_at="review")
     # An add-another row is an entry like any other: the row links straight
     # at its page and reads its own status.
     budget = AddAnother(
@@ -39,7 +39,7 @@ class Project(TaskList):
         # The answer that names a row, cached when the line finishes.
         item_title=("line", "item"),
         min_items=1,
-        reopen="review",
+        reopen_at="review",
         template_name="testapp/budget.html",
         remove_template_name="testapp/budget_remove.html",
     )

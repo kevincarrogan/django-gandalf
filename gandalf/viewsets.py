@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, cast
 
 from django.core.exceptions import ImproperlyConfigured
@@ -16,6 +17,20 @@ from gandalf.runtime import Run, Cursor, RuntimeStep, Walk, submission_from_post
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.types import Context, FileRefs, Stash, StorageClass, Submission
 from gandalf.wizard import ConfiguredWizard, Wizard
+
+
+class RunUnavailable(str, Enum):
+    """Why a request cannot continue a run — the `reason` handed to
+    `WizardViewSet.run_unavailable()`. A `str` too, so `"completed"` still
+    compares equal."""
+
+    #: The run finished; `done()` has already fired for it.
+    COMPLETED = "completed"
+    #: Storage raised `RunNotFound`: never started, obliterated, or lost
+    #: with an expired session.
+    UNKNOWN = "unknown"
+
+    __str__ = str.__str__
 
 
 class WizardViewSet(View):
@@ -442,17 +457,18 @@ class WizardViewSet(View):
         try:
             run.retrieve(run_id)
         except RunNotFound:
-            return self.run_unavailable(run, reason="unknown")
+            return self.run_unavailable(run, reason=RunUnavailable.UNKNOWN)
         if run.is_complete:
-            return self.run_unavailable(run, reason="completed")
+            return self.run_unavailable(run, reason=RunUnavailable.COMPLETED)
         return None
 
-    def run_unavailable(self, run: Run, reason: str) -> HttpResponseBase:
+    def run_unavailable(self, run: Run, reason: RunUnavailable) -> HttpResponseBase:
         """Response for a run this request cannot continue.
 
-        `reason` is `"completed"` — the run finished and `done()` has already
-        fired for it — or `"unknown"`: no such run, whether never started,
-        obliterated, or lost with an expired session. The default sends the
+        `reason` is `RunUnavailable.COMPLETED` — the run finished and `done()`
+        has already fired for it — or `RunUnavailable.UNKNOWN`: no such run,
+        whether never started, obliterated, or lost with an expired session.
+        Each compares equal to its string. The default sends the
         user to the wizard's start URL, so refreshing a completion page
         quietly begins a fresh run rather than re-firing `done()`'s side
         effects. Override to render a completion page, raise `Http404`, or

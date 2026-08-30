@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from gandalf.context import WizardContext
 from gandalf.tasklists import (
+    SectionViewSet,
     COMPLETE,
     AddAnother,
     Entry,
@@ -92,6 +93,36 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
 def test_an_explicit_key_is_the_url_segment(client):
     """Chapter 14's `match_funding` attribute is mounted at /match-funding/."""
     assert reverse("readme-gated-match-funding").endswith("/match-funding/")
+
+
+def test_a_reopen_at_naming_no_declared_step_is_refused():
+    class _Typo(TaskList):
+        contact = Section(contact, reopen_at="reveiw")
+
+    with pytest.raises(ImproperlyConfigured, match="re-opens at 'reveiw'"):
+
+        class _TypoPage(GrantApplicationViewSet):
+            url_name = "readme-typo"
+            tasklist = _Typo
+
+
+def test_a_reopen_at_on_a_per_request_wizard_cannot_be_checked():
+    """A section viewset that builds its wizard in get_wizard() has no
+    declaration to check against, so the name is taken on trust."""
+
+    class _PerRequest(SectionViewSet):
+        def get_wizard(self, run):
+            return contact
+
+    class _Trusted(TaskList):
+        contact = Section(_PerRequest, reopen_at="anything")
+
+    class _TrustedPage(GrantApplicationViewSet):
+        url_name = "readme-trusted"
+        tasklist = _Trusted
+
+    (entry,) = _TrustedPage.entries
+    assert entry.reopen_at == "anything"
 
 
 def test_two_entries_under_one_key_are_refused():
