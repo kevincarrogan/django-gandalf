@@ -1,9 +1,16 @@
 # Chapter 5 — A wizard per request
 
-The fund runs an arts programme and a sports programme, and the arts
-programme wants a link to your work. That is a difference in the *request* —
-which fund's URL the applicant came in through — not in any answer, so it is
-`get_wizard()`, called per request, rather than a branch:
+The fund runs two programmes, arts and sport, and each has its own
+application link: `/readme/funds/arts/` and `/readme/funds/sport/`. The
+forms are the same except that the arts programme also asks for a link to
+your work.
+
+So far, every fork in the flow has turned on an *answer*: whether they are
+an organisation, which kind. This one is different. The applicant is never
+asked which programme they are applying to — the link they clicked already
+said. That is a fact about the request, not about the run, so a branch
+cannot see it; a predicate reads answers. Instead the viewset builds a
+different wizard for each request, in `get_wizard()`:
 
 ```python
 class FundApplicationViewSet(WizardViewSet):
@@ -23,9 +30,14 @@ urlpatterns = [
 ]
 ```
 
-Reach for `get_wizard()` when the shape depends on the request — tenant,
-plan, permissions, locale, feature flags. When it depends on a prior
-*answer*, reach for `.expand()` as chapter 4 did.
+`<slug:fund>` in the mount is what puts `"arts"` or `"sport"` in
+`self.kwargs["fund"]`; the section below says how that stays put for the
+whole run.
+
+The rule of thumb: when the shape depends on the *request* — which URL,
+which tenant, which plan, who is logged in, a feature flag — build it in
+`get_wizard()`. When it depends on an *answer*, it belongs in the
+declaration: `.branch()`, `.switch()` or `.expand()`.
 
 ### Mount prefixes that capture kwargs
 
