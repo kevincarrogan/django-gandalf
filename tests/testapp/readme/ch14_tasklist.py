@@ -1,12 +1,9 @@
 """Chapter 14 as a task list: the same application, declared as a class
 body. Sections carry facts; the thing in the slot carries behaviour."""
 
-import uuid
-
 from django.shortcuts import redirect, render
 
 from gandalf.hubs import MemberViewSet
-from gandalf.storage import SessionJourneyStore
 from gandalf.tasklists import AddAnother, Group, Section, TaskList
 from gandalf.viewsets import WizardViewSet
 
@@ -123,6 +120,10 @@ class GrantApplication(TaskList):
 
 
 class TaskListStartViewSet(WizardViewSet):
+    """The first wizard, before there is a journey to be a section of.
+    `mint()` records its run as the `setup` section — stashed, its
+    `run_done()` run — and lands on the list under the new id."""
+
     description = (
         "Chapter 14 as a task list: the setup wizard that mints an application."
     )
@@ -130,8 +131,4 @@ class TaskListStartViewSet(WizardViewSet):
     wizard = setup
 
     def done(self, bound_wizard):
-        journey = uuid.uuid4().hex
-        store = SessionJourneyStore(self.context_for(self.request), journey)
-        store.put_stash("setup", bound_wizard.stash(label="setup"))
-        record_applying_as(store, bound_wizard)
-        return redirect("readme-tasklist", journey=journey)
+        return GrantApplication.mint(self.request, bound_wizard, section="setup")

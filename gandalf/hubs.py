@@ -59,6 +59,7 @@ tombstones the record, after which every way back in is refused.
 from __future__ import annotations
 
 import re
+import uuid
 from abc import abstractmethod
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -72,7 +73,7 @@ from django.http import (
     HttpResponseNotAllowed,
 )
 from django.shortcuts import redirect
-from django.urls import URLPattern, URLResolver, include, path, reverse
+from django.urls import NoReverseMatch, URLPattern, URLResolver, include, path, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext
 from django.views.generic import TemplateView
@@ -854,6 +855,49 @@ class HubViewSet(JourneyScoped, TemplateView):
             path(f"<slug:{cls.member_url_kwarg}>/", view, name=f"{cls.url_name}-member")
         )
         return patterns
+
+    @classmethod
+    def mint(
+        cls,
+        request: HttpRequest,
+        bound_wizard: BoundWizard | None = None,
+        *,
+        section: str | None = None,
+        journey: str | None = None,
+        **url_kwargs: Any,
+    ) -> HttpResponseBase:
+        """Begin a journey and send the user to its page.
+
+        For a hub mounted under a `<journey>` segment, something has to
+        mint the id before the page has a URL — usually the first wizard's
+        `done()`. Handed that wizard's finished run and the `section` it
+        counts as, this records it exactly as finishing the section from
+        the hub would have: stashed under the section's key and label, its
+        `run_done()` run, so it arrives on the page already complete and
+        re-openable like any other row.
+
+            def done(self, bound_wizard):
+                return GrantApplication.mint(self.request, bound_wizard, section="setup")
+
+        `journey` is minted when not given. `url_kwargs` are the page's
+        mount-prefix kwargs, if it has any.
+        """
+        journey = journey or uuid.uuid4().hex
+        kwargs = {**url_kwargs, cls.journey_url_kwarg: journey}
+        if bound_wizard is not None:
+            if section is None:
+                raise ImproperlyConfigured(
+                    "mint() needs the section a finished run counts as: "
+                    f"{cls.__name__}.mint(request, bound_wizard, section=...)."
+                )
+            view = cls.viewset_for(section)()
+            view.setup(request, **kwargs)
+            view.done(bound_wizard)
+        try:
+            return redirect(reverse(cls.url_name, kwargs=kwargs))
+        except NoReverseMatch:
+            # Not mounted under a journey segment: one journey per session.
+            return redirect(reverse(cls.url_name, kwargs=url_kwargs))
 
     @classmethod
     def viewset_for(cls, key: str) -> type[Any]:
