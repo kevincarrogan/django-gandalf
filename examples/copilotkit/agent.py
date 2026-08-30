@@ -166,7 +166,7 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
                 "Tell them what you would put there and why, and give them "
                 "this link as a markdown link so they can do it themselves."
             ),
-            "change_url": driver.bound_wizard.entry_url(step),
+            "change_url": driver.run.entry_url(step),
         }
 
 

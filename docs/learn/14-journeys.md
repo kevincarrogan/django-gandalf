@@ -35,10 +35,10 @@ It asks the questions everything else turns on, before there is a list to
 come back to:
 
 ```python
-def record_applying_as(store, bound_wizard):
+def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other member can read it without a walk."""
-    step = bound_wizard.path.find_step(name="applying_as")
+    step = run.path.find_step(name="applying_as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 ```
 
@@ -67,9 +67,9 @@ class ApplicationStartViewSet(WizardViewSet):
     url_name = "readme-apply-start"
     wizard = setup
 
-    def done(self, bound_wizard):
+    def done(self, run):
         journey = GrantApplication.begin(self.request)
-        journey.finish("setup", bound_wizard)
+        journey.finish("setup", run)
         return redirect(journey.url)
 ```
 
@@ -83,9 +83,9 @@ arrival and re-openable from the page like any other:
 class SetupSection(SectionViewSet):
     wizard = setup
 
-    def run_done(self, bound_wizard):
-        record_applying_as(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_applying_as(self.get_journey_store(), run)
+        return super().run_done(run)
 ```
 
 Nothing about `begin()` needs a wizard. An "apply again" link, a
@@ -95,7 +95,7 @@ management command or an agent begins a journey the same way.
 
 `store.data` is the journey's record of what its sections decided — the
 facts the rest of the journey turns on, kept where every section reads
-them without a walk. It is the same bag chapter 9's `bound_wizard.metadata`
+them without a walk. It is the same bag chapter 9's `run.metadata`
 is, kept for the journey rather than for one run, with per-section sub-bags
 so sections cannot tread on each other. `record_applying_as` writes
 *individual* or *organisation* there, and the governing document section

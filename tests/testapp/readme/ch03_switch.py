@@ -32,8 +32,8 @@ class SwitchingApplicationViewSet(WizardViewSet):
         EmailForm, name="contact"
     )
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         number = answers.get("charity_number") or answers.get("company_number")
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(

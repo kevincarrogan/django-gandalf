@@ -10,19 +10,19 @@ class RecordedApplicationViewSet(WizardViewSet):
     template_name = "testapp/file_upload_wizard.html"
     wizard = with_contact_and_review(ch02.applicant(organisation=organisation_details))
 
-    def run_started(self, bound_wizard):
+    def run_started(self, run):
         application = Application.objects.create()
-        bound_wizard.metadata["application_id"] = application.pk
+        run.metadata["application_id"] = application.pk
 
-    def done(self, bound_wizard):
-        application = Application.objects.get(pk=bound_wizard.metadata["application_id"])
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        application = Application.objects.get(pk=run.metadata["application_id"])
+        answers = MergeCleanedData().reduce(run.path)
         application.submit(answers["email"])
         return redirect("readme-received", pk=application.pk)
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(self, run, reason):
         if reason == "completed":
-            return redirect("readme-received", pk=bound_wizard.metadata["application_id"])
+            return redirect("readme-received", pk=run.metadata["application_id"])
         raise Http404("That application has expired.")
 ```
 
@@ -37,7 +37,7 @@ card. Put side effects in `done()` and they happen once. The marker is
 written *after* `done()` returns, so a `done()` that raises leaves the run
 intact and resumable.
 
-`run_unavailable(bound_wizard, reason)` answers everything that cannot be
+`run_unavailable(run, reason)` answers everything that cannot be
 run — `reason` is `"completed"` or `"unknown"`. The default redirects to the
 start URL; here a completed run goes to its own received page instead.
 
@@ -48,11 +48,11 @@ every request. That leaves nowhere to keep the other kind of fact a run
 accumulates: the record it opened somewhere else. Nobody typed it, no form
 validates it, and doing it twice is the bug.
 
-`run_started(bound_wizard)` fires when a fresh run is minted, and only then.
+`run_started(run)` fires when a fresh run is minted, and only then.
 Re-opening a stash (chapter 10) does not fire it — a re-opened run brings
 its metadata back with it, so the record it created is already there.
 
-### `bound_wizard.metadata`: what it remembers
+### `run.metadata`: what it remembers
 
 A dict, readable and writable from anywhere holding the run — a step view, a
 branch predicate, `done()`. Every write goes straight to storage, which is

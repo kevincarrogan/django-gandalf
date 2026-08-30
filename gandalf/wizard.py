@@ -12,7 +12,7 @@ from gandalf.file_storage import WizardFileStorage
 from gandalf.form_views import StepFormView, form_view_factory
 from gandalf.observers import WizardObserver
 from gandalf.runtime import (
-    BoundWizard,
+    Run,
     CursorWalker,
     InvalidStash,
     MergeCleanedData,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "BoundWizard",
+    "Run",
     "ConfiguredWizard",
     "InvalidStash",
     "MergeCleanedData",
@@ -132,7 +132,7 @@ class on_field:
         return f"{self.step}.{self.field}"
 
     def __call__(self, context: WizardContext) -> str:
-        run = cast("BoundWizard", context.run)
+        run = cast("Run", context.run)
         found = run.path.find_step(name=self.step)
         if found is None:
             raise ImproperlyConfigured(
@@ -329,7 +329,7 @@ class ConfiguredWizard:
             raise ImproperlyConfigured(
                 "storage_class belongs on the WizardViewSet, not the wizard. "
                 "Storage has to exist before the wizard does — get_wizard() "
-                "is handed a BoundWizard that can already read stored state — "
+                "is handed a Run that can already read stored state — "
                 "so the wizard cannot supply it. Set "
                 "WizardViewSet.storage_class instead."
             )

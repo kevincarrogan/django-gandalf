@@ -120,7 +120,7 @@ class IdentityCheckViewSet(WizardViewSet):
         .step(IdentityReviewStepView, name="confirm")
     )
 
-    def done(self, bound_wizard):
-        name = bound_wizard.path.find_step(name="name").form.cleaned_data
-        log_event("identity", run=bound_wizard.run_id, surname=name["surname"])
+    def done(self, run):
+        name = run.path.find_step(name="name").form.cleaned_data
+        log_event("identity", run=run.run_id, surname=name["surname"])
         return HttpResponse(f"Confirmed {name['first_name']} {name['surname']}")

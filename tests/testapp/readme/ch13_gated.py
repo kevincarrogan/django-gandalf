@@ -11,11 +11,11 @@ from .forms import MatchFundingForm, ProjectForm, RefereeForm
 MATCH_FUNDING_THRESHOLD = 10_000
 
 
-def record_amount(store, bound_wizard):
+def record_amount(store, run):
     """The amount is read off the path here — the one moment the run is
     readable and a walk has already been paid — and written to the journey's
     data, where every other section reads it without a walk."""
-    project = bound_wizard.path.find_step(name="project")
+    project = run.path.find_step(name="project")
     store.data["amount"] = int(project.form.cleaned_data["amount"])
 
 
@@ -28,9 +28,9 @@ class ProjectSection(SectionViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def run_done(self, bound_wizard):
-        record_amount(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_amount(self.get_journey_store(), run)
+        return super().run_done(run)
 
 
 class MatchFundingSection(SectionViewSet):

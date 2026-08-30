@@ -32,7 +32,7 @@ the two doors can be used on the same run one after the other.
 
 ## Reference
 
-### `RunDriver(view, bound_wizard, *, may_finish=None)`
+### `RunDriver(view, run, *, may_finish=None)`
 
 One wizard run, driven as data. Construct it through `begin()`,
 `resume()` or `outline_for()` rather than directly.
@@ -40,10 +40,10 @@ One wizard run, driven as data. Construct it through `begin()`,
 **Attributes**
 
 - `view` — the `WizardViewSet` instance the run is driven through.
-- `bound_wizard` — the run's [`BoundWizard`](bound-wizard.md). Everything
-  the runtime offers is reachable here: `bound_wizard.entry_url(step)` for
-  the URL to hand a person, `bound_wizard.stash()`, `bound_wizard.path`.
-- `run_id` (property) — `bound_wizard.run_id`.
+- `run` — the run's [`Run`](run.md). Everything
+  the runtime offers is reachable here: `run.entry_url(step)` for
+  the URL to hand a person, `run.stash()`, `run.path`.
+- `run_id` (property) — `run.run_id`.
 - `metadata` (property) — the run's [`RunMetadata`](run-metadata.md) bag,
   the same one `run_started()`, step views and `done()` read and write. A
   fact about the *run*; what each *placement* claimed about itself is in
@@ -263,7 +263,7 @@ unrendered `TemplateResponse`).
 `done()` is where the irreversible things live, and a driver is the
 unattended path by definition, so concluding a run is opt-in per driver.
 The alternative is to hand the run to a person:
-`driver.bound_wizard.entry_url("review")` is the wizard's own step URL, and
+`driver.run.entry_url("review")` is the wizard's own step URL, and
 their first page load walks the same answers the same way.
 
 ### `StepDescription`
@@ -434,7 +434,7 @@ result.placed                      # ["organisation", "trustees", "budget"]
 result.unused                      # answers the route never asked for
 
 # No may_finish: the person confirms in the browser.
-review_url = driver.bound_wizard.entry_url("review")
+review_url = driver.run.entry_url("review")
 ```
 
 The run is the same run the browser opens. With a durable storage scoped
@@ -503,7 +503,7 @@ concludes a run: the person confirms. See [Agent](agent.md).
 
 The default. Construct the driver with `may_finish=True`, or subclass with
 `may_finish = True` for a caller that is always allowed (an import
-command). Otherwise hand the person `bound_wizard.entry_url(...)` and let
+command). Otherwise hand the person `run.entry_url(...)` and let
 them confirm.
 
 ### `submit()` raises `StepNotFound` for a step that is in the wizard
@@ -545,4 +545,4 @@ it places one answer at a time and reads the tree again.
 
 ---
 
-**Learn:** [Chapter 15 — Outline, observers and the driver](../learn/15-outline-observers-and-the-driver.md) · **Related:** [Agent](agent.md), [`BoundWizard`](bound-wizard.md), [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md), [Observers](observers.md), [File uploads](file-uploads.md), [Storage](storage.md), [Testing](testing.md)
+**Learn:** [Chapter 15 — Outline, observers and the driver](../learn/15-outline-observers-and-the-driver.md) · **Related:** [Agent](agent.md), [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Run metadata](run-metadata.md), [Observers](observers.md), [File uploads](file-uploads.md), [Storage](storage.md), [Testing](testing.md)

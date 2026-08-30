@@ -57,7 +57,7 @@ person presses that.
 | `submit_step(data)` | `submit(data)` | always |
 | `edit_step(step, data)` | `submit(merged, step=step)` — `data` is merged over the stored answers | always |
 | `attach_document(attachment_id, field, step=None)` | `submit({}, files=..., step=step)` | only when `accepts_documents()` |
-| `handoff()` | `bound_wizard.entry_url()` | only when the viewset has a `url_name` |
+| `handoff()` | `run.entry_url()` | only when the viewset has a `url_name` |
 
 Every tool on a run returns its `run_id`, `step`, `schema`, `answers`,
 `errors` and `complete`, and snapshots them into `WizardState`

@@ -1,6 +1,6 @@
 # Stashing
 
-`BoundWizard.stash()` and `WizardViewSet.resurrect()` — take a run's
+`Run.stash()` and `WizardViewSet.resurrect()` — take a run's
 answers out as a payload, and seed a fresh run from one later.
 
 ```python
@@ -15,7 +15,7 @@ from gandalf.types import Stash
 
 ## Reference
 
-### `BoundWizard.stash(label=None)`
+### `Run.stash(label=None)`
 
 A caller-owned, JSON-safe payload of this run's answers. Callable inside
 `done()` — completion tears the run down only after `done()` returns, so
@@ -51,7 +51,7 @@ arms, the legacy bare-list branch shape, and expansion sub-lists:
 The stored state is never mutated; the payload is built from new
 structures.
 
-### `BoundWizard.resurrect(payload, expected_label=None)`
+### `Run.resurrect(payload, expected_label=None)`
 
 Seed a fresh run from a payload and return the new run id. Storage-only:
 the wizard need not be resolved yet. The payload is vetted before any run
@@ -67,11 +67,11 @@ independent runs and leaves the payload untouched. Nothing is walked here.
   (a payload with no label fails this too).
 
 Most callers want the viewset classmethods below, which build the
-`BoundWizard` for you.
+`Run` for you.
 
 ### `WizardViewSet.reopen(request, payload, expected_label=None, **url_kwargs)`
 
-A fresh run seeded from `payload`, returned as a `BoundWizard` rather than
+A fresh run seeded from `payload`, returned as a `Run` rather than
 redirected to. The wizard is resolved *after* seeding, so a dynamic
 `get_wizard()` reads the state the payload just supplied. `url_kwargs` are
 mount-prefix context (a tenant slug), forwarded into URL reversing.
@@ -191,9 +191,9 @@ class ContactDetailsViewSet(WizardViewSet):
         .step(EmailForm, name="email")
     )
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put(
-            "contact", bound_wizard.stash(label="contact-v1")
+    def done(self, run):
+        SessionStashStore(run.context).put(
+            "contact", run.stash(label="contact-v1")
         )
         return HttpResponse("Contact details saved.")
 
@@ -218,9 +218,9 @@ class BudgetViewSet(WizardViewSet):
     url_name = "budget"
     ...
 
-    def done(self, bound_wizard):
-        application = Application.objects.get(pk=bound_wizard.metadata["application_id"])
-        application.budget_stash = bound_wizard.stash(label="budget")
+    def done(self, run):
+        application = Application.objects.get(pk=run.metadata["application_id"])
+        application.budget_stash = run.stash(label="budget")
         application.save(update_fields=["budget_stash"])
         return redirect("application-overview", pk=application.pk)
 
@@ -291,4 +291,4 @@ should stay re-openable, and `pop()` only when re-opening consumes it.
 
 ---
 
-**Learn:** [Chapter 10 — Stashing: leave and come back](../learn/10-stashing.md) · **Related:** [`BoundWizard`](bound-wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 10 — Stashing: leave and come back](../learn/10-stashing.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)

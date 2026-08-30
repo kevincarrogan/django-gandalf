@@ -1,4 +1,4 @@
-"""Unit coverage for `.expand()` at the `BoundWizard` / walker level.
+"""Unit coverage for `.expand()` at the `Run` / walker level.
 
 The functional suite drives expansions over HTTP; these exercise the same
 runtime pieces directly — the sealed passthrough, the path and merge folds
@@ -12,7 +12,7 @@ from django.core.exceptions import ImproperlyConfigured
 from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.runtime import (
-    BoundWizard,
+    Run,
     MergeCleanedData,
     PreservedExpand,
     RuntimeExpand,
@@ -67,7 +67,7 @@ def _expand_wizard(builder=_build_items):
 def _bound(wizard, request, state):
     request.session["gandalf_runs"] = {"run": {"state": state}}
     context = WizardContext.from_request(request)
-    bound = BoundWizard(context, SessionStorage(context), wizard=wizard)
+    bound = Run(context, SessionStorage(context), wizard=wizard)
     bound.retrieve("run")
     return bound
 

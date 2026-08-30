@@ -100,8 +100,8 @@ class SingleStepWizardViewSet(WizardViewSet):
 
     url_name = "single-step-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class TwoTombstoneStorage(SessionStorage):
@@ -122,8 +122,8 @@ class PrunedCompletionWizardViewSet(WizardViewSet):
 
     url_name = "pruned-completion-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class RunUnavailableWizardViewSet(WizardViewSet):
@@ -136,10 +136,10 @@ class RunUnavailableWizardViewSet(WizardViewSet):
 
     url_name = "run-unavailable-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(self, run, reason):
         return HttpResponse(f"unavailable: {reason}", status=HTTPStatus.GONE)
 
 
@@ -191,14 +191,14 @@ class RunMetadataWizardViewSet(WizardViewSet):
 
     url_name = "run-metadata-wizard"
 
-    def run_started(self, bound_wizard):
+    def run_started(self, run):
         record_id = f"record-{len(OPENED_RECORDS) + 1}"
         OPENED_RECORDS.append(record_id)
         # Two facts about the same moment, so one write rather than two.
-        bound_wizard.metadata.update(record_id=record_id, pending=True)
+        run.metadata.update(record_id=record_id, pending=True)
 
-    def done(self, bound_wizard):
-        metadata = bound_wizard.metadata
+    def done(self, run):
+        metadata = run.metadata
         # Set once when the run opened its record, and cleared once here.
         # Nothing replays either, which is what makes a plain delete safe —
         # unlike the step's note above.
@@ -225,8 +225,8 @@ class SingleStepWizardDoneDataViewSet(WizardViewSet):
 
     url_name = "single-step-wizard-done-data"
 
-    def done(self, bound_wizard):
-        cleaned_data = bound_wizard.runtime_tree.form.cleaned_data
+    def done(self, run):
+        cleaned_data = run.runtime_tree.form.cleaned_data
         return HttpResponse(f"completed {cleaned_data['name']}")
 
 
@@ -239,8 +239,8 @@ class SingleStepWizardDoneRunDataViewSet(WizardViewSet):
 
     url_name = "single-step-wizard-done-run-data"
 
-    def done(self, bound_wizard):
-        run_data = bound_wizard.get_run_data()
+    def done(self, run):
+        run_data = run.get_run_data()
         submission = run_data["state"][0]["step"]
         return HttpResponse(f"completed {submission.get('name')}")
 
@@ -274,8 +274,8 @@ class DoneLinearWizardViewSet(WizardViewSet):
 
     url_name = "done-linear-wizard"
 
-    def done(self, bound_wizard):
-        first = bound_wizard.runtime_tree
+    def done(self, run):
+        first = run.runtime_tree
         second = first.next
         return HttpResponse(
             f"completed {first.form.cleaned_data['name']} "
@@ -303,9 +303,9 @@ class MultiValueWizardViewSet(WizardViewSet):
 
     url_name = "multi-value-wizard"
 
-    def done(self, bound_wizard):
-        toppings = bound_wizard.path.find_step(name="toppings")
-        second = bound_wizard.path.find_step(name="second")
+    def done(self, run):
+        toppings = run.path.find_step(name="toppings")
+        second = run.path.find_step(name="second")
         return HttpResponse(
             f"completed {','.join(toppings.form.cleaned_data['toppings'])} "
             f"for {second.form.cleaned_data['email']}"
@@ -400,8 +400,8 @@ class MemberEditingWizardViewSet(WizardViewSet):
 
     url_name = "member-editing-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EditingBranchingWizardViewSet(WizardViewSet):
@@ -425,8 +425,8 @@ class EditingBranchingWizardViewSet(WizardViewSet):
 
     url_name = "editing-branching-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class DoneBranchingWizardViewSet(WizardViewSet):
@@ -454,16 +454,16 @@ class DoneBranchingWizardViewSet(WizardViewSet):
 
     url_name = "done-branching-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         from gandalf import tree as tree_module
 
-        all_steps = bound_wizard.path.filter_steps()
-        review_step = bound_wizard.path.find_step(name="review")
-        missing_step = bound_wizard.path.find_step(name="nonexistent")
-        account_steps = bound_wizard.path.filter_steps(name="account_type")
+        all_steps = run.path.filter_steps()
+        review_step = run.path.find_step(name="review")
+        missing_step = run.path.find_step(name="nonexistent")
+        account_steps = run.path.filter_steps(name="account_type")
 
         declared_finder = tree_module.ContextFinder({})
-        declared_finder.visit(bound_wizard.wizard.tree)
+        declared_finder.visit(run.wizard.tree)
 
         return HttpResponse(
             f"completed {len(all_steps)} via "
@@ -543,8 +543,8 @@ class SwitchWizardViewSet(WizardViewSet):
 
     url_name = "switch-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.path)
         name = payload.get("business_name") or payload.get("preferred_name")
         return HttpResponse(f"Switched to {name}")
 
@@ -575,9 +575,9 @@ class DuplicateContextWizardViewSet(WizardViewSet):
 
     url_name = "duplicate-context-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         try:
-            bound_wizard.path.find_step(name="duplicate")
+            run.path.find_step(name="duplicate")
         except Exception as exc:
             return HttpResponse(f"raised {type(exc).__name__}")
         return HttpResponse("no raise")
@@ -597,7 +597,7 @@ class WizardConfiguredStorageViewSet(WizardViewSet):
     url_name = "wizard-configured-storage"
     template_name = "testapp/single_step_wizard.html"
 
-    def get_wizard(self, bound_wizard):
+    def get_wizard(self, run):
         # Built per request: configuring it at class level would raise on
         # import and take the whole test app with it.
         return (
@@ -621,8 +621,8 @@ class FormViewStepWizardViewSet(WizardViewSet):
 
     url_name = "form-view-step-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class MissingTemplateWizardViewSet(WizardViewSet):
@@ -648,8 +648,8 @@ class PreConfiguredWizardViewSet(WizardViewSet):
 
     url_name = "pre-configured-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EmptyWizardViewSet(WizardViewSet):
@@ -659,8 +659,8 @@ class EmptyWizardViewSet(WizardViewSet):
 
     url_name = "empty-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EmailStepPrefilledFromPath(FormView):
@@ -695,8 +695,8 @@ class PathAwareLinearWizardViewSet(WizardViewSet):
 
     url_name = "path-aware-linear-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class FirstStepFromFormView(FormView):
@@ -724,8 +724,8 @@ class PathAwareFormViewFirstStepWizardViewSet(WizardViewSet):
 
     url_name = "path-aware-form-view-first-step-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class BranchingMergedPayloadWizardViewSet(WizardViewSet):
@@ -750,8 +750,8 @@ class BranchingMergedPayloadWizardViewSet(WizardViewSet):
 
     url_name = "branching-merged-payload-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.path)
         return HttpResponse(
             f"account_type={payload['account_type']} "
             f"business_name={payload['business_name']} "
@@ -784,8 +784,8 @@ class EmptyBranchArmMergedPayloadWizardViewSet(WizardViewSet):
 
     url_name = "empty-branch-arm-merged-payload-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.path)
         return HttpResponse(
             f"name={payload['name']} account_type={payload['account_type']}"
         )
@@ -811,8 +811,8 @@ class RuntimeTreeBranchingMergeViewSet(WizardViewSet):
 
     url_name = "runtime-tree-branching-merge-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.runtime_tree)
         return HttpResponse(
             f"account_type={payload['account_type']} "
             f"business_name={payload['business_name']} "
@@ -832,8 +832,8 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
 
     url_name = "merged-payload-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.path)
         return HttpResponse(
             f"completed name={payload['name']} email={payload['email']}"
         )
@@ -843,7 +843,7 @@ class DoubleConfiguredWizardViewSet(WizardViewSet):
     description = "Wizard configured both via get_wizard() and configure_wizard() to test layering."
     template_name = "testapp/single_step_wizard.html"
 
-    def get_wizard(self, bound_wizard):
+    def get_wizard(self, run):
         return (
             Wizard()
             .step(FirstStepForm, name="first")
@@ -865,8 +865,8 @@ class DynamicWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
 
-    def get_wizard(self, bound_wizard):
-        state = bound_wizard.get_state()
+    def get_wizard(self, run):
+        state = run.get_state()
         wizard = Wizard().step(ItemCountForm, name="count")
         if state:
             count = int(state[0]["step"]["count"])
@@ -876,8 +876,8 @@ class DynamicWizardViewSet(WizardViewSet):
 
     url_name = "dynamic-wizard"
 
-    def done(self, bound_wizard):
-        node = bound_wizard.runtime_tree.next
+    def done(self, run):
+        node = run.runtime_tree.next
         names = []
         while node is not None:
             names.append(node.data["name"])
@@ -924,8 +924,8 @@ class FileUploadingWizardViewSet(WizardViewSet):
 
     url_name = "file-uploading-wizard"
 
-    def done(self, bound_wizard):
-        photo_step = bound_wizard.path.find_step(name="photo")
+    def done(self, run):
+        photo_step = run.path.find_step(name="photo")
         filename = photo_step.files["photo"]["name"]
         return HttpResponse(f"completed {filename}")
 
@@ -942,8 +942,8 @@ class SniffedFileWizardViewSet(WizardViewSet):
 
     url_name = "sniffed-file-wizard"
 
-    def done(self, bound_wizard):
-        photo_step = bound_wizard.path.find_step(name="photo")
+    def done(self, run):
+        photo_step = run.path.find_step(name="photo")
         with photo_step.form.cleaned_data["photo"] as photo:
             contents = photo.read()
         return HttpResponse(b"completed " + contents)
@@ -960,11 +960,11 @@ class FileDoneWizardViewSet(WizardViewSet):
 
     url_name = "file-done-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return TemplateResponse(
             self.request,
             "testapp/file_done_wizard.html",
-            {"wizard": bound_wizard},
+            {"wizard": run},
         )
 
 
@@ -975,8 +975,8 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
     )
     template_name = "testapp/linear_wizard.html"
 
-    def get_wizard(self, bound_wizard):
-        state = bound_wizard.get_state()
+    def get_wizard(self, run):
+        state = run.get_state()
         wizard = Wizard().step(ItemCountForm, name="count")
         if state:
             count = int(state[0]["step"]["count"])
@@ -991,10 +991,10 @@ class DynamicListPayloadWizardViewSet(WizardViewSet):
 
     url_name = "dynamic-list-payload-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         import json
 
-        payload = MergeWithLists().reduce(bound_wizard.path)
+        payload = MergeWithLists().reduce(run.path)
         return HttpResponse(json.dumps(payload, sort_keys=True))
 
 
@@ -1010,8 +1010,8 @@ class FileEditingWizardViewSet(WizardViewSet):
 
     url_name = "file-editing-wizard"
 
-    def done(self, bound_wizard):
-        photo_step = bound_wizard.path.find_step(name="photo")
+    def done(self, run):
+        photo_step = run.path.find_step(name="photo")
         photo_ref = (photo_step.files or {}).get("photo")
         filename = photo_ref["name"] if photo_ref else "no-photo"
         return HttpResponse(f"completed {filename}")
@@ -1039,11 +1039,11 @@ class EmptyBranchArmContextFinderViewSet(WizardViewSet):
 
     url_name = "empty-branch-arm-context-finder-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         declared_finder = tree_module.ContextFinder({})
-        declared_finder.visit(bound_wizard.wizard.tree)
+        declared_finder.visit(run.wizard.tree)
         runtime_finder = tree_module.ContextFinder({})
-        runtime_finder.visit(bound_wizard.runtime_tree)
+        runtime_finder.visit(run.runtime_tree)
         return HttpResponse(
             f"completed declared={len(declared_finder.all())} "
             f"runtime={len(runtime_finder.all())}"
@@ -1072,8 +1072,8 @@ class RoutedWizardViewSet(WizardViewSet):
 
     url_name = "routed-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class WizardlessWizardViewSet(WizardViewSet):
@@ -1093,8 +1093,8 @@ class MisconfiguredStepUrlsWizardViewSet(WizardViewSet):
     template_name = "testapp/editing_wizard.html"
     wizard = Wizard().step(FirstStepForm, name="first")
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class LookupProbeStepView(FormView):
@@ -1123,7 +1123,7 @@ class LookupProbeStepView(FormView):
 
 class ProgrammaticLookupWizardViewSet(WizardViewSet):
     description = (
-        "Exercises programmatic BoundWizard lookups: a mid-run render_edit "
+        "Exercises programmatic Run lookups: a mid-run render_edit "
         "of the unanswered cursor step raises StepNotFound (require_data), "
         "done() shows edit() deleting newly stored uploads when its target "
         "cannot be resolved, and the navigation properties fall back to "
@@ -1138,29 +1138,27 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
 
     url_name = "programmatic-lookup-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from gandalf import tree as gandalf_tree
-        from gandalf.runtime import BoundWizard
+        from gandalf.runtime import Run
 
         upload = SimpleUploadedFile("orphan.txt", b"orphan-bytes")
-        ref = bound_wizard.file_storage.save(bound_wizard.run_id, upload)
+        ref = run.file_storage.save(run.run_id, upload)
         # A claim the run cannot reach places nothing, so the uploads it came
         # with are the caller's to clean up — which is what the viewset does.
-        walk = bound_wizard.walk(
+        walk = run.walk(
             claim={"name": "missing"},
             submission={"name": "x"},
             files={"upload": ref},
         )
         if not walk.reached:
-            bound_wizard.delete_file_refs({"upload": ref})
-        deleted = not bound_wizard.file_storage.backend.exists(ref["tmp_name"])
+            run.delete_file_refs({"upload": ref})
+        deleted = not run.file_storage.backend.exists(ref["tmp_name"])
 
-        detached = BoundWizard(
-            WizardContext.from_request(self.request), bound_wizard.storage
-        )
-        cursor = bound_wizard.cursor()
+        detached = Run(WizardContext.from_request(self.request), run.storage)
+        cursor = run.cursor()
         foreign_declaration = gandalf_tree.Step(FirstStepForm)
         nav_probe = (
             detached.run_url is None
@@ -1168,23 +1166,23 @@ class ProgrammaticLookupWizardViewSet(WizardViewSet):
             and detached.step_url(foreign_declaration) is None
             and detached.entry_url() is None
             and detached.rendering is None
-            and bound_wizard.back_url is None
-            and bound_wizard.run_url == self.get_wizard_url(bound_wizard.run_id)
-            and bound_wizard.previous_step(cursor, foreign_declaration) is None
+            and run.back_url is None
+            and run.run_url == self.get_wizard_url(run.run_id)
+            and run.previous_step(cursor, foreign_declaration) is None
         )
-        resolved = bound_wizard.render_step(name="first")
+        resolved = run.render_step(name="first")
 
         # A claim can also be a step declaration, for callers that already
         # hold one rather than resolving a URL segment.
-        first = bound_wizard.path.find_step(name="first")
-        by_declaration = bound_wizard.walk(claim=first.declaration)
+        first = run.path.find_step(name="first")
+        by_declaration = run.walk(claim=first.declaration)
         declaration_probe = by_declaration.reached and by_declaration.target.data == {
             "name": "Ada"
         }
 
         # A context that matches more than one step refuses to guess.
         try:
-            bound_wizard.path.find_step()
+            run.path.find_step()
         except gandalf_tree.MultipleStepsReturned:
             ambiguous_probe = True
         else:
@@ -1248,8 +1246,8 @@ class CrossBranchWizardViewSet(WizardViewSet):
 
     url_name = "cross-branch-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class UnroutableWizardViewSet(WizardViewSet):
@@ -1263,8 +1261,8 @@ class UnroutableWizardViewSet(WizardViewSet):
 
     url_name = "unroutable-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class OrgScopedStepView(FormView):
@@ -1292,8 +1290,8 @@ class OrgScopedEditingWizardViewSet(WizardViewSet):
         Wizard().step(OrgScopedStepView, name="first").step(ReviewForm, name="review")
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 def _always_true(_request):
@@ -1324,8 +1322,8 @@ class BranchEditRejectionWizardViewSet(WizardViewSet):
 
     url_name = "branch-edit-rejection-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EscapeLandingView(View):
@@ -1347,8 +1345,8 @@ class EscapeParkWizardViewSet(WizardViewSet):
 
     url_name = "escape-park-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EscapeAdvanceWizardViewSet(WizardViewSet):
@@ -1365,8 +1363,8 @@ class EscapeAdvanceWizardViewSet(WizardViewSet):
 
     url_name = "escape-advance-wizard"
 
-    def done(self, bound_wizard):
-        newsletter = bound_wizard.path.find_step(name="newsletter")
+    def done(self, run):
+        newsletter = run.path.find_step(name="newsletter")
         return HttpResponse(f"completed {newsletter.form.cleaned_data['email']}")
 
 
@@ -1377,8 +1375,8 @@ class EscapeAdvanceFinalStepWizardViewSet(WizardViewSet):
 
     url_name = "escape-advance-final-step-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class CancelSignupStepView(FormView):
@@ -1410,8 +1408,8 @@ class EscapeObliterateWizardViewSet(WizardViewSet):
 
     url_name = "escape-obliterate-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class BareEscapeWizardViewSet(WizardViewSet):
@@ -1421,8 +1419,8 @@ class BareEscapeWizardViewSet(WizardViewSet):
 
     url_name = "bare-escape-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class MidFlowEscapeParkWizardViewSet(WizardViewSet):
@@ -1437,8 +1435,8 @@ class MidFlowEscapeParkWizardViewSet(WizardViewSet):
 
     url_name = "mid-flow-escape-park-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EscapeParkFileWizardViewSet(WizardViewSet):
@@ -1450,8 +1448,8 @@ class EscapeParkFileWizardViewSet(WizardViewSet):
 
     url_name = "escape-park-file-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class EscapeEditingWizardViewSet(WizardViewSet):
@@ -1466,8 +1464,8 @@ class EscapeEditingWizardViewSet(WizardViewSet):
 
     url_name = "escape-editing-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class WalkCountingWizardViewSet(WizardViewSet):
@@ -1490,8 +1488,8 @@ class WalkCountingWizardViewSet(WizardViewSet):
 
     url_name = "walk-counting-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 def build_item_steps(context):
@@ -1524,11 +1522,9 @@ class ExpandWizardViewSet(WizardViewSet):
 
     url_name = "expand-wizard"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         names = [
-            step.data["name"]
-            for step in _iter_path(bound_wizard)
-            if "name" in (step.data or {})
+            step.data["name"] for step in _iter_path(run) if "name" in (step.data or {})
         ]
         return HttpResponse(f"completed items={','.join(names)}")
 
@@ -1548,8 +1544,8 @@ class EmptyExpandWizardViewSet(WizardViewSet):
 
     url_name = "empty-expand-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class PathReadingGate(FormView):
@@ -1594,8 +1590,8 @@ class SealableExpandWizardViewSet(WizardViewSet):
 
     url_name = "sealable-expand-wizard"
 
-    def done(self, bound_wizard):
-        merged = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+    def done(self, run):
+        merged = MergeCleanedData().reduce(run.runtime_tree)
         return HttpResponse(f"count={merged['count']} name={merged.get('name', '')}")
 
 
@@ -1623,8 +1619,8 @@ class BranchingExpandWizardViewSet(WizardViewSet):
 
     url_name = "branching-expand-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class PathAwareWalkedPastWizardViewSet(WizardViewSet):
@@ -1650,8 +1646,8 @@ class PathAwareWalkedPastWizardViewSet(WizardViewSet):
 
     url_name = "path-aware-walked-past-wizard"
 
-    def done(self, bound_wizard):
-        payload = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        payload = MergeCleanedData().reduce(run.path)
         return HttpResponse(f"completed {payload['name']} at {payload['email']}")
 
 
@@ -1685,8 +1681,8 @@ class EmptyPathFirstStepWizardViewSet(WizardViewSet):
 
     url_name = "empty-path-first-step-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 def has_no_prior_answers(context):
@@ -1711,12 +1707,12 @@ class EmptyPathBranchWizardViewSet(WizardViewSet):
 
     url_name = "empty-path-branch-wizard"
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
-def _iter_path(bound_wizard):
-    yield from bound_wizard.path
+def _iter_path(run):
+    yield from run.path
 
 
 class StashingWizardViewSet(WizardViewSet):
@@ -1741,11 +1737,9 @@ class StashingWizardViewSet(WizardViewSet):
 
     url_name = "stashing-wizard"
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put(
-            "contact", bound_wizard.stash(label="contact")
-        )
-        first = bound_wizard.path.find_step(name="first")
+    def done(self, run):
+        SessionStashStore(run.context).put("contact", run.stash(label="contact"))
+        first = run.path.find_step(name="first")
         return HttpResponse(f"stashed {first.form.cleaned_data['name']}")
 
 
@@ -1770,9 +1764,9 @@ class RequiredPhotoStashingWizardViewSet(WizardViewSet):
 
     url_name = "required-photo-stashing-wizard"
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put(
-            "required-photo", bound_wizard.stash(label="required-photo")
+    def done(self, run):
+        SessionStashStore(run.context).put(
+            "required-photo", run.stash(label="required-photo")
         )
         return HttpResponse(b"stashed with photo")
 
@@ -1832,8 +1826,8 @@ class BranchingStashingWizardViewSet(WizardViewSet):
 
     url_name = "branching-stashing-wizard"
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put("members", bound_wizard.stash())
+    def done(self, run):
+        SessionStashStore(run.context).put("members", run.stash())
         return HttpResponse(b"stashed members")
 
 
@@ -1900,8 +1894,8 @@ class SummaryWizardViewSet(WizardViewSet):
         )
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class CustomSummaryStepView(SummaryMixin, StepFormView):
@@ -1933,8 +1927,8 @@ class CustomSummaryWizardViewSet(WizardViewSet):
         .step(CustomSummaryStepView, name="summary")
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class SummaryDisplayWizardViewSet(WizardViewSet):
@@ -1947,8 +1941,8 @@ class SummaryDisplayWizardViewSet(WizardViewSet):
         .step(SummaryStepView, name="summary")
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 class GroupedSummaryStepView(SummaryMixin, StepFormView):
@@ -1985,8 +1979,8 @@ class GroupedSummaryWizardViewSet(WizardViewSet):
         )
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 def build_delivery_address(context):
@@ -2013,8 +2007,8 @@ class ExpandedSummaryWizardViewSet(WizardViewSet):
         .step(GroupedSummaryStepView, name="summary")
     )
 
-    def done(self, bound_wizard):
-        return HttpResponse(f"completed {bound_wizard.run_id}")
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
 
 
 # --- Task list scenarios -------------------------------------------------------
@@ -2239,7 +2233,7 @@ class TitledGuestsViewSet(GuestsViewSet):
     url_name = "titled-guests"
     key = "titled-guests"
     add_another = GUESTS.replace(
-        item_title=lambda bound_wizard: bound_wizard.path.find_step(name="guest")
+        item_title=lambda run: run.path.find_step(name="guest")
         .form.cleaned_data["name"]
         .upper()
     )

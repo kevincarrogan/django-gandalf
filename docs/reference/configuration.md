@@ -88,8 +88,8 @@ with the no-op redirect the walk reads as "this answer stands".
 The interpreter that replays stored answers over the declaration tree,
 places a submission, and finds the cursor. Default `gandalf.runtime.CursorWalker`.
 
-**Contract** — constructed by `BoundWizard.walk()` as
-`cls(dispatcher, entries, args, kwargs, bound_wizard, claim=, submission=,
+**Contract** — constructed by `Run.walk()` as
+`cls(dispatcher, entries, args, kwargs, run, claim=, submission=,
 files=, metadata=)`; must expose `walk(tree)`, `cursor() -> Cursor`, and the
 attributes `reached`, `target`, `replaced_refs`. Subclass `CursorWalker`
 and override the `visit_*` methods rather than writing one from scratch.
@@ -100,8 +100,8 @@ The HTTP adapter: builds the request a step view is dispatched with, calls
 the view, decides whether the response means the step is satisfied, and
 renders a cursor. Default `gandalf.runtime.StepDispatcher`.
 
-**Contract** — constructed once per run as `cls(bound_wizard)` (memoised on
-`BoundWizard.dispatcher`); methods `dispatch(step, request, *args,
+**Contract** — constructed once per run as `cls(run)` (memoised on
+`Run.dispatcher`); methods `dispatch(step, request, *args,
 initial=None, **kwargs)`, `build_request(method, submission=None,
 files=None)`, `response_satisfies_step(response) -> bool` (the default: any
 3xx), `render_cursor(cursor, *args, **kwargs)`.
@@ -137,7 +137,7 @@ wraps `django.core.files.storage.default_storage` under a `gandalf/<run_id>/`
 prefix.
 
 **Contract** — constructed once per run with no arguments (memoised on
-`BoundWizard.file_storage`); `save(run_id, uploaded_file) -> FileRef`,
+`Run.file_storage`); `save(run_id, uploaded_file) -> FileRef`,
 `open(ref) -> UploadedFile`, `delete(ref)`, `delete_run(run_id)`. A
 `FileRef` is `{tmp_name, name, content_type, size, charset}`. Subclassing
 `WizardFileStorage` and passing a different backend to `__init__`, or
@@ -165,7 +165,7 @@ class ApplicationViewSet(WizardViewSet):
 Default `gandalf.storage.SessionStorage`. Passing it to `.configure()`
 raises `ImproperlyConfigured`: *"storage_class belongs on the WizardViewSet,
 not the wizard. Storage has to exist before the wizard does — get_wizard()
-is handed a BoundWizard that can already read stored state — so the wizard
+is handed a Run that can already read stored state — so the wizard
 cannot supply it."* A dynamic `get_wizard()` reads the run's stored state to
 decide its shape, and the run is created and retrieved before the wizard is
 resolved, so storage cannot be a property of the thing it precedes.
@@ -388,7 +388,7 @@ against the table above.
 ### `TypeError: WizardViewSet.wizard must be a Wizard or ConfiguredWizard`
 
 `wizard` (or `get_wizard()`'s return) is something else — commonly a
-declaration tree or a bound wizard. Return the `Wizard` value itself.
+declaration tree or a run. Return the `Wizard` value itself.
 
 ### Answers vanish between requests
 

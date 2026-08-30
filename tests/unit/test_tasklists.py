@@ -173,11 +173,11 @@ def _section_view(cls, rf, session=None, path="/readme/hub/contact/run-1/", **kw
 
 def _retrieved(view, run_id="run-1"):
     context = WizardContext.from_request(view.request)
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
 
-    bound_wizard = BoundWizard(context, SessionStorage(context))
-    bound_wizard.retrieve(run_id)
-    return bound_wizard
+    run = Run(context, SessionStorage(context))
+    run.retrieve(run_id)
+    return run
 
 
 # --- the declaration --------------------------------------------------------
@@ -1015,12 +1015,10 @@ def test_run_done_runs_between_the_stash_and_the_redirect(rf):
     class _Deciding(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, bound_wizard):
+        def run_done(self, run):
             store = self.get_journey_store()
-            events.append(
-                (store.get_stash("contact")["state"], bound_wizard.get_state())
-            )
-            return super().run_done(bound_wizard)
+            events.append((store.get_stash("contact")["state"], run.get_state()))
+            return super().run_done(run)
 
     view = _contact_view(
         rf,
@@ -1041,7 +1039,7 @@ def test_a_run_done_that_raises_leaves_the_section_resumable(rf):
     class _Failing(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, bound_wizard):
+        def run_done(self, run):
             raise RuntimeError("nope")
 
     view = _contact_view(
@@ -1069,12 +1067,12 @@ def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_run_done(
     events = []
 
     class _Recording(_Page.viewset_for("contact")):
-        def run_recorded(self, bound_wizard, store, key):
+        def run_recorded(self, run, store, key):
             events.append(("recorded", key, store.get_stash(key)["state"]))
 
-        def run_done(self, bound_wizard):
+        def run_done(self, run):
             events.append(("done", self.get_key(), None))
-            return super().run_done(bound_wizard)
+            return super().run_done(run)
 
     view = _contact_view(
         rf,
@@ -1099,21 +1097,21 @@ def test_bookkeeping_recorded_at_completion_can_still_read_the_runs_answers(rf):
     seen = []
 
     class _Recording(_Page.viewset_for("contact")):
-        def run_recorded(self, bound_wizard, store, key):
-            seen.append(bound_wizard.get_state())
+        def run_recorded(self, run, store, key):
+            seen.append(run.get_state())
 
     view = _contact_view(
         rf,
         {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}},
         cls=_Recording,
     )
-    bound_wizard = _Recording.inspect(view.request, "run-1")
+    run = _Recording.inspect(view.request, "run-1")
 
-    view.finish(bound_wizard)
+    view.finish(run)
 
     assert seen == [[{"step": {"name": "Ada"}}]]
-    assert bound_wizard.is_complete
-    assert SessionStorage(bound_wizard.context).get_state("run-1") == []
+    assert run.is_complete
+    assert SessionStorage(run.context).get_state("run-1") == []
 
 
 def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
@@ -1514,10 +1512,10 @@ def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
     class _Deciding(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, bound_wizard):
-            step = bound_wizard.path.find_step(name="first")
+        def run_done(self, run):
+            step = run.path.find_step(name="first")
             self.get_journey_store().data["name"] = step.form.cleaned_data["name"]
-            return super().run_done(bound_wizard)
+            return super().run_done(run)
 
     viewset = _view(_list(contact=Section(_Deciding))).viewset_for("contact")
     view = _contact_view(

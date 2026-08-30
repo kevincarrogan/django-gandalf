@@ -15,10 +15,10 @@ from gandalf.runtime import RunMetadata
 A wizard's state is answers, and every answer is re-proved from scratch on
 every request. That leaves nowhere to keep the other kind of fact a run
 accumulates — the record it opened somewhere else. Nobody typed it, no form
-validates it, and doing it twice is the bug. `bound_wizard.metadata` is
+validates it, and doing it twice is the bug. `run.metadata` is
 where it goes.
 
-### `bound_wizard.metadata`
+### `run.metadata`
 
 A `RunMetadata`. Built fresh on every access and holding nothing itself:
 the bag reads and writes storage directly, so a handle taken at the top of
@@ -144,18 +144,18 @@ class GrantApplicationViewSet(WizardViewSet):
     url_name = "grant"
     wizard = application
 
-    def run_started(self, bound_wizard):
-        record = Application.objects.create(applicant=bound_wizard.context.actor)
-        bound_wizard.metadata["application_id"] = record.pk
+    def run_started(self, run):
+        record = Application.objects.create(applicant=run.context.actor)
+        run.metadata["application_id"] = record.pk
 
-    def done(self, bound_wizard):
-        record = Application.objects.get(pk=bound_wizard.metadata["application_id"])
+    def done(self, run):
+        record = Application.objects.get(pk=run.metadata["application_id"])
         record.submit()
         return redirect("grant-received", pk=record.pk)
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(self, run, reason):
         if reason == "completed":
-            return redirect("grant-received", pk=bound_wizard.metadata["application_id"])
+            return redirect("grant-received", pk=run.metadata["application_id"])
         raise Http404("That application has expired.")
 ```
 
@@ -183,9 +183,9 @@ and every later dispatch a read.
 ### Several facts in one write
 
 ```python
-def run_started(self, bound_wizard):
+def run_started(self, run):
     record = Application.objects.create()
-    bound_wizard.metadata.update(
+    run.metadata.update(
         application_id=record.pk,
         status="pending",
     )
@@ -194,7 +194,7 @@ def run_started(self, bound_wizard):
 ### Changing a nested value
 
 ```python
-metadata = bound_wizard.metadata
+metadata = run.metadata
 trustees = metadata.get("trustee_ids", [])
 metadata["trustee_ids"] = [*trustees, trustee.pk]   # assign, do not append
 ```
@@ -233,4 +233,4 @@ storage's `set_run_metadata` is not writing through. See [Storage](storage.md).
 
 ---
 
-**Learn:** [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`BoundWizard`](bound-wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`Run`](run.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Journey store](journey-store.md)

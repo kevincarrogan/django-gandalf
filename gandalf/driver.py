@@ -40,7 +40,7 @@ from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.file_storage import FileRef, StoredUpload
 from gandalf.runtime import (
-    BoundWizard,
+    Run,
     Cursor,
     RunMetadata,
     RuntimeStep,
@@ -234,12 +234,12 @@ class RunDriver:
     def __init__(
         self,
         view: WizardViewSet,
-        bound_wizard: BoundWizard,
+        run: Run,
         *,
         may_finish: bool | None = None,
     ) -> None:
         self.view = view
-        self.bound_wizard = bound_wizard
+        self.run = run
         self._last_errors: Errors = {}
         if may_finish is not None:
             self.may_finish = may_finish
@@ -264,10 +264,10 @@ class RunDriver:
         conversation can address one item of a collection and then the
         next.
         """
-        view, bound_wizard = viewset_class.begin_for(
+        view, run = viewset_class.begin_for(
             _context(context, actor, session, url_kwargs)
         )
-        return cls(view, bound_wizard, may_finish=may_finish)
+        return cls(view, run, may_finish=may_finish)
 
     @classmethod
     def resume(
@@ -284,14 +284,14 @@ class RunDriver:
         """A driver over an existing run. Raises `RunNotFound` for a run the
         storage does not hold — pass the `session` the run lives in, or the
         `actor` a durable storage scopes it to."""
-        view, bound_wizard = viewset_class.inspect_for(
+        view, run = viewset_class.inspect_for(
             _context(context, actor, session, url_kwargs), run_id
         )
-        return cls(view, bound_wizard, may_finish=may_finish)
+        return cls(view, run, may_finish=may_finish)
 
     @property
     def run_id(self) -> str:
-        return self.bound_wizard.run_id
+        return self.run.run_id
 
     def describe(self, *, json_safe: bool = False) -> StepDescription:
         """The run as the agent should see it right now.
@@ -301,13 +301,13 @@ class RunDriver:
         a second time to convert them — reading them is a walk. Everything
         else a description carries is JSON already.
         """
-        cursor = self.bound_wizard.cursor()
+        cursor = self.run.cursor()
         # Reading the answers walks for the runtime tree, and this cursor is
         # already holding it. `walking()` hands that tree over for the read,
         # which is the difference between describing a run in one walk and
         # in two. Without it this method pays the very cost `json_safe` is
         # documented above as sparing its caller.
-        with self.bound_wizard.walking(cursor.state):
+        with self.run.walking(cursor.state):
             answers = self.answers(json_safe=json_safe)
         if cursor.node is None:
             return StepDescription(
@@ -337,7 +337,7 @@ class RunDriver:
         """
         # The steps are held once: `path` walks per access, and each node
         # validates its form at most once.
-        steps = list(self.bound_wizard.path)
+        steps = list(self.run.path)
         return {
             cast(str, step.name): self._placement(step, json_safe=json_safe)
             for step in steps
@@ -369,7 +369,7 @@ class RunDriver:
         itself — `{"unattended": True}` and the like — which is a fact about
         an answer. This is a fact about the run.
         """
-        return self.bound_wizard.metadata
+        return self.run.metadata
 
     def open_file(self, ref: FileRef) -> StoredUpload:
         """Open a file stored with a placement, as the bytes it holds.
@@ -385,7 +385,7 @@ class RunDriver:
         there before the bytes are, so a caller that must not read a large
         file can decline without opening it.
         """
-        return self.bound_wizard.file_storage.open(ref)
+        return self.run.file_storage.open(ref)
 
     def answers(self, *, json_safe: bool = False) -> dict[str, dict[str, Any]]:
         """Every answered step's `cleaned_data`, keyed by step name.
@@ -460,9 +460,9 @@ class RunDriver:
         reading a step, changing one field and submitting it back does not
         quietly discard the document attached to it.
         """
-        bound_wizard = self.bound_wizard
+        run = self.run
         if step is None:
-            cursor = bound_wizard.cursor()
+            cursor = run.cursor()
             if cursor.node is None:
                 raise RunComplete(
                     "The run is complete; call finish() rather than submitting."
@@ -477,8 +477,8 @@ class RunDriver:
             declaration = self._declaration(step)
             claim = {"name": step}
         submission = self._prefixed(declaration, data)
-        stored_files = bound_wizard.store_uploads(files or {})
-        walk = bound_wizard.walk(
+        stored_files = run.store_uploads(files or {})
+        walk = run.walk(
             claim=claim,
             submission=submission,
             files=stored_files,
@@ -488,13 +488,13 @@ class RunDriver:
             # The uploads were saved before the walk could say whether the
             # step was reachable, so a submission that goes nowhere must
             # take its bytes with it rather than leave them under the run.
-            bound_wizard.delete_file_refs(stored_files)
+            run.delete_file_refs(stored_files)
             raise StepNotFound({"name": step})
         target = cast(RuntimeStep, walk.target)
         escape = walk.cursor.escape_for(target.declaration)
         if escape is not None:
             return self._escaped(escape, walk, stored_files)
-        bound_wizard.persist(walk)
+        run.persist(walk)
         next_cursor = self._refresh(walk)
         if target.form.errors:
             self._last_errors = cast(Errors, target.form.errors.get_json_data())
@@ -530,7 +530,7 @@ class RunDriver:
         `describe()` supplies the schema once the walk reaches it. A
         dynamic `get_wizard()` is outlined as currently resolved.
         """
-        return self._with_schemas(self.bound_wizard.wizard.outline())
+        return self._with_schemas(self.run.wizard.outline())
 
     def prefill(self, answers: dict[str, dict[str, Any]]) -> PrefillResult:
         """Place as many of `answers` (step name → submission) as the tree
@@ -552,7 +552,7 @@ class RunDriver:
         # One walk to find where the run is; after that each submission
         # already reports where it left the run, so asking again would
         # re-prove every stored answer to learn what was just returned.
-        cursor = self.bound_wizard.cursor()
+        cursor = self.run.cursor()
         step = None if cursor.node is None else _step_name(cursor.node)
         complete = cursor.node is None
 
@@ -566,7 +566,7 @@ class RunDriver:
                 escape = result.escape
                 # An escape leaves the run wherever its disposition put it,
                 # and only a walk can say where that is.
-                cursor = self.bound_wizard.cursor()
+                cursor = self.run.cursor()
                 step = None if cursor.node is None else _step_name(cursor.node)
                 complete = cursor.node is None
                 break
@@ -599,7 +599,7 @@ class RunDriver:
         unchecked: dict[str, str] = {}
         answered = self.answers()
         for declaration, conditional in self._declared_steps(
-            self.bound_wizard.wizard.tree, conditional=False
+            self.run.wizard.tree, conditional=False
         ):
             name = cast(str, _step_name(declaration))
             if name in remaining:
@@ -660,7 +660,7 @@ class RunDriver:
         """The step's form, bound to `data` — composed exactly as a real
         placement composes it, so the same overrides apply."""
         form_view_class = cast("StepViewClass", declaration.form_view)
-        request = self.bound_wizard.dispatcher.build_request(
+        request = self.run.dispatcher.build_request(
             "POST", submission=self._prefixed(declaration, data)
         )
         view = form_view_class()
@@ -688,7 +688,7 @@ class RunDriver:
         the driver at the point it knows that, rather than teaching the
         library the rule.
         """
-        cursor = self.bound_wizard.cursor()
+        cursor = self.run.cursor()
         if cursor.node is not None:
             raise RunIncomplete(
                 f"The run is still at step {_step_name(cursor.node)!r}."
@@ -699,7 +699,7 @@ class RunDriver:
                 "person can confirm it, or construct the driver with "
                 "may_finish=True."
             )
-        return self.view.finish(self.bound_wizard)
+        return self.view.finish(self.run)
 
     def _refresh(self, walk: Walk) -> Cursor:
         """Where the run is now that this walk has been persisted.
@@ -718,11 +718,11 @@ class RunDriver:
         already known. That doubling is what `benchmarks/driven.py`
         measures.
         """
-        previous = self.bound_wizard.wizard
-        self.view._resolve_wizard(self.bound_wizard)
-        if self.bound_wizard.wizard is previous:
+        previous = self.run.wizard
+        self.view._resolve_wizard(self.run)
+        if self.run.wizard is previous:
             return walk.cursor
-        return self.bound_wizard.cursor()
+        return self.run.cursor()
 
     def _escaped(
         self, escape: Escape, walk: Walk, files: FileRefs | None = None
@@ -730,14 +730,14 @@ class RunDriver:
         """Settle what the escape leaves behind — the viewset's dispositions
         without the redirect (the caller gets the escape's name instead)."""
         if isinstance(escape, Obliterate):
-            self.bound_wizard.obliterate()
+            self.run.obliterate()
         elif isinstance(escape, Advance):
-            self.bound_wizard.persist(walk)
+            self.run.persist(walk)
             self._refresh(walk)
         elif isinstance(escape, Park):
             # Nothing was persisted, so the uploads this submission brought
             # have nowhere to belong.
-            self.bound_wizard.delete_file_refs(files)
+            self.run.delete_file_refs(files)
         else:
             raise ImproperlyConfigured(
                 "Raise Park, Advance or Obliterate to escape a wizard; "
@@ -755,7 +755,7 @@ class RunDriver:
         """The declared step `step_name` names, or None for one the static
         tree does not hold (a step grown by `.expand()`)."""
         finder = tree.ContextFinder({"name": step_name})
-        finder.visit(self.bound_wizard.wizard.tree)
+        finder.visit(self.run.wizard.tree)
         return cast("tree.Step | None", finder.one())
 
     def _prefixed(
@@ -775,7 +775,7 @@ class RunDriver:
     def _view_for(self, declaration: tree.Step) -> FormView[Any]:
         form_view_class = cast("StepViewClass", declaration.form_view)
         view = form_view_class()
-        view.setup(self.bound_wizard.dispatcher.build_request("GET"))
+        view.setup(self.run.dispatcher.build_request("GET"))
         return view
 
     @classmethod
@@ -795,11 +795,11 @@ class RunDriver:
         created, so nothing is left behind by asking — which matters to a
         caller describing several wizards to choose between them.
         """
-        view, bound_wizard = viewset_class.resolve_for(
+        view, run = viewset_class.resolve_for(
             _context(context, actor, session, url_kwargs)
         )
-        driver = cls(view, bound_wizard)
-        return driver._with_schemas(bound_wizard.wizard.outline())
+        driver = cls(view, run)
+        return driver._with_schemas(run.wizard.outline())
 
     def _with_schemas(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Swap each step's declaration for a JSON Schema of its form.

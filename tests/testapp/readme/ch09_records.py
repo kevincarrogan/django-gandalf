@@ -21,25 +21,21 @@ class RecordedApplicationViewSet(WizardViewSet):
     template_name = "testapp/file_upload_wizard.html"
     wizard = with_contact_and_review(ch02.applicant(organisation=organisation_details))
 
-    def run_started(self, bound_wizard):
+    def run_started(self, run):
         application = Application.objects.create()
-        bound_wizard.metadata["application_id"] = application.pk
+        run.metadata["application_id"] = application.pk
 
-    def done(self, bound_wizard):
-        application = Application.objects.get(
-            pk=bound_wizard.metadata["application_id"]
-        )
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        application = Application.objects.get(pk=run.metadata["application_id"])
+        answers = MergeCleanedData().reduce(run.path)
         application.submit(answers["email"])
         return redirect("readme-received", pk=application.pk)
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(self, run, reason):
         if reason == "completed":
             # The metadata bag survives the tombstone, so a revisit can still
             # say which application this run submitted.
-            return redirect(
-                "readme-received", pk=bound_wizard.metadata["application_id"]
-            )
+            return redirect("readme-received", pk=run.metadata["application_id"])
         raise Http404("That application has expired.")
 
 

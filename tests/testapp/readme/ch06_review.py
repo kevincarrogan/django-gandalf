@@ -49,7 +49,7 @@ class ReviewedApplicationViewSet(WizardViewSet):
         ch02.applicant(organisation=ch04.organisation_details)
     )
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} confirmed")

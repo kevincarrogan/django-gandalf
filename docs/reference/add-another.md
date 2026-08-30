@@ -51,7 +51,7 @@ variant.
   (`budget_lines` → `Budget line`).
 - `item_title` — what names a finished item on the page: a
   `(step, field)` pair, read off the finished run, or
-  `callable(bound_wizard) -> str`. Return `""` and the row keeps its
+  `callable(run) -> str`. Return `""` and the row keeps its
   positional name. Required by the time an item finishes.
 - `min_items` — items required before *no more to add* counts as complete.
   Zero is right for "any other income?"; one for "add at least one".
@@ -308,9 +308,9 @@ subclass and puts that in the entry's slot:
 class VehicleItem(ItemViewSet):
     wizard = vehicle
 
-    def run_done(self, bound_wizard):
-        save_vehicle(self.request, self.get_item_id(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        save_vehicle(self.request, self.get_item_id(), run)
+        return super().run_done(run)
 
     def item_removed(self, store):
         forget_vehicle(self.request, self.get_item_id())
@@ -326,12 +326,12 @@ attributes of the page.
 | `get_item_id()` | `self.kwargs["item"]` as a string, or `ImproperlyConfigured` when not mounted under an item segment |
 | `get_key()` | `"<list_key>:<item_id>"` — the same string the page's `full_key()` composes |
 | `default_label()` | the *list's* key, not the item's, so every item stamps one label |
-| `get_item_title(bound_wizard)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
-| `run_recorded(bound_wizard, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
-| `run_done(bound_wizard)` | back to the page; override to save the item first |
+| `get_item_title(run)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
+| `run_recorded(run, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
+| `run_done(run)` | back to the page; override to save the item first |
 | `item_removed(store)` | nothing; override to undo what `run_done()` did. Runs while the item is still listed, on a viewset set up for it, so `get_item_id()` says which |
 | `get_tasklist_url_kwargs()` | `get_url_kwargs()` without `item` — the page has no place for the item segment; a journey or tenant prefix is forwarded |
-| `run_unavailable(bound_wizard, reason)` | redirect to the page rather than start a run for an item that may no longer exist |
+| `run_unavailable(run, reason)` | redirect to the page rather than start a run for an item that may no longer exist |
 | `dispatch()` | refuses any request for an item the registry does not list, before `WizardViewSet` sees it, with `item_unavailable()` |
 | `item_unavailable()` | redirect to the page; override to raise `Http404` |
 
@@ -485,13 +485,13 @@ from gandalf.add_another import ItemViewSet
 class BudgetLineItem(ItemViewSet):
     wizard = budget_line
 
-    def run_done(self, bound_wizard):
-        line = bound_wizard.path.find_step(name="line").form.cleaned_data
+    def run_done(self, run):
+        line = run.path.find_step(name="line").form.cleaned_data
         BudgetLine.objects.update_or_create(
             item_id=self.get_item_id(),
             defaults={"item": line["item"], "cost": line["cost"]},
         )
-        return super().run_done(bound_wizard)
+        return super().run_done(run)
 
     def item_removed(self, store):
         BudgetLine.objects.filter(item_id=self.get_item_id()).delete()
@@ -521,8 +521,8 @@ urlpatterns = [path("vehicles/", include(VehiclesViewSet.urls()))]
 ### Naming an item from more than one field
 
 ```python
-def trustee_name(bound_wizard):
-    step = bound_wizard.path.find_step(name="name")
+def trustee_name(run):
+    step = run.path.find_step(name="name")
     if step is None:
         return ""
     data = step.form.cleaned_data

@@ -6,7 +6,7 @@ accumulates: the record it opened, the case it raised, the call it made.
 Nobody typed those, no form validates them, and re-deriving them means
 doing them twice.
 
-`run_started()` is where they are made and `bound_wizard.metadata` is where
+`run_started()` is where they are made and `run.metadata` is where
 they are kept. These are the four things that has to survive: a walk that
 persists nothing, a re-answer, completion, and a stash round trip.
 """
@@ -131,7 +131,7 @@ def test_a_stash_carries_the_record_and_reopening_does_not_open_another(rf):
 
     driver = RunDriver.begin(RunMetadataWizardViewSet, may_finish=True)
     driver.submit({"name": "Ada"})
-    payload = driver.bound_wizard.stash()
+    payload = driver.run.stash()
 
     assert payload["meta"]["run"] == {"record_id": "record-1", "pending": True}
 

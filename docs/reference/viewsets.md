@@ -80,14 +80,14 @@ run that cannot be continued lands.
 **Returns** `reverse(f"{url_name}-run", kwargs={..., "run_id": run_id})`.
 
 Called for the redirect after the start URL mints a run, for a redirect whose
-cursor has no step left to land on, and for `bound_wizard.run_url`.
+cursor has no step left to land on, and for `run.run_url`.
 
 ### `get_step_url(run_id, step_segment)`
 
 **Returns** `reverse(f"{url_name}-step", kwargs={..., "run_id": run_id,
 "gandalf_step": step_segment})`.
 
-Called for every step-to-step redirect, and behind `bound_wizard.step_url()`,
+Called for every step-to-step redirect, and behind `run.step_url()`,
 `entry_url()` and `back_url`.
 
 All three URL hooks raise `ImproperlyConfigured` — *"Set url_name (or
@@ -96,12 +96,12 @@ They are instance methods that read `self.kwargs` off a live request; from
 anywhere else (an email, a management command) reverse the name with explicit
 kwargs.
 
-### `get_wizard(bound_wizard)`
+### `get_wizard(run)`
 
 Per-request hook returning the wizard to run for this dispatch.
 
-**Parameters** — `bound_wizard`: the run being resolved. Exposes
-`bound_wizard.context` (request, actor, session, `url_kwargs`) and — once a
+**Parameters** — `run`: the run being resolved. Exposes
+`run.context` (request, actor, session, `url_kwargs`) and — once a
 run has been retrieved or seeded — `get_state()` / `get_run_data()` /
 `metadata`. Under `begin()` or the start URL the run is freshly minted, so
 its state is `[]`; under `resolve()` there is no run at all.
@@ -137,19 +137,19 @@ ConfiguredWizard"*.
 ### `context_for(request)`
 
 **Returns** `WizardContext.from_request(request, **self.get_url_kwargs())` —
-the environment this request implies. GET and POST build their `BoundWizard`
+the environment this request implies. GET and POST build their `Run`
 from it. Override to build the context differently (a different actor, a
 session that is not the request's).
 
-### `run_started(bound_wizard)`
+### `run_started(run)`
 
 A fresh run of this wizard was just created. Does nothing by default.
 
 The only hook that fires **exactly once per run**: a run is minted once, so
 this is called once — unlike a step view, which is re-dispatched on every
 later request as stored answers are replayed. It is handed a run that has an
-id and a resolved wizard, so it can read `bound_wizard.wizard` and write
-`bound_wizard.metadata` — the place to open a record outside the wizard and
+id and a resolved wizard, so it can read `run.wizard` and write
+`run.metadata` — the place to open a record outside the wizard and
 remember it.
 
 | Fires from | Does not fire from |
@@ -169,22 +169,22 @@ remember it.
   comes back with its answers, so firing here would open a second record
   every time a task list section is re-entered.
 
-### `done(bound_wizard)`
+### `done(run)`
 
 Called once, when a walk finds every step satisfied. **Must be overridden**:
 the default raises `NotImplementedError` — *"WizardViewSet subclasses must
 define done()."*
 
-**Parameters** — `bound_wizard`: the completed run. `bound_wizard.path` is
-the answered steps in order; `MergeCleanedData().reduce(bound_wizard.path)`
-folds their `cleaned_data` into one dict; `bound_wizard.metadata` is the
-run's bag. See [`BoundWizard`](bound-wizard.md).
+**Parameters** — `run`: the completed run. `run.path` is
+the answered steps in order; `MergeCleanedData().reduce(run.path)`
+folds their `cleaned_data` into one dict; `run.metadata` is the
+run's bag. See [`Run`](run.md).
 
 **Returns** the `HttpResponseBase` to send. A redirect, an `HttpResponse`, or
 a `TemplateResponse` — the last is rendered later by Django's middleware, and
 the run stays readable until it has (see `finish()`).
 
-### `finish(bound_wizard)`
+### `finish(run)`
 
 Completes the run. Called by GET and POST when the cursor has no step left;
 also the programmatic completion for a caller driving a run outside a
@@ -192,13 +192,13 @@ dispatch — reach a cursor whose `node` is `None`, then call this.
 
 In order:
 
-1. `response = self.done(bound_wizard)`
-2. `bound_wizard.keep_readable()` — pins the walked tree so a deferred
+1. `response = self.done(run)`
+2. `run.keep_readable()` — pins the walked tree so a deferred
    completion page can still iterate `path`.
 3. Uploaded files are swept: immediately for a plain response, or in a
    post-render callback for a `SimpleTemplateResponse`, since a completion
    template may still open a file step's `.form`.
-4. `bound_wizard.complete()` — the tombstone. The answers are discarded, the
+4. `run.complete()` — the tombstone. The answers are discarded, the
    metadata bag is kept, and the run stays addressable.
 
 **Returns** the response `done()` returned.
@@ -213,17 +213,17 @@ In order:
   the run's uploads behind; anything driving a run headlessly wants a
   rendered or plain response from `done()`.
 
-### `run_unavailable(bound_wizard, reason)`
+### `run_unavailable(run, reason)`
 
 Response for a run this request cannot continue. Runs *before* the wizard is
 resolved, so `get_wizard()` is never asked to read a run that has no state.
 
 **Parameters**
 
-- `bound_wizard` — the run. For `"completed"`, `bound_wizard.metadata` is
+- `run` — the run. For `"completed"`, `run.metadata` is
   still readable, so a completion page can name what the run created; for
   `"unknown"`, `retrieve()` raised before anything was set, so
-  `bound_wizard.run_id` is `None`; the id asked for is `self.kwargs["run_id"]`.
+  `run.run_id` is `None`; the id asked for is `self.kwargs["run_id"]`.
 - `reason` — one of:
 
 | `reason` | Meaning |
@@ -241,9 +241,9 @@ differently.
 
 **Parameters** — `context`: a `WizardContext`.
 
-**Returns** `(view, bound_wizard)` — an instance of this viewset set up with
+**Returns** `(view, run)` — an instance of this viewset set up with
 `context.request` (or a fabricated request when the context has none) and
-`context.url_kwargs`, and a `BoundWizard` on the viewset's `storage_class`.
+`context.url_kwargs`, and a `Run` on the viewset's `storage_class`.
 Nothing is resolved, retrieved or minted. The door a caller with no request
 comes through — `gandalf.driver` uses it.
 
@@ -251,8 +251,8 @@ comes through — `gandalf.driver` uses it.
 
 The `*_for` variants of `begin()`, `inspect()` and `resolve()`: same
 behaviour, taking a `WizardContext` instead of a request, and returning the
-`(view, bound_wizard)` pair rather than the `BoundWizard` alone. Reach for
-them when the view itself is wanted — to call `view.finish(bound_wizard)`,
+`(view, run)` pair rather than the `Run` alone. Reach for
+them when the view itself is wanted — to call `view.finish(run)`,
 for instance. `begin_for()` fires `run_started()`; the other two do not.
 
 ### `begin(request, **url_kwargs)` *(classmethod)*
@@ -264,7 +264,7 @@ minus the redirect. Mints the run, resolves the wizard against it, fires
 **Parameters** — `request`; `url_kwargs`: mount-prefix context, forwarded
 into every reverse via `get_url_kwargs()`.
 
-**Returns** a `BoundWizard` with `run_id` set, `get_state() == []`, and
+**Returns** a `Run` with `run_id` set, `get_state() == []`, and
 `entry_url()` pointing at its first step.
 
 ### `inspect(request, run_id, **url_kwargs)` *(classmethod)*
@@ -274,7 +274,7 @@ Retrieves the run, *then* resolves the wizard — so a dynamic `get_wizard()`
 reads the run's state. Walks nothing: a caller that only wants `get_state()`
 or `is_complete` pays a storage read and no form validation.
 
-**Returns** a `BoundWizard` on which `cursor()`, `path`, `step_url()`,
+**Returns** a `Run` on which `cursor()`, `path`, `step_url()`,
 `entry_url()` and `run_url` work as they do inside a dispatch.
 
 **Raises** `RunNotFound` (`gandalf.storage`) for a run this storage does not
@@ -288,10 +288,10 @@ Seeds *then* resolves, unlike `inspect()`: the state a dynamic
 `get_wizard()` reads is the state the payload just supplied. Does not fire
 `run_started()`.
 
-**Parameters** — `payload`: a `Stash` from `bound_wizard.stash()`;
+**Parameters** — `payload`: a `Stash` from `run.stash()`;
 `expected_label`: refuse a payload whose label differs.
 
-**Returns** a `BoundWizard`.
+**Returns** a `Run`.
 
 **Raises** `InvalidStash` (`gandalf.runtime`) — before any run is created —
 when the payload is malformed, of an unsupported version, or its label does
@@ -318,15 +318,15 @@ all falls back to the run URL. `None` when no URL reverser is available.
 This wizard, bound but not started — no run is created and nothing is left
 behind. The third door alongside `begin()` and `inspect()`: not to run a
 wizard, nor to reach a run, but to ask what the wizard *is* —
-`bound_wizard.wizard.outline()` reads its declared shape from here.
+`run.wizard.outline()` reads its declared shape from here.
 
-**Returns** a `BoundWizard` with `run_id` unset. A dynamic `get_wizard()`
+**Returns** a `Run` with `run_id` unset. A dynamic `get_wizard()`
 resolves with no stored state to read, so it describes itself as it would
 begin.
 
 ### Request handling
 
-Both handlers start the same way: build a `BoundWizard` from
+Both handlers start the same way: build a `Run` from
 `context_for(request)`; if the URL carries a `run_id`, retrieve it (an
 unknown or completed run is answered by `run_unavailable()` and goes no
 further); resolve the wizard.
@@ -370,7 +370,7 @@ an ordinary Django view, so its template context is Django's:
 | --- | --- |
 | `form` | The step's form — unbound for the cursor's step, bound to `initial` for an answered one, with errors after a rejected POST. |
 | `view` | The generated `FormView`. `view.request.wizard` and `view.kwargs` are reachable through it. |
-| `request.wizard` | The `BoundWizard` for this run: `back_url` (the previous active-route step, `None` at the first), `run_url`, `step_url(step)`, `path`, `metadata`. Set on the request the step view is dispatched with — it is not a context variable, so reach it as `request.wizard` (with the request context processor) or `view.request.wizard`. |
+| `request.wizard` | The `Run` for this run: `back_url` (the previous active-route step, `None` at the first), `run_url`, `step_url(step)`, `path`, `metadata`. Set on the request the step view is dispatched with — it is not a context variable, so reach it as `request.wizard` (with the request context processor) or `view.request.wizard`. |
 
 The step view's own kwargs are the request's mount-prefix kwargs;
 `gandalf_step` is stripped and `run_id` is not passed. A step that brings its
@@ -410,8 +410,8 @@ class GrantApplicationViewSet(WizardViewSet):
         .step(EmailForm, name="contact")
     )
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         return HttpResponse(f"Application received from {answers['full_name']}")
 
 
@@ -436,13 +436,13 @@ class FundApplicationViewSet(WizardViewSet):
     url_name = "fund-application"
     template_name = "grants/step.html"
 
-    def get_wizard(self, bound_wizard):
+    def get_wizard(self, run):
         wizard = Wizard().step(ApplicantForm, name="applicant")
         if self.kwargs["fund"] == "arts":
             wizard = wizard.step(PortfolioForm, name="portfolio")
         return wizard.step(EmailForm, name="contact")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         ...
 
 
@@ -471,20 +471,20 @@ class RecordedApplicationViewSet(WizardViewSet):
     template_name = "grants/step.html"
     wizard = application_wizard
 
-    def run_started(self, bound_wizard):
+    def run_started(self, run):
         application = Application.objects.create(applicant=self.request.user)
-        bound_wizard.metadata["application_id"] = application.pk
+        run.metadata["application_id"] = application.pk
 
-    def done(self, bound_wizard):
-        application = Application.objects.get(pk=bound_wizard.metadata["application_id"])
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        application = Application.objects.get(pk=run.metadata["application_id"])
+        answers = MergeCleanedData().reduce(run.path)
         application.submit(answers["email"])
         return redirect("application-received", pk=application.pk)
 
-    def run_unavailable(self, bound_wizard, reason):
+    def run_unavailable(self, run, reason):
         if reason == "completed":
             return redirect(
-                "application-received", pk=bound_wizard.metadata["application_id"]
+                "application-received", pk=run.metadata["application_id"]
             )
         raise Http404("That application has expired.")
 ```
@@ -555,7 +555,7 @@ reverse the namespaced names, as in the example above.
 A GET of the run URL walks the stored answers, and if every step is
 satisfied the run completes — a GET is as good as a POST for that. This is by
 design, and it bites in two places: a link *into* a run that points at the
-bare run URL rather than a step (use `bound_wizard.entry_url()`, which never
+bare run URL rather than a step (use `run.entry_url()`, which never
 returns the run URL for a wizard with steps), and a resurrected stash whose
 answers all validate (`resurrect()` returns a step URL for exactly this
 reason). A step URL is always safe: it renders rather than completes.
@@ -582,4 +582,4 @@ distinct name — *"Wizard step names must be unique"* is the same check.
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · [Chapter 5 — A wizard per request](../learn/05-a-wizard-per-request.md) · [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`Wizard`](wizard.md), [`BoundWizard`](bound-wizard.md), [Storage](storage.md), [Stashing](stashing.md), [Escapes](escapes.md), [Step views](step-views.md), [Run metadata](run-metadata.md), [Driver](driver.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · [Chapter 5 — A wizard per request](../learn/05-a-wizard-per-request.md) · [Chapter 9 — Completion hooks and metadata](../learn/09-completion-hooks-and-metadata.md) · **Related:** [`Wizard`](wizard.md), [`Run`](run.md), [Storage](storage.md), [Stashing](stashing.md), [Escapes](escapes.md), [Step views](step-views.md), [Run metadata](run-metadata.md), [Driver](driver.md)

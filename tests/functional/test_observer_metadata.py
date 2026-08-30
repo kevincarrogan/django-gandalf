@@ -35,7 +35,7 @@ class _WatchedViewSet(WizardViewSet):
         )
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"done")
 
 

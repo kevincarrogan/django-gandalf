@@ -1,4 +1,4 @@
-# BoundWizard
+# Run
 
 `gandalf.runtime` — one run of a wizard, as code sees it: its stored
 answers, the route they resolve to, its URLs and its lifecycle.
@@ -6,7 +6,7 @@ answers, the route they resolve to, its URLs and its lifecycle.
 ```python
 from gandalf.context import WizardContext
 from gandalf.runtime import (
-    BoundWizard,
+    Run,
     InvalidStash,
     MergeCleanedData,
     Path,
@@ -22,9 +22,9 @@ from gandalf.types import WizardRequest
 
 ## Reference
 
-A `BoundWizard` is never constructed by application code. The viewset
-builds one per request and hands it to every hook — `done(bound_wizard)`,
-`run_started(bound_wizard)`, `run_unavailable(bound_wizard, reason)` — and a
+A `Run` is never constructed by application code. The viewset
+builds one per request and hands it to every hook — `done(run)`,
+`run_started(run)`, `run_unavailable(run, reason)` — and a
 step view reaches the same object as `self.request.wizard`. Walk-time code
 (a branch predicate, a switch selector, an expand builder) receives a
 [`WizardContext`](#wizardcontext) and reaches it as `context.run`. The
@@ -32,7 +32,7 @@ classmethods on [`WizardViewSet`](viewsets.md) (`begin`, `inspect`,
 `reopen`, `resolve`, and their `*_for` variants) return one for programmatic
 use.
 
-### `BoundWizard(context, storage, wizard=None)`
+### `Run(context, storage, wizard=None)`
 
 **Attributes — for application code**
 
@@ -40,7 +40,7 @@ use.
 | --- | --- | --- |
 | `run_id` | `str` | The storage-minted id of this run. Opaque; need not be a UUID. |
 | `wizard` | `ConfiguredWizard` | The resolved declaration — `wizard.tree` is the full declared structure, dormant arms included. |
-| `context` | `WizardContext` | The environment the run is walked in. `context.run is bound_wizard`. |
+| `context` | `WizardContext` | The environment the run is walked in. `context.run is run`. |
 | `path` | `Path` | The resolved route: the answered steps in walk order. See [`Path`](#path). |
 | `metadata` | `RunMetadata` | The run's write-through bag. See [Run metadata](run-metadata.md). |
 | `is_complete` | `bool` | `True` once the run has finished and been tombstoned. |
@@ -101,7 +101,7 @@ Seed a fresh run from a stash payload.
 - `payload` — a dict from `stash()`.
 - `expected_label` — when given, the payload's `label` must equal it.
 
-**Returns** the new `run_id`, which is also set on this `BoundWizard`.
+**Returns** the new `run_id`, which is also set on this `Run`.
 
 **Raises** `InvalidStash` — before any run is created — when the payload is
 not a dict with a `state` list, when its `version` is not `1`, or when the
@@ -130,7 +130,7 @@ Pin the run's walked tree so `path` keeps answering after `complete()`.
 `done()` may return a `TemplateResponse`, which Django renders after the
 view has returned — by which point the run has been tombstoned. `finish()`
 calls this after `done()` returns and before `complete()`, so a completion
-template that iterates `bound_wizard.path` still finds the answers. The
+template that iterates `run.path` still finds the answers. The
 walk it costs is the run's last. Application code calls it only when
 driving completion by hand.
 
@@ -198,11 +198,11 @@ answer), `store_uploads`, `delete_file_refs`, `cleanup_files()`,
 
 The resolved route through a run: the answered steps in walk order, with
 selected branch arms and expansions inlined. Reached as
-`bound_wizard.path`.
+`run.path`.
 
 **Attributes** — `head`: the first `RuntimeStep`, or `None`.
 
-- Iterable — `for step in bound_wizard.path` yields `RuntimeStep`s.
+- Iterable — `for step in run.path` yields `RuntimeStep`s.
 - Falsy when the run has completed no steps yet.
 
 ### `Path.find_step(**context)`
@@ -226,7 +226,7 @@ lookups as `find_step`.
   arm, or anything inside a preserved region past the cursor. `find_step`
   returns `None` for all of those, so guard the lookup unless the step is
   unconditionally upstream.
-- **Each access of `bound_wizard.path` rebuilds the step nodes**, and
+- **Each access of `run.path` rebuilds the step nodes**, and
   outside a step render each access walks. A `RuntimeStep.form` is memoised
   per node, so `wizard.path.find_step(name="x").form` twice is two
   validations. Read `path` once and hold the steps you iterate. See [Walk
@@ -244,7 +244,7 @@ Dataclass; nodes are built by the walk and by `path`.
 | | |
 | --- | --- |
 | `name` | The step's routable name — its `name` context. `None` for a step declared without one. |
-| `url` | `bound_wizard.step_url(self.declaration)`. `None` without a URL reverser. |
+| `url` | `run.step_url(self.declaration)`. `None` without a URL reverser. |
 | `form` | A bound, validated form (memoised per node). Built through the step view's public composition API — `setup()` with a synthetic POST of the stored submission and files, then `get_form()` and `is_valid()` — so `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()` and `get_prefix()` overrides are honoured. `form_valid()`, `post()`, `dispatch()` and `setup()` overrides are not run. A stored answer whose `clean()` escapes still reconstructs, but `cleaned_data` holds only what was cleaned before the raise. |
 | `data` | The raw stored submission: POST keys to their single value, or a list for a key sent more than once. `None` for a hole. |
 | `files` | `{field_name: FileRef}` for the step's stored uploads, or `None`. |
@@ -260,7 +260,7 @@ given, as `find_step` would judge it.
 ### `MergeCleanedData`
 
 A reducer that folds every step's `form.cleaned_data` on a path into one
-dict, last write wins: `MergeCleanedData().reduce(bound_wizard.path)`.
+dict, last write wins: `MergeCleanedData().reduce(run.path)`.
 Subclass and override `combine`, `visit_step`, `visit_branch` or
 `visit_expand` for another policy. Costs one validation per answered step.
 
@@ -279,7 +279,7 @@ browser request implies. What the viewset builds per request.
 
 | | |
 | --- | --- |
-| `run` | The `BoundWizard`, set as it is constructed. `None` before that. What `request.wizard` used to be. |
+| `run` | The `Run`, set as it is constructed. `None` before that. What `request.wizard` used to be. |
 | `actor` | Whoever is answering: `request.user` on the HTTP path (read lazily), or whoever a programmatic caller named. `None` when nobody said. A durable storage scopes runs by this. |
 | `session` | The browser's session when there is a request; otherwise the one given, or an in-memory `gandalf.context.Session` (a dict with a `modified` flag). The same object for the life of the context. |
 | `url_kwargs` | What the mount prefix captured, minus the wizard's own `run_id` and step segment. |
@@ -305,7 +305,7 @@ browser request implies. What the viewset builds per request.
 
 ### `WizardRequest`
 
-`gandalf.types.WizardRequest` — `HttpRequest` plus `wizard: BoundWizard`.
+`gandalf.types.WizardRequest` — `HttpRequest` plus `wizard: Run`.
 Never instantiated; a typing narrowing for step views, which
 `StepFormView` already declares as its `request`. Not what walk-time code
 receives — that is a `WizardContext`.
@@ -326,9 +326,9 @@ receives — that is a `WizardContext`.
 | A step view (`self.request.wizard`) | `WizardRequest` | The validated prefix before it — never its own answer, nothing after. Holds whether it is being rendered or replayed. |
 | A branch predicate / switch selector (`context.run`) | `WizardContext` | The validated prefix before the branch. |
 | An expand builder (`context.run`) | `WizardContext` | The validated prefix before the expansion. |
-| `done(bound_wizard)` | `BoundWizard` | The whole route; every answer validated. |
-| `run_started(bound_wizard)` | `BoundWizard` | An empty path — nothing is answered yet. |
-| A completion template, after `finish()` | `BoundWizard` | The whole route, from the tree `keep_readable()` pinned. |
+| `done(run)` | `Run` | The whole route; every answer validated. |
+| `run_started(run)` | `Run` | An empty path — nothing is answered yet. |
+| A completion template, after `finish()` | `Run` | The whole route, from the tree `keep_readable()` pinned. |
 
 ### The stored state shape
 
@@ -403,8 +403,8 @@ class GrantApplicationViewSet(WizardViewSet):
     url_name = "grant"
     wizard = application
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         application = Application.objects.create(**answers)
         return redirect("grant-received", pk=application.pk)
 ```
@@ -412,8 +412,8 @@ class GrantApplicationViewSet(WizardViewSet):
 ### Listing answered steps with change links
 
 ```python
-def done(self, bound_wizard):
-    steps = list(bound_wizard.path)          # walk once, hold the nodes
+def done(self, run):
+    steps = list(run.path)          # walk once, hold the nodes
     rows = [
         (step.name, step.form.cleaned_data, step.url)
         for step in steps
@@ -427,14 +427,14 @@ def done(self, bound_wizard):
 from gandalf.runtime import InvalidStash
 
 
-def done(self, bound_wizard):
-    payload = bound_wizard.stash(label="grant-v2")
-    Draft.objects.create(applicant=bound_wizard.context.actor, payload=payload)
+def done(self, run):
+    payload = run.stash(label="grant-v2")
+    Draft.objects.create(applicant=run.context.actor, payload=payload)
     ...
 
-# elsewhere, on a fresh BoundWizard:
+# elsewhere, on a fresh Run:
 try:
-    run_id = bound_wizard.resurrect(draft.payload, expected_label="grant-v2")
+    run_id = run.resurrect(draft.payload, expected_label="grant-v2")
 except InvalidStash:
     ...
 ```
@@ -453,14 +453,14 @@ cursor in a preserved region. Guard the lookup, or move the read to
 
 ### My summary page is slow, and slower the longer the run
 
-Each access of `bound_wizard.path` rebuilds its nodes, and each node's
+Each access of `run.path` rebuilds its nodes, and each node's
 `.form` is a validation. `wizard.path.find_step(...)` once per row is one
 walk per row. Read `path` once, keep the list, and read `.form` off the
 nodes you hold. See [Walk costs](walk-costs.md) and [Summary](summary.md).
 
 ### `run_url` / `step_url()` / `back_url` are `None`
 
-No URL reverser: `bound_wizard.urls` is set by the viewset when it serves a
+No URL reverser: `run.urls` is set by the viewset when it serves a
 request, and is `None` under the driver or in a unit test. `back_url`
 additionally needs a render context, so it is `None` from `done()` and from
 a predicate.

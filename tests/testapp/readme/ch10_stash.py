@@ -20,10 +20,8 @@ class ContactDetailsViewSet(WizardViewSet):
         Wizard().step(ApplicantForm, name="applicant").step(EmailForm, name="contact")
     )
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put(
-            "contact", bound_wizard.stash(label="contact")
-        )
+    def done(self, run):
+        SessionStashStore(run.context).put("contact", run.stash(label="contact"))
         return HttpResponse("Contact details saved.")
 
 

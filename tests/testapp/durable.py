@@ -3,7 +3,7 @@
 Gandalf ships `SessionStorage` and nothing else, because a durable backend
 means models, migrations and a retention policy, and those belong to the
 project rather than to the library. What the library owes you instead is a
-seam small enough to swap, and this module is the proof: `BoundWizard` calls
+seam small enough to swap, and this module is the proof: `Run` calls
 exactly the eleven methods below, and nothing in the runtime, the walker or
 the viewset reaches past them.
 

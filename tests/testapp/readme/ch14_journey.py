@@ -49,17 +49,17 @@ class CountRejections(WizardObserver):
 # --- what the sections decide ---------------------------------------------------
 
 
-def record_applying_as(store, bound_wizard):
+def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
-    step = bound_wizard.path.find_step(name="applying_as")
+    step = run.path.find_step(name="applying_as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 
 
-def record_email(store, bound_wizard):
+def record_email(store, run):
     """What submitting needs, written once here rather than read out of the
     stash's positional state at journey_done()."""
-    step = bound_wizard.path.find_step(name="email")
+    step = run.path.find_step(name="email")
     store.data["email"] = step.form.cleaned_data["email"]
 
 
@@ -118,25 +118,25 @@ documents = (
 class SetupSection(SectionViewSet):
     wizard = setup
 
-    def run_done(self, bound_wizard):
-        record_applying_as(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_applying_as(self.get_journey_store(), run)
+        return super().run_done(run)
 
 
 class ContactSection(SectionViewSet):
     wizard = contact
 
-    def run_done(self, bound_wizard):
-        record_email(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_email(self.get_journey_store(), run)
+        return super().run_done(run)
 
 
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, bound_wizard):
-        record_amount(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_amount(self.get_journey_store(), run)
+        return super().run_done(run)
 
 
 class MatchFundingSection(SectionViewSet):
@@ -231,7 +231,7 @@ class ApplicationStartViewSet(WizardViewSet):
     url_name = "readme-apply-start"
     wizard = setup
 
-    def done(self, bound_wizard):
+    def done(self, run):
         journey = GrantApplication.begin(self.request)
-        journey.finish("setup", bound_wizard)
+        journey.finish("setup", run)
         return redirect(journey.url)

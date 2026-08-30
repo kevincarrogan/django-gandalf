@@ -14,7 +14,7 @@ from gandalf.types import Context
 
 if TYPE_CHECKING:
     from gandalf.form_views import StepDeclaration, StepViewClass
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
     from gandalf.wizard import Wizard
 
 
@@ -128,7 +128,7 @@ class CaseGuard:
     def __call__(self, context: WizardContext) -> bool:
         # Asked through the run rather than directly, so the selector is
         # called once for the switch however many cases ask.
-        run = cast("BoundWizard", context.run)
+        run = cast("Run", context.run)
         return run.switch_value(self.selector, context) == self.case
 
 
@@ -234,7 +234,7 @@ class Reducer:
     """
 
     def reduce(self, root: Any) -> Any:
-        # `bound_wizard.path` is a `Path` wrapper; reduce over its head chain.
+        # `run.path` is a `Path` wrapper; reduce over its head chain.
         # Raw runtime nodes and None have no `head`, so they pass through.
         root = getattr(root, "head", root)
         accumulator = self.initial()

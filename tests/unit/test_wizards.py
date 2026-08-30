@@ -12,7 +12,7 @@ import gandalf.wizard
 from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.file_storage import WizardFileStorage
-from gandalf.runtime import BoundWizard, StepNotFound
+from gandalf.runtime import Run, StepNotFound
 from gandalf.storage import SessionStorage
 from gandalf.wizard import ConfiguredWizard, Wizard
 from tests.testapp.forms import (
@@ -28,45 +28,43 @@ from tests.testapp.forms import (
 )
 
 
-def _replay(bound_wizard, *args, **kwargs):
+def _replay(run, *args, **kwargs):
     """Walk stored state and render the cursor, mirroring what the viewset
     does over HTTP; returns None when the run is complete."""
-    cursor = bound_wizard.cursor(*args, **kwargs)
+    cursor = run.cursor(*args, **kwargs)
     if cursor.node is None:
         return None
-    return bound_wizard.dispatcher.render_cursor(cursor, *args, **kwargs)
+    return run.dispatcher.render_cursor(cursor, *args, **kwargs)
 
 
-def _make_bound_wizard(wizard, request, storage_class=SessionStorage):
-    """Mirrors `WizardViewSet._make_bound_wizard`: storage comes from the
+def _make_run(wizard, request, storage_class=SessionStorage):
+    """Mirrors `WizardViewSet._make_run`: storage comes from the
     viewset, not the wizard, because it has to exist before the wizard does."""
     context = WizardContext.from_request(request)
-    return BoundWizard(context, storage_class(context), wizard=wizard)
+    return Run(context, storage_class(context), wizard=wizard)
 
 
-def _submit(bound_wizard, submission, **kwargs):
+def _submit(run, submission, **kwargs):
     """Place a submission at the cursor and store it — what the viewset does
     for a routed POST, with the claim taken from where the run actually is
     rather than from a URL. Walking and persisting are separate so the caller
     can settle escapes and dynamic reshapes before writing."""
-    walk = bound_wizard.walk(
-        claim=bound_wizard.cursor().node, submission=submission, **kwargs
-    )
-    bound_wizard.persist(walk)
+    walk = run.walk(claim=run.cursor().node, submission=submission, **kwargs)
+    run.persist(walk)
     return walk
 
 
-def _edit(bound_wizard, submission, *, files=None, url_kwargs=None, **context):
+def _edit(run, submission, *, files=None, url_kwargs=None, **context):
     """Place a submission at a named step. There is no separate edit path —
     a claim the run cannot reach places nothing, and its uploads are the
     caller's to clean up."""
-    walk = bound_wizard.walk(
+    walk = run.walk(
         claim=context, submission=submission, files=files, **(url_kwargs or {})
     )
     if not walk.reached:
-        bound_wizard.delete_file_refs(files)
+        run.delete_file_refs(files)
         raise StepNotFound(context)
-    bound_wizard.persist(walk)
+    run.persist(walk)
     return walk
 
 
@@ -167,7 +165,7 @@ def test_declared_form_step_stores_context():
     )
 
 
-def test_bound_wizard_find_step_returns_matching_runtime_step(
+def test_run_find_step_returns_matching_runtime_step(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -191,17 +189,17 @@ def test_bound_wizard_find_step_returns_matching_runtime_step(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    found = bound_wizard.path.find_step(name="second")
+    found = run.path.find_step(name="second")
 
     assert isinstance(found, RuntimeStep)
     assert found.declaration.declaration is SecondStepForm
     assert found.declaration.context == {"name": "second"}
 
 
-def test_bound_wizard_find_step_accepts_name_shorthand(
+def test_run_find_step_accepts_name_shorthand(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -225,17 +223,17 @@ def test_bound_wizard_find_step_accepts_name_shorthand(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    found = bound_wizard.path.find_step(name="second")
+    found = run.path.find_step(name="second")
 
     assert isinstance(found, RuntimeStep)
     assert found.declaration.declaration is SecondStepForm
     assert found.declaration.context == {"name": "second"}
 
 
-def test_bound_wizard_filter_steps_accepts_name_shorthand(
+def test_run_filter_steps_accepts_name_shorthand(
     request_with_session_factory,
 ):
     wizard = (
@@ -251,15 +249,15 @@ def test_bound_wizard_filter_steps_accepts_name_shorthand(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    matches = bound_wizard.path.filter_steps(name="first")
+    matches = run.path.filter_steps(name="first")
 
     assert [match.declaration.declaration for match in matches] == [FirstStepForm]
 
 
-def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
+def test_run_find_step_on_branching_wizard_finds_step_in_active_arm(
     request_with_session_factory,
 ):
     from gandalf.runtime import RuntimeStep
@@ -292,16 +290,16 @@ def test_bound_wizard_find_step_on_branching_wizard_finds_step_in_active_arm(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    personal_step = bound_wizard.path.find_step(name="personal")
+    personal_step = run.path.find_step(name="personal")
 
     assert isinstance(personal_step, RuntimeStep)
     assert personal_step.declaration.declaration is PersonalDetailsForm
 
 
-def test_bound_wizard_find_step_returns_none_inside_unreached_branch(
+def test_run_find_step_returns_none_inside_unreached_branch(
     request_with_session_factory,
 ):
     def is_business_account(request):
@@ -323,16 +321,16 @@ def test_bound_wizard_find_step_returns_none_inside_unreached_branch(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     # The run is empty, so nothing is on the resolved path yet: neither the
     # step inside the unreached branch nor the review step sitting past it.
-    assert bound_wizard.path.find_step(name="personal") is None
-    assert bound_wizard.path.find_step(name="review") is None
+    assert run.path.find_step(name="personal") is None
+    assert run.path.find_step(name="review") is None
 
 
-def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
+def test_run_find_step_returns_none_for_step_in_inactive_arm(
     request_with_session_factory,
 ):
     def is_business_account(request):
@@ -354,13 +352,13 @@ def test_bound_wizard_find_step_returns_none_for_step_in_inactive_arm(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    assert bound_wizard.path.find_step(name="business") is None
+    assert run.path.find_step(name="business") is None
 
 
-def test_bound_wizard_find_step_returns_none_when_no_match(
+def test_run_find_step_returns_none_when_no_match(
     request_with_session_factory,
 ):
     wizard = (
@@ -371,10 +369,10 @@ def test_bound_wizard_find_step_returns_none_when_no_match(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    assert bound_wizard.path.find_step(name="missing") is None
+    assert run.path.find_step(name="missing") is None
 
 
 def test_reducer_supports_custom_initial_and_combine_for_non_list_folds():
@@ -424,7 +422,7 @@ def test_reducer_visits_runtime_chain_and_collects_per_node_values():
     ]
 
 
-def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
+def test_run_filter_steps_returns_matches_in_walk_order(
     request_with_session_factory,
 ):
     wizard = (
@@ -445,10 +443,10 @@ def test_bound_wizard_filter_steps_returns_matches_in_walk_order(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    matches = bound_wizard.path.filter_steps(kind="data")
+    matches = run.path.filter_steps(kind="data")
 
     assert [step.declaration.declaration for step in matches] == [
         FirstStepForm,
@@ -492,14 +490,14 @@ def test_step_builder_allows_independent_variants():
     ]
 
 
-def test_wizard_does_not_proxy_bound_wizard_lifecycle_methods():
+def test_wizard_does_not_proxy_run_lifecycle_methods():
     wizard = Wizard()
 
     assert not hasattr(wizard, "initialise")
     assert not hasattr(wizard, "bind")
 
 
-def test_bound_wizard_uses_the_storage_class_it_is_given(
+def test_run_uses_the_storage_class_it_is_given(
     request_with_session_factory,
 ):
     class FakeStorage:
@@ -509,10 +507,10 @@ def test_bound_wizard_uses_the_storage_class_it_is_given(
     request = request_with_session_factory()
     wizard = Wizard().configure()
 
-    bound_wizard = _make_bound_wizard(wizard, request, storage_class=FakeStorage)
+    run = _make_run(wizard, request, storage_class=FakeStorage)
 
-    assert isinstance(bound_wizard.storage, FakeStorage)
-    assert bound_wizard.storage.context is bound_wizard.context
+    assert isinstance(run.storage, FakeStorage)
+    assert run.storage.context is run.context
 
 
 def test_configuring_storage_class_on_a_wizard_is_rejected():
@@ -530,8 +528,8 @@ def test_configured_wizard_uses_configured_step_dispatcher_class(
     captured = {}
 
     class FakeDispatcher:
-        def __init__(self, bound_wizard):
-            captured["bound_wizard"] = bound_wizard
+        def __init__(self, run):
+            captured["run"] = run
 
         def dispatch(self, *args, **kwargs):
             raise AssertionError("dispatch should not be called by this test")
@@ -554,13 +552,13 @@ def test_configured_wizard_uses_configured_step_dispatcher_class(
             step_dispatcher_class=FakeDispatcher,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
+    run = _make_run(wizard, request)
 
-    assert isinstance(bound_wizard.dispatcher, FakeDispatcher)
-    assert captured["bound_wizard"] is bound_wizard
+    assert isinstance(run.dispatcher, FakeDispatcher)
+    assert captured["run"] is run
 
 
-def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
+def test_run_rejected_submission_past_a_branch_is_kept(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -595,10 +593,10 @@ def test_bound_wizard_rejected_submission_past_a_branch_is_kept(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    walk = _edit(bound_wizard, {}, name="review")
+    walk = _edit(run, {}, name="review")
 
     assert walk.cursor.response.context_data["form"].errors == {
         "confirmed": ["This field is required."],
@@ -624,7 +622,7 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
             entries,
             args,
             kwargs,
-            bound_wizard,
+            run,
             claim=None,
             submission=None,
             files=None,
@@ -652,12 +650,12 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
             cursor_walker_class=FakeWalker,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     # Walk directly: this is about the configuration hook being honoured,
     # not about what placing at the cursor means.
-    bound_wizard.walk(submission={"name": "Ada"})
+    run.walk(submission={"name": "Ada"})
 
     assert calls[0] == ("init", {"name": "Ada"})
 
@@ -698,10 +696,10 @@ def test_configured_wizard_uses_configured_state_serializer_class(
             state_serializer_class=FakeSerializer,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == ["fake-entry"]
 
@@ -778,34 +776,34 @@ def test_wizard_configure_preserves_explicit_form_view_steps():
     )
 
 
-def test_bound_wizard_initialise_creates_session_run(
+def test_run_initialise_creates_session_run(
     request_with_session_factory,
     linear_wizard,
 ):
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
+    run = _make_run(linear_wizard, request)
 
-    bound_wizard.initialise()
+    run.initialise()
 
-    assert uuid.UUID(bound_wizard.run_id)
+    assert uuid.UUID(run.run_id)
     assert request.session["gandalf_runs"] == {
-        bound_wizard.run_id: {},
+        run.run_id: {},
     }
 
 
-def test_bound_wizard_initialise_marks_session_modified(
+def test_run_initialise_marks_session_modified(
     request_with_session_factory,
     linear_wizard,
 ):
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
+    run = _make_run(linear_wizard, request)
 
-    bound_wizard.initialise()
+    run.initialise()
 
     assert request.session.modified is True
 
 
-def test_bound_wizard_replays_submissions_from_url_run_id(
+def test_run_replays_submissions_from_url_run_id(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -819,15 +817,15 @@ def test_bound_wizard_replays_submissions_from_url_run_id(
         },
     )
 
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
-    response = _replay(bound_wizard)
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
+    response = _replay(run)
 
-    assert bound_wizard.run_id == "existing-run"
+    assert run.run_id == "existing-run"
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
+def test_run_replays_submissions_from_uuid_url_run_id(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -842,15 +840,15 @@ def test_bound_wizard_replays_submissions_from_uuid_url_run_id(
         },
     )
 
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve(run_id)
-    response = _replay(bound_wizard)
+    run = _make_run(linear_wizard, request)
+    run.retrieve(run_id)
+    response = _replay(run)
 
-    assert bound_wizard.run_id == run_id
+    assert run.run_id == run_id
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-def test_bound_wizard_retrieve_marks_session_modified(
+def test_run_retrieve_marks_session_modified(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -862,13 +860,13 @@ def test_bound_wizard_retrieve_marks_session_modified(
         },
     )
 
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
     assert request.session.modified is True
 
 
-def test_bound_wizard_get_run_data_returns_current_run_data(
+def test_run_get_run_data_returns_current_run_data(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -881,17 +879,17 @@ def test_bound_wizard_get_run_data_returns_current_run_data(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    run_data = bound_wizard.get_run_data()
+    run_data = run.get_run_data()
 
     assert run_data == {
         "state": [{"step": {"name": "Ada"}}],
     }
 
 
-def test_bound_wizard_replays_submissions_to_render_next_form_view(
+def test_run_replays_submissions_to_render_next_form_view(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -902,16 +900,16 @@ def test_bound_wizard_replays_submissions_to_render_next_form_view(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"name": "Ada"})
-    response = _replay(bound_wizard)
+    _submit(run, {"name": "Ada"})
+    response = _replay(run)
 
     assert response.context_data["form"].__class__ is SecondStepForm
 
 
-def test_bound_wizard_renders_first_step_in_matching_branch(
+def test_run_renders_first_step_in_matching_branch(
     request_with_session_factory,
 ):
     class AccountTypeForm(forms.Form):
@@ -955,17 +953,17 @@ def test_bound_wizard_renders_first_step_in_matching_branch(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"account_type": "business"})
-    response = _replay(bound_wizard)
+    _submit(run, {"account_type": "business"})
+    response = _replay(run)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is BusinessDetailsForm
 
 
-def test_bound_wizard_renders_first_step_in_default_branch(
+def test_run_renders_first_step_in_default_branch(
     request_with_session_factory,
 ):
     def is_business_account(context):
@@ -992,17 +990,17 @@ def test_bound_wizard_renders_first_step_in_default_branch(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"account_type": "personal"})
-    response = _replay(bound_wizard)
+    _submit(run, {"account_type": "personal"})
+    response = _replay(run)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is PersonalDetailsForm
 
 
-def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
+def test_run_submit_inside_branch_arm_records_nested_state(
     request_with_session_factory,
 ):
     def is_business_account(context):
@@ -1031,10 +1029,10 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"business_name": "Acme"})
+    _submit(run, {"business_name": "Acme"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
         "state": [
@@ -1044,7 +1042,7 @@ def test_bound_wizard_submit_inside_branch_arm_records_nested_state(
     }
 
 
-def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
+def test_run_submit_after_completed_branch_arm_appends_at_top_level(
     request_with_session_factory,
 ):
     def is_business_account(context):
@@ -1076,10 +1074,10 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"confirmed": "on"})
+    _submit(run, {"confirmed": "on"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
         "state": [
@@ -1090,7 +1088,7 @@ def test_bound_wizard_submit_after_completed_branch_arm_appends_at_top_level(
     }
 
 
-def test_bound_wizard_replay_returns_invalid_stored_step_response(
+def test_run_replay_returns_invalid_stored_step_response(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1103,10 +1101,10 @@ def test_bound_wizard_replay_returns_invalid_stored_step_response(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    response = _replay(bound_wizard)
+    response = _replay(run)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is FirstStepForm
@@ -1115,7 +1113,7 @@ def test_bound_wizard_replay_returns_invalid_stored_step_response(
     }
 
 
-def test_bound_wizard_persists_submissions_by_url_run_id(
+def test_run_persists_submissions_by_url_run_id(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1126,10 +1124,10 @@ def test_bound_wizard_persists_submissions_by_url_run_id(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
     assert request.session["gandalf_runs"] == {
         "existing-run": {
@@ -1138,7 +1136,7 @@ def test_bound_wizard_persists_submissions_by_url_run_id(
     }
 
 
-def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
+def test_run_submissions_are_isolated_between_url_run_ids(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1150,20 +1148,20 @@ def test_bound_wizard_submissions_are_isolated_between_url_run_ids(
             },
         },
     )
-    first_bound_wizard = _make_bound_wizard(linear_wizard, request)
-    first_bound_wizard.retrieve("first-run")
+    first_run = _make_run(linear_wizard, request)
+    first_run.retrieve("first-run")
 
-    _submit(first_bound_wizard, {"name": "Ada"})
-    second_bound_wizard = _make_bound_wizard(linear_wizard, request)
-    second_bound_wizard.retrieve("second-run")
-    first_response = _replay(first_bound_wizard)
-    second_response = _replay(second_bound_wizard)
+    _submit(first_run, {"name": "Ada"})
+    second_run = _make_run(linear_wizard, request)
+    second_run.retrieve("second-run")
+    first_response = _replay(first_run)
+    second_response = _replay(second_run)
 
     assert first_response.context_data["form"].__class__ is SecondStepForm
     assert second_response.context_data["form"].__class__ is FirstStepForm
 
 
-def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_step(
+def test_run_preserves_valid_previous_submissions_when_updating_next_step(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1176,10 +1174,10 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"email": "ada@example.com"})
+    _submit(run, {"email": "ada@example.com"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
         "state": [
@@ -1189,7 +1187,7 @@ def test_bound_wizard_preserves_valid_previous_submissions_when_updating_next_st
     }
 
 
-def test_bound_wizard_replaces_invalid_stored_submission(
+def test_run_replaces_invalid_stored_submission(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1202,10 +1200,10 @@ def test_bound_wizard_replaces_invalid_stored_submission(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
         "state": [
@@ -1214,7 +1212,7 @@ def test_bound_wizard_replaces_invalid_stored_submission(
     }
 
 
-def test_bound_wizard_does_not_append_submission_after_complete_path(
+def test_run_does_not_append_submission_after_complete_path(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1230,10 +1228,10 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"email": "grace@example.com"})
+    _submit(run, {"email": "grace@example.com"})
 
     assert request.session["gandalf_runs"]["existing-run"] == {
         "state": [
@@ -1243,7 +1241,7 @@ def test_bound_wizard_does_not_append_submission_after_complete_path(
     }
 
 
-def test_bound_wizard_replay_returns_none_after_complete_path(
+def test_run_replay_returns_none_after_complete_path(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1259,15 +1257,15 @@ def test_bound_wizard_replay_returns_none_after_complete_path(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    response = _replay(bound_wizard)
+    response = _replay(run)
 
     assert response is None
 
 
-def test_bound_wizard_render_step_returns_form_with_initial_from_stored_data(
+def test_run_render_step_returns_form_with_initial_from_stored_data(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1286,10 +1284,10 @@ def test_bound_wizard_render_step_returns_form_with_initial_from_stored_data(
         .step(SecondStepForm, name="second")
         .configure(template_name="testapp/linear_wizard.html")
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    response = bound_wizard.render_step(name="first")
+    response = run.render_step(name="first")
 
     assert response.status_code == 200
     form = response.context_data["form"]
@@ -1298,7 +1296,7 @@ def test_bound_wizard_render_step_returns_form_with_initial_from_stored_data(
     assert form.initial == {"name": "Ada"}
 
 
-def test_bound_wizard_render_step_finds_step_inside_branch(
+def test_run_render_step_finds_step_inside_branch(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -1332,17 +1330,17 @@ def test_bound_wizard_render_step_finds_step_inside_branch(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    response = bound_wizard.render_step(name="business_name")
+    response = run.render_step(name="business_name")
 
     form = response.context_data["form"]
     assert form.__class__ is BusinessDetailsForm
     assert form.initial == {"business_name": "Acme"}
 
 
-def test_bound_wizard_render_step_raises_step_not_found_for_unknown_context(
+def test_run_render_step_raises_step_not_found_for_unknown_context(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -1362,14 +1360,14 @@ def test_bound_wizard_render_step_raises_step_not_found_for_unknown_context(
         .step(FirstStepForm, name="first")
         .configure(template_name="testapp/linear_wizard.html")
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     with pytest.raises(StepNotFound):
-        bound_wizard.render_step(name="missing")
+        run.render_step(name="missing")
 
 
-def test_bound_wizard_edit_replaces_step_data_and_preserves_downstream(
+def test_run_edit_replaces_step_data_and_preserves_downstream(
     request_with_session_factory,
 ):
     wizard = (
@@ -1390,10 +1388,10 @@ def test_bound_wizard_edit_replaces_step_data_and_preserves_downstream(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"name": "Grace"}, name="first")
+    _edit(run, {"name": "Grace"}, name="first")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"name": "Grace"}},
@@ -1401,7 +1399,7 @@ def test_bound_wizard_edit_replaces_step_data_and_preserves_downstream(
     ]
 
 
-def test_bound_wizard_placing_an_invalid_submission_parks_on_it(
+def test_run_placing_an_invalid_submission_parks_on_it(
     request_with_session_factory,
 ):
     wizard = (
@@ -1422,10 +1420,10 @@ def test_bound_wizard_placing_an_invalid_submission_parks_on_it(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    walk = _edit(bound_wizard, {"name": ""}, name="first")
+    walk = _edit(run, {"name": ""}, name="first")
 
     # The rejected answer is kept and becomes the cursor, so a later walk
     # re-renders it with its errors. The answer after it is sealed, not lost.
@@ -1439,7 +1437,7 @@ def test_bound_wizard_placing_an_invalid_submission_parks_on_it(
     ]
 
 
-def test_bound_wizard_placing_a_valid_submission_keeps_walking(
+def test_run_placing_a_valid_submission_keeps_walking(
     request_with_session_factory,
 ):
     wizard = (
@@ -1460,10 +1458,10 @@ def test_bound_wizard_placing_a_valid_submission_keeps_walking(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    walk = _edit(bound_wizard, {"name": "Grace"}, name="first")
+    walk = _edit(run, {"name": "Grace"}, name="first")
 
     assert walk.reached is True
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
@@ -1472,7 +1470,7 @@ def test_bound_wizard_placing_a_valid_submission_keeps_walking(
     ]
 
 
-def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
+def test_run_edit_preserves_branch_state_when_arm_unchanged(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -1506,10 +1504,10 @@ def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"account_type": "business"}, name="account_type")
+    _edit(run, {"account_type": "business"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
@@ -1517,7 +1515,7 @@ def test_bound_wizard_edit_preserves_branch_state_when_arm_unchanged(
     ]
 
 
-def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
+def test_run_edit_keeps_dormant_arm_state_when_arm_changes(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -1551,20 +1549,20 @@ def test_bound_wizard_edit_keeps_dormant_arm_state_when_arm_changes(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+    _edit(run, {"account_type": "personal"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "personal"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
-    response = _replay(bound_wizard)
+    response = _replay(run)
     assert response.context_data["form"].__class__ is PersonalDetailsForm
 
 
-def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
+def test_run_edit_step_inside_branch_replaces_nested_entry(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -1598,10 +1596,10 @@ def test_bound_wizard_edit_step_inside_branch_replaces_nested_entry(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"business_name": "Globex"}, name="business_name")
+    _edit(run, {"business_name": "Globex"}, name="business_name")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
@@ -1631,7 +1629,7 @@ def _branching_review_wizard():
     )
 
 
-def test_bound_wizard_cursor_returns_first_unanswered_step(
+def test_run_cursor_returns_first_unanswered_step(
     request_with_session_factory,
 ):
     wizard = (
@@ -1649,15 +1647,15 @@ def test_bound_wizard_cursor_returns_first_unanswered_step(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    cursor = bound_wizard.cursor()
+    cursor = run.cursor()
 
     assert cursor.node.matches_context(name="second")
 
 
-def test_bound_wizard_cursor_node_is_none_when_run_is_complete(
+def test_run_cursor_node_is_none_when_run_is_complete(
     request_with_session_factory,
 ):
     wizard = (
@@ -1674,10 +1672,10 @@ def test_bound_wizard_cursor_node_is_none_when_run_is_complete(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    assert bound_wizard.cursor().node is None
+    assert run.cursor().node is None
 
 
 def test_walk_cannot_reach_a_preserved_tail_or_a_dormant_arm(
@@ -1699,12 +1697,12 @@ def test_walk_cannot_reach_a_preserved_tail_or_a_dormant_arm(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    preserved = bound_wizard.walk(claim={"name": "review"})
-    dormant = bound_wizard.walk(claim={"name": "business_name"})
-    at_cursor = bound_wizard.walk(claim={"name": "preferred_name"})
+    preserved = run.walk(claim={"name": "review"})
+    dormant = run.walk(claim={"name": "business_name"})
+    at_cursor = run.walk(claim={"name": "preferred_name"})
 
     assert preserved.reached is False
     assert dormant.reached is False
@@ -1712,7 +1710,7 @@ def test_walk_cannot_reach_a_preserved_tail_or_a_dormant_arm(
     assert at_cursor.target.declaration is at_cursor.cursor.node
 
 
-def test_bound_wizard_previous_step_walks_the_active_route(
+def test_run_previous_step_walks_the_active_route(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -1728,9 +1726,9 @@ def test_bound_wizard_previous_step_walks_the_active_route(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    cursor = run.cursor()
 
     # `review` is the unanswered cursor, so it is not on `path`; take every
     # declaration from the runtime route, which still mirrors the sealed step.
@@ -1744,31 +1742,31 @@ def test_bound_wizard_previous_step_walks_the_active_route(
     business = route["business_name"]
     review = route["review"]
 
-    assert bound_wizard.previous_step(cursor, account.declaration) is None
+    assert run.previous_step(cursor, account.declaration) is None
     assert (
-        bound_wizard.previous_step(cursor, business.declaration).declaration
+        run.previous_step(cursor, business.declaration).declaration
         is account.declaration
     )
     assert (
-        bound_wizard.previous_step(cursor, review.declaration).declaration
+        run.previous_step(cursor, review.declaration).declaration
         is business.declaration
     )
 
 
-def test_bound_wizard_previous_step_is_none_for_unknown_declaration(
+def test_run_previous_step_is_none_for_unknown_declaration(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    cursor = run.cursor()
 
     foreign_declaration = tree.Step(FirstStepForm)
 
-    assert bound_wizard.previous_step(cursor, foreign_declaration) is None
+    assert run.previous_step(cursor, foreign_declaration) is None
 
 
 def _cross_branch_wizard():
@@ -1806,7 +1804,7 @@ def _cross_branch_wizard():
     )
 
 
-def test_bound_wizard_edit_succeeds_with_cross_branch_predicate_mid_divert(
+def test_run_edit_succeeds_with_cross_branch_predicate_mid_divert(
     request_with_session_factory,
 ):
     wizard = _cross_branch_wizard()
@@ -1824,10 +1822,10 @@ def test_bound_wizard_edit_succeeds_with_cross_branch_predicate_mid_divert(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    walk = _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+    walk = _edit(run, {"account_type": "personal"}, name="account_type")
 
     assert walk.reached is True
     state = request.session["gandalf_runs"]["existing-run"]["state"]
@@ -1835,7 +1833,7 @@ def test_bound_wizard_edit_succeeds_with_cross_branch_predicate_mid_divert(
     assert state[1] == {"branch": {"0": [{"step": {"business_name": "Acme"}}]}}
 
 
-def test_bound_wizard_path_is_safe_with_cross_branch_predicate_mid_divert(
+def test_run_path_is_safe_with_cross_branch_predicate_mid_divert(
     request_with_session_factory,
 ):
     wizard = _cross_branch_wizard()
@@ -1853,16 +1851,16 @@ def test_bound_wizard_path_is_safe_with_cross_branch_predicate_mid_divert(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    names = [step.declaration.context["name"] for step in _iter_path(bound_wizard)]
+    names = [step.declaration.context["name"] for step in _iter_path(run)]
 
     assert names == ["account_type", "review"]
 
 
-def _iter_path(bound_wizard):
-    yield from bound_wizard.path
+def _iter_path(run):
+    yield from run.path
 
 
 class _StubUrls:
@@ -1873,7 +1871,7 @@ class _StubUrls:
         return f"/wizard/{run_id}/{step_segment}/"
 
 
-def test_bound_wizard_back_and_run_urls_derive_from_render_context(
+def test_run_back_and_run_urls_derive_from_render_context(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -1889,36 +1887,36 @@ def test_bound_wizard_back_and_run_urls_derive_from_render_context(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    bound_wizard.urls = _StubUrls()
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    run.urls = _StubUrls()
+    cursor = run.cursor()
 
-    bound_wizard.mark_rendering(cursor, cursor.node)
+    run.mark_rendering(cursor, cursor.node)
 
-    assert bound_wizard.back_url == "/wizard/existing-run/business_name/"
-    assert bound_wizard.run_url == "/wizard/existing-run/"
+    assert run.back_url == "/wizard/existing-run/business_name/"
+    assert run.run_url == "/wizard/existing-run/"
 
 
-def test_bound_wizard_back_url_is_none_at_the_first_step(
+def test_run_back_url_is_none_at_the_first_step(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    bound_wizard.urls = _StubUrls()
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    run.urls = _StubUrls()
+    cursor = run.cursor()
 
-    bound_wizard.mark_rendering(cursor, cursor.node)
+    run.mark_rendering(cursor, cursor.node)
 
-    assert bound_wizard.back_url is None
-    assert bound_wizard.run_url == "/wizard/existing-run/"
+    assert run.back_url is None
+    assert run.run_url == "/wizard/existing-run/"
 
 
-def test_bound_wizard_rendering_names_the_step_being_rendered(
+def test_run_rendering_names_the_step_being_rendered(
     request_with_session_factory,
 ):
     """What a step view needs to talk about the run it sits in — a summary
@@ -1927,20 +1925,20 @@ def test_bound_wizard_rendering_names_the_step_being_rendered(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    cursor = run.cursor()
 
-    assert bound_wizard.rendering is None
+    assert run.rendering is None
 
-    bound_wizard.mark_rendering(cursor, cursor.node)
-    assert bound_wizard.rendering is cursor.node
+    run.mark_rendering(cursor, cursor.node)
+    assert run.rendering is cursor.node
 
-    bound_wizard.clear_rendering()
-    assert bound_wizard.rendering is None
+    run.clear_rendering()
+    assert run.rendering is None
 
 
-def test_bound_wizard_runtime_tree_reuses_the_render_context_walk(
+def test_run_runtime_tree_reuses_the_render_context_walk(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -1953,32 +1951,32 @@ def test_bound_wizard_runtime_tree_reuses_the_render_context_walk(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    cursor = bound_wizard.cursor()
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    cursor = run.cursor()
 
-    bound_wizard.mark_rendering(cursor, cursor.node)
+    run.mark_rendering(cursor, cursor.node)
 
-    assert bound_wizard.runtime_tree is cursor.state
+    assert run.runtime_tree is cursor.state
 
 
-def test_bound_wizard_nav_urls_are_none_without_reverser_or_render_context(
+def test_run_nav_urls_are_none_without_reverser_or_render_context(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    assert bound_wizard.back_url is None
-    assert bound_wizard.run_url is None
+    assert run.back_url is None
+    assert run.run_url is None
 
-    bound_wizard.urls = _StubUrls()
+    run.urls = _StubUrls()
 
-    assert bound_wizard.back_url is None
-    assert bound_wizard.run_url == "/wizard/existing-run/"
+    assert run.back_url is None
+    assert run.run_url == "/wizard/existing-run/"
 
 
 @pytest.fixture
@@ -1996,9 +1994,9 @@ def business_run(request_with_session_factory):
             },
         },
     )
-    bound_wizard = _make_bound_wizard(_branching_review_wizard(), request)
-    bound_wizard.retrieve("existing-run")
-    return bound_wizard
+    run = _make_run(_branching_review_wizard(), request)
+    run.retrieve("existing-run")
+    return run
 
 
 def test_runtime_step_carries_its_name_and_its_own_url(business_run):
@@ -2013,7 +2011,7 @@ def test_runtime_step_carries_its_name_and_its_own_url(business_run):
     ]
 
 
-def test_bound_wizard_builds_a_step_url_from_a_declaration(business_run):
+def test_run_builds_a_step_url_from_a_declaration(business_run):
     business_run.urls = _StubUrls()
     step = business_run.path.find_step(name="business_name")
 
@@ -2034,7 +2032,7 @@ def test_runtime_step_builds_its_form_once(business_run):
     assert step.form.cleaned_data == {"account_type": "business"}
 
 
-def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
+def test_run_edit_changing_arm_preserves_answers_after_branch(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -2051,21 +2049,21 @@ def test_bound_wizard_edit_changing_arm_preserves_answers_after_branch(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+    _edit(run, {"account_type": "personal"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "personal"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
         {"step": {"confirmed": "on"}},
     ]
-    response = _replay(bound_wizard)
+    response = _replay(run)
     assert response.context_data["form"].__class__ is PersonalDetailsForm
 
 
-def test_bound_wizard_submit_fills_hole_and_completes_preserved_run(
+def test_run_submit_fills_hole_and_completes_preserved_run(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -2082,10 +2080,10 @@ def test_bound_wizard_submit_fills_hole_and_completes_preserved_run(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _submit(bound_wizard, {"preferred_name": "Ada"})
+    _submit(run, {"preferred_name": "Ada"})
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "personal"}},
@@ -2097,10 +2095,10 @@ def test_bound_wizard_submit_fills_hole_and_completes_preserved_run(
         },
         {"step": {"confirmed": "on"}},
     ]
-    assert _replay(bound_wizard) is None
+    assert _replay(run) is None
 
 
-def test_bound_wizard_edit_flip_flop_restores_dormant_arm_answers(
+def test_run_edit_flip_flop_restores_dormant_arm_answers(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -2116,21 +2114,21 @@ def test_bound_wizard_edit_flip_flop_restores_dormant_arm_answers(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
-    _edit(bound_wizard, {"account_type": "business"}, name="account_type")
+    _edit(run, {"account_type": "personal"}, name="account_type")
+    _edit(run, {"account_type": "business"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
         {"branch": {"0": [{"step": {"business_name": "Acme"}}]}},
     ]
-    response = _replay(bound_wizard)
+    response = _replay(run)
     assert response.context_data["form"].__class__ is ReviewForm
 
 
-def test_bound_wizard_edit_restoring_stale_dormant_answer_renders_errors(
+def test_run_edit_restoring_stale_dormant_answer_renders_errors(
     request_with_session_factory,
 ):
     wizard = _branching_review_wizard()
@@ -2151,10 +2149,10 @@ def test_bound_wizard_edit_restoring_stale_dormant_answer_renders_errors(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"account_type": "business"}, name="account_type")
+    _edit(run, {"account_type": "business"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "business"}},
@@ -2165,14 +2163,14 @@ def test_bound_wizard_edit_restoring_stale_dormant_answer_renders_errors(
             }
         },
     ]
-    response = _replay(bound_wizard)
+    response = _replay(run)
     assert response.context_data["form"].__class__ is BusinessDetailsForm
     assert response.context_data["form"].errors == {
         "business_name": ["This field is required."],
     }
 
 
-def test_bound_wizard_edit_keeps_invalid_downstream_answer_for_correction(
+def test_run_edit_keeps_invalid_downstream_answer_for_correction(
     request_with_session_factory,
 ):
     wizard = (
@@ -2193,23 +2191,23 @@ def test_bound_wizard_edit_keeps_invalid_downstream_answer_for_correction(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"name": "Grace"}, name="first")
+    _edit(run, {"name": "Grace"}, name="first")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"name": "Grace"}},
         {"step": {"email": "not-an-email"}},
     ]
-    response = _replay(bound_wizard)
+    response = _replay(run)
     assert response.context_data["form"].__class__ is SecondStepForm
     assert response.context_data["form"].errors == {
         "email": ["Enter a valid email address."],
     }
 
 
-def test_bound_wizard_edit_raises_step_not_found_for_unknown_context(
+def test_run_edit_raises_step_not_found_for_unknown_context(
     request_with_session_factory,
 ):
     from gandalf.runtime import StepNotFound
@@ -2228,14 +2226,14 @@ def test_bound_wizard_edit_raises_step_not_found_for_unknown_context(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     with pytest.raises(StepNotFound):
-        _edit(bound_wizard, {"name": "Grace"}, name="missing")
+        _edit(run, {"name": "Grace"}, name="missing")
 
 
-def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
+def test_run_rejected_submission_inside_a_branch_is_kept(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -2269,10 +2267,10 @@ def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    walk = _edit(bound_wizard, {"business_name": ""}, name="business_name")
+    walk = _edit(run, {"business_name": ""}, name="business_name")
 
     assert walk.cursor.response.context_data["form"].errors == {
         "business_name": ["This field is required."],
@@ -2283,7 +2281,7 @@ def test_bound_wizard_rejected_submission_inside_a_branch_is_kept(
     ]
 
 
-def test_bound_wizard_find_step_raises_when_context_matches_multiple_steps(
+def test_run_find_step_raises_when_context_matches_multiple_steps(
     request_with_session_factory,
 ):
     wizard = (
@@ -2304,16 +2302,16 @@ def test_bound_wizard_find_step_raises_when_context_matches_multiple_steps(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     # Placement no longer needs to detect this — a wizard with duplicate names
     # is rejected when it resolves — but lookups still have to refuse to guess.
     with pytest.raises(tree.MultipleStepsReturned):
-        bound_wizard.path.find_step(name="duplicate")
+        run.path.find_step(name="duplicate")
 
 
-def test_bound_wizard_edit_does_not_mutate_original_stored_state(
+def test_run_edit_does_not_mutate_original_stored_state(
     request_with_session_factory,
 ):
     import gandalf.wizard
@@ -2347,10 +2345,10 @@ def test_bound_wizard_edit_does_not_mutate_original_stored_state(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    _edit(bound_wizard, {"business_name": "Globex"}, name="business_name")
+    _edit(run, {"business_name": "Globex"}, name="business_name")
 
     assert stored_state == [
         {"step": {"account_type": "business"}},
@@ -2358,7 +2356,7 @@ def test_bound_wizard_edit_does_not_mutate_original_stored_state(
     ]
 
 
-def test_bound_wizard_replays_submissions_through_form_view_form_valid(
+def test_run_replays_submissions_through_form_view_form_valid(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -2388,10 +2386,10 @@ def test_bound_wizard_replays_submissions_through_form_view_form_valid(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    response = _replay(bound_wizard)
+    response = _replay(run)
 
     assert response.status_code == 200
     assert response.context_data["form"].__class__ is SecondStepForm
@@ -2411,10 +2409,10 @@ def test_runtime_step_form_exposes_cleaned_data_for_completed_step(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    first_step = bound_wizard.runtime_tree
+    first_step = run.runtime_tree
 
     assert isinstance(first_step.form, FirstStepForm)
     assert first_step.form.is_valid()
@@ -2434,10 +2432,10 @@ def test_runtime_step_data_still_exposes_raw_submission(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    first_step = bound_wizard.runtime_tree
+    first_step = run.runtime_tree
 
     assert first_step.data == {"name": "Ada"}
 
@@ -2459,10 +2457,10 @@ def test_runtime_step_form_reads_a_stored_multi_valued_answer_as_a_list(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    toppings_step = bound_wizard.runtime_tree
+    toppings_step = run.runtime_tree
 
     assert toppings_step.form.cleaned_data == {"toppings": ["cheese", "basil"]}
 
@@ -2487,30 +2485,30 @@ def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    first_step = bound_wizard.runtime_tree
+    first_step = run.runtime_tree
 
     assert first_step.data == {"count": "42"}
     assert first_step.form.cleaned_data == {"count": 42}
 
 
-def test_bound_wizard_path_is_empty_when_no_steps_complete(
+def test_run_path_is_empty_when_no_steps_complete(
     request_with_session_factory,
     linear_wizard,
 ):
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    assert not bound_wizard.path
-    assert list(bound_wizard.path) == []
+    assert not run.path
+    assert list(run.path) == []
 
 
-def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
+def test_run_path_for_linear_wizard_includes_only_completed_steps(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -2525,10 +2523,10 @@ def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    steps = list(bound_wizard.path)
+    steps = list(run.path)
 
     assert len(steps) == 1
     assert isinstance(steps[0], RuntimeStep)
@@ -2536,7 +2534,7 @@ def test_bound_wizard_path_for_linear_wizard_includes_only_completed_steps(
     assert steps[0].data == {"name": "Ada"}
 
 
-def test_bound_wizard_path_inlines_completed_branch_arm_steps(
+def test_run_path_inlines_completed_branch_arm_steps(
     request_with_session_factory,
 ):
     from gandalf.runtime import RuntimeStep
@@ -2570,10 +2568,10 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    steps = list(bound_wizard.path)
+    steps = list(run.path)
 
     assert all(isinstance(step, RuntimeStep) for step in steps)
     assert [step.declaration.declaration for step in steps] == [
@@ -2582,7 +2580,7 @@ def test_bound_wizard_path_inlines_completed_branch_arm_steps(
     ]
 
 
-def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
+def test_run_path_walkable_by_tree_reducer_to_merge_cleaned_data(
     request_with_session_factory,
     linear_wizard,
 ):
@@ -2598,8 +2596,8 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
     class MergeCleanedData(tree.Reducer):
         def initial(self):
@@ -2611,7 +2609,7 @@ def test_bound_wizard_path_walkable_by_tree_reducer_to_merge_cleaned_data(
         def visit_step(self, runtime_step):
             return runtime_step.form.cleaned_data
 
-    payload = MergeCleanedData().reduce(bound_wizard.path)
+    payload = MergeCleanedData().reduce(run.path)
 
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
@@ -2640,10 +2638,10 @@ def test_runtime_step_form_reconstructs_cleaned_data_for_form_view_step(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    runtime_step = bound_wizard.runtime_tree
+    runtime_step = run.runtime_tree
 
     assert runtime_step.form.cleaned_data == {"name": "Ada"}
 
@@ -2678,10 +2676,10 @@ def test_runtime_step_form_honors_form_view_get_form_class_override(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    form = bound_wizard.runtime_tree.form
+    form = run.runtime_tree.form
 
     assert isinstance(form, TwoNameForm)
     assert form.cleaned_data == {"full_name": "Ada Lovelace"}
@@ -2723,10 +2721,10 @@ def test_runtime_step_form_honors_form_view_get_form_kwargs_override(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    form = bound_wizard.runtime_tree.form
+    form = run.runtime_tree.form
 
     assert form.cleaned_data == {"greeting": "Ahoy"}
     assert form.salutation == "Captain"
@@ -2760,15 +2758,15 @@ def test_runtime_step_form_merges_cleaned_data_across_form_and_form_view_steps(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    payload = gandalf.wizard.MergeCleanedData().reduce(bound_wizard.path)
+    payload = gandalf.wizard.MergeCleanedData().reduce(run.path)
 
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
 
-def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
+def test_run_path_drops_branch_with_unmatched_no_default_arm(
     request_with_session_factory,
 ):
     from gandalf.runtime import RuntimeStep
@@ -2798,10 +2796,10 @@ def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    steps = list(bound_wizard.path)
+    steps = list(run.path)
 
     assert all(isinstance(step, RuntimeStep) for step in steps)
     assert [step.declaration.declaration for step in steps] == [
@@ -2810,7 +2808,7 @@ def test_bound_wizard_path_drops_branch_with_unmatched_no_default_arm(
     ]
 
 
-def test_bound_wizard_path_walks_multi_step_branch_arm(
+def test_run_path_walks_multi_step_branch_arm(
     request_with_session_factory,
 ):
     from gandalf.runtime import RuntimeStep
@@ -2850,10 +2848,10 @@ def test_bound_wizard_path_walks_multi_step_branch_arm(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    steps = list(bound_wizard.path)
+    steps = list(run.path)
 
     assert all(isinstance(step, RuntimeStep) for step in steps)
     assert [step.declaration.declaration for step in steps] == [
@@ -2882,10 +2880,10 @@ def test_merge_cleaned_data_folds_path_into_dict(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(linear_wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
 
-    payload = MergeCleanedData().reduce(bound_wizard.path)
+    payload = MergeCleanedData().reduce(run.path)
 
     assert payload == {"name": "Ada", "email": "ada@example.com"}
 
@@ -2925,10 +2923,10 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    payload = MergeCleanedData().reduce(bound_wizard.runtime_tree)
+    payload = MergeCleanedData().reduce(run.runtime_tree)
 
     assert payload == {
         "account_type": "business",
@@ -2968,16 +2966,16 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    response = _replay(bound_wizard)
+    response = _replay(run)
 
     assert response.status_code == 200
     assert captured["path_head_name"] == "Ada"
 
 
-def test_bound_wizard_submit_with_files_persists_file_refs_in_state(
+def test_run_submit_with_files_persists_file_refs_in_state(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -2993,12 +2991,12 @@ def test_bound_wizard_submit_with_files_persists_file_refs_in_state(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    file_key = run.file_storage.save(run.run_id, photo)
 
-    _submit(bound_wizard, {"photo": "avatar.jpg"}, files={"photo": file_key})
+    _submit(run, {"photo": "avatar.jpg"}, files={"photo": file_key})
 
     state = request.session["gandalf_runs"]["existing-run"]["state"]
     assert state == [
@@ -3006,7 +3004,7 @@ def test_bound_wizard_submit_with_files_persists_file_refs_in_state(
     ]
 
 
-def test_bound_wizard_replay_reconstitutes_uploaded_file_for_form_validation(
+def test_run_replay_reconstitutes_uploaded_file_for_form_validation(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3022,20 +3020,20 @@ def test_bound_wizard_replay_reconstitutes_uploaded_file_for_form_validation(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(bound_wizard, {"photo": "avatar.jpg"}, files={"photo": file_key})
+    file_key = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"photo": "avatar.jpg"}, files={"photo": file_key})
 
-    response = _replay(bound_wizard)
+    response = _replay(run)
 
     assert response.status_code == 200
     response.render()
     assert b"name" in response.content
 
 
-def test_bound_wizard_render_step_passes_stored_file_as_initial(
+def test_run_render_step_passes_stored_file_as_initial(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3064,18 +3062,18 @@ def test_bound_wizard_render_step_passes_stored_file_as_initial(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(bound_wizard, {"photo": "avatar.jpg"}, files={"photo": file_key})
+    file_key = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"photo": "avatar.jpg"}, files={"photo": file_key})
 
-    bound_wizard.render_step(name="photo")
+    run.render_step(name="photo")
 
     assert captured["initial"]["photo"].read() == b"binary"
 
 
-def test_bound_wizard_edit_without_new_file_preserves_stored_ref(
+def test_run_edit_without_new_file_preserves_stored_ref(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3091,20 +3089,20 @@ def test_bound_wizard_edit_without_new_file_preserves_stored_ref(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(bound_wizard, {"photo": "avatar.jpg"}, files={"photo": file_key})
+    file_key = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"photo": "avatar.jpg"}, files={"photo": file_key})
 
-    _edit(bound_wizard, {"photo": "avatar.jpg"}, name="photo")
+    _edit(run, {"photo": "avatar.jpg"}, name="photo")
 
     state = request.session["gandalf_runs"]["existing-run"]["state"]
     assert state[0]["files"] == {"photo": file_key}
-    assert bound_wizard.file_storage.open(file_key).read() == b"binary"
+    assert run.file_storage.open(file_key).read() == b"binary"
 
 
-def test_bound_wizard_edit_adds_file_to_step_that_had_no_files(
+def test_run_edit_adds_file_to_step_that_had_no_files(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3120,14 +3118,14 @@ def test_bound_wizard_edit_adds_file_to_step_that_had_no_files(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    _submit(bound_wizard, {"label": "first"})
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    _submit(run, {"label": "first"})
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    new_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    new_key = run.file_storage.save(run.run_id, photo)
 
     _edit(
-        bound_wizard,
+        run,
         {"label": "first"},
         files={"photo": new_key},
         name="photo",
@@ -3137,7 +3135,7 @@ def test_bound_wizard_edit_adds_file_to_step_that_had_no_files(
     assert state[0]["files"] == {"photo": new_key}
 
 
-def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
+def test_run_edit_with_new_file_replaces_and_deletes_old(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3153,16 +3151,16 @@ def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     old_photo = SimpleUploadedFile("v1.jpg", b"first")
-    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
-    _submit(bound_wizard, {"photo": "v1.jpg"}, files={"photo": old_ref})
+    old_ref = run.file_storage.save(run.run_id, old_photo)
+    _submit(run, {"photo": "v1.jpg"}, files={"photo": old_ref})
     new_photo = SimpleUploadedFile("v2.jpg", b"second")
-    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+    new_ref = run.file_storage.save(run.run_id, new_photo)
 
     _edit(
-        bound_wizard,
+        run,
         {"photo": "v2.jpg"},
         files={"photo": new_ref},
         name="photo",
@@ -3170,11 +3168,11 @@ def test_bound_wizard_edit_with_new_file_replaces_and_deletes_old(
 
     state = request.session["gandalf_runs"]["existing-run"]["state"]
     assert state[0]["files"] == {"photo": new_ref}
-    assert not bound_wizard.file_storage.backend.exists(old_ref["tmp_name"])
-    assert bound_wizard.file_storage.open(new_ref).read() == b"second"
+    assert not run.file_storage.backend.exists(old_ref["tmp_name"])
+    assert run.file_storage.open(new_ref).read() == b"second"
 
 
-def test_bound_wizard_rejected_submission_keeps_its_own_upload(
+def test_run_rejected_submission_keeps_its_own_upload(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3190,20 +3188,20 @@ def test_bound_wizard_rejected_submission_keeps_its_own_upload(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     old_photo = SimpleUploadedFile("v1.jpg", b"first")
-    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
+    old_ref = run.file_storage.save(run.run_id, old_photo)
     _submit(
-        bound_wizard,
+        run,
         {"label": "", "photo": "v2.jpg"},
         files={"photo": old_ref},
     )
     new_photo = SimpleUploadedFile("v2.jpg", b"second")
-    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+    new_ref = run.file_storage.save(run.run_id, new_photo)
 
     walk = _edit(
-        bound_wizard,
+        run,
         {"label": "", "photo": "v2.jpg"},
         files={"photo": new_ref},
         name="photo",
@@ -3220,11 +3218,11 @@ def test_bound_wizard_rejected_submission_keeps_its_own_upload(
             "files": {"photo": new_ref},
         },
     ]
-    assert bound_wizard.file_storage.open(new_ref).read() == b"second"
-    assert not bound_wizard.file_storage.backend.exists(old_ref["tmp_name"])
+    assert run.file_storage.open(new_ref).read() == b"second"
+    assert not run.file_storage.backend.exists(old_ref["tmp_name"])
 
 
-def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
+def test_run_edit_keeps_old_file_when_rewalk_raises(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3249,11 +3247,11 @@ def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     old_photo = SimpleUploadedFile("v1.jpg", b"first")
-    old_ref = bound_wizard.file_storage.save(bound_wizard.run_id, old_photo)
-    bound_wizard.storage.set_state(
+    old_ref = run.file_storage.save(run.run_id, old_photo)
+    run.storage.set_state(
         "existing-run",
         [
             {"step": {"photo": "v1.jpg"}, "files": {"photo": old_ref}},
@@ -3261,11 +3259,11 @@ def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
         ],
     )
     new_photo = SimpleUploadedFile("v2.jpg", b"second")
-    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, new_photo)
+    new_ref = run.file_storage.save(run.run_id, new_photo)
 
     with pytest.raises(RuntimeError):
         _edit(
-            bound_wizard,
+            run,
             {"photo": "v2.jpg"},
             files={"photo": new_ref},
             name="photo",
@@ -3275,10 +3273,10 @@ def test_bound_wizard_edit_keeps_old_file_when_rewalk_raises(
         {"step": {"photo": "v1.jpg"}, "files": {"photo": old_ref}},
         {"step": {"email": "ada@example.com"}},
     ]
-    assert bound_wizard.file_storage.open(old_ref).read() == b"first"
+    assert run.file_storage.open(old_ref).read() == b"first"
 
 
-def test_bound_wizard_edit_step_not_found_deletes_new_files(
+def test_run_edit_step_not_found_deletes_new_files(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3295,23 +3293,23 @@ def test_bound_wizard_edit_step_not_found_deletes_new_files(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("orphan.jpg", b"orphan-bytes")
-    new_ref = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
+    new_ref = run.file_storage.save(run.run_id, photo)
 
     with pytest.raises(StepNotFound):
         _edit(
-            bound_wizard,
+            run,
             {"label": "ignored"},
             files={"photo": new_ref},
             name="missing",
         )
 
-    assert not bound_wizard.file_storage.backend.exists(new_ref["tmp_name"])
+    assert not run.file_storage.backend.exists(new_ref["tmp_name"])
 
 
-def test_bound_wizard_submit_correction_keeps_stored_file_refs(
+def test_run_submit_correction_keeps_stored_file_refs(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3326,15 +3324,13 @@ def test_bound_wizard_submit_correction_keeps_stored_file_refs(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("kept.jpg", b"kept-bytes")
-    photo_ref = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(
-        bound_wizard, {"label": "", "photo": "kept.jpg"}, files={"photo": photo_ref}
-    )
+    photo_ref = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"label": "", "photo": "kept.jpg"}, files={"photo": photo_ref})
 
-    _submit(bound_wizard, {"label": "Fixed", "photo": "kept.jpg"})
+    _submit(run, {"label": "Fixed", "photo": "kept.jpg"})
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {
@@ -3344,7 +3340,7 @@ def test_bound_wizard_submit_correction_keeps_stored_file_refs(
     ]
 
 
-def test_bound_wizard_edit_error_render_receives_url_kwargs(
+def test_run_edit_error_render_receives_url_kwargs(
     request_with_session_factory,
 ):
     from django.views.generic.edit import FormView
@@ -3375,11 +3371,11 @@ def test_bound_wizard_edit_error_render_receives_url_kwargs(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
     walk = _edit(
-        bound_wizard,
+        run,
         {"name": ""},
         url_kwargs={"org": "acme"},
         name="first",
@@ -3391,7 +3387,7 @@ def test_bound_wizard_edit_error_render_receives_url_kwargs(
     }
 
 
-def test_bound_wizard_render_step_receives_url_kwargs(
+def test_run_render_step_receives_url_kwargs(
     request_with_session_factory,
 ):
     from django.views.generic.edit import FormView
@@ -3422,10 +3418,10 @@ def test_bound_wizard_render_step_receives_url_kwargs(
             },
         },
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    response = bound_wizard.render_step(
+    response = run.render_step(
         url_kwargs={"org": "acme"},
         name="first",
     )
@@ -3434,7 +3430,7 @@ def test_bound_wizard_render_step_receives_url_kwargs(
     assert response.context_data["form"].initial == {"name": "Ada"}
 
 
-def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
+def test_run_edit_changing_arm_keeps_dormant_file_refs(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3463,14 +3459,14 @@ def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
-    _submit(bound_wizard, {"account_type": "business"})
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
+    _submit(run, {"account_type": "business"})
     photo = SimpleUploadedFile("logo.jpg", b"logo-bytes")
-    photo_ref = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(bound_wizard, {"photo": "logo.jpg"}, files={"photo": photo_ref})
+    photo_ref = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"photo": "logo.jpg"}, files={"photo": photo_ref})
 
-    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+    _edit(run, {"account_type": "personal"}, name="account_type")
 
     assert request.session["gandalf_runs"]["existing-run"]["state"] == [
         {"step": {"account_type": "personal"}},
@@ -3485,10 +3481,10 @@ def test_bound_wizard_edit_changing_arm_keeps_dormant_file_refs(
             }
         },
     ]
-    assert bound_wizard.file_storage.open(photo_ref).read() == b"logo-bytes"
+    assert run.file_storage.open(photo_ref).read() == b"logo-bytes"
 
 
-def test_bound_wizard_cleanup_files_wipes_run_prefix(
+def test_run_cleanup_files_wipes_run_prefix(
     request_with_session_factory,
     temp_file_storage_class,
 ):
@@ -3503,15 +3499,15 @@ def test_bound_wizard_cleanup_files_wipes_run_prefix(
             file_storage_class=temp_file_storage_class,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
     photo = SimpleUploadedFile("avatar.jpg", b"binary")
-    file_key = bound_wizard.file_storage.save(bound_wizard.run_id, photo)
-    _submit(bound_wizard, {"photo": "avatar.jpg"}, files={"photo": file_key})
+    file_key = run.file_storage.save(run.run_id, photo)
+    _submit(run, {"photo": "avatar.jpg"}, files={"photo": file_key})
 
-    bound_wizard.cleanup_files()
+    run.cleanup_files()
 
-    _, files = bound_wizard.file_storage.backend.listdir("gandalf/existing-run")
+    _, files = run.file_storage.backend.listdir("gandalf/existing-run")
     assert files == []
 
 
@@ -3546,11 +3542,11 @@ def test_configured_wizard_uses_configured_file_storage_class(
             file_storage_class=FakeFileStorage,
         )
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.retrieve("existing-run")
+    run = _make_run(wizard, request)
+    run.retrieve("existing-run")
 
-    assert isinstance(bound_wizard.file_storage, FakeFileStorage)
-    bound_wizard.cleanup_files()
+    assert isinstance(run.file_storage, FakeFileStorage)
+    run.cleanup_files()
     assert ("delete_run", "existing-run") in calls
 
 
@@ -3615,12 +3611,12 @@ def test_switch_arms_are_guards_naming_their_case():
 
 def test_switch_takes_the_arm_its_selector_names(request_with_session_factory):
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
-    bound_wizard.initialise()
+    run = _make_run(_switch_wizard(), request)
+    run.initialise()
 
-    _submit(bound_wizard, {"account_type": "business"})
+    _submit(run, {"account_type": "business"})
 
-    assert bound_wizard.cursor().node.context == {"name": "business"}
+    assert run.cursor().node.context == {"name": "business"}
 
 
 def test_switch_falls_back_to_default_for_a_value_no_case_names(
@@ -3631,12 +3627,12 @@ def test_switch_falls_back_to_default_for_a_value_no_case_names(
         selector=lambda request: "sole-trader",
         default=Wizard().step(ReviewForm, name="fallback"),
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.initialise()
+    run = _make_run(wizard, request)
+    run.initialise()
 
-    _submit(bound_wizard, {"account_type": "business"})
+    _submit(run, {"account_type": "business"})
 
-    assert bound_wizard.cursor().node.context == {"name": "fallback"}
+    assert run.cursor().node.context == {"name": "fallback"}
 
 
 def test_switch_without_a_default_skips_to_what_follows(
@@ -3644,12 +3640,12 @@ def test_switch_without_a_default_skips_to_what_follows(
 ):
     request = request_with_session_factory()
     wizard = _switch_wizard(selector=lambda request: "neither")
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.initialise()
+    run = _make_run(wizard, request)
+    run.initialise()
 
-    _submit(bound_wizard, {"account_type": "business"})
+    _submit(run, {"account_type": "business"})
 
-    assert bound_wizard.cursor().node.context == {"name": "review"}
+    assert run.cursor().node.context == {"name": "review"}
 
 
 def test_switch_asks_its_selector_once_per_walk(request_with_session_factory):
@@ -3663,12 +3659,12 @@ def test_switch_asks_its_selector_once_per_walk(request_with_session_factory):
         return "personal"
 
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(_switch_wizard(counting_selector), request)
-    bound_wizard.initialise()
-    _submit(bound_wizard, {"account_type": "business"})
+    run = _make_run(_switch_wizard(counting_selector), request)
+    run.initialise()
+    _submit(run, {"account_type": "business"})
 
     calls.clear()
-    bound_wizard.cursor()
+    run.cursor()
 
     assert len(calls) == 1
 
@@ -3679,13 +3675,13 @@ def test_switch_stores_its_answers_under_the_case_name(
     """Storage keyed by the case, not by declaration order, so reordering
     the cases cannot strand the answers behind them."""
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
-    bound_wizard.initialise()
+    run = _make_run(_switch_wizard(), request)
+    run.initialise()
 
-    _submit(bound_wizard, {"account_type": "business"})
-    _submit(bound_wizard, {"business_name": "Ada Ltd"})
+    _submit(run, {"account_type": "business"})
+    _submit(run, {"business_name": "Ada Ltd"})
 
-    state = bound_wizard.get_state()
+    state = run.get_state()
     assert state[1] == {
         "branch": {"business": [{"step": {"business_name": "Ada Ltd"}}]}
     }
@@ -3694,16 +3690,16 @@ def test_switch_stores_its_answers_under_the_case_name(
 def test_switch_keeps_a_de_selected_cases_answers(request_with_session_factory):
     """Dormant memory works per case name exactly as it does per arm index."""
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(_switch_wizard(), request)
-    bound_wizard.initialise()
-    _submit(bound_wizard, {"account_type": "business"})
-    _submit(bound_wizard, {"business_name": "Ada Ltd"})
+    run = _make_run(_switch_wizard(), request)
+    run.initialise()
+    _submit(run, {"account_type": "business"})
+    _submit(run, {"business_name": "Ada Ltd"})
 
-    _edit(bound_wizard, {"account_type": "personal"}, name="account_type")
+    _edit(run, {"account_type": "personal"}, name="account_type")
 
-    stored = bound_wizard.get_state()[1]["branch"]
+    stored = run.get_state()[1]["branch"]
     assert stored["business"] == [{"step": {"business_name": "Ada Ltd"}}]
-    assert bound_wizard.cursor().node.context == {"name": "personal"}
+    assert run.cursor().node.context == {"name": "personal"}
 
 
 def test_switch_refuses_a_case_called_default():
@@ -3745,12 +3741,12 @@ def _on_field_wizard():
 
 def test_on_field_routes_on_a_previous_answer(request_with_session_factory):
     request = request_with_session_factory()
-    bound_wizard = _make_bound_wizard(_on_field_wizard(), request)
-    bound_wizard.initialise()
+    run = _make_run(_on_field_wizard(), request)
+    run.initialise()
 
-    _submit(bound_wizard, {"account_type": "personal"})
+    _submit(run, {"account_type": "personal"})
 
-    assert bound_wizard.cursor().node.context == {"name": "personal"}
+    assert run.cursor().node.context == {"name": "personal"}
 
 
 def test_on_field_names_the_answer_it_reads():
@@ -3774,11 +3770,11 @@ def test_on_field_says_which_step_it_could_not_find(request_with_session_factory
         )
         .configure(template_name="testapp/linear_wizard.html")
     )
-    bound_wizard = _make_bound_wizard(wizard, request)
-    bound_wizard.initialise()
+    run = _make_run(wizard, request)
+    run.initialise()
 
     with pytest.raises(ImproperlyConfigured, match="nonexistent"):
-        _submit(bound_wizard, {"account_type": "business"})
+        _submit(run, {"account_type": "business"})
 
 
 # --- A wizard describing itself ---------------------------------------------

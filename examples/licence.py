@@ -87,11 +87,11 @@ class LicenceCheckViewSet(WizardViewSet):
         .step(ConfirmLicenceForm, name="confirm")
     )
 
-    def done(self, bound_wizard):
-        details = bound_wizard.path.find_step(name="details").form.cleaned_data
+    def done(self, run):
+        details = run.path.find_step(name="details").form.cleaned_data
         log_event(
             "licence",
-            run=bound_wizard.run_id,
+            run=run.run_id,
             licence_number=details["licence_number"],
         )
         return HttpResponse(f"Checked licence {details['licence_number']}")

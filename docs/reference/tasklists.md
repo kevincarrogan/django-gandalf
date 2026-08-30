@@ -362,9 +362,9 @@ that in the slot instead:
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, bound_wizard):
-        record_amount(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_amount(self.get_journey_store(), run)
+        return super().run_done(run)
 
     @classmethod
     def hidden(cls, store):
@@ -391,15 +391,15 @@ attributes of its page.
   stamped into the stash (`label`, else the key).
 - `get_tasklist_url_kwargs()` — the wizard's own `get_url_kwargs()`, the
   journey and any mount prefix among them.
-- `done(bound_wizard)` — in order: `store.put_stash(key, bound_wizard.stash(label=...))`;
-  `run_recorded(bound_wizard, store, key)`; `response = run_done(bound_wizard)`;
+- `done(run)` — in order: `store.put_stash(key, run.stash(label=...))`;
+  `run_recorded(run, store, key)`; `response = run_done(run)`;
   `store.clear_run(key)`; return the response. A `run_done()` that raises
   leaves the run id in place, so the section stays resumable.
-- `run_recorded(bound_wizard, store, key)` — library-side bookkeeping that
+- `run_recorded(run, store, key)` — library-side bookkeeping that
   must read the finished run, inside the window where the run's state is
   still readable. A plain section records nothing; an item caches its
   title.
-- `run_done(bound_wizard)` — what the section does when it finishes,
+- `run_done(run)` — what the section does when it finishes,
   beyond being recorded. Runs on every completion — the first and each
   re-save — after the stash is written. Write what the rest of the journey
   needs into `store.data` here; the run is still readable. Default
@@ -418,9 +418,9 @@ A journey begun from outside the page's own requests — what a start wizard,
 an "apply again" link, a command or an agent uses:
 
 ```python
-def done(self, bound_wizard):
+def done(self, run):
     journey = GrantApplication.begin(self.request)
-    journey.finish("setup", bound_wizard)
+    journey.finish("setup", run)
     return redirect(journey.url)
 ```
 
@@ -432,7 +432,7 @@ kwargs, if any.
 id); `url` (the page under this id, or the page's one URL for a list not
 mounted under a journey segment); `tasklist_viewset`; `request`.
 
-- `finish(section, bound_wizard)` — record a finished run as `section`,
+- `finish(section, run)` — record a finished run as `section`,
   exactly as finishing it from the page would: stashed under the section's
   key and label, its `run_done()` run, its run cleared. It arrives on the
   page complete and re-openable like any other row. Raises `EntryNotFound`
@@ -537,17 +537,17 @@ its own name) and `grant-contact-run` / `grant-contact-step` (the runs).
 ### A section that does something when it finishes
 
 ```python
-def record_amount(store, bound_wizard):
-    project = bound_wizard.path.find_step(name="project")
+def record_amount(store, run):
+    project = run.path.find_step(name="project")
     store.data["amount"] = int(project.form.cleaned_data["amount"])
 
 
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, bound_wizard):
-        record_amount(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_amount(self.get_journey_store(), run)
+        return super().run_done(run)
 
 
 class GrantApplication(TaskList):
@@ -623,9 +623,9 @@ class ApplicationStartViewSet(WizardViewSet):
     url_name = "apply-start"
     wizard = setup
 
-    def done(self, bound_wizard):
+    def done(self, run):
         journey = GrantApplication.begin(self.request)
-        journey.finish("setup", bound_wizard)
+        journey.finish("setup", run)
         return redirect(journey.url)
 ```
 

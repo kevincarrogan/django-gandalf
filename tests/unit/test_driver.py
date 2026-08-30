@@ -397,7 +397,7 @@ class _SignupViewSet(WizardViewSet):
         Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"agent done")
 
 
@@ -422,7 +422,7 @@ class _BranchingViewSet(WizardViewSet):
         .step(ReviewForm, name="review")
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"branch done")
 
 
@@ -443,7 +443,7 @@ class _ExpandViewSet(WizardViewSet):
         .step(ReviewForm, name="review")
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"expand done")
 
 
@@ -463,7 +463,7 @@ class _PrefixedViewSet(WizardViewSet):
         .step(SecondStepForm, name="second")
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"prefixed done")
 
 
@@ -513,7 +513,7 @@ def _escaping_viewset(form_class):
             Wizard().step(form_class, name="escaping").step(FirstStepForm, name="after")
         )
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"escape done")
 
     return _EscapingViewSet
@@ -714,7 +714,7 @@ class _BookingViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = Wizard().step(_BookingForm, name="booking")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"booked")
 
 
@@ -751,7 +751,7 @@ def test_a_resubmitted_answer_is_stored_as_json():
 
     driver.submit(driver.answers()["booking"], step="booking")
 
-    state = driver.bound_wizard.get_state()
+    state = driver.run.get_state()
     assert json.loads(json.dumps(state)) == state
 
 
@@ -781,7 +781,7 @@ def test_json_safe_answers_are_the_cleaned_ones_not_the_raw_submission():
         template_name = "testapp/linear_wizard.html"
         wizard = Wizard().step(_TickForm, name="tick")
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"ticked")
 
     driver = RunDriver.begin(_TickViewSet)
@@ -890,7 +890,7 @@ class _PhotoViewSet(WizardViewSet):
         Wizard().step(ProfilePhotoForm, name="photo").step(FirstStepForm, name="first")
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"photo done")
 
 
@@ -973,7 +973,7 @@ def test_a_driver_opens_a_file_stored_against_the_run():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         with override_settings(MEDIA_ROOT=tmpdir):
-            ref = driver.bound_wizard.file_storage.save(
+            ref = driver.run.file_storage.save(
                 driver.run_id, SimpleUploadedFile("proof.txt", b"hello")
             )
 
@@ -1236,8 +1236,8 @@ def test_the_driver_re_cursors_when_a_dynamic_wizard_changes_shape():
     class _DynamicViewSet(WizardViewSet):
         template_name = "testapp/linear_wizard.html"
 
-        def get_wizard(self, bound_wizard):
-            state = bound_wizard.get_state()
+        def get_wizard(self, run):
+            state = run.get_state()
             wizard = Wizard().step(ItemCountForm, name="count")
             if state:
                 for index in range(int(state[0]["step"]["count"])):
@@ -1418,7 +1418,7 @@ def test_outline_copes_with_a_predicate_that_says_nothing():
             )
         )
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"done")
 
     driver = RunDriver.begin(_TerseViewSet)
@@ -1461,7 +1461,7 @@ def test_outline_degrades_to_no_schema_for_a_view_it_cannot_compose_yet():
             .step(_DependentStepView, name="second")
         )
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"done")
 
     driver = RunDriver.begin(_DependentViewSet)
@@ -1606,7 +1606,7 @@ def _switch_viewset(selector):
             )
         )
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"done")
 
     return _SwitchViewSet
@@ -1743,7 +1743,7 @@ def test_check_cannot_judge_a_step_whose_form_needs_missing_answers():
             .step(_DependentStepView, name="second")
         )
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"done")
 
     driver = RunDriver.begin(_DependentViewSet)
@@ -1817,7 +1817,7 @@ def test_a_context_and_url_kwargs_reach_the_same_view():
     assert driver.view.kwargs == {"item": "v1"}
     # And it is the context the view was set up from, so the run is still
     # scoped to whoever the context named.
-    assert driver.bound_wizard.context.actor == "ada"
+    assert driver.run.context.actor == "ada"
 
 
 def test_url_kwargs_named_at_the_call_win_over_the_contexts_own():
@@ -1846,4 +1846,4 @@ def test_addressing_a_url_keeps_the_session_the_context_was_using():
 
     driver = RunDriver.begin(_SignupViewSet, context=context, item="v1")
 
-    assert driver.bound_wizard.context.session is context.session
+    assert driver.run.context.session is context.session

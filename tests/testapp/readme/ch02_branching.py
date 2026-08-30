@@ -35,7 +35,7 @@ class BranchingApplicationViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = applicant().step(EmailForm, name="contact")
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} <{answers['email']}>")

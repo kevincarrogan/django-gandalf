@@ -213,8 +213,8 @@ class InsuranceQuoteViewSet(WizardViewSet):
         .step(ReviewStepView, name="confirm")
     )
 
-    def done(self, bound_wizard):
-        quote = quote_for(bound_wizard)
+    def done(self, run):
+        quote = quote_for(run)
         log_event("quote", **quote)
         return HttpResponse(
             f"Quote for {quote['name']}: £{quote['premium']}/year "
@@ -222,7 +222,7 @@ class InsuranceQuoteViewSet(WizardViewSet):
         )
 
 
-def quote_for(bound_wizard, *, vehicle_values=None):
+def quote_for(run, *, vehicle_values=None):
     """Price the run: a base rate, a bit per employee, a bit per cover, a
     percentage of the fleet, and a loading for prior claims.
 
@@ -230,12 +230,12 @@ def quote_for(bound_wizard, *, vehicle_values=None):
     at their own page, so the values come from where that collection saved
     them — the same place any application would read its own records.
     """
-    answers = MergeCleanedData().reduce(bound_wizard.path)
+    answers = MergeCleanedData().reduce(run.path)
     premium = 250
     premium += answers["employees"] * 10
     premium += 150 * len(answers["cover_types"])
     read_values = saved_vehicle_values if vehicle_values is None else vehicle_values
-    premium += sum(read_values(bound_wizard.context)) // 100
+    premium += sum(read_values(run.context)) // 100
     if answers["had_claims"] == "yes":
         premium += answers["total_value"] // 10
     return {
@@ -270,11 +270,11 @@ def quote_for(bound_wizard, *, vehicle_values=None):
 VEHICLES_SESSION_KEY = "insurance_vehicles"
 
 
-def save_vehicle(request, item_id, bound_wizard):
+def save_vehicle(request, item_id, run):
     """What an application does when an item finishes: keep the answers
     somewhere of its own. A demo has no database, so the session stands in
     for one."""
-    answers = MergeCleanedData().reduce(bound_wizard.path)
+    answers = MergeCleanedData().reduce(run.path)
     saved = request.session.setdefault(VEHICLES_SESSION_KEY, {})
     saved[str(item_id)] = {
         "registration": answers["registration"],
@@ -323,9 +323,9 @@ class VehicleItem(ItemViewSet):
         .configure(template_name="hybrid/step.html")
     )
 
-    def run_done(self, bound_wizard):
-        save_vehicle(self.request, self.get_item_id(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        save_vehicle(self.request, self.get_item_id(), run)
+        return super().run_done(run)
 
     def item_removed(self, store):
         forget_vehicle(self.request, self.get_item_id())

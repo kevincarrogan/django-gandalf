@@ -39,10 +39,10 @@ class ExpandingApplicationViewSet(WizardViewSet):
         EmailForm, name="contact"
     )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         trustees = [
             step.form.cleaned_data["name"]
-            for step in bound_wizard.path
+            for step in run.path
             if step.name and step.name.startswith("trustee-")
         ]
         return HttpResponse("Trustees: " + ", ".join(trustees))

@@ -49,7 +49,7 @@ wizard = Wizard().step(...).configure(file_storage_class=TenantFileStorage)
 ```
 
 `ConfiguredWizard.file_storage_class` defaults to `WizardFileStorage`.
-`BoundWizard.file_storage` instantiates it with no arguments, once per
+`Run.file_storage` instantiates it with no arguments, once per
 run, so a subclass supplies its backend from `__init__`.
 
 ### `FileRef`
@@ -108,7 +108,7 @@ new upload for a field or nothing. Per field:
 | a new file | replaced; the old ref is deleted **after** the new state is persisted, so nothing deletes a live file |
 | no file | kept |
 
-`BoundWizard.store_uploads(request.FILES)` returns `None` rather than `{}`
+`Run.store_uploads(request.FILES)` returns `None` rather than `{}`
 for an empty upload, and the walk reads a missing `files` as "this
 submission says nothing about files". A submission that fails validation
 is still placed, upload included, so correcting a text field afterwards
@@ -117,7 +117,7 @@ step the run cannot reach is deleted immediately.
 
 ### Cleanup
 
-The run's files are removed by `bound_wizard.cleanup_files()` —
+The run's files are removed by `run.cleanup_files()` —
 `file_storage.delete_run(run_id)` — from `WizardViewSet.finish()` after
 `done()` returns:
 
@@ -178,8 +178,8 @@ class OrganisationViewSet(WizardViewSet):
         .step(GoverningDocumentForm, name="governing_document")
     )
 
-    def done(self, bound_wizard):
-        document = bound_wizard.path.find_step(name="governing_document")
+    def done(self, run):
+        document = run.path.find_step(name="governing_document")
         return HttpResponse(f"Received {document.files['document']['name']}")
 ```
 
@@ -194,9 +194,9 @@ from django.shortcuts import redirect
 class OrganisationViewSet(WizardViewSet):
     ...
 
-    def done(self, bound_wizard):
-        step = bound_wizard.path.find_step(name="governing_document")
-        organisation = Organisation.objects.get(pk=bound_wizard.metadata["organisation_id"])
+    def done(self, run):
+        step = run.path.find_step(name="governing_document")
+        organisation = Organisation.objects.get(pk=run.metadata["organisation_id"])
         organisation.governing_document.save(
             step.files["document"]["name"],
             step.form.cleaned_data["document"],
@@ -285,4 +285,4 @@ project's to add.
 
 ---
 
-**Learn:** [Chapter 8 — File uploads](../learn/08-file-uploads.md) · **Related:** [`BoundWizard`](bound-wizard.md), [Configuration](configuration.md), [Escapes](escapes.md), [Stashing](stashing.md), [Driver](driver.md), [Walk costs](walk-costs.md)
+**Learn:** [Chapter 8 — File uploads](../learn/08-file-uploads.md) · **Related:** [`Run`](run.md), [Configuration](configuration.md), [Escapes](escapes.md), [Stashing](stashing.md), [Driver](driver.md), [Walk costs](walk-costs.md)

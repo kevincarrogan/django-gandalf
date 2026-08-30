@@ -77,7 +77,7 @@ modified; the first write does.
 | `delete_stash(key)` | Forgets it; idempotent |
 | `keys()` | Keys holding a stash, in insertion order. An add-another list's items appear here under their composed keys (`"budget:<id>"`) beside the declared sections |
 
-A payload is `BoundWizard.stash()` output — see [Stashing](stashing.md).
+A payload is `Run.stash()` output — see [Stashing](stashing.md).
 The run id and the stash outlive each other: `SectionViewSet.done()`
 writes the stash and then clears the run, so a completed section survives
 its run being pruned.
@@ -100,7 +100,7 @@ its run being pruned.
 
 The journey's record of what its sections decided: the facts a page, a
 `blocked()` and a `hidden()` read without walking anything. A
-`MetadataBag` — the same class as a run's `bound_wizard.metadata`, kept for
+`MetadataBag` — the same class as a run's `run.metadata`, kept for
 the journey rather than one run; the bag semantics are in
 [Run metadata](run-metadata.md).
 
@@ -232,10 +232,10 @@ or a durable index into runs that have expired.
 class ContactSection(SectionViewSet):
     wizard = contact
 
-    def run_done(self, bound_wizard):
-        email = bound_wizard.path.find_step(name="email")
+    def run_done(self, run):
+        email = run.path.find_step(name="email")
         self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
-        return super().run_done(bound_wizard)
+        return super().run_done(run)
 
 
 class RefereesSection(SectionViewSet):
@@ -263,9 +263,9 @@ class ApplicationStartViewSet(WizardViewSet):
     url_name = "grant-start"
     wizard = setup
 
-    def done(self, bound_wizard):
+    def done(self, run):
         journey = GrantApplication.begin(self.request)
-        journey.finish("setup", bound_wizard)
+        journey.finish("setup", run)
         return redirect(journey.url)
 ```
 

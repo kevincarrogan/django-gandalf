@@ -142,7 +142,7 @@ def main():
     # Which is the point. Four transcribed fields and a confirmation that
     # is not the agent's to give — a misread character looks exactly like
     # a correctly read one.
-    print(f"Hand back at:     {driver.bound_wizard.entry_url('confirm')}")
+    print(f"Hand back at:     {driver.run.entry_url('confirm')}")
 
     inputs, outputs = result.usage.input_tokens, result.usage.output_tokens
     price = dollars(model, inputs, outputs)

@@ -624,9 +624,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
 def test_an_item_can_be_named_by_a_callable_of_its_run(rf):
     class _Callable(_Guests):
         add_another = GUESTS.replace(
-            item_title=lambda bound_wizard: bound_wizard.get_state()[0]["step"][
-                "name"
-            ].upper(),
+            item_title=lambda run: run.get_state()[0]["step"]["name"].upper(),
         )
 
     view = _item_view(
@@ -636,9 +634,9 @@ def test_an_item_can_be_named_by_a_callable_of_its_run(rf):
         run_id="run-1",
     )
 
-    bound_wizard = _Callable.item_viewset.inspect(view.request, "run-1", item="7")
+    run = _Callable.item_viewset.inspect(view.request, "run-1", item="7")
 
-    assert view.get_item_title(bound_wizard) == "ADA"
+    assert view.get_item_title(run) == "ADA"
 
 
 def test_an_items_run_done_knows_which_item_it_is(rf):
@@ -647,9 +645,9 @@ def test_an_items_run_done_knows_which_item_it_is(rf):
     class _Deciding(ItemViewSet):
         wizard = GUEST
 
-        def run_done(self, bound_wizard):
+        def run_done(self, run):
             seen.append(self.get_item_id())
-            return super().run_done(bound_wizard)
+            return super().run_done(run)
 
     class _Page(_Guests):
         add_another = GUESTS.replace(wizard=_Deciding)
@@ -689,8 +687,8 @@ def test_an_item_whose_naming_step_is_off_the_route_falls_back(rf):
         run_id="run-1",
     )
 
-    bound_wizard = _Elsewhere.item_viewset.inspect(view.request, "run-1", item="7")
-    assert view.get_item_title(bound_wizard) == ""
+    run = _Elsewhere.item_viewset.inspect(view.request, "run-1", item="7")
+    assert view.get_item_title(run) == ""
 
 
 def test_a_removed_items_wizard_sends_the_user_back_to_the_page(rf):

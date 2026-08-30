@@ -54,11 +54,11 @@ off **Complete**, which is why a section that may never unlock is a job for
 project section writes it down when it finishes, in `run_done()`:
 
 ```python
-def record_amount(store, bound_wizard):
+def record_amount(store, run):
     """The amount is read off the path here — the one moment the run is
     readable and a walk has already been paid — and written to the journey's
     data, where every other section reads it without a walk."""
-    project = bound_wizard.path.find_step(name="project")
+    project = run.path.find_step(name="project")
     store.data["amount"] = int(project.form.cleaned_data["amount"])
 
 
@@ -71,9 +71,9 @@ class ProjectSection(SectionViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def run_done(self, bound_wizard):
-        record_amount(self.get_journey_store(), bound_wizard)
-        return super().run_done(bound_wizard)
+    def run_done(self, run):
+        record_amount(self.get_journey_store(), run)
+        return super().run_done(run)
 ```
 
 `store.data` is the journey's record of what its sections decided — chapter

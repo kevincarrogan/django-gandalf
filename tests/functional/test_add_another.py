@@ -739,7 +739,7 @@ def test_a_driver_can_address_one_item_of_a_list(client):
         context=context,
     )
 
-    assert driver.bound_wizard.context.url_kwargs == {"item": item_id}
+    assert driver.run.context.url_kwargs == {"item": item_id}
 
 
 # --- the registry's edges ---------------------------------------------------

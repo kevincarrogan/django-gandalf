@@ -126,7 +126,7 @@ def test_wizard_viewset_configures_plain_wizard(rf):
 
     assert response.status_code == HTTPStatus.FOUND
     viewset = PlainWizardViewSet()
-    configured = viewset.configure_wizard(viewset.get_wizard(bound_wizard=None))
+    configured = viewset.configure_wizard(viewset.get_wizard(run=None))
     assert isinstance(configured, ConfiguredWizard)
 
 
@@ -161,10 +161,10 @@ def test_wizard_viewset_get_returns_done_response_after_complete_path(rf):
         wizard = Wizard().step(FirstStepForm, name="first")
         template_name = "testapp/single_step_wizard.html"
 
-        def done(self, bound_wizard):
+        def done(self, run):
             from django.http import HttpResponse
 
-            return HttpResponse(f"completed {bound_wizard.run_id}")
+            return HttpResponse(f"completed {run.run_id}")
 
     request = rf.get("/wizard/existing-run/")
     request.session = _Session(
@@ -223,7 +223,7 @@ def test_wizard_viewset_uses_configured_wizard():
         wizard = configured_wizard
         template_name = "testapp/single_step_wizard.html"
 
-    wizard = ConfiguredWizardViewSet().get_wizard(bound_wizard=None)
+    wizard = ConfiguredWizardViewSet().get_wizard(run=None)
 
     assert wizard is configured_wizard
 
@@ -240,7 +240,7 @@ def test_wizard_viewset_does_not_reconfigure_configured_wizard():
         template_name = "testapp/other_wizard.html"
 
     viewset = ConfiguredWizardViewSet()
-    wizard = viewset.configure_wizard(viewset.get_wizard(bound_wizard=None))
+    wizard = viewset.configure_wizard(viewset.get_wizard(run=None))
 
     assert wizard is configured_wizard
     assert wizard.tree.form_view.template_name == "testapp/single_step_wizard.html"
@@ -274,14 +274,14 @@ def test_wizard_viewset_rejects_invalid_wizard_type():
         TypeError,
         match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
     ):
-        viewset.configure_wizard(viewset.get_wizard(bound_wizard=None))
+        viewset.configure_wizard(viewset.get_wizard(run=None))
 
 
 def test_wizard_viewset_configures_plain_wizard_from_get_wizard(rf):
     class PlainWizardFromGetterViewSet(WizardViewSet):
         template_name = "testapp/single_step_wizard.html"
 
-        def get_wizard(self, bound_wizard):
+        def get_wizard(self, run):
             return Wizard().step(FirstStepForm, name="first")
 
         def get_wizard_url(self, run_id):
@@ -301,8 +301,8 @@ def test_wizard_viewset_get_wizard_can_build_tree_from_run_state(rf):
     class DynamicViewSet(WizardViewSet):
         template_name = "testapp/linear_wizard.html"
 
-        def get_wizard(self, bound_wizard):
-            state = bound_wizard.get_state()
+        def get_wizard(self, run):
+            state = run.get_state()
             wizard = Wizard().step(ItemCountForm, name="count")
             if state:
                 count = int(state[0]["step"]["count"])
@@ -344,8 +344,8 @@ def test_wizard_viewset_dynamic_wizard_walks_again_before_judging_completion(rf)
     class _DynamicRoutedViewSet(WizardViewSet):
         template_name = "testapp/linear_wizard.html"
 
-        def get_wizard(self, bound_wizard):
-            state = bound_wizard.get_state()
+        def get_wizard(self, run):
+            state = run.get_state()
             wizard = Wizard().step(ItemCountForm, name="count")
             if state:
                 for index in range(int(state[0]["step"]["count"])):
@@ -358,7 +358,7 @@ def test_wizard_viewset_dynamic_wizard_walks_again_before_judging_completion(rf)
         def get_step_url(self, run_id, step_segment):
             return f"/dynamic/{run_id}/{step_segment}/"
 
-        def done(self, bound_wizard):  # pragma: no cover - must not fire here
+        def done(self, run):  # pragma: no cover - must not fire here
             raise AssertionError("done() fired before the implied steps existed")
 
     request = rf.post("/dynamic/existing-run/count/", data={"count": "2"})
@@ -390,7 +390,7 @@ class _RoutedViewSet(WizardViewSet):
     def get_start_url(self):
         return "/wizard/"
 
-    def done(self, bound_wizard):
+    def done(self, run):
         from django.http import HttpResponse
 
         return HttpResponse(b"done")
@@ -853,9 +853,9 @@ def test_wizard_viewset_finish_fires_done_and_retires_the_run(rf):
     )
     view = _RoutedViewSet()
     view.setup(request)
-    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+    run = _RoutedViewSet.inspect(request, "existing-run")
 
-    response = view.finish(bound_wizard)
+    response = view.finish(run)
 
     assert response.content == b"done"
     assert request.session["gandalf_runs"]["existing-run"] == {"completed": True}
@@ -881,14 +881,14 @@ def test_wizard_viewset_finish_keeps_a_deferred_response_readable_until_it_rende
         def get_step_url(self, run_id, step_segment):
             return f"/wizard/{run_id}/{step_segment}/"
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return SimpleTemplateResponse(
                 engines["django"].from_string(
                     "{% for step in wizard.path %}"
                     "{{ step.form.cleaned_data.photo.name }}"
                     "{% endfor %}"
                 ),
-                {"wizard": bound_wizard},
+                {"wizard": run},
             )
 
     request = rf.get("/wizard/existing-run/")
@@ -902,12 +902,12 @@ def test_wizard_viewset_finish_keeps_a_deferred_response_readable_until_it_rende
             request.session = _routed_session([{"step": {}, "files": {"photo": ref}}])
             view = DeferredDoneViewSet()
             view.setup(request)
-            bound_wizard = DeferredDoneViewSet.inspect(request, "existing-run")
+            run = DeferredDoneViewSet.inspect(request, "existing-run")
 
-            response = view.finish(bound_wizard)
+            response = view.finish(run)
 
             # Retired already, but not yet swept: the response has not rendered.
-            assert bound_wizard.is_complete
+            assert run.is_complete
             assert file_storage.backend.exists(ref["tmp_name"])
 
             response.render()
@@ -921,7 +921,7 @@ def test_wizard_viewset_finish_with_a_raising_done_leaves_the_run_resumable(rf):
     raises leaves the run's answers stored and the run still runnable."""
 
     class ExplodingViewSet(_RoutedViewSet):
-        def done(self, bound_wizard):
+        def done(self, run):
             raise RuntimeError("side effect failed")
 
     state = [
@@ -933,12 +933,12 @@ def test_wizard_viewset_finish_with_a_raising_done_leaves_the_run_resumable(rf):
     request.session = _routed_session(state)
     view = ExplodingViewSet()
     view.setup(request)
-    bound_wizard = ExplodingViewSet.inspect(request, "existing-run")
+    run = ExplodingViewSet.inspect(request, "existing-run")
 
     with pytest.raises(RuntimeError):
-        view.finish(bound_wizard)
+        view.finish(run)
 
-    assert not bound_wizard.is_complete
+    assert not run.is_complete
     assert request.session["gandalf_runs"]["existing-run"]["state"] == state
 
 
@@ -981,7 +981,7 @@ def test_wizard_viewset_run_unavailable_hook_receives_the_reason(rf):
     reasons = []
 
     class HookedViewSet(_RoutedViewSet):
-        def run_unavailable(self, bound_wizard, reason):
+        def run_unavailable(self, run, reason):
             reasons.append(reason)
             return HttpResponse(b"unavailable")
 
@@ -1040,9 +1040,7 @@ def _escaping_viewset(*steps, done_body=None):
 
     _EscapingViewSet.wizard = wizard
     if done_body is not None:
-        _EscapingViewSet.done = lambda self, bound_wizard: HttpResponse(
-            done_body(bound_wizard)
-        )
+        _EscapingViewSet.done = lambda self, run: HttpResponse(done_body(run))
     return _EscapingViewSet
 
 
@@ -1134,9 +1132,7 @@ def test_wizard_viewset_reconstructs_the_form_of_an_escaped_answer(rf):
 
     viewset = _escaping_viewset(
         (NewsletterForm, "newsletter"),
-        done_body=lambda bound_wizard: ",".join(
-            sorted(bound_wizard.runtime_tree.form.cleaned_data)
-        ),
+        done_body=lambda run: ",".join(sorted(run.runtime_tree.form.cleaned_data)),
     )
     request = rf.get("/wizard/existing-run/")
     request.session = _routed_session(
@@ -1294,22 +1290,22 @@ def test_wizard_viewset_begin_returns_a_fresh_run_rather_than_a_redirect(rf):
     request = rf.get("/somewhere-else/")
     request.session = _Session()
 
-    bound_wizard = _RoutedViewSet.begin(request)
+    run = _RoutedViewSet.begin(request)
 
-    assert bound_wizard.run_id == _only_run(request)
-    assert bound_wizard.get_state() == []
-    assert bound_wizard.entry_url() == f"/wizard/{bound_wizard.run_id}/first/"
+    assert run.run_id == _only_run(request)
+    assert run.get_state() == []
+    assert run.entry_url() == f"/wizard/{run.run_id}/first/"
 
 
 def test_wizard_viewset_inspect_binds_an_existing_run(rf):
     request = rf.get("/somewhere-else/")
     request.session = _routed_session([{"step": {"name": "Ada"}}])
 
-    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+    run = _RoutedViewSet.inspect(request, "existing-run")
 
-    assert bound_wizard.run_id == "existing-run"
-    assert bound_wizard.cursor().node.context["name"] == "second"
-    assert bound_wizard.entry_url() == "/wizard/existing-run/second/"
+    assert run.run_id == "existing-run"
+    assert run.cursor().node.context["name"] == "second"
+    assert run.entry_url() == "/wizard/existing-run/second/"
 
 
 def test_wizard_viewset_inspect_raises_for_a_run_this_storage_does_not_hold(rf):
@@ -1328,10 +1324,10 @@ def test_wizard_viewset_inspect_finds_a_completed_run_rather_than_raising(rf):
     request = rf.get("/somewhere-else/")
     request.session = _Session({"gandalf_runs": {"existing-run": {"completed": True}}})
 
-    bound_wizard = _RoutedViewSet.inspect(request, "existing-run")
+    run = _RoutedViewSet.inspect(request, "existing-run")
 
-    assert bound_wizard.is_complete
-    assert bound_wizard.get_state() == []
+    assert run.is_complete
+    assert run.get_state() == []
 
 
 def test_wizard_viewset_inspect_resolves_the_wizard_against_the_stored_state(rf):
@@ -1340,9 +1336,9 @@ def test_wizard_viewset_inspect_resolves_the_wizard_against_the_stored_state(rf)
     seen = []
 
     class _DynamicViewSet(_RoutedViewSet):
-        def get_wizard(self, bound_wizard):
-            seen.append(bound_wizard.get_state())
-            return super().get_wizard(bound_wizard)
+        def get_wizard(self, run):
+            seen.append(run.get_state())
+            return super().get_wizard(run)
 
     request = rf.get("/somewhere-else/")
     request.session = _routed_session([{"step": {"name": "Ada"}}])
@@ -1357,11 +1353,11 @@ def test_wizard_viewset_reopen_returns_the_run_behind_a_resurrection(rf):
     request.session = _Session()
     payload = _resurrect_payload([{"step": {"name": "Ada"}}])
 
-    bound_wizard = _RoutedViewSet.reopen(request, payload)
+    run = _RoutedViewSet.reopen(request, payload)
 
-    assert bound_wizard.run_id == _only_run(request)
-    assert bound_wizard.get_state() == [{"step": {"name": "Ada"}}]
-    assert bound_wizard.entry_url() == f"/wizard/{bound_wizard.run_id}/second/"
+    assert run.run_id == _only_run(request)
+    assert run.get_state() == [{"step": {"name": "Ada"}}]
+    assert run.entry_url() == f"/wizard/{run.run_id}/second/"
 
 
 def test_wizard_viewset_reopen_resolves_the_wizard_against_the_seeded_state(rf):
@@ -1370,9 +1366,9 @@ def test_wizard_viewset_reopen_resolves_the_wizard_against_the_seeded_state(rf):
     seen = []
 
     class _DynamicViewSet(_RoutedViewSet):
-        def get_wizard(self, bound_wizard):
-            seen.append(bound_wizard.get_state())
-            return super().get_wizard(bound_wizard)
+        def get_wizard(self, run):
+            seen.append(run.get_state())
+            return super().get_wizard(run)
 
     request = rf.get("/somewhere-else/")
     request.session = _Session()
@@ -1412,11 +1408,9 @@ def test_binding_a_wizard_forwards_mount_prefix_url_kwargs(rf, method):
         "reopen": (_resurrect_payload([{"step": {"name": "Ada"}}]),),
     }[method]
 
-    bound_wizard = getattr(_PrefixedViewSet, method)(request, *arguments, org="acme")
+    run = getattr(_PrefixedViewSet, method)(request, *arguments, org="acme")
 
-    assert bound_wizard.entry_url("second") == (
-        f"/acme/wizard/{bound_wizard.run_id}/second/"
-    )
+    assert run.entry_url("second") == (f"/acme/wizard/{run.run_id}/second/")
 
 
 def test_wizard_viewset_rejects_duplicate_step_names(rf):
@@ -1448,9 +1442,9 @@ def test_wizard_viewset_resolve_binds_the_wizard_without_starting_a_run(rf):
     request = rf.get("/wizard/")
     request.session = _Session()
 
-    bound_wizard = _RoutedViewSet.resolve(request)
+    run = _RoutedViewSet.resolve(request)
 
-    assert [entry["name"] for entry in bound_wizard.wizard.outline()] == [
+    assert [entry["name"] for entry in run.wizard.outline()] == [
         "first",
         "second",
         "review",
@@ -1468,13 +1462,13 @@ def test_run_started_is_handed_a_run_with_an_id_and_a_resolved_wizard(rf):
         def get_wizard_url(self, run_id):
             return f"/wizard/{run_id}/"
 
-        def run_started(self, bound_wizard):
+        def run_started(self, run):
             # Both halves matter: without the id there is nowhere to write
             # metadata, and without the wizard a dynamic `get_wizard()`
             # could not have been consulted yet.
-            seen["run_id"] = bound_wizard.run_id
-            seen["wizard"] = bound_wizard.wizard
-            bound_wizard.metadata["opened"] = True
+            seen["run_id"] = run.run_id
+            seen["wizard"] = run.wizard
+            run.metadata["opened"] = True
 
     request = rf.get("/wizard/")
     request.session = _Session()
@@ -1496,7 +1490,7 @@ def test_run_started_that_raises_leaves_no_run_the_caller_can_use(rf):
         def get_wizard_url(self, run_id):
             return f"/wizard/{run_id}/"
 
-        def run_started(self, bound_wizard):
+        def run_started(self, run):
             raise RuntimeError("the record could not be opened")
 
     request = rf.get("/wizard/")
@@ -1522,8 +1516,8 @@ def test_run_started_does_not_fire_for_a_run_that_already_exists(rf):
         def get_step_url(self, run_id, step_segment):
             return f"/wizard/{run_id}/{step_segment}/"
 
-        def run_started(self, bound_wizard):
-            started.append(bound_wizard.run_id)
+        def run_started(self, run):
+            started.append(run.run_id)
 
     request = rf.get("/wizard/abc/")
     request.session = _Session(gandalf_runs={"abc": {}})

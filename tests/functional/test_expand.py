@@ -137,7 +137,7 @@ def test_unroutable_expanded_step_is_rejected_when_built(client, started):
         url_name = "bad-expand"
         wizard = Wizard().step(ItemCountForm, name="count").expand(build_unnamed)
 
-        def done(self, bound_wizard):  # pragma: no cover
+        def done(self, run):  # pragma: no cover
             return HttpResponse("done")
 
     started.post_step("count", {"count": "1"})
@@ -164,7 +164,7 @@ def test_expansion_cannot_contain_an_expansion(client, started):
         url_name = "nested-expand"
         wizard = Wizard().step(ItemCountForm, name="count").expand(outer)
 
-        def done(self, bound_wizard):  # pragma: no cover
+        def done(self, run):  # pragma: no cover
             return HttpResponse("done")
 
     started.post_step("count", {"count": "1"})

@@ -366,7 +366,7 @@ def build_toolset(
             # this used to say "confirm" — assumes every wizard has a step
             # called that, which is true of the demo it was written against
             # and of nothing else.
-            url = driver.bound_wizard.entry_url()
+            url = driver.run.entry_url()
             state = ctx.deps.state
             state.handoff_url = url
             return _sync(ctx, driver, extra={"handoff_url": url})

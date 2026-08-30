@@ -2342,9 +2342,9 @@ def test_a_mounted_wizard_can_be_asked_what_it_is_without_starting_it(rf):
     request = rf.get("/")
     request.session = {}
 
-    bound_wizard = views.BranchingWizardViewSet.resolve(request)
+    run = views.BranchingWizardViewSet.resolve(request)
 
-    assert [entry["kind"] for entry in bound_wizard.wizard.outline()] == [
+    assert [entry["kind"] for entry in run.wizard.outline()] == [
         "step",
         "branch",
         "step",

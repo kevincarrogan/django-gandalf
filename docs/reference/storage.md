@@ -16,7 +16,7 @@ from gandalf.types import StorageClass, WizardStorage
 
 What `WizardViewSet.storage_class` has to provide. Structural, not a base
 class: `SessionStorage` satisfies it without inheriting anything, and so
-does a backend that keeps runs somewhere longer-lived. `BoundWizard` calls
+does a backend that keeps runs somewhere longer-lived. `Run` calls
 exactly these eleven methods; nothing in the runtime, the walker or the
 viewset reaches past them.
 
@@ -123,7 +123,7 @@ class GrantApplicationViewSet(WizardViewSet):
 
 Defaults to `SessionStorage`. This is the one seam set on the viewset
 rather than through `Wizard.configure()`, because storage has to exist
-*before* the wizard does: `get_wizard()` is handed a `BoundWizard` that can
+*before* the wizard does: `get_wizard()` is handed a `Run` that can
 already read stored state to decide its shape. Passing
 `.configure(storage_class=...)` raises `ImproperlyConfigured` with that
 explanation. The viewset instantiates it as `storage_class(context)` on
@@ -283,7 +283,7 @@ exactly like this.
 `complete_run` discards the state; only the metadata bag survives. Read
 what the completion page needs inside `done()` — or pin the tree there —
 rather than walking the run afterwards. See
-[`BoundWizard.keep_readable()`](bound-wizard.md).
+[`Run.keep_readable()`](run.md).
 
 ### Old completed runs vanish from the session
 

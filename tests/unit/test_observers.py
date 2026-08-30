@@ -4,7 +4,7 @@ import pytest
 
 from gandalf.context import WizardContext
 from gandalf.observers import WizardObserver
-from gandalf.runtime import BoundWizard
+from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard, condition
 from tests.testapp.forms import FirstStepForm, SecondStepForm
@@ -55,18 +55,14 @@ def _branching_wizard(observer_class):
 
 def _run(observer_class, request, wizard=_wizard):
     context = WizardContext.from_request(request)
-    bound_wizard = BoundWizard(
-        context, SessionStorage(context), wizard=wizard(observer_class)
-    )
-    bound_wizard.initialise()
-    return bound_wizard
+    run = Run(context, SessionStorage(context), wizard=wizard(observer_class))
+    run.initialise()
+    return run
 
 
-def _submit(bound_wizard, submission, metadata=None):
-    walk = bound_wizard.walk(
-        claim=bound_wizard.cursor().node, submission=submission, metadata=metadata
-    )
-    bound_wizard.persist(walk)
+def _submit(run, submission, metadata=None):
+    walk = run.walk(claim=run.cursor().node, submission=submission, metadata=metadata)
+    run.persist(walk)
     return walk
 
 
@@ -79,10 +75,10 @@ def test_an_observer_is_told_which_step_was_answered_and_whether_it_held(
         def submission(self, step, accepted, metadata):
             seen.append((step.context["name"], accepted))
 
-    bound_wizard = _run(_Recorder, request_with_session)
+    run = _run(_Recorder, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada"})
-    _submit(bound_wizard, {"email": "not-an-email"})
+    _submit(run, {"name": "Ada"})
+    _submit(run, {"email": "not-an-email"})
 
     assert seen == [("first", True), ("second", False)]
 
@@ -97,15 +93,15 @@ def test_a_mistake_is_counted_once_however_many_pages_follow_it(request_with_ses
         def submission(self, step, accepted, metadata):
             seen.append(step.context["name"])
 
-    bound_wizard = _run(_Recorder, request_with_session)
-    _submit(bound_wizard, {"name": "Ada"})
-    _submit(bound_wizard, {"email": "not-an-email"})
+    run = _run(_Recorder, request_with_session)
+    _submit(run, {"name": "Ada"})
+    _submit(run, {"email": "not-an-email"})
     seen.clear()
 
     # Several more walks over the same run, as later requests would do.
-    bound_wizard.cursor()
-    bound_wizard.cursor()
-    list(bound_wizard.path)
+    run.cursor()
+    run.cursor()
+    list(run.path)
 
     assert seen == []
 
@@ -117,11 +113,11 @@ def test_an_observer_hears_about_the_end_of_the_run(request_with_session):
         def run_completed(self):
             seen.append(self.run_id)
 
-    bound_wizard = _run(_Recorder, request_with_session)
+    run = _run(_Recorder, request_with_session)
 
-    bound_wizard.complete()
+    run.complete()
 
-    assert seen == [bound_wizard.run_id]
+    assert seen == [run.run_id]
 
 
 def test_an_observer_knows_which_run_it_is_watching(request_with_session):
@@ -133,11 +129,11 @@ def test_an_observer_knows_which_run_it_is_watching(request_with_session):
         def submission(self, step, accepted, metadata):
             seen.append(self.run_id)
 
-    bound_wizard = _run(_Watcher, request_with_session)
+    run = _run(_Watcher, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
-    assert seen == [bound_wizard.run_id]
+    assert seen == [run.run_id]
 
 
 def test_an_observer_is_never_handed_the_answers(request_with_session):
@@ -150,20 +146,20 @@ def test_an_observer_is_never_handed_the_answers(request_with_session):
         def submission(self, step, accepted, metadata):
             seen.append((step, accepted))
 
-    bound_wizard = _run(_Recorder, request_with_session)
+    run = _run(_Recorder, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada Lovelace"})
+    _submit(run, {"name": "Ada Lovelace"})
 
     assert "Ada Lovelace" not in str(seen)
 
 
 def test_a_wizard_without_one_is_watched_by_a_no_op(request_with_session):
     """The default observer is the base class, and it does nothing."""
-    bound_wizard = _run(WizardObserver, request_with_session)
+    run = _run(WizardObserver, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
-    assert bound_wizard.cursor().node.context == {"name": "second"}
+    assert run.cursor().node.context == {"name": "second"}
 
 
 def test_an_observer_is_told_what_the_placement_claimed_about_itself(
@@ -177,9 +173,9 @@ def test_an_observer_is_told_what_the_placement_claimed_about_itself(
         def submission(self, step, accepted, metadata):
             seen.append(metadata)
 
-    bound_wizard = _run(_Recorder, request_with_session)
+    run = _run(_Recorder, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada"}, metadata={"unattended": True})
+    _submit(run, {"name": "Ada"}, metadata={"unattended": True})
 
     assert seen == [{"unattended": True}]
 
@@ -194,12 +190,10 @@ def test_a_placement_inside_a_branch_arm_reports_what_it_claimed(request_with_se
         def submission(self, step, accepted, metadata):
             seen.append((step.context["name"], metadata))
 
-    bound_wizard = _run(_Recorder, request_with_session, _branching_wizard)
-    _submit(bound_wizard, {"name": "Ada"}, metadata={"unattended": True})
+    run = _run(_Recorder, request_with_session, _branching_wizard)
+    _submit(run, {"name": "Ada"}, metadata={"unattended": True})
 
-    _submit(
-        bound_wizard, {"email": "ada@example.com"}, metadata={"placed_by": "person"}
-    )
+    _submit(run, {"email": "ada@example.com"}, metadata={"placed_by": "person"})
 
     assert seen == [
         ("first", {"unattended": True}),
@@ -216,8 +210,8 @@ def test_a_submission_that_claimed_nothing_arrives_as_none(request_with_session)
         def submission(self, step, accepted, metadata):
             seen.append(metadata)
 
-    bound_wizard = _run(_Recorder, request_with_session)
+    run = _run(_Recorder, request_with_session)
 
-    _submit(bound_wizard, {"name": "Ada"})
+    _submit(run, {"name": "Ada"})
 
     assert seen == [None]

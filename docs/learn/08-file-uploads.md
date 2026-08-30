@@ -20,8 +20,8 @@ class DocumentedApplicationViewSet(WizardViewSet):
     template_name = "testapp/file_upload_wizard.html"
     wizard = with_contact_and_review(ch02.applicant(organisation=organisation_details))
 
-    def done(self, bound_wizard):
-        document = bound_wizard.path.find_step(name="governing_document")
+    def done(self, run):
+        document = run.path.find_step(name="governing_document")
         if document is None:
             return HttpResponse("Application received (no document needed)")
         return HttpResponse(f"Received {document.files['document']['name']}")

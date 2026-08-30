@@ -1,4 +1,4 @@
-"""Unit coverage for `BoundWizard.entry_url()`.
+"""Unit coverage for `Run.entry_url()`.
 
 The bare run URL redirects to wherever the cursor is, and when every stored
 answer validates that is completion — so a GET there fires `done()` before the
@@ -9,7 +9,7 @@ it, and it names a step instead.
 import pytest
 
 from gandalf.context import WizardContext
-from gandalf.runtime import BoundWizard
+from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard
 
@@ -55,7 +55,7 @@ def _bound(request, state, wizard=None):
         wizard = _linear_wizard()
     request.session["gandalf_runs"] = {"run": {"state": state}}
     context = WizardContext.from_request(request)
-    bound = BoundWizard(context, SessionStorage(context), wizard=wizard)
+    bound = Run(context, SessionStorage(context), wizard=wizard)
     bound.retrieve("run")
     bound.urls = _Urls()
     return bound

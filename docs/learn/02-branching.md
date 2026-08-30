@@ -45,8 +45,8 @@ class BranchingApplicationViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = applicant().step(EmailForm, name="contact")
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} <{answers['email']}>")
 ```
@@ -57,8 +57,7 @@ pairs a `predicate(context)` with the arm it selects. Selection is
 first-match-wins, falling back to `default`, which may be left out.
 
 The `context` a predicate receives is the *run context*: one object per
-request that carries the request, the session-backed run and its resolved
-`path`. Every callable Gandalf hands control to — predicates here, selectors
+request that carries the request, the run and its `path`. Every callable Gandalf hands control to — predicates here, selectors
 in chapter 3, expanders in chapter 4 — takes the same object, so
 `context.run.path.find_step(name=...)` is how each of them reads an earlier
 answer.

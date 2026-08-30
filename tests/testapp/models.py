@@ -21,7 +21,7 @@ class WizardRun(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wizard_runs"
     )
-    # The positional state list `BoundWizard` reads and writes, verbatim.
+    # The positional state list `Run` reads and writes, verbatim.
     state = models.JSONField(default=list)
     # Completion is a flag rather than a deletion: a finished run stays
     # addressable so a revisit answers "this one is done" rather than "no
@@ -79,7 +79,7 @@ class SectionRecord(models.Model):
     key = models.CharField(max_length=100)
     # Where an unfinished member is picked up; cleared when it finishes.
     run = models.ForeignKey(WizardRun, on_delete=models.SET_NULL, null=True, blank=True)
-    # `BoundWizard.stash()` output, and the member's completion record.
+    # `Run.stash()` output, and the member's completion record.
     stash = models.JSONField(null=True, blank=True)
 
     class Meta:

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from django.utils.functional import _StrPromise
 
     from gandalf.context import WizardContext
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
     from gandalf.storage import JourneyData
 
     #: Display text that may still be a lazy translation — what Django hands
@@ -47,7 +47,7 @@ FileRefs: TypeAlias = dict[str, FileRef]
 #: declaration and is the same for every run; this belongs to one answer in
 #: one run. JSON-safe values only — it is stored with the state.
 #:
-#: Also the shape of a run's own metadata — the bag `BoundWizard.metadata`
+#: Also the shape of a run's own metadata — the bag `Run.metadata`
 #: reads and writes, which is stored *beside* the state rather than in it.
 #: See `RunMetadata` in `gandalf.runtime` for why those are different homes.
 Metadata: TypeAlias = dict[str, Any]
@@ -64,7 +64,7 @@ State: TypeAlias = list[StateEntry]
 RunData: TypeAlias = dict[str, Any]
 
 #: A caller-owned, JSON-safe payload of a run's answers, from
-#: `BoundWizard.stash()` and accepted back by `resurrect()`.
+#: `Run.stash()` and accepted back by `resurrect()`.
 Stash: TypeAlias = dict[str, Any]
 
 #: A step lookup: context keys matched against a step's declared context.
@@ -101,7 +101,7 @@ class WizardRequest(HttpRequest):
     which is true of a run whether or not a browser is driving it.
     """
 
-    wizard: BoundWizard
+    wizard: Run
 
 
 class WizardStorage(Protocol):

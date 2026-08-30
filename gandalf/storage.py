@@ -147,7 +147,7 @@ class SessionStashStore:
     members' finished answers, and the shipped home for a stash a caller
     keeps by hand.
 
-    A stash is caller-owned — `BoundWizard.stash()` hands back a payload and
+    A stash is caller-owned — `Run.stash()` hands back a payload and
     the application decides where it lives. Built with nothing but a context,
     this store keeps payloads under its own session key, server-side so they
     cannot be tampered with in transit: the arrangement for one wizard that
@@ -286,7 +286,7 @@ class SessionJourneyStore:
     Two mappings for a member, because they answer different questions and
     outlive each other. A run id says where an unfinished member can be
     picked up, and is forgotten the moment the member finishes. A payload is
-    `BoundWizard.stash()` output and *is* the member's completion — a hub
+    `Run.stash()` output and *is* the member's completion — a hub
     reads it and needs no run at all, which is what lets a completed member
     survive its run being pruned by `max_completed_runs`. The payload half is
     a `SessionStashStore` pointed at the journey's record, so a hub's stashes

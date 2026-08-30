@@ -642,7 +642,7 @@ def test_a_page_without_a_url_name_cannot_reverse_itself(rf, client):
 
 
 def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
     from gandalf.storage import SessionStorage
 
     class _Keyless(ContactSectionViewSet):
@@ -653,11 +653,11 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
     view = _Keyless()
     view.setup(request)
     context = WizardContext.from_request(request)
-    bound_wizard = BoundWizard(context, SessionStorage(context))
-    bound_wizard.initialise()
+    run = Run(context, SessionStorage(context))
+    run.initialise()
 
     with pytest.raises(ImproperlyConfigured, match="key"):
-        view.done(bound_wizard)
+        view.done(run)
 
 
 def test_a_link_must_say_how_far_it_has_got():
@@ -763,7 +763,7 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
     """`label` is the *shape's* identity — bumped when a deploy reshapes the
     wizard, without renaming the section — and the section's own viewset
     is what stamps it."""
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
     from gandalf.storage import SessionStorage
 
     view_class = _view(
@@ -774,10 +774,10 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
     view = view_class()
     view.setup(request)
     context = WizardContext.from_request(request)
-    bound_wizard = BoundWizard(context, SessionStorage(context))
-    bound_wizard.initialise()
+    run = Run(context, SessionStorage(context))
+    run.initialise()
 
-    view.done(bound_wizard)
+    view.done(run)
 
     stashes = request.session["gandalf_journeys"]["default"]["stashes"]
     assert stashes["contact"]["label"] == "contact-v2"

@@ -99,7 +99,7 @@ from django.utils.translation import gettext
 from django.views.generic import TemplateView
 
 from gandalf.context import WizardContext
-from gandalf.runtime import BoundWizard, InvalidStash
+from gandalf.runtime import Run, InvalidStash
 from gandalf.storage import (
     RunNotFound,
     SessionCollectionStore,
@@ -278,7 +278,7 @@ class AddAnother(Entry):
         *,
         title: StrOrPromise | None = None,
         item_name: StrOrPromise | None = None,
-        item_title: tuple[str, str] | Callable[[BoundWizard], str] | None = None,
+        item_title: tuple[str, str] | Callable[[Run], str] | None = None,
         min_items: int = 0,
         reopen: str | None = None,
         label: str | None = None,
@@ -429,7 +429,7 @@ class TaskList:
         """Begin a journey on this list — see `TaskListViewSet.begin()`:
 
         journey = GrantApplication.begin(request)
-        journey.finish("setup", bound_wizard)
+        journey.finish("setup", run)
         return redirect(journey.url)
         """
         return cls.mounted().begin(request, journey, **url_kwargs)
@@ -645,9 +645,9 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         class ProjectSection(SectionViewSet):
             wizard = project
 
-            def run_done(self, bound_wizard):
-                record_amount(self.get_journey_store(), bound_wizard)
-                return super().run_done(bound_wizard)
+            def run_done(self, run):
+                record_amount(self.get_journey_store(), run)
+                return super().run_done(run)
 
             @classmethod
             def hidden(cls, store): ...
@@ -682,7 +682,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
     def get_tasklist_url_kwargs(self) -> dict[str, Any]:
         return self.get_url_kwargs()
 
-    def done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
+    def done(self, run: Run) -> HttpResponseBase:
         """Record the section as finished, then hand off to `run_done()`.
 
         The stash is taken first because it can only be taken at all while
@@ -693,20 +693,18 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         """
         key = self.get_key()
         store = self.get_journey_store()
-        store.put_stash(key, bound_wizard.stash(label=self.get_label()))
-        self.run_recorded(bound_wizard, store, key)
-        response = self.run_done(bound_wizard)
+        store.put_stash(key, run.stash(label=self.get_label()))
+        self.run_recorded(run, store, key)
+        response = self.run_done(run)
         store.clear_run(key)
         return response
 
-    def run_recorded(
-        self, bound_wizard: BoundWizard, store: JourneyStore, key: str
-    ) -> None:
+    def run_recorded(self, run: Run, store: JourneyStore, key: str) -> None:
         """The library's own bookkeeping alongside the stash, inside the
         window where the run's answers are still readable. A plain section
         records nothing; an item caches its title."""
 
-    def run_done(self, bound_wizard: BoundWizard) -> HttpResponseBase:
+    def run_done(self, run: Run) -> HttpResponseBase:
         """What this section does when it finishes, beyond being recorded.
         The run is still readable here and torn down after, so anything
         another section's `blocked()` or `hidden()` needs to know is read
@@ -950,9 +948,9 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         its store, the page's URL, and `finish()` for recording a run as
         one of the sections — the whole of what a start wizard needs:
 
-            def done(self, bound_wizard):
+            def done(self, run):
                 journey = GrantApplication.begin(self.request)
-                journey.finish("setup", bound_wizard)
+                journey.finish("setup", run)
                 return redirect(journey.url)
 
         Nothing about it needs a wizard: an "apply again" link, a command
@@ -1213,21 +1211,21 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         store.set_run(self.full_key(entry), started.run_id)
         return started.entry_url()
 
-    def resume_section(self, entry: Entry, store: JourneyStore) -> BoundWizard | None:
+    def resume_section(self, entry: Entry, store: JourneyStore) -> Run | None:
         run_id = store.get_run(self.full_key(entry))
         if run_id is None:
             return None
         try:
-            bound_wizard = self.entry_viewset(entry).inspect(
+            run = self.entry_viewset(entry).inspect(
                 self.request, run_id, **self.entry_url_kwargs(entry)
             )
         except RunNotFound:
             return None
-        if bound_wizard.is_complete:
+        if run.is_complete:
             return None
-        return bound_wizard
+        return run
 
-    def reopen_section(self, entry: Entry, store: JourneyStore) -> BoundWizard | None:
+    def reopen_section(self, entry: Entry, store: JourneyStore) -> Run | None:
         try:
             payload = store.get_stash(self.full_key(entry))
         except StashNotFound:
@@ -1239,7 +1237,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             **self.entry_url_kwargs(entry),
         )
 
-    def start_section(self, entry: Entry) -> BoundWizard:
+    def start_section(self, entry: Entry) -> Run:
         return self.entry_viewset(entry).begin(
             self.request, **self.entry_url_kwargs(entry)
         )
@@ -1357,8 +1355,8 @@ class Journey:
             ),
         )
 
-    def finish(self, section: str, bound_wizard: BoundWizard) -> None:
-        """Record `bound_wizard`'s finished run as `section`."""
+    def finish(self, section: str, run: Run) -> None:
+        """Record `run`'s finished run as `section`."""
         view = self.tasklist_viewset.viewset_for(section)()
         view.setup(self.request, **self.page_kwargs)
-        view.done(bound_wizard)
+        view.done(run)

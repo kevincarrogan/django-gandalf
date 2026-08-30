@@ -5,7 +5,7 @@ selector — needs to know things while the walk is happening: what has been
 answered so far, who is answering, what the mount prefix was. None of that
 is HTTP. It arrived as an `HttpRequest` only because a request was the
 object that happened to be in scope, and everything downstream inherited the
-assumption: storage was constructed from a request, `BoundWizard` held one,
+assumption: storage was constructed from a request, `Run` held one,
 and `gandalf.driver` — which has no browser anywhere near it — had to
 manufacture one before it could ask a wizard anything at all.
 
@@ -37,7 +37,7 @@ from django.http import HttpRequest
 
 
 if TYPE_CHECKING:
-    from gandalf.runtime import BoundWizard
+    from gandalf.runtime import Run
 
 
 class WizardSession(Protocol):
@@ -119,7 +119,7 @@ class WizardContext:
 
         context = WizardContext(actor=customer)
 
-    `run` is filled in by `BoundWizard` as it is constructed, which is what
+    `run` is filled in by `Run` as it is constructed, which is what
     lets a predicate reach the answers behind it. Before that moment it is
     `None`, exactly as `request.wizard` was absent before a dispatch set it.
 
@@ -142,9 +142,9 @@ class WizardContext:
         self.request = request
         self.url_kwargs = dict(url_kwargs or {})
         self.path = path
-        #: The run this context is bound to — `BoundWizard` sets it on
+        #: The run this context is bound to — `Run` sets it on
         #: construction. What `request.wizard` used to be.
-        self.run: BoundWizard | None = None
+        self.run: Run | None = None
         self._actor = actor
         self._session: WizardSession | None = session
         self._fabricated: HttpRequest | None = None
@@ -165,7 +165,7 @@ class WizardContext:
         call is the more specific statement.
 
         `run` is deliberately not carried over. It belongs to a
-        `BoundWizard` and the twin is about to be given its own.
+        `Run` and the twin is about to be given its own.
         """
         session = self._session
         if session is None and self.request is None:

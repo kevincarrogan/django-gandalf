@@ -15,14 +15,14 @@ class FundApplicationViewSet(WizardViewSet):
     url_name = "readme-fund"
     template_name = "testapp/linear_wizard.html"
 
-    def get_wizard(self, bound_wizard):
+    def get_wizard(self, run):
         wizard = ch02.applicant(organisation=ch04.organisation_details)
         if self.kwargs["fund"] == "arts":
             wizard = wizard.step(PortfolioForm, name="portfolio")
         return wizard.step(EmailForm, name="contact")
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         return HttpResponse(
             f"Application to the {self.kwargs['fund']} fund from {answers['email']}"
         )

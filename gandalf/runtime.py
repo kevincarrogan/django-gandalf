@@ -249,12 +249,12 @@ class RunMetadata(MetadataBag):
 _NO_WALK = object()
 
 
-def _open_file_refs(bound_wizard, file_refs):
+def _open_file_refs(run, file_refs):
     if not file_refs:
         return None
     return MultiValueDict(
         {
-            field_name: [bound_wizard.file_storage.open(ref)]
+            field_name: [run.file_storage.open(ref)]
             for field_name, ref in file_refs.items()
         }
     )
@@ -269,9 +269,7 @@ class RuntimeStep:
     files: FileRefs | None = None
     metadata: Metadata | None = None
     next: RuntimeNode | None = None
-    bound_wizard: BoundWizard | None = dataclass_field(
-        default=None, repr=False, compare=False
-    )
+    run: Run | None = dataclass_field(default=None, repr=False, compare=False)
 
     @property
     def name(self) -> str | None:
@@ -283,11 +281,11 @@ class RuntimeStep:
     def url(self) -> str | None:
         """This step's own URL: a GET renders its answer for editing, so it
         is the "change this" link for a summary page. None without a URL
-        reverser (programmatic use — see `BoundWizard.step_url`)."""
+        reverser (programmatic use — see `Run.step_url`)."""
         # Every node the walk builds carries its wizard; the default is for
         # nodes built by hand in a test.
-        bound_wizard = cast("BoundWizard", self.bound_wizard)
-        return bound_wizard.step_url(self.declaration)
+        run = cast("Run", self.run)
+        return run.step_url(self.declaration)
 
     @cached_property
     def form(self) -> BaseForm:
@@ -306,7 +304,7 @@ class RuntimeStep:
         `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()`,
         and `get_prefix()` overrides on the user's FormView.
 
-        Note: the synthetic request comes from `bound_wizard.context` — the
+        Note: the synthetic request comes from `run.context` — the
         *current* environment, not the one that originally submitted the
         step. For typical single-user flows they're equivalent; for flows
         where one user edits another's run, the actor reflects the editor.
@@ -321,11 +319,11 @@ class RuntimeStep:
         readable afterwards.
         """
         form_view_class = cast("StepViewClass", self.declaration.form_view)
-        bound_wizard = cast("BoundWizard", self.bound_wizard)
-        request = bound_wizard.dispatcher.build_request(
+        run = cast("Run", self.run)
+        request = run.dispatcher.build_request(
             "POST",
             submission=self.data or {},
-            files=_open_file_refs(bound_wizard, self.files),
+            files=_open_file_refs(run, self.files),
         )
         view = form_view_class()
         view.setup(request)
@@ -354,7 +352,7 @@ class RuntimeBranch:
     runtime tree; their stored entries ride along verbatim in
     `dormant_arms`, keyed by arm id, so answers survive an arm change and
     are restored when the user flips back. Inspect
-    `bound_wizard.wizard.tree` for the full declared structure.
+    `run.wizard.tree` for the full declared structure.
     """
 
     declaration: tree.Branch
@@ -615,8 +613,8 @@ class StepDispatcher:
     renders a cursor as an HTTP response.
     """
 
-    def __init__(self, bound_wizard: BoundWizard) -> None:
-        self._bound_wizard = bound_wizard
+    def __init__(self, run: Run) -> None:
+        self._run = run
 
     def dispatch(
         self,
@@ -645,7 +643,7 @@ class StepDispatcher:
         is about HTTP: where a request comes from is the context's business,
         what Django's parsing expects to find on it is this module's.
         """
-        request = cast(WizardRequest, self._bound_wizard.context.http_request())
+        request = cast(WizardRequest, self._run.context.http_request())
         request.method = method
         if method == "POST":
             request.POST = _as_post_data(submission)
@@ -674,7 +672,7 @@ class StepDispatcher:
         )
 
 
-class BoundWizard:
+class Run:
     def __init__(
         self,
         context: WizardContext,
@@ -729,11 +727,11 @@ class BoundWizard:
 
     def initialise(self) -> None:
         self.run_id = self.storage.initialise_run()
-        logger.debug("Initialise BoundWizard: %s", self.run_id)
+        logger.debug("Initialise Run: %s", self.run_id)
 
     def retrieve(self, run_id: str) -> None:
         self.run_id = self.storage.retrieve_run(run_id)
-        logger.debug("Retrieving BoundWizard: %s", self.run_id)
+        logger.debug("Retrieving Run: %s", self.run_id)
 
     def get_run_data(self) -> RunData:
         return self.storage.get_run_data(self.run_id)
@@ -829,7 +827,7 @@ class BoundWizard:
         would find nothing there.
 
         Pinning the tree keeps the run readable for as long as anything
-        holds this `BoundWizard`, which is what lets `WizardViewSet.finish`
+        holds this `Run`, which is what lets `WizardViewSet.finish`
         tombstone immediately rather than waiting on a render: a template
         that raises must not leave a run that can fire `done()` again.
 
@@ -958,7 +956,7 @@ class BoundWizard:
     def run_url(self) -> str | None:
         """The bare run URL — redirects to the current step, so it works as
         a "return to where I was" link. None without a URL reverser (set by
-        the viewset via `bound_wizard.urls`)."""
+        the viewset via `run.urls`)."""
         if self.urls is None:
             return None
         return self.urls.get_wizard_url(self.run_id)
@@ -970,7 +968,7 @@ class BoundWizard:
         answer" link a summary page hangs off each row. Unlike `back_url` it
         needs no render context: any step the caller can name, it can link
         to. None without a URL reverser (set by the viewset via
-        `bound_wizard.urls`).
+        `run.urls`).
         """
         if self.urls is None:
             return None
@@ -993,7 +991,7 @@ class BoundWizard:
         naturally begins. Falls back to the bare run URL only for a wizard
         with no steps at all, where there is nothing else to name and nothing
         to fire either. None without a URL reverser (set by the viewset via
-        `bound_wizard.urls`).
+        `run.urls`).
         """
         if self.urls is None:
             return None
@@ -1203,14 +1201,14 @@ class CursorWalker(tree.Interpreter):
         entries: State,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-        bound_wizard: BoundWizard,
+        run: Run,
         claim: Claim | None = None,
         submission: Submission | None = None,
         files: FileRefs | None = None,
         metadata: Metadata | None = None,
     ) -> None:
         self._dispatcher = dispatcher
-        self._bound_wizard = bound_wizard
+        self._run = run
         self._entries_iter = iter(entries)
         self._claim = claim
         self._submission = submission
@@ -1256,7 +1254,7 @@ class CursorWalker(tree.Interpreter):
         if data is None:
             return False, None
         try:
-            with self._bound_wizard.walking(self._head):
+            with self._run.walking(self._head):
                 response = self._dispatcher.dispatch(
                     step,
                     self._dispatcher.build_request(
@@ -1289,7 +1287,7 @@ class CursorWalker(tree.Interpreter):
                     data=stored,
                     files=stored_files,
                     metadata=stored_metadata,
-                    bound_wizard=self._bound_wizard,
+                    run=self._run,
                 )
             )
             return
@@ -1307,7 +1305,7 @@ class CursorWalker(tree.Interpreter):
             # Only a placement is a submission. The walk re-proves stored
             # answers on every request, and counting those would count one
             # mistake once per page that follows it.
-            self._bound_wizard.observer.submission(step, satisfied, self._metadata)
+            self._run.observer.submission(step, satisfied, self._metadata)
 
         node = RuntimeStep(
             declaration=step,
@@ -1316,7 +1314,7 @@ class CursorWalker(tree.Interpreter):
             # A placement replaces what was recorded about the last one:
             # metadata describes the answer that is there now.
             metadata=self._metadata if claimed else stored_metadata,
-            bound_wizard=self._bound_wizard,
+            run=self._run,
         )
         self._append(node)
         if claimed:
@@ -1345,7 +1343,7 @@ class CursorWalker(tree.Interpreter):
                 PreservedBranch(entry=entry if entry is not None else {"branch": {}})
             )
             return
-        arm_id, arm = self._bound_wizard._select_branch_arm(branch, self._head)
+        arm_id, arm = self._run._select_branch_arm(branch, self._head)
         sub_entries, dormant_arms = _branch_sub_entries(entry, arm_id)
         # A claim is satisfied once; an arm walked after that carries neither
         # the claim nor the submission, so nothing can be placed twice. The
@@ -1357,7 +1355,7 @@ class CursorWalker(tree.Interpreter):
             sub_entries,
             self._args,
             self._kwargs,
-            self._bound_wizard,
+            self._run,
             claim=None if self.reached else self._claim,
             submission=None if self.reached else self._submission,
             files=self._files,
@@ -1395,13 +1393,13 @@ class CursorWalker(tree.Interpreter):
         # partial-tree handoff a branch predicate gets — then walk it inline,
         # exactly like a branch arm. Nothing distinguishes an expanded step
         # from a declared one once it is in the tree.
-        subtree = self._bound_wizard._build_expansion(expand, self._head)
+        subtree = self._run._build_expansion(expand, self._head)
         sub = type(self)(
             self._dispatcher,
             _expand_sub_entries(entry),
             self._args,
             self._kwargs,
-            self._bound_wizard,
+            self._run,
             claim=None if self.reached else self._claim,
             submission=None if self.reached else self._submission,
             files=self._files,
@@ -1428,7 +1426,7 @@ class CursorWalker(tree.Interpreter):
         return Cursor(node=None, state=self._head, escapes=escapes)
 
     def _open_files(self, file_refs):
-        return _open_file_refs(self._bound_wizard, file_refs)
+        return _open_file_refs(self._run, file_refs)
 
     def _append(self, node):
         if self._head is None:
@@ -1531,8 +1529,8 @@ class MergeCleanedData(tree.Reducer):
     """Reducer that folds completed step cleaned_data into a single dict
     using last-write-wins on key collisions.
 
-    Intended for `bound_wizard.path` but also works on
-    `bound_wizard.runtime_tree`; for each `RuntimeStep` it contributes
+    Intended for `run.path` but also works on
+    `run.runtime_tree`; for each `RuntimeStep` it contributes
     `step.form.cleaned_data`, and any branch sub-fold is merged into the
     accumulator. Subclass and override `combine`, `visit_step`, or
     `visit_branch` for a different merge policy.

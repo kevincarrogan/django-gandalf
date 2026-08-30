@@ -84,7 +84,7 @@ def test_the_person_lands_on_their_answers_and_can_change_any_of_them(
 ):
     client.force_login(customer)
 
-    response = client.get(filled_run.bound_wizard.entry_url("confirm"))
+    response = client.get(filled_run.run.entry_url("confirm"))
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Check your answers")
@@ -99,7 +99,7 @@ def test_the_person_lands_on_their_answers_and_can_change_any_of_them(
 def test_an_edit_by_the_person_survives_into_the_quote(client, customer, filled_run):
     client.force_login(customer)
     run_id = filled_run.run_id
-    confirm_url = filled_run.bound_wizard.entry_url("confirm")
+    confirm_url = filled_run.run.entry_url("confirm")
     company_url = reverse(
         "quote-step", kwargs={"run_id": run_id, "gandalf_step": "company"}
     )
@@ -140,7 +140,7 @@ def test_the_run_the_agent_filled_is_the_run_the_browser_opens(
 
     assert stored.owner == customer
     assert not stored.completed
-    response = client.get(filled_run.bound_wizard.entry_url("confirm"))
+    response = client.get(filled_run.run.entry_url("confirm"))
     assertContains(response, "copilot filled this in for you")
 
 

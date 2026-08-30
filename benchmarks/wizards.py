@@ -104,7 +104,7 @@ def _chose(segment, value):
     return predicate
 
 
-def _done(self, bound_wizard):
+def _done(self, run):
     return HttpResponse("done")
 
 
@@ -207,8 +207,8 @@ def dynamic_wizard(*, items, fields=1, clean_seconds=0.0, instrumented=True):
         for index in range(items)
     ]
 
-    def get_wizard(self, bound_wizard):
-        state = bound_wizard.get_state()
+    def get_wizard(self, run):
+        state = run.get_state()
         wizard = Wizard().step(count_form, **_naming(count_segment))
         if state:
             count = int(state[0]["step"]["count"])

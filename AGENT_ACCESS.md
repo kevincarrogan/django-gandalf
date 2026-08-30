@@ -11,7 +11,7 @@ step, learn what the next step wants, be told precisely what failed
 validation — without rendering HTML, faking browser POSTs, or scraping error
 lists out of markup.
 
-The runtime already speaks this language. `BoundWizard.walk()` replays
+The runtime already speaks this language. `Run.walk()` replays
 stored answers, places a submission at a claimed step, and stops where the
 run stops; `RuntimeStep.form` exposes a step's `errors` and `cleaned_data`
 as data. What agents need is a thin layer that packages those mechanics
@@ -32,7 +32,7 @@ graph TB
 
     subgraph "gandalf (Django only)"
         AD["RunDriver + form_json_schema\n(gandalf/driver.py)"]
-        BW["BoundWizard.walk / persist / cursor / path\n(gandalf/runtime.py)"]
+        BW["Run.walk / persist / cursor / path\n(gandalf/runtime.py)"]
         VS["WizardViewSet.begin / inspect / finish\n(gandalf/viewsets.py)"]
     end
 
@@ -222,7 +222,7 @@ Two things follow:
   AG-UI endpoint hands the agent the session the chat request arrived on
   — the same trust as running it as `request.user`. See *Sessions and the
   streamed response* below for the one setting that has to hold.
-- The handover is just a URL: `bound_wizard.entry_url("confirm")` is the
+- The handover is just a URL: `run.entry_url("confirm")` is the
   wizard's own step URL. Nothing is exported, copied, or re-validated
   specially — the person's first page load walks the same answers the
   same way.

@@ -22,7 +22,7 @@ The no-op base. Subclass it and override the events you care about; the
 default for every wizard is this class, which does nothing.
 
 One instance is built per run, lazily on the first event
-(`BoundWizard.observer`), from the wizard's `observer_class`. It is not
+(`Run.observer`), from the wizard's `observer_class`. It is not
 built for a wizard resolved without a run (`WizardViewSet.resolve()`,
 `RunDriver.outline_for()`), because there is no run to watch.
 
@@ -71,7 +71,7 @@ An answer was placed at `step`, and either satisfied it or did not.
 
 **Fires** from `CursorWalker.visit_step()` in `gandalf/runtime.py`, on
 the walk that carries the submission — the step-URL POST in the viewset,
-`RunDriver.submit()`, or a direct `BoundWizard.walk(claim=..., submission=...)`.
+`RunDriver.submit()`, or a direct `Run.walk(claim=..., submission=...)`.
 Fires whether or not the walk is then persisted, and reaches a step
 inside a branch arm or an expansion through the nested walk.
 
@@ -81,11 +81,11 @@ That holds for `Park` too, whose answer is then not stored.
 
 ### `run_completed()`
 
-The run finished and was tombstoned. Fires from `BoundWizard.complete()`,
+The run finished and was tombstoned. Fires from `Run.complete()`,
 which `WizardViewSet.finish()` calls after `done()` has returned — so it
 follows `done()` both on the confirm POST and on `RunDriver.finish()`. A
 `done()` that raises leaves the run resumable and this unfired.
-`Obliterate`, `bound_wizard.obliterate()` and stashing do not fire it.
+`Obliterate`, `run.obliterate()` and stashing do not fire it.
 
 ### Installing one
 
@@ -200,7 +200,7 @@ Count in the observer only.
 ### I need the submitted values in the observer
 
 By design they are not passed. Read them in `done()` via
-`bound_wizard.path`, or in the caller of `RunDriver.submit()`, where the
+`run.path`, or in the caller of `RunDriver.submit()`, where the
 decision to record personal data is visible.
 
 ### My observer's exception took the page down
@@ -211,7 +211,7 @@ Observers must not raise; the call sits inside the walk. Wrap the body in
 ### I want an event when a run starts
 
 There is none — see the caveat above. Override
-`WizardViewSet.run_started(bound_wizard)`, which fires exactly once per
+`WizardViewSet.run_started(run)`, which fires exactly once per
 run, when it is minted.
 
 ### `metadata` is `None` for placements I know came from my script

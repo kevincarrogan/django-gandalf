@@ -9,6 +9,11 @@ a callable that decides — but a Gandalf predicate is handed a `WizardContext`
 and runs behind a fully-validated prefix, so it reads prior answers with
 `path.find_step(...).form.cleaned_data` unconditionally.
 
+The template changes too: there is no `{{ wizard.management_form }}`. A
+formtools wizard carries its position in the POST body; Gandalf keeps the
+run in the session and works out its position by replaying the answers, so
+a step template is a plain Django form.
+
 ### Linear wizard
 
 ```python

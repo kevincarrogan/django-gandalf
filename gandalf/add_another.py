@@ -56,7 +56,7 @@ from django.urls import URLPattern, URLResolver, include, path, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext, gettext_lazy as _
 
-from gandalf.runtime import BoundWizard
+from gandalf.runtime import Run
 from gandalf.storage import RunNotFound
 from gandalf.tasklists import (
     BLOCKED,
@@ -179,7 +179,7 @@ class ItemViewSet(SectionViewSet):
     def get_journey_store(self) -> CollectionStore:
         return cast(CollectionStore, super().get_journey_store())
 
-    def get_item_title(self, bound_wizard: BoundWizard) -> str:
+    def get_item_title(self, run: Run) -> str:
         """The name this item goes by on the page, read off the finished
         run: `item_title`'s field, or its callable. A step that is not on
         the route the user took names nothing, and the page falls back to a
@@ -191,17 +191,15 @@ class ItemViewSet(SectionViewSet):
                 f"item_title=(step, field), or a callable of the finished run."
             )
         if callable(self.item_title):
-            return str(self.item_title(bound_wizard))
+            return str(self.item_title(run))
         step_name, field_name = self.item_title
-        step = bound_wizard.path.find_step(name=step_name)
+        step = run.path.find_step(name=step_name)
         if step is None:
             return ""
         return str(step.form.cleaned_data.get(field_name, ""))
 
-    def run_recorded(
-        self, bound_wizard: BoundWizard, store: JourneyStore, key: str
-    ) -> None:
-        title = self.get_item_title(bound_wizard)
+    def run_recorded(self, run: Run, store: JourneyStore, key: str) -> None:
+        title = self.get_item_title(run)
         cast(CollectionStore, store).set_item_title(
             self.get_list_key(), self.get_item_id(), title or None
         )
@@ -217,9 +215,7 @@ class ItemViewSet(SectionViewSet):
             if key != self.item_url_kwarg
         }
 
-    def run_unavailable(
-        self, bound_wizard: BoundWizard, reason: str
-    ) -> HttpResponseBase:
+    def run_unavailable(self, run: Run, reason: str) -> HttpResponseBase:
         return redirect(self.get_tasklist_url())
 
     def dispatch(
@@ -515,12 +511,12 @@ class AddAnotherViewSet(TaskListViewSet):
         if run_id is None:
             return
         try:
-            bound_wizard = self.entry_viewset(entry).inspect(
+            run = self.entry_viewset(entry).inspect(
                 self.request, run_id, **self.entry_url_kwargs(entry)
             )
         except RunNotFound:
             return
-        bound_wizard.obliterate()
+        run.obliterate()
 
     # --- HTTP -------------------------------------------------------------
 

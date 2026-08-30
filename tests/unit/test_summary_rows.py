@@ -10,7 +10,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from gandalf.context import WizardContext
-from gandalf.runtime import BoundWizard
+from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
 from gandalf.summary import Group, Hide, SummaryMixin, format_value
 from gandalf.wizard import Wizard, condition
@@ -188,11 +188,11 @@ def summary_view(rf):
         }
     )
     context = WizardContext.from_request(request)
-    bound_wizard = BoundWizard(context, SessionStorage(context), wizard=wizard)
-    bound_wizard.retrieve("existing-run")
-    bound_wizard.urls = _StubUrls()
+    run = Run(context, SessionStorage(context), wizard=wizard)
+    run.retrieve("existing-run")
+    run.urls = _StubUrls()
     # The view reads its own request, exactly as a dispatch hands it one.
-    request.wizard = bound_wizard
+    request.wizard = run
     return _SummaryView(request)
 
 
@@ -313,10 +313,10 @@ def summary_view_for(rf):
             {"gandalf_runs": {"existing-run": {"state": state}}},
         )
         context = WizardContext.from_request(request)
-        bound_wizard = BoundWizard(context, SessionStorage(context), wizard=wizard)
-        bound_wizard.retrieve("existing-run")
-        bound_wizard.urls = _StubUrls()
-        request.wizard = bound_wizard
+        run = Run(context, SessionStorage(context), wizard=wizard)
+        run.retrieve("existing-run")
+        run.urls = _StubUrls()
+        request.wizard = run
         return view_class(request)
 
     return build

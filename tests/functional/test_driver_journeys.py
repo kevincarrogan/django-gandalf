@@ -51,7 +51,7 @@ def test_what_was_recorded_about_a_placement_survives_a_stash(tmp_path):
     driver = RunDriver.begin(FirstApplicationViewSet)
     driver.submit({"name": "Ada"}, metadata={"placed_by": "person"})
 
-    payload = driver.bound_wizard.stash()
+    payload = driver.run.stash()
 
     assert payload["state"][0]["meta"] == {"placed_by": "person"}
 

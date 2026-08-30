@@ -41,8 +41,8 @@ class LookedUpApplicationViewSet(WizardViewSet):
         ch02.applicant(organisation=ch04.organisation_details)
     )
 
-    def done(self, bound_wizard):
-        answers = MergeCleanedData().reduce(bound_wizard.path)
+    def done(self, run):
+        answers = MergeCleanedData().reduce(run.path)
         return HttpResponse(
             f"Application from {answers['email']} ({answers['website']})"
         )

@@ -57,7 +57,7 @@ class _SignupViewSet(WizardViewSet):
     wizard = Wizard().step(NameForm, name="name").step(EmailForm, name="email")
     agent = AgentProfile(purpose="signing up", notes="Say hello first.")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"signed up")
 
 
@@ -67,7 +67,7 @@ class _BareViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = Wizard().step(NameForm, name="name")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"done")
 
 
@@ -76,7 +76,7 @@ class _PhotoViewSet(WizardViewSet):
     wizard = Wizard().step(PhotoForm, name="photo").step(NameForm, name="name")
     agent = AgentProfile(purpose="checking a document")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"checked")
 
 
@@ -587,7 +587,7 @@ class _RejectingViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = Wizard().step(_RejectingPhotoForm, name="photo")
 
-    def done(self, bound_wizard):
+    def done(self, run):
         return HttpResponse(b"done")
 
 
@@ -646,7 +646,7 @@ def test_handing_back_works_for_a_wizard_with_no_step_called_confirm():
         url_name = "walk-counting-wizard"
         wizard = Wizard().step(NameForm, name="first")
 
-        def done(self, bound_wizard):
+        def done(self, run):
             return HttpResponse(b"done")
 
     tools = {n: t.function for n, t in build_toolset(_Named).tools.items()}

@@ -18,9 +18,9 @@ from gandalf.wizard import (
 )
 ```
 
-The module also re-exports `BoundWizard`, `StepFormView`, `WizardFileStorage`,
+The module also re-exports `Run`, `StepFormView`, `WizardFileStorage`,
 `WizardObserver` and `form_view_factory`, documented on their own pages
-([Bound wizard](bound-wizard.md), [Step views](step-views.md),
+([The run](run.md), [Step views](step-views.md),
 [File uploads](file-uploads.md), [Observers](observers.md),
 [Configuration](configuration.md)).
 
@@ -50,7 +50,7 @@ several branches without any of them changing underneath the others.
 **Caveats**
 
 - `Wizard` declares; it does not run. Lifecycle methods (`initialise()`,
-  `walk()`, `path`, …) live on [`BoundWizard`](bound-wizard.md), which the
+  `walk()`, `path`, …) live on [`Run`](run.md), which the
   viewset builds per request.
 - Nothing on a `Wizard` is validated until it is configured and resolved
   — see [`ConfiguredWizard`](#configuredwizard) and *Validation at resolve
@@ -367,8 +367,8 @@ a step declaration back into a segment. The default `step_router_class`.
 A `gandalf.tree.Reducer` that folds every completed step's `cleaned_data`
 into one dict, last write wins on key collisions.
 
-- `MergeCleanedData().reduce(bound_wizard.path)` — the usual call.
-  `reduce()` also accepts `bound_wizard.runtime_tree`.
+- `MergeCleanedData().reduce(run.path)` — the usual call.
+  `reduce()` also accepts `run.runtime_tree`.
 - Per node: `visit_step()` returns `step.form.cleaned_data`; `visit_branch()`
   and `visit_expand()` return their sub-fold; `initial()` is `{}` and
   `combine()` is `{**accumulator, **value}`. Override any of them for a
@@ -566,4 +566,4 @@ The builder is immutable. `wizard.step(Form, name="x")` returns a new
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md), [Chapter 2 — Branching](../learn/02-branching.md), [Chapter 3 — Switching](../learn/03-switching.md), [Chapter 4 — Expanding](../learn/04-expanding.md) · **Related:** [Configuration](configuration.md), [`WizardViewSet`](viewsets.md), [Bound wizard](bound-wizard.md), [Add another](add-another.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md), [Chapter 2 — Branching](../learn/02-branching.md), [Chapter 3 — Switching](../learn/03-switching.md), [Chapter 4 — Expanding](../learn/04-expanding.md) · **Related:** [Configuration](configuration.md), [`WizardViewSet`](viewsets.md), [The run](run.md), [Add another](add-another.md)

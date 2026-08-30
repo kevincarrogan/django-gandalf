@@ -20,7 +20,7 @@ costs `N²` validations spread over `2N` requests.
 
 Proving an answer and displaying it are separate passes over the same form:
 the walk dispatches the step's view to prove it, and
-[`RuntimeStep.form`](bound-wizard.md) reconstructs one to hand back
+[`RuntimeStep.form`](run.md) reconstructs one to hand back
 `cleaned_data`. So:
 
 - A check-your-answers page ([`SummaryMixin`](summary.md)) costs **two
@@ -58,7 +58,7 @@ everything else is your forms.
 
 - Move expensive work into `done()`, where it runs once.
 - Store a cheaply-recheckable token rather than re-running the check — a
-  lookup result written to [`bound_wizard.metadata`](run-metadata.md) is read
+  lookup result written to [`run.metadata`](run-metadata.md) is read
   back for free.
 - Accept that some checks belong only at submission time.
 - A [task list](tasklists.md) row deliberately pays none of this: two storage
@@ -71,4 +71,4 @@ pins the counts so they cannot regress unnoticed.
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [Bound wizard](bound-wizard.md), [Summary](summary.md), [Task lists](tasklists.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [The run](run.md), [Summary](summary.md), [Task lists](tasklists.md)

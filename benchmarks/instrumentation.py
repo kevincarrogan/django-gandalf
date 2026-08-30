@@ -69,7 +69,7 @@ class RequestLog:
 class DispatchCounter:
     """Collects counts for the request currently being measured.
 
-    A module-level singleton rather than per-`BoundWizard` state because a
+    A module-level singleton rather than per-`Run` state because a
     single request builds several walkers and dispatchers, and the question
     is about the request as a whole. Benchmarks are single-threaded; this is
     not safe for concurrent use and is not meant to be.
@@ -131,7 +131,7 @@ class DispatchCounter:
 
 
 def _walk_site():
-    """Who asked for this walk: the `BoundWizard` method, and its caller.
+    """Who asked for this walk: the `Run` method, and its caller.
 
     Frame 0 is this function, 1 is `enter_walk`, 2 is
     `CountingCursorWalker.walk`, so the runtime method that started the walk

@@ -83,13 +83,13 @@ Generate the `StepFormView` subclass behind a step declared with a bare
 ### `WizardRequest`
 
 `gandalf.types.WizardRequest` — an `HttpRequest` subclass declaring one
-attribute, `wizard: BoundWizard`. Never instantiated: it names what a
+attribute, `wizard: Run`. Never instantiated: it names what a
 dispatch adds to the request, so a view can annotate what it is handed.
 `StepFormView` already declares its `request` this way.
 
 It is not what a branch predicate, a `.switch()` selector or an `.expand()`
 builder receives — those are walk-time code and are handed a
-`WizardContext`, whose `run` is the same `BoundWizard`.
+`WizardContext`, whose `run` is the same `Run`.
 
 ### What `.step()` accepts
 
@@ -136,7 +136,7 @@ The dispatcher is replaceable per wizard
 
 ### What a step view may read
 
-`self.request.wizard` is the run's [`BoundWizard`](bound-wizard.md), from
+`self.request.wizard` is the run's [`Run`](run.md), from
 anywhere in the view — `get_initial()`, `get_form_kwargs()`,
 `get_context_data()`, `form_valid()`.
 
@@ -332,4 +332,4 @@ returns it.
 
 ---
 
-**Learn:** [Chapter 7 — Step views and escapes](../learn/07-step-views-and-escapes.md) · **Related:** [Escapes](escapes.md), [`BoundWizard`](bound-wizard.md), [Summary](summary.md), [Walk costs](walk-costs.md), [Configuration](configuration.md)
+**Learn:** [Chapter 7 — Step views and escapes](../learn/07-step-views-and-escapes.md) · **Related:** [Escapes](escapes.md), [`Run`](run.md), [Summary](summary.md), [Walk costs](walk-costs.md), [Configuration](configuration.md)

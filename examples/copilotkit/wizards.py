@@ -33,11 +33,11 @@ class HybridQuoteViewSet(InsuranceQuoteViewSet):
             template_name=self.template_name, observer_class=DemoObserver
         )
 
-    def done(self, bound_wizard):
+    def done(self, run):
         """Fires once, from whichever side confirmed — and in this demo
         that is always the human, on the review page."""
-        quote = quote_for(bound_wizard, vehicle_values=fleet_values)
-        log_event("quote", run=bound_wizard.run_id, **quote)
+        quote = quote_for(run, vehicle_values=fleet_values)
+        log_event("quote", run=run.run_id, **quote)
         return render(self.request, "hybrid/done.html", quote)
 
 

@@ -18,9 +18,9 @@ class ContactDetailsViewSet(WizardViewSet):
         .step(EmailForm, name="contact")
     )
 
-    def done(self, bound_wizard):
-        SessionStashStore(bound_wizard.context).put(
-            "contact", bound_wizard.stash(label="contact")
+    def done(self, run):
+        SessionStashStore(run.context).put(
+            "contact", run.stash(label="contact")
         )
         return HttpResponse("Contact details saved.")
 
@@ -35,7 +35,7 @@ def reopen_contact_details(request):
     return redirect(url)
 ```
 
-Inside `done()`, `bound_wizard.stash()` returns a small JSON-safe payload of
+Inside `done()`, `run.stash()` returns a small JSON-safe payload of
 the run's answers. The payload is yours — a model field, the session,
 wherever your bigger flow keeps its pieces; `SessionStashStore` is the helper
 for the common case. To re-open it, `resurrect(request, payload)` seeds a
