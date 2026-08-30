@@ -64,4 +64,4 @@ what happens to a required file field on re-open, are in the
 
 ---
 
-[← Chapter 9 — Completion hooks and run metadata](09-completion-hooks-and-metadata.md) · [Learn](README.md) · [Chapter 11 — Hubs: a task list of members →](11-hubs.md)
+[← Chapter 9 — Completion hooks and run metadata](09-completion-hooks-and-metadata.md) · [Learn](README.md) · [Chapter 11 — Task lists: sections in any order →](11-task-lists.md)

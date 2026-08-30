@@ -141,10 +141,11 @@ The worked example is
 [`tests/functional/test_durable_storage.py`](../../tests/functional/test_durable_storage.py)
 with the session holding nothing but the login.
 
-A durable **hub** or **collection** needs both seams swapped, once, on
-the root viewset: `storage_class` for the runs and `journey_store_class`
-for the bookkeeping (a `ModelJourneyStore` and `ModelCollectionStore` are
-in the same module), and every member the root builds gets the same two.
+A durable **task list** or **add-another page** needs both seams swapped,
+once, on the root viewset: `storage_class` for the runs and
+`journey_store_class` for the bookkeeping (a `ModelJourneyStore` and
+`ModelCollectionStore` are in the same module), and every entry the root
+builds gets the same two.
 Swapping only one gives durable answers nobody can find, or a durable index
 into runs that have expired. See [Journey store](journey-store.md).
 
@@ -290,12 +291,12 @@ That is `max_completed_runs` pruning tombstones, oldest first. A pruned run
 answers as `"unknown"` rather than `"completed"`. Raise the limit on a
 subclass, or keep completed runs somewhere durable.
 
-### My durable hub shows members as "not started" after a new login
+### My durable task list shows sections as "not started" after a new login
 
-The member viewsets swapped `storage_class` but the hub kept
-`SessionJourneyStore`, so the bookkeeping that says which run a member is in
-went with the old session. Swap `journey_store_class` on the hub and every
-member too — see [Journey store](journey-store.md).
+The root swapped `storage_class` but kept `SessionJourneyStore`, so the
+bookkeeping that says which run a section is in went with the old session.
+Swap `journey_store_class` on the root too — every section it builds gets
+both — see [Journey store](journey-store.md).
 
 ---
 

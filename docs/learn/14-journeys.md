@@ -1,16 +1,17 @@
-# Chapter 14 — Journeys: scope, memory, nesting and an ending
+# Chapter 14 — Journeys: scope, memory, groups and an ending
 
-Everything so far, put together. A hub's members add up to something — this
-application — and that something is a **journey**. It has three things no
-single wizard has: a scope, a memory, and an ending. Every member of it gets
-the first two; the root hub — the one no hub lists — owns the third. And
-because a hub is a member like any other, a task list can hold a task list.
+Everything so far, put together. A task list's sections add up to
+something — this application — and that something is a **journey**. It has
+three things no single wizard has: a scope, a memory, and an ending. Every
+section of it gets the first two; the root task list — the one no list
+lists — owns the third. And because a task list is an entry like any
+other, a task list can hold a task list.
 
 ### A scope
 
 One session can hold two applications in two tabs, and they must never see
-each other. Mount the hub under a journey segment, and everything beneath it
-— the page, every door, every member's run, the budget and its lines —
+each other. Mount the page under a journey segment, and everything beneath
+it — the page, every door, every section's run, the budget and its lines —
 reads the same one:
 
 ```python
@@ -23,15 +24,15 @@ urlpatterns = [
 ]
 ```
 
-One pattern, as always. A hub not mounted under a journey uses the one it
+One pattern, as always. A list not mounted under a journey uses the one it
 declares, `journey = "default"` — one per session, which is what chapters
 11 to 13 were.
 
-### Somewhere to be minted
+### Somewhere to begin
 
-The library does not decide when a journey begins; the first wizard does. It
-has no journey yet, so its `done()` mints one, stashes its own answers as the
-journey's first member, and sends the applicant to the hub under the new id:
+The library does not decide when a journey begins; the first wizard does.
+It asks the questions everything else turns on, before there is a list to
+come back to:
 
 ```python
 def record_applying_as(store, bound_wizard):
@@ -52,83 +53,104 @@ setup = (
 )
 ```
 
+Its `done()` is three lines, each saying what it does: begin a journey,
+record this run as the list's `setup` section, go there.
+
 ```python
 class ApplicationStartViewSet(WizardViewSet):
+    """The first wizard, before there is a journey to be a section of:
+    begin one, record this run as its `setup` section, go there."""
+
+    description = (
+        "Chapter 14 as a task list: the setup wizard that mints an application."
+    )
     url_name = "readme-apply-start"
     wizard = setup
 
     def done(self, bound_wizard):
-        journey = uuid.uuid4().hex
-        store = SessionJourneyStore(self.context_for(self.request), journey)
-        store.put_stash("setup", bound_wizard.stash(label="setup"))
-        record_applying_as(store, bound_wizard)
-        return redirect("readme-apply", journey=journey)
+        journey = GrantApplication.begin(self.request)
+        journey.finish("setup", bound_wizard)
+        return redirect(journey.url)
 ```
 
-The same wizard is then the journey's first member — re-openable from the
-hub like any other, and re-recording its answer when it is re-saved:
+`begin()` is asked of the *list* — a value — and hands back the journey:
+its id, its store, its page. `finish()` records the run exactly as
+finishing the section from the page would — stashed, its `run_done()` run
+— so the same wizard is then the journey's first section, complete on
+arrival and re-openable from the page like any other:
 
 ```python
-    .member("setup", setup, title="Applying as", done=record_applying_as)
+class SetupSection(SectionViewSet):
+    wizard = setup
+
+    def run_done(self, bound_wizard):
+        record_applying_as(self.get_journey_store(), bound_wizard)
+        return super().run_done(bound_wizard)
 ```
+
+Nothing about `begin()` needs a wizard. An "apply again" link, a
+management command or an agent begins a journey the same way.
 
 ### A memory
 
-`store.data` is the journey's record of what its members decided — the
-facts the rest of the journey turns on, kept where every member reads them
-without a walk. It is the same bag chapter 9's `bound_wizard.metadata` is,
-kept for the journey rather than for one run, with per-member sub-bags so
-members cannot tread on each other. `record_applying_as` writes
-*individual* or *organisation* there, and the governing document member
+`store.data` is the journey's record of what its sections decided — the
+facts the rest of the journey turns on, kept where every section reads
+them without a walk. It is the same bag chapter 9's `bound_wizard.metadata`
+is, kept for the journey rather than for one run, with per-section sub-bags
+so sections cannot tread on each other. `record_applying_as` writes
+*individual* or *organisation* there, and the governing document section
 reads it back:
 
 ```python
-    # Written by the setup member at the root; one record, so a member two
-    # hubs down reads it without being handed anything.
-    .member(
-        "documents",
-        documents,
-        title="Governing document",
-        hidden=lambda store: store.data.get("applying_as") != "organisation",
-    )
+class DocumentsSection(SectionViewSet):
+    """Only for organisations — an answer the setup section wrote at the root."""
+
+    wizard = documents
+
+    @classmethod
+    def hidden(cls, store):
+        return store.data.get("applying_as") != "organisation"
 ```
 
-The project member writes the amount and match funding reads it, exactly as
-in chapter 13; contact writes the email address, which is how
+The project section writes the amount and match funding reads it, exactly
+as in chapter 13; contact writes the email address, which is how
 `journey_done()` below can submit without reading a stash. A stash is for
 re-opening; `data` is for reading back.
 
 ### An ending
 
-`hub.is_complete` says the submit button may appear; a POST to the hub page
-presses it:
+`tasklist.is_complete` says the submit button may appear; a POST to the
+page presses it:
 
 ```python
-application = (
-    Hub()
-    .member("setup", setup, title="Applying as", done=record_applying_as)
-    .member(
-        "contact", contact, title="Contact details", reopen="review", done=record_email
+class GrantApplication(TaskList):
+    """What the application is: its sections, in the order the page lists
+    them. A value — `GrantApplication.begin(request)` starts one."""
+
+    setup = Section(SetupSection, title="Applying as")
+    contact = Section(ContactSection, title="Contact details", reopen="review")
+    project = Section(ProjectSection, title="Project", reopen="review")
+    budget = budget
+    match_funding = Section(MatchFundingSection, title="Match funding")
+    supporting = Group(
+        SupportingInformation,
+        title="Supporting information",
+        template_name="testapp/nested_hub.html",
     )
-    .member("project", project, title="Project", reopen="review", done=record_amount)
-    .collection("budget", budget, title="Budget")
-    .member(
-        "match_funding",
-        match_funding,
-        title="Match funding",
-        hidden=lambda store: store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD,
-    )
-    .hub("supporting", supporting, title="Supporting information")
-)
 
 
-class GrantApplicationViewSet(HubViewSet):
-    template_name = "testapp/journey_hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+class GrantApplicationViewSet(TaskListViewSet):
+    """The page. Mounted under `apply/<journey>/`, so every request —
+    the page, the doors, each section beneath it — reads the same journey,
+    and two applications are two URLs."""
+
+    description = "Chapter 14: the application's task list, with a submit."
     url_name = "readme-apply"
-    hub = application
+    template_name = "testapp/journey_hub.html"
+    section_template_name = "testapp/linear_wizard.html"
+    tasklist = GrantApplication
 
-    def journey_done(self, hub, store):
+    def journey_done(self, page, store):
         application = Application.objects.create()
         application.submit(store.data["email"])
         store.data["reference"] = application.reference
@@ -143,7 +165,7 @@ class GrantApplicationViewSet(HubViewSet):
 ```
 
 ```django
-{% if hub.is_complete %}
+{% if tasklist.is_complete %}
   <form method="post">
     {% csrf_token %}
     <button type="submit">Submit application</button>
@@ -151,66 +173,62 @@ class GrantApplicationViewSet(HubViewSet):
 {% endif %}
 ```
 
-`submit()` refuses if any row is not complete, then runs `journey_done()` —
-the application's work, and the one thing with no default — and only once
-that has returned tombstones the journey. A `journey_done()` that raises
-leaves every member resumable. After that, the runs and stashes are gone;
-the hub page answers with `submitted()`, which is `Http404` until
-you say what a submitted journey looks like. Anything the done page needs
-goes in `store.data`, which the tombstone keeps.
+The list is the value; the viewset owns the ending, because the ending
+needs a request. `submit()` refuses if any row is not complete, then runs
+`journey_done()` — the application's work, and the one thing with no
+default — and only once that has returned tombstones the journey. A
+`journey_done()` that raises leaves every section resumable. After that,
+the runs and stashes are gone; the page answers with `submitted()`, which
+is `Http404` until you say what a submitted journey looks like. Anything
+the done page needs goes in `store.data`, which the tombstone keeps.
 
 ### A task list within the task list
 
 Referees and the governing document are supporting information, and a page
-of their own reads better than two more rows on the application. A hub is a
-member like any other, so it is listed like any other: a `Hub` inside a
-`Hub`.
+of their own reads better than two more rows on the application. A task
+list is an entry like any other, so it is listed like any other: a `Group`.
 
 ```python
-supporting = (
-    Hub()
-    # Locked until contact details are finished. `contact` is a root key:
-    # the record is the journey's, whichever hub reads it.
-    .member(
-        "referees",
-        referees,
-        title="Referees",
-        blocked=lambda store: not store.has_stash("contact"),
-    )
-    # Written by the setup member at the root; one record, so a member two
-    # hubs down reads it without being handed anything.
-    .member(
-        "documents",
-        documents,
-        title="Governing document",
-        hidden=lambda store: store.data.get("applying_as") != "organisation",
-    )
-    .configure(template_name="testapp/nested_hub.html")
-)
+class SupportingInformation(TaskList):
+    referees = Section(RefereesSection, title="Referees")
+    documents = Section(DocumentsSection, title="Governing document")
 ```
 
-Nesting is a key namespace, not a second record: the nested hub's key is
-the prefix every member it lists is keyed under, so the referees member
+```python
+class RefereesSection(SectionViewSet):
+    """Locked until contact details are finished."""
+
+    wizard = referees
+
+    @classmethod
+    def blocked(cls, store):
+        return not store.has_stash("contact")
+```
+
+A group is a key namespace, not a second record: the group's key is the
+prefix every section it lists is keyed under, so the referees section
 lives at `supporting:referees` in the journey's store — composed by the
-hub, never typed. Everything still lives in the one journey record — the
-governing document's `hidden` reads `store.data["applying_as"]`, written by
-the setup wizard at the root. A nested hub has no viewset of its own, so
-its page template comes from `configure()`; its row on the parent is its
-own rows' status; and only the root ends the journey: a POST to the
-supporting hub goes back up to the application.
+page, never typed. Everything still lives in the one journey record —
+`blocked()` reads `contact`, a root key, from two levels down, and the
+governing document's `hidden()` reads `store.data["applying_as"]`, written
+by the setup wizard at the root. A group has no viewset of its own, so its
+page template goes on the `Group`; its page is built as a subclass of the
+root's, so a hook you override on `GrantApplicationViewSet` applies to it
+too; its row on the parent is its own rows' status; and only the root ends
+the journey: a POST to the supporting page goes back up to the application.
 
 ### Beyond the session
 
 The store behind all of this is `SessionCollectionStore(context, journey)`,
 and the contract it satisfies is written down as a protocol. The day an
 application outgrows the session, a store that keeps the same things in a
-table drops in by `journey_store_class` on the root alone — every member
+table drops in by `journey_store_class` on the root alone — every section
 beneath it gets the same one. The
 [Journey store reference](../reference/journey-store.md) has the contract
 and points at the worked durable store in the test app.
 
-> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch14_journey.py`](../../tests/testapp/readme/ch14_journey.py) &nbsp;·&nbsp; **Reference:** [Hubs](../reference/hubs.md)
+> ▶ **Try it live:** http://127.0.0.1:8000/readme/apply/new/ &nbsp;·&nbsp; **Source:** [`ch14_journey.py`](../../tests/testapp/readme/ch14_journey.py) &nbsp;·&nbsp; **Reference:** [Task lists](../reference/tasklists.md)
 
 ---
 
-[← Chapter 13 — Blocked and hidden members](13-blocked-and-hidden.md) · [Learn](README.md) · [Chapter 15 — Outline, observers and the driver →](15-outline-observers-and-the-driver.md)
+[← Chapter 13 — Blocked and hidden sections](13-blocked-and-hidden.md) · [Learn](README.md) · [Chapter 15 — Outline, observers and the driver →](15-outline-observers-and-the-driver.md)

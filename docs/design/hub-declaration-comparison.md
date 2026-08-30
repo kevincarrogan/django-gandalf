@@ -478,3 +478,14 @@ There is no `.step(Form, form_valid=…)`; by the same rule there is no
 Recommendation: **J**. H and I are what you do if the row-level callables
 stay; J says they should not have been there, for the same reason
 `.step()` has no `form_valid=`.
+
+## What was chosen
+
+B's shape carrying J's rule, with F's words. The builder is gone;
+`gandalf/tasklists.py` is the declaration (`TaskList`, a class body of
+`Section` / `AddAnother` / `Group` / `Link` entries) and the page
+(`TaskListViewSet`, `SectionViewSet`); `gandalf/add_another.py` is the
+add-another page (`AddAnotherViewSet`, `ItemViewSet`). Behaviour lives on
+the viewset in the entry's slot; the declaration carries facts. A journey
+is begun from anywhere with `GrantApplication.begin(request)` and ended
+only by the root. The sketches in this directory are history.

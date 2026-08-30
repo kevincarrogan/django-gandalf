@@ -167,7 +167,7 @@ remember it.
   start the run.
 - A run seeded from a stash is a continuation, not a start: its metadata
   comes back with its answers, so firing here would open a second record
-  every time a hub member is re-entered.
+  every time a task list section is re-entered.
 
 ### `done(bound_wizard)`
 

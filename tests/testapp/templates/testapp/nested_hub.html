@@ -6,16 +6,16 @@
     <div class="card">
         <h1>Supporting information</h1>
         <p class="lede">
-            A task list within the application's task list. Its members are
+            A task list within the application's task list. Its sections are
             keyed under this page's own prefix in the same journey record, so
             the application's row for it reads these rows' status, and its
             submit only returns you there.
         </p>
         <p class="lede">
-            You have completed {{ hub.completed }} of {{ hub.count }} section{{ hub.count|pluralize }}.
+            You have completed {{ tasklist.completed }} of {{ tasklist.count }} section{{ tasklist.count|pluralize }}.
         </p>
         <ul class="task-list">
-            {% for row in hub.rows %}
+            {% for row in tasklist.rows %}
                 <li class="task-list__item">
                     {% if row.is_blocked %}
                         <span>{{ row.title }}</span>
@@ -26,13 +26,13 @@
                 </li>
             {% endfor %}
         </ul>
-        {% if hub.is_complete %}
+        {% if tasklist.is_complete %}
             <form method="post">
                 {% csrf_token %}
                 <button type="submit">Continue</button>
             </form>
         {% else %}
-            <p><a href="{{ view.get_hub_url }}">Back to your application</a></p>
+            <p><a href="{{ view.get_tasklist_url }}">Back to your application</a></p>
         {% endif %}
     </div>
 {% endblock %}

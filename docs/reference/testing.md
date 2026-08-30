@@ -8,20 +8,20 @@ from gandalf.testing import (
     RunDiscoveryError,
     WizardRun,
     WizardTestDriver,
-    seed_collection_item,
+    seed_item,
     seed_journey_complete,
     seed_journey_data,
-    seed_member_run,
-    seed_member_stash,
+    seed_section_run,
+    seed_section_stash,
     seed_run,
     seed_stash,
-    stored_collection_items,
+    stored_items,
     stored_journey,
     stored_journey_data,
-    stored_member_run,
-    stored_member_runs,
-    stored_member_stash,
-    stored_member_stashes,
+    stored_section_run,
+    stored_section_runs,
+    stored_section_stash,
+    stored_section_stashes,
     stored_run,
     stored_runs,
     stored_stash,
@@ -296,18 +296,19 @@ stashes.
 ### Journey store
 
 The session key `SessionJourneyStore.SESSION_KEY` (`"gandalf_journeys"`)
-holds one record per journey — its member runs, its stashes, its
-collections, its data, and the tombstone a submitted journey leaves. Every
-helper below takes `journey="default"`: the fixed journey a hub not mounted
-under a `<journey>` URL segment uses (`HubViewSet.journey`). For a hub mounted
+holds one record per journey — its section runs, its stashes, its
+add-another registries, its data, and the tombstone a submitted journey
+leaves. Every helper below takes `journey="default"`: the fixed journey a
+task list not mounted under a `<journey>` URL segment uses
+(`TaskListViewSet.journey`). For a page mounted
 under one, pass the segment's value.
 
 | Record key | Written by | Read with |
 | --- | --- | --- |
-| `"runs"` | entering a member | `stored_member_run(s)` |
-| `"stashes"` | a member finishing | `stored_member_stash(es)` |
+| `"runs"` | entering a section | `stored_section_run(s)` |
+| `"stashes"` | a section finishing | `stored_section_stash(es)` |
 | `"data"` | `store.data`, under the `"journey"` bucket | `stored_journey_data` |
-| `"collections"` | a collection registering an item | `stored_collection_items` |
+| `"collections"` | an add-another page registering an item | `stored_items` |
 | `"completed"` | the journey being submitted | `stored_journey(...)["completed"]` |
 
 #### `stored_journey(client, journey="default")`
@@ -315,40 +316,40 @@ under one, pass the segment's value.
 The whole record for `journey`, or `{}` before anything has been written to
 it.
 
-#### `stored_member_runs(client, journey="default")`
+#### `stored_section_runs(client, journey="default")`
 
-The journey's member-to-run mapping, `{member_key: run_id}`, or `{}` before
-any member has been entered.
+The journey's section-to-run mapping, `{key: run_id}`, or `{}` before any
+section has been entered.
 
-#### `stored_member_run(client, key, journey="default")`
+#### `stored_section_run(client, key, journey="default")`
 
-The run id recorded for member `key`, or `None` when the member is not being
-answered. A member's completion is its stash, not its run — read it with
-`stored_member_stash`.
+The run id recorded for section `key`, or `None` when the section is not
+being answered. A section's completion is its stash, not its run — read it with
+`stored_section_stash`.
 
-#### `seed_member_run(client, key, run_id, journey="default")`
+#### `seed_section_run(client, key, run_id, journey="default")`
 
-Record `run_id` (stored as `str`) as where member `key` is being answered,
+Record `run_id` (stored as `str`) as where section `key` is being answered,
 creating the journey's record when the session has never held one, and save
-the session. For arranging the states a hub reaches only after several
-requests: a member left half-answered, or one pointing at a run the storage
+the session. For arranging the states a task list reaches only after several
+requests: a section left half-answered, or one pointing at a run the storage
 no longer holds.
 
-#### `stored_member_stashes(client, journey="default")`
+#### `stored_section_stashes(client, journey="default")`
 
-The journey's stash mapping — one payload per finished member — or `{}`
-before any member has finished.
+The journey's stash mapping — one payload per finished section — or `{}`
+before any section has finished.
 
-#### `stored_member_stash(client, key, journey="default")`
+#### `stored_section_stash(client, key, journey="default")`
 
-The stash a finished member left under `key`.
+The stash a finished section left under `key`.
 
 **Raises** — `KeyError` for one that has not finished.
 
-#### `seed_member_stash(client, key, payload, journey="default")`
+#### `seed_section_stash(client, key, payload, journey="default")`
 
-Record member `key` as finished with `payload`, and save the session. For
-arranging a hub with members already done, or a hand-built or tampered
+Record section `key` as finished with `payload`, and save the session. For
+arranging a task list with sections already done, or a hand-built or tampered
 stash.
 
 #### `stored_journey_data(client, journey="default")`
@@ -361,28 +362,28 @@ under `"journey"`: `stored_journey_data(client)["journey"]["amount"]`.
 
 Merge `data` into the journey's own decided facts (the `"journey"` bucket
 `store.data` reads), keeping what is already there, and save the session.
-For arranging a hub whose members have already decided something — an
-answer that hides or unlocks another member.
+For arranging a task list whose sections have already decided something —
+an answer that hides or unlocks another section.
 
 #### `seed_journey_complete(client, journey="default")`
 
 Replace the journey's record with the tombstone a submitted journey leaves:
 `{"completed": True}`, plus `"data"` when the record held any. Runs,
-stashes and collections are dropped. Saves the session.
+stashes and add-another registries are dropped. Saves the session.
 
-#### `stored_collection_items(client, key, journey="default")`
+#### `stored_items(client, key, journey="default")`
 
-The item ids a collection lists, in the order the user added them. `[]` for
-a collection nobody has added to. A row exists from the moment an item is
+The item ids an add-another page lists, in the order the user added them.
+`[]` for a list nobody has added to. A row exists from the moment an item is
 registered, so this includes items with no answers yet — which is what makes
 them distinguishable from items that were never added.
 
-#### `seed_collection_item(client, key, item_id, title=None, journey="default")`
+#### `seed_item(client, key, item_id, title=None, journey="default")`
 
-Register an item under collection `key` (stored as `str`), optionally with
+Register an item under add-another list `key` (stored as `str`), optionally with
 the `title` a finished one would have cached, and save the session. Creates
-the collection's record — `{"items": [], "declared_done": False}` — when
-there is none. For arranging the states a collection reaches only after
+the list's record — `{"items": [], "declared_done": False}` — when
+there is none. For arranging the states an add-another page reaches only after
 several requests.
 
 ---
@@ -498,30 +499,30 @@ def test_resumes_at_the_contact_step(wizard_driver, client):
 `client.session` builds a fresh session object on every access, so hold one
 reference, hand it to the driver, and save that same object.
 
-### Testing a hub through the journey store
+### Testing a task list through the journey store
 
-A hub's rows never walk a wizard; they read the journey record. So a test
-that wants a member in a given state can seed the record instead of driving
-the member:
+A task list's rows never walk a wizard; they read the journey record. So a
+test that wants a section in a given state can seed the record instead of
+driving the section:
 
 ```python
 from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects
 
 from gandalf.testing import (
-    seed_member_run,
-    seed_member_stash,
-    stored_member_run,
-    stored_member_stash,
+    seed_section_run,
+    seed_section_stash,
+    stored_section_run,
+    stored_section_stash,
 )
 
 
-def test_a_member_pointing_at_a_forgotten_run_starts_again(client):
-    seed_member_run(client, "contact", "00000000-0000-0000-0000-000000000000")
+def test_a_section_pointing_at_a_forgotten_run_starts_again(client):
+    seed_section_run(client, "contact", "00000000-0000-0000-0000-000000000000")
 
-    response = client.get(reverse("readme-hub-member", kwargs={"member": "contact"}))
+    response = client.get(reverse("readme-hub-entry", kwargs={"entry": "contact"}))
 
-    run_id = stored_member_run(client, "contact")
+    run_id = stored_section_run(client, "contact")
     assert run_id != "00000000-0000-0000-0000-000000000000"
     assertRedirects(
         response,
@@ -529,18 +530,18 @@ def test_a_member_pointing_at_a_forgotten_run_starts_again(client):
     )
 
 
-def test_a_finished_member_reads_as_complete(client):
-    seed_member_stash(client, "contact", {"version": 1, "label": "contact", "state": []})
+def test_a_finished_section_reads_as_complete(client):
+    seed_section_stash(client, "contact", {"version": 1, "label": "contact", "state": []})
 
     assertContains(client.get(reverse("readme-hub")), "Complete")
 ```
 
-And to drive a member through the hub's door, recover the run the door
+And to drive a section through the page's door, recover the run the door
 created with `only_run()`:
 
 ```python
-def test_lists_members_and_drives_one_to_complete(client, wizard_driver):
-    client.get(reverse("readme-hub-member", kwargs={"member": "contact"}), follow=True)
+def test_lists_sections_and_drives_one_to_complete(client, wizard_driver):
+    client.get(reverse("readme-hub-entry", kwargs={"entry": "contact"}), follow=True)
     run = wizard_driver("readme-hub-contact").only_run()
 
     run.post_steps(
@@ -551,15 +552,15 @@ def test_lists_members_and_drives_one_to_complete(client, wizard_driver):
         ]
     )
 
-    assert stored_member_stash(client, "contact")["state"][0] == {
+    assert stored_section_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 ```
 
-For a hub mounted under `apply/<slug:journey>/`, every helper takes the
+For a page mounted under `apply/<slug:journey>/`, every helper takes the
 segment: `seed_journey_data(client, {"amount": 20_000}, journey="app-1")`
-reveals a member whose visibility hangs on `amount`, and
-`seed_journey_complete(client, journey="app-1")` makes the hub read as
+reveals a section whose visibility hangs on `amount`, and
+`seed_journey_complete(client, journey="app-1")` makes the page read as
 submitted.
 
 ---
@@ -579,12 +580,12 @@ driver by hand: `WizardTestDriver(client, "readme-first")`.
 `only_run()` needs an unambiguous session, and completion tombstones count.
 After a resurrect or a second `start()`, use `new_run(*known)` with the runs
 you already hold, or `run(run_id)` with an id you read from elsewhere
-(`stored_member_run(client, key)` for a hub member).
+(`stored_section_run(client, key)` for a section of a task list).
 
 ### `RunDiscoveryError` from `start()`
 
 The GET of the start URL did not create exactly one run. Usually the start
-view redirected somewhere else — a hub door refusing a blocked member, a
+view redirected somewhere else — a door refusing a blocked section, a
 `run_unavailable` hook — or the viewset is on a custom storage that writes
 nothing to the session.
 
@@ -618,4 +619,4 @@ pass it to `RunDriver.resume(..., session=session)`, and call
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [`RunDriver`](driver.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Hubs](hubs.md), [Journey store](journey-store.md), [Collections](collections.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [`RunDriver`](driver.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Stashing](stashing.md), [Task lists](tasklists.md), [Journey store](journey-store.md), [Add another](add-another.md)

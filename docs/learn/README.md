@@ -45,10 +45,10 @@ running.
 
 ## A task list of wizards
 
-11. [Hubs: a task list of members](11-hubs.md) — members, statuses, one door
-12. [Collections: add another](12-collections.md) — a list the user grows
-13. [Blocked and hidden members](13-blocked-and-hidden.md) — members that unlock or appear
-14. [Journeys: scope, memory, nesting and an ending](14-journeys.md) — everything, put together
+11. [Task lists: sections in any order](11-task-lists.md) — sections, statuses, one door
+12. [Add another: a list the user grows](12-add-another.md) — items, change and remove
+13. [Blocked and hidden sections](13-blocked-and-hidden.md) — sections that unlock or appear
+14. [Journeys: scope, memory, groups and an ending](14-journeys.md) — everything, put together
 
 ## Knowing what you built
 

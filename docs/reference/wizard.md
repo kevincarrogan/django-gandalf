@@ -186,7 +186,7 @@ Append a point where the tree grows during the walk.
   Growing the count keeps the answers already given and appends a hole;
   shrinking it drops the trailing answers. Removing a step from the middle
   shifts every answer after it — for a list the user grows and prunes over
-  time, use a [collection](collections.md) instead.
+  time, use [add another](add-another.md) instead.
 - A builder that returns an empty `Wizard` leaves nothing behind: the walk
   passes straight to the node after the expansion and the state holds no
   entry for it.
@@ -566,4 +566,4 @@ The builder is immutable. `wizard.step(Form, name="x")` returns a new
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md), [Chapter 2 — Branching](../learn/02-branching.md), [Chapter 3 — Switching](../learn/03-switching.md), [Chapter 4 — Expanding](../learn/04-expanding.md) · **Related:** [Configuration](configuration.md), [`WizardViewSet`](viewsets.md), [Bound wizard](bound-wizard.md), [Collections](collections.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md), [Chapter 2 — Branching](../learn/02-branching.md), [Chapter 3 — Switching](../learn/03-switching.md), [Chapter 4 — Expanding](../learn/04-expanding.md) · **Related:** [Configuration](configuration.md), [`WizardViewSet`](viewsets.md), [Bound wizard](bound-wizard.md), [Add another](add-another.md)

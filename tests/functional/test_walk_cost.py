@@ -201,9 +201,9 @@ def counting_hub(client):
     """A hub whose two members are wired to the counting classes: one left
     half-answered, one untouched."""
     client.get("/counting-hub/counting/", follow=True)
-    from gandalf.testing import stored_member_run
+    from gandalf.testing import stored_section_run
 
-    run_id = stored_member_run(client, "counting")
+    run_id = stored_section_run(client, "counting")
     client.post(f"/counting-hub/counting/{run_id}/first/", {"name": "Ada"}, follow=True)
     return client
 

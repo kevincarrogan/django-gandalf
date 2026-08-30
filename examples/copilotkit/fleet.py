@@ -41,7 +41,7 @@ from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
 from examples.copilotkit.wizards import (
-    HybridVehicleCollectionViewSet,
+    HybridVehiclesViewSet,
     HybridVehicleItemViewSet,
 )
 from gandalf.contrib.agent import WizardDeps
@@ -67,30 +67,30 @@ def fleet_tools() -> FunctionToolset[WizardDeps]:
     """The collection verbs an agent is allowed."""
     toolset: FunctionToolset[WizardDeps] = FunctionToolset()
 
-    def _page(ctx: RunContext[WizardDeps]) -> HybridVehicleCollectionViewSet:
+    def _page(ctx: RunContext[WizardDeps]) -> HybridVehiclesViewSet:
         # A collection page is a Django view and still wants a request; the
         # context makes one on demand, which is the point of it — the walk
         # no longer needs a browser but a `TemplateView` never stopped being
         # one.
-        page = HybridVehicleCollectionViewSet()
+        page = HybridVehiclesViewSet()
         page.setup(ctx.deps.context.http_request())
         return page
 
-    def _fleet(page: HybridVehicleCollectionViewSet) -> dict[str, Any]:
-        collection = page.get_collection()
+    def _fleet(page: HybridVehiclesViewSet) -> dict[str, Any]:
+        items = page.get_items()
         return {
             "vehicles": [
                 {
-                    "item_id": page.item_id_for(row.member),
+                    "item_id": page.item_id_for(row.entry),
                     "title": str(row.title),
                     "status": str(row.status),
-                    "change_url": page.get_item_url(page.item_id_for(row.member)),
+                    "change_url": page.get_item_url(page.item_id_for(row.entry)),
                 }
-                for row in page.get_member_rows()
+                for row in page.get_rows()
             ],
-            "count": collection.count,
+            "count": items.count,
             # Theirs to answer, so it is reported and never set here.
-            "they_have_said_that_is_all": collection.is_complete,
+            "they_have_said_that_is_all": items.is_complete,
             "fleet_page": page.get_page_url(),
         }
 

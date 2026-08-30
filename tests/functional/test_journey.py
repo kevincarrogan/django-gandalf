@@ -18,16 +18,16 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertNotContains, assertRedirects
 
 from gandalf.context import WizardContext
-from gandalf.hubs import BLOCKED, COMPLETE, NOT_STARTED
+from gandalf.tasklists import BLOCKED, COMPLETE, NOT_STARTED
 from gandalf.storage import SessionJourneyStore
 from gandalf.testing import (
     seed_journey_complete,
     seed_journey_data,
-    seed_member_stash,
+    seed_section_stash,
     stored_journey,
     stored_journey_data,
-    stored_member_run,
-    stored_member_stashes,
+    stored_section_run,
+    stored_section_stashes,
 )
 from tests.testapp.models import Application
 from tests.testapp.readme import ch14_journey
@@ -50,7 +50,7 @@ def _hub(journey):
 
 
 def _door(journey, member, hub="readme-apply"):
-    return reverse(f"{hub}-member", kwargs={"journey": journey, "member": member})
+    return reverse(f"{hub}-entry", kwargs={"journey": journey, "entry": member})
 
 
 def _supporting(journey):
@@ -59,14 +59,14 @@ def _supporting(journey):
 
 def _statuses(client, journey, hub="readme-apply"):
     response = client.get(reverse(hub, kwargs={"journey": journey}))
-    return {row.key: row.status for row in response.context["hub"].rows}
+    return {row.key: row.status for row in response.context["tasklist"].rows}
 
 
 def _finish(client, journey, member, url_name, steps, hub="readme-apply"):
     """Enter a member from its hub and drive it to its end."""
     client.get(_door(journey, member, hub), follow=True)
     key = member if hub == "readme-apply" else f"supporting:{member}"
-    run_id = stored_member_run(client, key, journey=journey)
+    run_id = stored_section_run(client, key, journey=journey)
     response = None
     for step, data in steps:
         response = client.post(
@@ -129,7 +129,7 @@ def _finish_budget(client, journey):
     page = reverse("readme-apply-budget", kwargs={"journey": journey})
     step_url = client.post(page, {"add_another": "yes"})["Location"]
     client.post(step_url, {"item": "Paint", "cost": "120"})
-    review_url = client.get(page).context["collection"].rows[0].url
+    review_url = client.get(page).context["items"].rows[0].url
     client.post(client.get(review_url)["Location"], {})
     return client.post(page, {"add_another": "no"})
 
@@ -159,7 +159,7 @@ def test_two_journeys_in_one_session_never_see_each_other(client):
     assert first != second
     assert _statuses(client, first)["contact"] == COMPLETE
     assert _statuses(client, second)["contact"] == NOT_STARTED
-    assert set(stored_member_stashes(client, second)) == {"setup"}
+    assert set(stored_section_stashes(client, second)) == {"setup"}
 
 
 # --- hidden and locked -----------------------------------------------------
@@ -194,7 +194,7 @@ def test_a_hidden_members_door_is_refused(client):
     response = client.get(_door(journey, "documents", "readme-apply-supporting"))
 
     assertRedirects(response, _supporting(journey))
-    assert stored_member_run(client, "supporting:documents", journey=journey) is None
+    assert stored_section_run(client, "supporting:documents", journey=journey) is None
 
 
 def test_a_member_appears_once_another_members_answer_reveals_it(client):
@@ -257,7 +257,7 @@ def test_a_nested_hubs_row_reads_its_own_rows(client):
     _finish_referees(client, journey)
 
     assert _statuses(client, journey)["supporting"] == COMPLETE
-    assert stored_member_stashes(client, journey)["supporting:referees"]["label"] == (
+    assert stored_section_stashes(client, journey)["supporting:referees"]["label"] == (
         "supporting:referees"
     )
 
@@ -266,7 +266,7 @@ def test_a_nested_hubs_row_and_door_both_land_on_its_page(client):
     journey = _start(client)
 
     response = client.get(_hub(journey))
-    rows = {row.key: row for row in response.context["hub"].rows}
+    rows = {row.key: row for row in response.context["tasklist"].rows}
 
     assert rows["supporting"].url == _supporting(journey)
     # A nested hub's segment under its parent *is* its page.
@@ -330,18 +330,18 @@ def test_the_submit_button_appears_only_once_every_member_is_complete(client):
     _complete_everything(client, journey)
 
     response = client.get(_hub(journey))
-    assert response.context["hub"].is_complete
+    assert response.context["tasklist"].is_complete
     assertContains(response, "Submit application")
 
 
 def test_an_organisation_has_to_upload_its_document_too(client, isolated_media_root):
     journey = _start(client, "organisation")
     _complete_everything(client, journey)
-    assert not client.get(_hub(journey)).context["hub"].is_complete
+    assert not client.get(_hub(journey)).context["tasklist"].is_complete
 
     _finish_documents(client, journey)
 
-    assert client.get(_hub(journey)).context["hub"].is_complete
+    assert client.get(_hub(journey)).context["tasklist"].is_complete
 
 
 def test_submitting_early_is_refused(client):
@@ -444,10 +444,10 @@ def _submit_everything(client, journey):
         ("second", "submit-hub-second", {"name": "Grace"}),
     ]:
         client.get(
-            reverse("submit-hub-member", kwargs={"journey": journey, "member": member}),
+            reverse("submit-hub-entry", kwargs={"journey": journey, "entry": member}),
             follow=True,
         )
-        run_id = stored_member_run(client, member, journey=journey)
+        run_id = stored_section_run(client, member, journey=journey)
         client.post(
             reverse(
                 f"{url_name}-step",
@@ -487,15 +487,15 @@ def test_only_the_most_recent_completed_journeys_are_kept(client):
 
     assert stored_journey(client, "app-1") == {}
     assert stored_journey(client, "app-2") == {"completed": True}
-    assert stored_member_run(client, "first", journey="app-3") is None
-    assert set(stored_member_stashes(client, "app-3")) == {"first", "second"}
+    assert stored_section_run(client, "first", journey="app-3") is None
+    assert set(stored_section_stashes(client, "app-3")) == {"first", "second"}
 
 
 def test_a_post_to_a_door_submits_nothing(client):
     _submit_everything(client, "app-1")
 
     response = client.post(
-        reverse("submit-hub-member", kwargs={"journey": "app-1", "member": "first"})
+        reverse("submit-hub-entry", kwargs={"journey": "app-1", "entry": "first"})
     )
 
     assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
@@ -506,7 +506,7 @@ def test_a_hub_with_nothing_to_do_at_submit_is_misconfigured(client):
     """Chapter 11's task list has no `journey_done()`: a complete hub can be
     submitted, and the library refuses to pretend that meant something."""
     for key in ("contact", "address"):
-        seed_member_stash(client, key, {"version": 1, "label": key, "state": []})
+        seed_section_stash(client, key, {"version": 1, "label": key, "state": []})
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         client.post(reverse("readme-hub"))

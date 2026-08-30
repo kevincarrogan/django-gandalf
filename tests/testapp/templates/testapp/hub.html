@@ -1,6 +1,6 @@
 {% extends "testapp/base.html" %}
 
-{% block template_name %}testapp/hub.html{% endblock %}
+{% block template_name %}testapp/tasklist.html{% endblock %}
 
 {% block content %}
     <div class="card">
@@ -8,14 +8,14 @@
         <p class="lede">
             Each row is an independent run with its own status, read from the
             shape of its stored state rather than by walking it. Enter a
-            member from here — its own URL would start a run this hub is not
+            section from here — its own URL would start a run this tasklist is not
             tracking.
         </p>
         <p class="lede">
-            You have completed {{ hub.completed }} of {{ hub.count }} section{{ hub.count|pluralize }}.
+            You have completed {{ tasklist.completed }} of {{ tasklist.count }} section{{ tasklist.count|pluralize }}.
         </p>
         <ul class="task-list">
-            {% for row in hub.rows %}
+            {% for row in tasklist.rows %}
                 <li class="task-list__item">
                     <a href="{{ row.url }}">{{ row.title }}</a>
                     <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>

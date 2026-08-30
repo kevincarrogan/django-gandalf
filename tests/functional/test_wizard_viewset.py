@@ -2292,9 +2292,7 @@ def test_resurrecting_the_members_stash_lands_on_the_named_step_and_consumes_it(
     )
 
 
-def test_stashed_member_keys_lists_completions_and_discard_removes_them(
-    client, wizard_driver
-):
+def test_stashed_keys_lists_completions_and_discard_removes_them(client, wizard_driver):
     assert client.get(reverse("stashed-member-keys")).content == b""
 
     _complete_branching_stashing_wizard(wizard_driver("branching-stashing-wizard"))

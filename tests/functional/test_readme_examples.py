@@ -20,7 +20,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.testing import stored_member_stash, stored_stash
+from gandalf.testing import stored_section_stash, stored_stash
 from tests.testapp.models import Application
 
 
@@ -517,13 +517,13 @@ def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driv
     response = client.get(hub_url)
 
     assert response.status_code == HTTPStatus.OK
-    assert [(row.title, row.status) for row in response.context["hub"].rows] == [
+    assert [(row.title, row.status) for row in response.context["tasklist"].rows] == [
         ("Contact details", "not-started"),
         ("Address", "not-started"),
     ]
 
     # Entering a member from the hub lands on its first step.
-    door = reverse("readme-hub-member", kwargs={"member": "contact"})
+    door = reverse("readme-hub-entry", kwargs={"entry": "contact"})
     client.get(door, follow=True)
     driver = wizard_driver("readme-hub-contact")
     run = driver.only_run()
@@ -542,7 +542,7 @@ def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driv
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Complete")
-    assert stored_member_stash(client, "contact")["state"][0] == {
+    assert stored_section_stash(client, "contact")["state"][0] == {
         "step": {"full_name": "Ada"}
     }
 
@@ -550,7 +550,7 @@ def test_chapter_11_lists_members_and_drives_one_to_complete(client, wizard_driv
 def test_chapter_11_reopens_a_completed_member_on_its_review_page(
     client, wizard_driver
 ):
-    door = reverse("readme-hub-member", kwargs={"member": "address"})
+    door = reverse("readme-hub-entry", kwargs={"entry": "address"})
     client.get(door, follow=True)
     driver = wizard_driver("readme-hub-address")
     run = driver.only_run()
@@ -586,34 +586,32 @@ def test_chapter_12_adds_changes_and_removes_budget_lines(client):
     assertContains(client.get(page), "Incomplete")
 
     # Finishing caches the name the row goes by.
-    review_url = client.get(page).context["collection"].rows[0].url
+    review_url = client.get(page).context["items"].rows[0].url
     client.post(client.get(review_url)["Location"], {})
     listing = client.get(page)
-    assert [
-        (str(row.title), row.status) for row in listing.context["collection"].rows
-    ] == [("Paint", "complete")]
+    assert [(str(row.title), row.status) for row in listing.context["items"].rows] == [
+        ("Paint", "complete")
+    ]
 
     # A second line, removed again, leaves the first untouched and un-renumbered.
-    first = listing.context["collection"].rows[0].item_id
+    first = listing.context["items"].rows[0].item_id
     client.post(
         client.post(page, {"add_another": "yes"})["Location"],
         {"item": "Brushes", "cost": "30"},
     )
-    second = client.get(page).context["collection"].rows[1].item_id
+    second = client.get(page).context["items"].rows[1].item_id
     client.post(reverse("readme-project-budget-remove", kwargs={"item": second}))
-    assert [row.item_id for row in client.get(page).context["collection"].rows] == [
-        first
-    ]
+    assert [row.item_id for row in client.get(page).context["items"].rows] == [first]
 
     # Saying there are no more completes the collection, and the task list
     # above it reads that status without walking anything.
     assertRedirects(client.post(page, {"add_another": "no"}), reverse("readme-project"))
     hub = client.get(reverse("readme-project"))
-    assert [(row.title, row.status) for row in hub.context["hub"].rows] == [
+    assert [(row.title, row.status) for row in hub.context["tasklist"].rows] == [
         ("Project", "not-started"),
         ("Budget", "complete"),
     ]
-    assert hub.context["hub"].rows[1].url == page
+    assert hub.context["tasklist"].rows[1].url == page
 
 
 def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
@@ -623,14 +621,14 @@ def test_chapter_12_an_empty_budget_cannot_be_declared_complete(client):
     client.post(page, {"add_another": "no"})
 
     hub = client.get(reverse("readme-project"))
-    assert hub.context["hub"].rows[1].status == "incomplete"
+    assert hub.context["tasklist"].rows[1].status == "incomplete"
 
 
 # --- Chapter 13: locked and hidden -------------------------------------------
 
 
 def _finish_project(client, amount):
-    door = reverse("readme-gated-member", kwargs={"member": "project"})
+    door = reverse("readme-gated-entry", kwargs={"entry": "project"})
     step_url = client.get(door)["Location"]
     client.post(step_url, {"title": "Boathouse roof", "amount": str(amount)})
     review_url = step_url.rsplit("/project/", 1)[0] + "/review/"
@@ -639,12 +637,12 @@ def _finish_project(client, amount):
 
 def _gated_statuses(client):
     response = client.get(reverse("readme-gated"))
-    return {row.key: row.status for row in response.context["hub"].rows}
+    return {row.key: row.status for row in response.context["tasklist"].rows}
 
 
 def test_chapter_13_referees_are_locked_until_the_project_is_described(client):
     assert _gated_statuses(client)["referees"] == "blocked"
-    door = reverse("readme-gated-member", kwargs={"member": "referees"})
+    door = reverse("readme-gated-entry", kwargs={"entry": "referees"})
     assertRedirects(client.get(door), reverse("readme-gated"))
 
     _finish_project(client, 5_000)
@@ -665,5 +663,5 @@ def test_chapter_13_match_funding_stays_hidden_below_it(client):
     _finish_project(client, 5_000)
 
     assert "match_funding" not in _gated_statuses(client)
-    door = reverse("readme-gated-member", kwargs={"member": "match_funding"})
+    door = reverse("readme-gated-entry", kwargs={"entry": "match_funding"})
     assertRedirects(client.get(door), reverse("readme-gated"))

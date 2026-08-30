@@ -1,10 +1,10 @@
 {% extends "testapp/base.html" %}
 
-{% block template_name %}testapp/collection.html{% endblock %}
+{% block template_name %}testapp/items.html{% endblock %}
 
 {% block content %}
     <div class="card">
-        {% if collection.is_empty %}
+        {% if items.is_empty %}
             <h1>You have not added any guests</h1>
             <p class="lede">
                 Each guest is its own run through the item wizard, registered
@@ -12,12 +12,12 @@
                 one still have a row.
             </p>
         {% else %}
-            <h1>You have added {{ collection.count }} guest{{ collection.count|pluralize }}</h1>
+            <h1>You have added {{ items.count }} guest{{ items.count|pluralize }}</h1>
             <p class="lede">
-                You have completed {{ collection.completed }} of {{ collection.count }} guest{{ collection.count|pluralize }}.
+                You have completed {{ items.completed }} of {{ items.count }} guest{{ items.count|pluralize }}.
             </p>
             <ul class="task-list">
-                {% for row in collection.rows %}
+                {% for row in items.rows %}
                     <li class="task-list__item">
                         <span>{{ row.title }}</span>
                         <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
@@ -37,9 +37,9 @@
             {% csrf_token %}
             {{ form.errors.add_another }}
             <button type="submit" name="add_another" value="yes">
-                Add {% if collection.is_empty %}a{% else %}another{% endif %} guest
+                Add {% if items.is_empty %}a{% else %}another{% endif %} guest
             </button>
-            {% if not collection.is_empty %}
+            {% if not items.is_empty %}
                 <button type="submit" name="add_another" value="no">Continue</button>
             {% endif %}
         </form>

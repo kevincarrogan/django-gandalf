@@ -6,10 +6,10 @@ from pytest_django.asserts import assertContains, assertTemplateUsed
 
 from gandalf.testing import (
     RunDiscoveryError,
-    seed_collection_item,
+    seed_item,
     seed_run,
     seed_stash,
-    stored_collection_items,
+    stored_items,
     stored_run,
     stored_runs,
     stored_stash,
@@ -266,20 +266,18 @@ def test_stored_stash_raises_for_an_unknown_key(client):
         stored_stash(client, "contact")
 
 
-def test_stored_collection_items_is_empty_before_anything_is_added(client):
+def test_stored_items_is_empty_before_anything_is_added(client):
     """A collection nobody has touched has no registry at all, which is not
     the same as an error."""
-    assert stored_collection_items(client, "guests") == []
+    assert stored_items(client, "guests") == []
 
 
 def test_a_seeded_item_is_listed_in_the_order_it_was_seeded(client):
-    seed_collection_item(client, "guests", "11111111-1111-1111-1111-111111111111")
-    seed_collection_item(
-        client, "guests", "22222222-2222-2222-2222-222222222222", title="Ada"
-    )
+    seed_item(client, "guests", "11111111-1111-1111-1111-111111111111")
+    seed_item(client, "guests", "22222222-2222-2222-2222-222222222222", title="Ada")
 
-    assert stored_collection_items(client, "guests") == [
+    assert stored_items(client, "guests") == [
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
     ]
-    assert client.get("/party/guests/").context["collection"].rows[1].title == "Ada"
+    assert client.get("/party/guests/").context["items"].rows[1].title == "Ada"

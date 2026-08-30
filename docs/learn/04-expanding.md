@@ -57,7 +57,7 @@ Grown answers are stored positionally: raising a count keeps the answers
 already given, lowering it drops the trailing ones. That is exactly why
 `.expand()` is the wrong tool for a list the user grows and prunes over time
 — deleting from the middle would shift every answer after it. Budget lines,
-in [chapter 12](12-collections.md), are that kind of list, and each is its
+in [chapter 12](12-add-another.md), are that kind of list, and each is its
 own run.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/expand/ &nbsp;·&nbsp; **Source:** [`ch04_expand.py`](../../tests/testapp/readme/ch04_expand.py) &nbsp;·&nbsp; **Reference:** [`Wizard.expand()`](../reference/wizard.md)

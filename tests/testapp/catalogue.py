@@ -22,13 +22,13 @@ from functools import lru_cache
 
 from django.urls import NoReverseMatch, get_resolver, reverse
 
-from gandalf.hubs import HubViewSet
+from gandalf.tasklists import TaskListViewSet
 from gandalf.viewsets import WizardViewSet
 
 
 # URL kwargs the wizard's own patterns own. Anything else a pattern captures
 # is mount-prefix context that only the catalogue can supply.
-RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "member", "item"})
+RUN_URL_KWARGS = frozenset({"run_id", "gandalf_step", "entry", "item"})
 
 #: The journey the walkthrough's chapter 14 examples are listed under. Any slug
 #: works — a journey is minted by the setup wizard, and the index only needs
@@ -169,19 +169,6 @@ GROUPS = (
             Example("readme-apply-match_funding", url_kwargs=JOURNEY),
             Example("readme-apply-supporting-referees", url_kwargs=JOURNEY),
             Example("readme-apply-supporting-documents", url_kwargs=JOURNEY),
-            Example(
-                "readme-tasklist-start",
-                note="Chapter 14 as a class body. The same application, declared as a TaskList.",
-            ),
-            Example("readme-tasklist", url_kwargs=JOURNEY),
-            Example("readme-tasklist-setup", url_kwargs=JOURNEY),
-            Example("readme-tasklist-contact", url_kwargs=JOURNEY),
-            Example("readme-tasklist-project", url_kwargs=JOURNEY),
-            Example("readme-tasklist-budget", url_kwargs=JOURNEY),
-            Example("readme-tasklist-match_funding", url_kwargs=JOURNEY),
-            Example("readme-tasklist-supporting", url_kwargs=JOURNEY),
-            Example("readme-tasklist-supporting-referees", url_kwargs=JOURNEY),
-            Example("readme-tasklist-supporting-documents", url_kwargs=JOURNEY),
             Example("readme-apply-supporting", url_kwargs=JOURNEY),
         ),
     ),
@@ -463,7 +450,7 @@ GROUPS = (
                 "bare run URL would complete on a GET.",
             ),
             Example(
-                "org-hub-org-guests",
+                "org-hub-org_guests",
                 url_kwargs={"org": "acme"},
                 note="A collection whose items carry the tenant slug.",
             ),
@@ -600,7 +587,7 @@ def published_url_names():
         view_class = getattr(pattern.callback, "view_class", None)
         if view_class is None:
             continue
-        if not issubclass(view_class, (WizardViewSet, HubViewSet)):
+        if not issubclass(view_class, (WizardViewSet, TaskListViewSet)):
             continue
         names.add(pattern.name)
     return names

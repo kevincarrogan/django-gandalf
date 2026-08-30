@@ -1,46 +1,47 @@
-"""Add another: a collection of items the user grows, one wizard per item.
+"""Add another: a list the user grows, one wizard run per item.
 
-A collection is a hub whose members are *built* rather than declared — one
-per id in an ordered registry the user grows — so everything a hub does
-applies unchanged: the status derivation, the resume-before-reopen door,
-the guarantee that no row ever links a bare run URL. What it adds is the
-page pattern itself: a list of what has been added with **Change** and
-**Remove** on each row, an **Add another** question, and one item wizard
-behind all of them.
+An add-another page is a task list whose entries are *built* rather than
+declared — one per id in an ordered registry the user grows — so
+everything a task list does applies unchanged: the status derivation, the
+resume-before-reopen door, the guarantee that no row ever links a bare run
+URL. What it adds is the page pattern itself: a list of what has been added
+with **Change** and **Remove** on each row, an **Add another** question,
+and one item wizard behind all of them.
 
-Declared as a value, like a hub:
+Declared as an entry of a task list —
 
-    budget = Collection(
-        budget_line,
-        item_name="Budget line",
-        item_title=("line", "item"),
-        min_items=1,
-        reopen="review",
-        template_name="apply/budget.html",
-        remove_template_name="apply/budget_remove.html",
-    )
+    class GrantApplication(TaskList):
+        budget = AddAnother(
+            budget_line,
+            title="Budget",
+            item_name="Budget line",
+            item_title=("line", "item"),
+            min_items=1,
+            reopen="review",
+            template_name="apply/budget.html",
+            remove_template_name="apply/budget_remove.html",
+        )
 
-and either listed on a hub — `Hub().collection("budget", budget, title=
-"Budget")`, which mounts it beneath the hub — or mounted on its own:
+— which mounts it beneath the page; or mounted on its own:
 
-    class VehiclesViewSet(CollectionViewSet):
+    class VehiclesViewSet(AddAnotherViewSet):
         url_name = "vehicles"
-        member_key = "vehicles"
-        collection = vehicles
-        hub_url_name = "quote"   # where Continue goes
+        key = "vehicles"
+        add_another = AddAnother(vehicle, item_name="Vehicle", ...)
+        tasklist_url_name = "quote"   # where Continue goes
 
 Completeness is declared, not derived: no reading of storage can say
 whether the user has more to add, so the page asks, and the answer is kept
-in the collection store beside the registry. An item is a uuid, never a
-position: remove one from the middle and the rest keep their ids, their
-URLs and their answers.
+in the store beside the registry. An item is a uuid, never a position:
+remove one from the middle and the rest keep their ids, their URLs and
+their answers.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
@@ -55,22 +56,22 @@ from django.urls import URLPattern, URLResolver, include, path, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext, gettext_lazy as _
 
-from gandalf.hubs import (
+from gandalf.runtime import BoundWizard
+from gandalf.storage import RunNotFound
+from gandalf.tasklists import (
     BLOCKED,
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
-    Done,
-    HubPage,
-    HubViewSet,
-    Member,
-    MemberRow,
-    MemberViewSet,
-    WizardLike,
-    _class_name,
+    AddAnother,
+    Entry,
+    Row,
+    Section,
+    SectionViewSet,
+    TaskListPage,
+    TaskListViewSet,
+    class_name_for,
 )
-from gandalf.runtime import BoundWizard
-from gandalf.storage import RunNotFound
 from gandalf.types import CollectionStore, JourneyStore, StrOrPromise
 
 __all__ = [
@@ -79,26 +80,21 @@ __all__ = [
     "INCOMPLETE",
     "NOT_STARTED",
     "AddAnotherForm",
-    "Collection",
-    "CollectionPage",
-    "CollectionRow",
-    "CollectionViewSet",
+    "AddAnotherPage",
+    "AddAnotherViewSet",
     "ItemNotFound",
+    "ItemRow",
     "ItemViewSet",
 ]
 
-#: What names an item on the page: the `(step, field)` whose answer does, or
-#: a callable handed the finished run.
-ItemTitle = tuple[str, str] | Callable[[BoundWizard], str]
-
 
 class ItemNotFound(LookupError):
-    """Raised when an id names no item of this collection."""
+    """Raised when an id names no item of this list."""
 
 
 class AddAnotherForm(forms.Form):
-    """The one question a collection page asks. Two submit buttons carry the
-    answer, so the field needs no widget of its own on the page."""
+    """The one question an add-another page asks. Two submit buttons carry
+    the answer, so the field needs no widget of its own on the page."""
 
     add_another = forms.ChoiceField(
         label=_("Do you want to add another?"),
@@ -112,40 +108,13 @@ class AddAnotherForm(forms.Form):
         return bool(self.cleaned_data["add_another"] == "yes")
 
 
-# --- the declaration ---------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Collection:
-    """An immutable declaration of an "add another" list.
-
-    `wizard` runs one item. `item_name` is what an unfinished item is
-    called on the page ("Budget line 2"); `item_title` is what names a
-    finished one. `min_items` is how many a declared-done collection needs
-    before it counts as complete. `reopen` names the step a finished item
-    re-opens at. `label` is the stash's shape-identity for every item; bump
-    it when a deploy reshapes the item wizard. `done` runs when an item
-    finishes. The two templates are the page and the remove confirmation.
-    """
-
-    wizard: WizardLike
-    item_name: StrOrPromise | None = None
-    item_title: ItemTitle | None = None
-    min_items: int = 0
-    reopen: str | None = None
-    label: str | None = None
-    done: Done | None = None
-    template_name: str | None = None
-    remove_template_name: str | None = None
-
-
 # --- what the page renders ---------------------------------------------------
 
 
 @dataclass(frozen=True)
-class CollectionRow(MemberRow):
-    """One item: a member row that also knows its id, its position, and
-    where to remove it."""
+class ItemRow(Row):
+    """One item: a row that also knows its id, its position, and where to
+    remove it."""
 
     item_id: str = ""
     position: int = 0
@@ -153,11 +122,11 @@ class CollectionRow(MemberRow):
 
 
 @dataclass(frozen=True)
-class CollectionPage(HubPage):
-    """The collection as rendered: its rows, and whether the user has said
-    there are no more. `status` is derived from both."""
+class AddAnotherPage(TaskListPage):
+    """The list as rendered: its rows, and whether the user has said there
+    are no more. `status` is derived from both."""
 
-    rows: tuple[CollectionRow, ...]
+    rows: tuple[ItemRow, ...]
     key: str
     url: str
     declared_done: bool
@@ -171,21 +140,23 @@ class CollectionPage(HubPage):
 # --- one item ------------------------------------------------------------------
 
 
-class ItemViewSet(MemberViewSet):
-    """The viewset a collection runs one item with. Built by
-    `CollectionViewSet` from the declaration and mounted under
-    `<uuid:item>/` beneath the page, so one class serves every row."""
+class ItemViewSet(SectionViewSet):
+    """The viewset an add-another page runs one item with. Built by
+    `AddAnotherViewSet` from the entry and mounted under `<uuid:item>/`
+    beneath the page, so one class serves every row. A `Section`-style
+    subclass in the entry's slot carries an item's behaviour — `run_done()`
+    for saving it, `item_removed()` for undoing that."""
 
-    collection_key: str | None = None
+    list_key: str | None = None
     item_url_kwarg = "item"
-    item_title: ItemTitle | None = None
+    item_title: Any = None
 
-    def get_collection_key(self) -> str:
-        if self.collection_key is None:
+    def get_list_key(self) -> str:
+        if self.list_key is None:
             raise ImproperlyConfigured(
-                f"{self.__class__.__name__} collects items for no collection."
+                f"{self.__class__.__name__} collects items for no list."
             )
-        return self.collection_key
+        return self.list_key
 
     def get_item_id(self) -> str:
         item_id = self.kwargs.get(self.item_url_kwarg)
@@ -197,13 +168,13 @@ class ItemViewSet(MemberViewSet):
             )
         return str(item_id)
 
-    def get_member_key(self) -> str:
-        return self.compose_key(self.get_collection_key(), self.get_item_id())
+    def get_key(self) -> str:
+        return self.compose_key(self.get_list_key(), self.get_item_id())
 
-    def default_member_label(self) -> str:
-        """Items share the collection's label: a per-item id would never
-        match anything on the way back in."""
-        return self.get_collection_key()
+    def default_label(self) -> str:
+        """Items share the list's label: a per-item id would never match
+        anything on the way back in."""
+        return self.get_list_key()
 
     def get_journey_store(self) -> CollectionStore:
         return cast(CollectionStore, super().get_journey_store())
@@ -216,7 +187,7 @@ class ItemViewSet(MemberViewSet):
         if self.item_title is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"{name} cannot name its items. Declare the collection with "
+                f"{name} cannot name its items. Declare the AddAnother with "
                 f"item_title=(step, field), or a callable of the finished run."
             )
         if callable(self.item_title):
@@ -232,10 +203,14 @@ class ItemViewSet(MemberViewSet):
     ) -> None:
         title = self.get_item_title(bound_wizard)
         cast(CollectionStore, store).set_item_title(
-            self.get_collection_key(), self.get_item_id(), title or None
+            self.get_list_key(), self.get_item_id(), title or None
         )
 
-    def get_hub_url_kwargs(self) -> dict[str, Any]:
+    def item_removed(self, store: CollectionStore) -> None:
+        """This item is about to leave the list. Undo whatever finishing it
+        did elsewhere; `self.get_item_id()` says which."""
+
+    def get_tasklist_url_kwargs(self) -> dict[str, Any]:
         return {
             key: value
             for key, value in self.get_url_kwargs().items()
@@ -245,7 +220,7 @@ class ItemViewSet(MemberViewSet):
     def run_unavailable(
         self, bound_wizard: BoundWizard, reason: str
     ) -> HttpResponseBase:
-        return redirect(self.get_hub_url())
+        return redirect(self.get_tasklist_url())
 
     def dispatch(
         self, request: HttpRequest, *args: Any, **kwargs: Any
@@ -253,75 +228,68 @@ class ItemViewSet(MemberViewSet):
         """An item that is not on the registry — removed, or never added —
         has no page to be on, whatever run its URL names."""
         store = self.get_journey_store()
-        if not store.has_item(self.get_collection_key(), self.get_item_id()):
+        if not store.has_item(self.get_list_key(), self.get_item_id()):
             return self.item_unavailable()
         return super().dispatch(request, *args, **kwargs)
 
     def item_unavailable(self) -> HttpResponseBase:
-        return redirect(self.get_hub_url())
+        return redirect(self.get_tasklist_url())
 
 
 # --- the page ----------------------------------------------------------------
 
 
-class CollectionViewSet(HubViewSet):
-    """The page listing a `Collection`'s items, and everything done to it.
+class AddAnotherViewSet(TaskListViewSet):
+    """The page listing an `AddAnother`'s items, and everything done to it.
 
-    A hub whose members are the registry's items. `member_key` is the key
-    the registry lives under — the full key, when the collection is listed
-    by a hub, which is how a hub builds it. Set `collection`, `url_name`
-    and `member_key` on a root; a nested collection gets them from its
-    hub.
+    A task list whose entries are the registry's items. `key` is the key
+    the registry lives under — the full key, when the list is an entry of
+    a task list, which is how a task list builds it. Set `add_another`,
+    `url_name` and `key` on a root; an entry gets them from its page.
     """
 
-    collection: Collection | None = None
-    declaration_name = "collection"
+    add_another: AddAnother | None = None
     #: The generated `ItemViewSet`, for a driver that addresses an item.
     item_viewset: type[ItemViewSet] | None = None
-    hub_context_name: str | None = None
+    page_context_name: str | None = None
     #: The door segment is an item's id, a uuid rather than a slug — which
     #: is what lets `remove/` be a safe sibling of it.
-    member_url_kwarg = "item"
-    collection_context_name = "collection"
+    entry_url_kwarg = "item"
+    items_context_name = "items"
     form_class = AddAnotherForm
     remove_template_name: str | None = None
 
     @classmethod
-    def declaration(cls) -> Any:
-        return cls.collection
+    def declared_entries(cls) -> dict[str, Entry] | None:
+        return None if cls.add_another is None else {}
 
     @classmethod
     def materialise(cls) -> None:
-        collection = cls.collection
-        assert collection is not None
-        if cls.member_key is None:
+        entry = cls.add_another
+        assert entry is not None
+        if cls.key is None:
             raise ImproperlyConfigured(
-                f"{cls.__name__} has no collection to list. Set "
-                f"{cls.__name__}.member_key to the key its items are registered under."
+                f"{cls.__name__} has no list to show. Set {cls.__name__}.key "
+                f"to the key its items are registered under."
             )
-        # The declaration's pages, unless this class names its own.
+        # The entry's pages, unless this class names its own.
         for name in ("template_name", "remove_template_name"):
-            declared = getattr(collection, name)
+            declared = getattr(entry, name)
             if declared is not None and name not in cls.__dict__:
                 setattr(cls, name, declared)
         item_url_name = f"{cls.url_name}-item"
-        bases = cls.wizard_bases(collection.wizard, ItemViewSet)
+        bases = cls.wizard_bases(entry.wizard, ItemViewSet)
         attrs = {
             **cls.scoped_attrs(item_url_name),
-            **cls.wizard_attrs(collection.wizard, bases),
-            "collection_key": cls.member_key,
-            "member_label": collection.label,
-            "item_title": staticmethod(collection.item_title)
-            if callable(collection.item_title)
-            else collection.item_title,
-            "member_done": staticmethod(collection.done)
-            if collection.done is not None
-            else None,
+            **cls.wizard_attrs(entry.wizard, bases),
+            "list_key": cls.key,
+            "label": entry.label,
+            "item_title": staticmethod(entry.item_title)
+            if callable(entry.item_title)
+            else entry.item_title,
         }
-        cls.item_viewset = type(
-            _class_name(cls.member_key, "ItemViewSet"), bases, attrs
-        )
-        cls.members = []
+        cls.item_viewset = type(class_name_for(cls.key, "ItemViewSet"), bases, attrs)
+        cls.entries = []
         cls._routes = []
 
     @classmethod
@@ -335,7 +303,7 @@ class CollectionViewSet(HubViewSet):
         item = cls.item_viewset
         assert item is not None
         view = cls.as_view()
-        segment = f"<uuid:{cls.member_url_kwarg}>/"
+        segment = f"<uuid:{cls.entry_url_kwarg}>/"
         _start, *run_patterns = item.urls()
         return [
             path("", view, name=cls.url_name),
@@ -346,15 +314,21 @@ class CollectionViewSet(HubViewSet):
 
     # --- the items -------------------------------------------------------
 
-    def get_declaration(self) -> Collection:
-        return cast(Collection, super().get_declaration())
+    def get_declaration(self) -> AddAnother:  # type: ignore[override]
+        if self.add_another is None:
+            name = self.__class__.__name__
+            raise ImproperlyConfigured(
+                f"{name} has no items to list. Set {name}.add_another to an "
+                f"AddAnother entry."
+            )
+        return self.add_another
 
-    def get_collection_key(self) -> str:
-        key = self.get_member_key()
+    def get_list_key(self) -> str:
+        key = self.get_key()
         assert key is not None
         return key
 
-    def get_collection_store(self) -> CollectionStore:
+    def get_store(self) -> CollectionStore:
         return cast(CollectionStore, self.get_journey_store())
 
     def get_item_viewset(self) -> type[ItemViewSet]:
@@ -362,47 +336,49 @@ class CollectionViewSet(HubViewSet):
         return self.item_viewset
 
     def get_item_ids(self) -> list[str]:
-        return self.get_collection_store().item_ids(self.get_collection_key())
+        return self.get_store().item_ids(self.get_list_key())
 
     def get_item_label(self) -> str:
         label = self.get_declaration().label
-        return self.get_collection_key() if label is None else label
+        return self.get_list_key() if label is None else label
 
-    def get_item_member(self, item_id: str) -> Member:
-        return Member(
+    def get_item_entry(self, item_id: str) -> Entry:
+        return Section(
+            self.get_item_viewset(),
+            label=self.get_item_label(),
+            reopen=self.get_declaration().reopen,
             key=item_id,
             viewset=self.get_item_viewset(),
-            label=self.get_item_label(),
-            reopen_step=self.get_declaration().reopen,
-            url_kwargs={self.member_url_kwarg: item_id},
+            url_kwargs={self.entry_url_kwarg: item_id},
         )
 
-    def get_members(self) -> list[Member]:
-        return [self.get_item_member(item_id) for item_id in self.get_item_ids()]
+    def get_entries(self) -> list[Entry]:
+        self.get_declaration()
+        return [self.get_item_entry(item_id) for item_id in self.get_item_ids()]
 
-    def get_item(self, item_id: str) -> Member:
+    def get_item(self, item_id: str) -> Entry:
         if item_id not in self.get_item_ids():
             raise ItemNotFound(item_id)
-        return self.get_item_member(item_id)
+        return self.get_item_entry(item_id)
 
-    def get_hub(self) -> HubPage:
-        return self.get_collection()
+    def get_page(self) -> TaskListPage:
+        return self.get_items()
 
     # --- the page --------------------------------------------------------
 
-    def build_member_rows(self) -> list[MemberRow]:
-        store = self.get_collection_store()
+    def build_rows(self) -> list[Row]:
+        store = self.get_store()
         return [
-            self.build_collection_row(member, store, position)
-            for position, member in enumerate(self._vetted_members())
+            self.build_item_row(entry, store, position)
+            for position, entry in enumerate(self._vetted_entries())
         ]
 
-    def get_collection(self) -> CollectionPage:
-        store = self.get_collection_store()
-        key = self.get_collection_key()
-        rows = tuple(cast("list[CollectionRow]", self.get_member_rows()))
-        status = self.get_collection_status(rows, store)
-        return CollectionPage(
+    def get_items(self) -> AddAnotherPage:
+        store = self.get_store()
+        key = self.get_list_key()
+        rows = tuple(cast("list[ItemRow]", self.get_rows()))
+        status = self.get_items_status(rows, store)
+        return AddAnotherPage(
             key=key,
             url=self.get_page_url(),
             rows=rows,
@@ -412,30 +388,30 @@ class CollectionViewSet(HubViewSet):
             min_items=self.get_declaration().min_items,
         )
 
-    def build_collection_row(
-        self, member: Member, store: CollectionStore, position: int
-    ) -> CollectionRow:
-        item_id = self.item_id_for(member)
-        status = self.get_member_status(member, store)
-        return CollectionRow(
-            member=member,
+    def build_item_row(
+        self, entry: Entry, store: CollectionStore, position: int
+    ) -> ItemRow:
+        item_id = self.item_id_for(entry)
+        status = self.get_entry_status(entry, store)
+        return ItemRow(
+            entry=entry,
             status=status,
             title=self.get_item_title(item_id, store, position),
             status_label=self.get_status_label(status),
-            url=self.get_member_url(member),
+            url=self.get_entry_url(entry),
             item_id=item_id,
             position=position,
             remove_url=self.get_item_remove_url(item_id),
         )
 
-    def item_id_for(self, member: Member) -> str:
-        return cast(str, member.url_kwargs[self.member_url_kwarg])
+    def item_id_for(self, entry: Entry) -> str:
+        return cast(str, entry.url_kwargs[self.entry_url_kwarg])
 
     def get_item_title(
         self, item_id: str, store: CollectionStore, position: int
     ) -> StrOrPromise:
         """The cached name the item finished with, or a positional one."""
-        title = store.get_item_title(self.get_collection_key(), item_id)
+        title = store.get_item_title(self.get_list_key(), item_id)
         if title:
             return title
         return self.get_placeholder_title(position)
@@ -450,16 +426,16 @@ class CollectionViewSet(HubViewSet):
         item_name = self.get_declaration().item_name
         if item_name is not None:
             return item_name
-        key = self.get_collection_key().rsplit(self.key_separator, 1)[-1]
+        key = self.get_list_key().rsplit(self.key_separator, 1)[-1]
         key = key.replace("_", " ").replace("-", " ")
         return capfirst(key[:-1] if key.endswith("s") else key)
 
-    def get_collection_status(
-        self, rows: tuple[CollectionRow, ...], store: CollectionStore
+    def get_items_status(
+        self, rows: tuple[ItemRow, ...], store: CollectionStore
     ) -> str:
         """Complete only when the user has said there are no more, every
         item has finished, and there are at least `min_items`."""
-        if not store.is_declared_done(self.get_collection_key()):
+        if not store.is_declared_done(self.get_list_key()):
             return NOT_STARTED if not rows else INCOMPLETE
         if len(rows) < self.get_declaration().min_items:
             return INCOMPLETE
@@ -467,8 +443,8 @@ class CollectionViewSet(HubViewSet):
             return INCOMPLETE
         return COMPLETE
 
-    def get_member_url(self, member: Member) -> str:
-        return self.get_item_url(self.item_id_for(member))
+    def get_entry_url(self, entry: Entry) -> str:
+        return self.get_item_url(self.item_id_for(entry))
 
     def get_item_url(self, item_id: str) -> str:
         return self._reverse_item("item", item_id)
@@ -481,7 +457,7 @@ class CollectionViewSet(HubViewSet):
             raise ImproperlyConfigured(f"Set url_name on {self.__class__.__name__}.")
         return reverse(
             f"{self.url_name}-{suffix}",
-            kwargs={**self.get_page_url_kwargs(), self.member_url_kwarg: item_id},
+            kwargs={**self.get_page_url_kwargs(), self.entry_url_kwarg: item_id},
         )
 
     def get_form_class(self) -> type[AddAnotherForm]:
@@ -492,7 +468,7 @@ class CollectionViewSet(HubViewSet):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context[self.collection_context_name] = self.get_collection()
+        context[self.items_context_name] = self.get_items()
         context.setdefault("form", self.get_form())
         return context
 
@@ -503,57 +479,53 @@ class CollectionViewSet(HubViewSet):
 
     def add_item(self) -> str | None:
         """Register a new item and enter it. Registered before entered, so
-        a gated collection leaves a listed, removable, not-started row."""
-        store = self.get_collection_store()
-        key = self.get_collection_key()
+        a gated list leaves a listed, removable, not-started row."""
+        store = self.get_store()
+        key = self.get_list_key()
         item_id = self.new_item_id()
         store.add_item(key, item_id)
         # Pressing Add *is* the user withdrawing their answer to "any more?".
         store.set_declared_done(key, False)
-        return self.enter(self.get_item_member(item_id))
+        return self.enter(self.get_item_entry(item_id))
 
     def declare_done(self) -> HttpResponseBase:
         """The user said there are no more: record it, then submit."""
-        self.get_collection_store().set_declared_done(self.get_collection_key(), True)
+        self.get_store().set_declared_done(self.get_list_key(), True)
         return self.submit()
 
     def remove_item(self, item_id: str) -> HttpResponse:
         """Take an item off the page: its run, its stash, its title, its
-        registry entry, in that order, with `item_removed()` between the
-        bookkeeping and the registry."""
-        store = self.get_collection_store()
-        key = self.get_collection_key()
-        member = self.get_item_member(item_id)
-        self.discard_item_run(member, store)
-        store.clear_run(self.full_key(member))
-        store.delete_stash(self.full_key(member))
+        registry entry, in that order, with the item's own `item_removed()`
+        between the bookkeeping and the registry."""
+        store = self.get_store()
+        key = self.get_list_key()
+        entry = self.get_item_entry(item_id)
+        self.discard_item_run(entry, store)
+        store.clear_run(self.full_key(entry))
+        store.delete_stash(self.full_key(entry))
         store.set_item_title(key, item_id, None)
-        self.item_removed(item_id, member, store)
+        item = self.get_item_viewset()()
+        item.setup(self.request, **self.entry_url_kwargs(entry))
+        item.item_removed(store)
         store.remove_item(key, item_id)
         return redirect(self.get_page_url())
 
-    def discard_item_run(self, member: Member, store: CollectionStore) -> None:
-        run_id = store.get_run(self.full_key(member))
+    def discard_item_run(self, entry: Entry, store: CollectionStore) -> None:
+        run_id = store.get_run(self.full_key(entry))
         if run_id is None:
             return
         try:
-            bound_wizard = self.member_viewset(member).inspect(
-                self.request, run_id, **self.member_url_kwargs(member)
+            bound_wizard = self.entry_viewset(entry).inspect(
+                self.request, run_id, **self.entry_url_kwargs(entry)
             )
         except RunNotFound:
             return
         bound_wizard.obliterate()
 
-    def item_removed(
-        self, item_id: str, member: Member, store: CollectionStore
-    ) -> None:
-        """An item is about to leave the registry. Undo whatever finishing
-        it did elsewhere."""
-
     # --- HTTP -------------------------------------------------------------
 
     def _item_id(self) -> str | None:
-        item_id = self.kwargs.get(self.member_url_kwarg)
+        item_id = self.kwargs.get(self.entry_url_kwarg)
         return None if item_id is None else str(item_id)
 
     def _is_remove(self) -> bool:
@@ -566,7 +538,7 @@ class CollectionViewSet(HubViewSet):
             if self.remove_template_name is None:
                 name = self.__class__.__name__
                 raise ImproperlyConfigured(
-                    f"Set remove_template_name on {name}'s Collection: the page "
+                    f"Set remove_template_name on {name}'s AddAnother: the page "
                     f"that asks the user to confirm removing an item."
                 )
             return [self.remove_template_name]
@@ -575,16 +547,16 @@ class CollectionViewSet(HubViewSet):
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         item_id = self._item_id()
         if item_id is None:
-            return super(HubViewSet, self).get(request, *args, **kwargs)
+            return super(TaskListViewSet, self).get(request, *args, **kwargs)
         try:
-            member = self.get_item(item_id)
+            entry = self.get_item(item_id)
         except ItemNotFound:
-            return self.member_unavailable(item_id)
+            return self.entry_unavailable(item_id)
         if self._is_remove():
             return self.render_to_response(self.get_context_data(row=self.row(item_id)))
-        url = self.enter(member)
+        url = self.enter(entry)
         if url is None:
-            return self.member_unavailable(item_id)
+            return self.entry_unavailable(item_id)
         return redirect(url)
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponseBase:
@@ -597,7 +569,7 @@ class CollectionViewSet(HubViewSet):
             try:
                 self.get_item(item_id)
             except ItemNotFound:
-                return self.member_unavailable(item_id)
+                return self.entry_unavailable(item_id)
             return self.remove_item(item_id)
         form = self.get_form(request.POST)
         if not form.is_valid():
@@ -609,9 +581,9 @@ class CollectionViewSet(HubViewSet):
             return redirect(url)
         return self.declare_done()
 
-    def row(self, item_id: str) -> CollectionRow:
-        return self.build_collection_row(
-            self.get_item_member(item_id),
-            self.get_collection_store(),
+    def row(self, item_id: str) -> ItemRow:
+        return self.build_item_row(
+            self.get_item_entry(item_id),
+            self.get_store(),
             self.get_item_ids().index(item_id),
         )

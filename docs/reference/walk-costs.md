@@ -61,8 +61,8 @@ everything else is your forms.
   lookup result written to [`bound_wizard.metadata`](run-metadata.md) is read
   back for free.
 - Accept that some checks belong only at submission time.
-- A [hub](hubs.md) row deliberately pays none of this: two storage reads and
-  a `reverse()`, never a walk. That is why what a member decided is written to
+- A [task list](tasklists.md) row deliberately pays none of this: two storage
+  reads and a `reverse()`, never a walk. That is why what a section decided is written to
   [`store.data`](journey-store.md) at completion rather than read out of a
   stash at render time.
 
@@ -71,4 +71,4 @@ pins the counts so they cannot regress unnoticed.
 
 ---
 
-**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [Bound wizard](bound-wizard.md), [Summary](summary.md), [Hubs](hubs.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [Bound wizard](bound-wizard.md), [Summary](summary.md), [Task lists](tasklists.md)

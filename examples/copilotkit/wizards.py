@@ -14,7 +14,7 @@ from examples.eventlog import DemoObserver, log_event
 from gandalf.contrib.agent import AgentProfile
 from examples.insurance import (
     InsuranceQuoteViewSet,
-    VehicleCollectionViewSet,
+    VehiclesViewSet,
     quote_for,
 )
 from examples.identity import IdentityCheckViewSet
@@ -69,7 +69,7 @@ class AdaptiveQuoteViewSet(HybridQuoteViewSet):
     )
 
 
-class HybridVehicleCollectionViewSet(VehicleCollectionViewSet):
+class HybridVehiclesViewSet(VehiclesViewSet):
     """The fleet page, over the same two stores.
 
     Both stores are swapped, which is what a durable collection needs:
@@ -89,7 +89,7 @@ class HybridVehicleCollectionViewSet(VehicleCollectionViewSet):
 
 
 #: The item wizard the page built, for the driver to address directly.
-HybridVehicleItemViewSet = HybridVehicleCollectionViewSet.item_viewset
+HybridVehicleItemViewSet = HybridVehiclesViewSet.item_viewset
 
 
 def fleet_values(context):
@@ -101,12 +101,12 @@ def fleet_values(context):
     answers durably — a finished member stashes its own state — so this
     reads them from there and there is no second copy to disagree.
     """
-    page = HybridVehicleCollectionViewSet()
+    page = HybridVehiclesViewSet()
     page.setup(context.http_request())
-    store = page.get_collection_store()
+    store = page.get_store()
     values = []
     for item_id in page.get_item_ids():
-        stash = store.get_stash(page.full_key(page.get_item_member(item_id)))
+        stash = store.get_stash(page.full_key(page.get_item_entry(item_id)))
         if not stash:
             continue
         for entry in stash.get("state", []):

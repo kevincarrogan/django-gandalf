@@ -1,7 +1,7 @@
 """Chapter 11 — a task list. The application becomes several wizards the
 applicant can do in any order."""
 
-from gandalf.hubs import Hub, HubViewSet
+from gandalf.tasklists import Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
 from .ch06_review import AddressReviewStepView, ReviewStepView
@@ -24,13 +24,14 @@ address = (
 )
 
 
-class GrantHubViewSet(HubViewSet):
-    description = "Chapter 11: a task list over two independent members."
+class GrantApplication(TaskList):
+    contact = Section(contact, title="Contact details", reopen="review")
+    address = Section(address, title="Address", reopen="review")
+
+
+class GrantApplicationViewSet(TaskListViewSet):
+    description = "Chapter 11: a task list over two independent sections."
     template_name = "testapp/readme_hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"
-    hub = (
-        Hub()
-        .member("contact", contact, title="Contact details", reopen="review")
-        .member("address", address, title="Address", reopen="review")
-    )
+    tasklist = GrantApplication

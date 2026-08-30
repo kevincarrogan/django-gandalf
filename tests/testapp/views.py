@@ -13,7 +13,6 @@ from gandalf.viewsets import WizardViewSet
 
 from http import HTTPStatus
 
-from dataclasses import replace
 
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
@@ -26,8 +25,14 @@ from django.views.generic.edit import FormView
 from gandalf.escapes import Obliterate
 from gandalf.form_views import StepFormView
 from gandalf.runtime import STASH_VERSION, InvalidStash
-from gandalf.collections import Collection, CollectionViewSet
-from gandalf.hubs import Hub, HubViewSet
+from gandalf.add_another import AddAnotherViewSet
+from gandalf.tasklists import (
+    AddAnother,
+    Section,
+    SectionViewSet,
+    TaskList,
+    TaskListViewSet,
+)
 from gandalf.storage import (
     SessionJourneyStore,
     SessionStashStore,
@@ -2012,31 +2017,30 @@ class ExpandedSummaryWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {bound_wizard.run_id}")
 
 
-# --- Hub and spoke scenarios -------------------------------------------------
+# --- Task list scenarios -------------------------------------------------------
 
 
 FIRST_STEP = Wizard().step(FirstStepForm, name="first")
 
 
-class ScenarioHubViewSet(HubViewSet):
-    description = "Hub over members that exercise the awkward run states."
-    template_name = "testapp/hub.html"
-    member_template_name = "testapp/linear_wizard.html"
-    url_name = "scenario-hub"
-    hub = (
-        Hub()
-        # No review step: one valid answer walks straight to done().
-        .member("plain", FIRST_STEP, title="Plain")
-        # Escapes with Advance, so its run never completes.
-        .member(
-            "advancing",
-            Wizard().step(NewsletterForm, name="newsletter"),
-            title="Advancing",
-        )
+class Scenario(TaskList):
+    # No review step: one valid answer walks straight to done().
+    plain = Section(FIRST_STEP, title="Plain")
+    # Escapes with Advance, so its run never completes.
+    advancing = Section(
+        Wizard().step(NewsletterForm, name="newsletter"), title="Advancing"
     )
 
 
-GUESTS = Collection(
+class ScenarioViewSet(TaskListViewSet):
+    description = "Task list over sections that exercise the awkward run states."
+    template_name = "testapp/hub.html"
+    section_template_name = "testapp/linear_wizard.html"
+    url_name = "scenario-hub"
+    tasklist = Scenario
+
+
+GUESTS = AddAnother(
     Wizard().step(GuestForm, name="guest").step(ConfirmForm, name="review"),
     item_name="Guest",
     item_title=("guest", "name"),
@@ -2045,20 +2049,21 @@ GUESTS = Collection(
 )
 
 
-class OrgHubViewSet(HubViewSet):
-    """Mounted under an org prefix. Nothing here forwards the slug: every
-    member is mounted beneath the hub, so the request's own kwargs reach
-    every URL the hub builds."""
+class Org(TaskList):
+    details = Section(FIRST_STEP, title="Details")
+    org_guests = GUESTS.replace(title="Guests")
 
-    description = "Hub whose members carry mount-prefix URL kwargs."
+
+class OrgViewSet(TaskListViewSet):
+    """Mounted under an org prefix. Nothing here forwards the slug: every
+    entry is mounted beneath the page, so the request's own kwargs reach
+    every URL the page builds."""
+
+    description = "Task list whose entries carry mount-prefix URL kwargs."
     template_name = "testapp/hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "org-hub"
-    hub = (
-        Hub()
-        .member("details", FIRST_STEP, title="Details")
-        .collection("org-guests", GUESTS, title="Guests")
-    )
+    tasklist = Org
 
 
 COUNTING = (
@@ -2073,27 +2078,28 @@ COUNTING = (
 )
 
 
-class CountingHubViewSet(HubViewSet):
-    description = "Hub over counting members, for asserting a row's cost."
+class Counting(TaskList):
+    counting = Section(COUNTING, title="Counting")
+    other = Section(COUNTING, title="Other")
+
+
+class CountingViewSet(TaskListViewSet):
+    description = "Task list over counting sections, for asserting a row's cost."
     template_name = "testapp/hub.html"
     url_name = "counting-hub"
-    hub = (
-        Hub()
-        .member("counting", COUNTING, title="Counting")
-        .member("other", COUNTING, title="Other")
-    )
+    tasklist = Counting
     builds = 0
 
-    def build_member_rows(self):
+    def build_rows(self):
         self.builds += 1
-        return super().build_member_rows()
+        return super().build_rows()
 
     def get_context_data(self, **kwargs):
-        """An app wanting something the `HubPage` does not offer asks for the
-        rows a second time — and gets the ones already built."""
+        """An app wanting something the `TaskListPage` does not offer asks
+        for the rows a second time — and gets the ones already built."""
         context = super().get_context_data(**kwargs)
         context["first_unfinished"] = next(
-            (row for row in self.get_member_rows() if not row.is_complete), None
+            (row for row in self.get_rows() if not row.is_complete), None
         )
         context["builds"] = self.builds
         return context
@@ -2102,132 +2108,140 @@ class CountingHubViewSet(HubViewSet):
 # --- Storage that outlives a session -----------------------------------------
 
 
-class DurableHubViewSet(HubViewSet):
-    """Both stores swapped once, on the root, and every member gets them."""
-
-    description = "Hub whose members and bookkeeping outlive the session."
-    template_name = "testapp/hub.html"
-    member_template_name = "testapp/linear_wizard.html"
-    url_name = "durable-hub"
-    storage_class = ModelStorage
-    journey_store_class = ModelJourneyStore
-    hub = Hub().member(
-        "durable",
+class Durable(TaskList):
+    durable = Section(
         Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
         title="Durable",
     )
 
 
-# --- Collections: the add-another pattern ------------------------------------
+class DurableViewSet(TaskListViewSet):
+    """Both stores swapped once, on the root, and every section gets them."""
 
-
-class GatedHubViewSet(HubViewSet):
-    description = "Task list whose second member unlocks when the first ends."
+    description = "Task list whose sections and bookkeeping outlive the session."
     template_name = "testapp/hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    section_template_name = "testapp/linear_wizard.html"
+    url_name = "durable-hub"
+    storage_class = ModelStorage
+    journey_store_class = ModelJourneyStore
+    tasklist = Durable
+
+
+# --- Gated, and beside an add-another --------------------------------------------
+
+
+class GatedSecondSection(SectionViewSet):
+    wizard = FIRST_STEP
+
+    @classmethod
+    def blocked(cls, store):
+        return not store.has_stash("first")
+
+
+class Gated(TaskList):
+    first = Section(FIRST_STEP, title="First")
+    second = Section(GatedSecondSection, title="Second")
+
+
+class GatedViewSet(TaskListViewSet):
+    description = "Task list whose second section unlocks when the first ends."
+    template_name = "testapp/hub.html"
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "gated-hub"
-    hub = (
-        Hub()
-        .member("first", FIRST_STEP, title="First")
-        .member(
-            "second",
-            FIRST_STEP,
-            title="Second",
-            blocked=lambda store: not store.has_stash("first"),
-        )
-    )
+    tasklist = Gated
 
 
-class PartyHubViewSet(HubViewSet):
-    description = "Task list with a collection row beside a plain member."
+class Party(TaskList):
+    venue = Section(FIRST_STEP, title="Venue")
+    guests = GUESTS.replace(title="Guests")
+
+
+class PartyViewSet(TaskListViewSet):
+    description = "Task list with an add-another row beside a plain section."
     template_name = "testapp/hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "party-hub"
-    hub = (
-        Hub()
-        .member("venue", FIRST_STEP, title="Venue")
-        .collection("guests", GUESTS, title="Guests")
-    )
+    tasklist = Party
 
 
-class GuestCollectionViewSet(CollectionViewSet):
-    """A collection mounted on its own, returning to a page it is not
-    listed by — the shape `examples/insurance.py` uses."""
+# --- Add-another pages mounted on their own -------------------------------------
 
-    description = "Add another: a collection of items with full CRUD."
-    member_template_name = "testapp/linear_wizard.html"
+
+class GuestsViewSet(AddAnotherViewSet):
+    """An add-another page mounted on its own, returning to a page it is
+    not listed by — the shape `examples/insurance.py` uses."""
+
+    description = "Add another: a list of items with full CRUD."
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "standalone-guests"
-    member_key = "standalone-guests"
-    collection = GUESTS
-    hub_url_name = "party-hub"
+    key = "standalone-guests"
+    add_another = GUESTS
+    tasklist_url_name = "party-hub"
 
 
-class LockedGuestCollectionViewSet(GuestCollectionViewSet):
-    description = "A collection whose items are all locked."
+class LockedGuestsViewSet(GuestsViewSet):
+    description = "An add-another page whose items are all locked."
     url_name = "locked-guests"
-    member_key = "locked-guests"
+    key = "locked-guests"
 
-    def member_blocked(self, member, store):
+    def entry_blocked(self, entry, store):
         return True
 
 
-class MinimumGuestCollectionViewSet(GuestCollectionViewSet):
-    description = "A collection that needs at least one item to be complete."
+class MinimumGuestsViewSet(GuestsViewSet):
+    description = "An add-another page that needs at least one item to be complete."
     url_name = "minimum-guests"
-    member_key = "minimum-guests"
-    collection = replace(GUESTS, min_items=1)
+    key = "minimum-guests"
+    add_another = GUESTS.replace(min_items=1)
 
 
-class AdvancingGuestCollectionViewSet(GuestCollectionViewSet):
-    description = "A collection over items that park rather than complete."
+class AdvancingGuestsViewSet(GuestsViewSet):
+    description = "An add-another page over items that park rather than complete."
     url_name = "advancing-guests"
-    member_key = "advancing-guests"
-    collection = replace(
-        GUESTS,
+    key = "advancing-guests"
+    add_another = GUESTS.replace(
         wizard=Wizard().step(NewsletterForm, name="newsletter"),
         item_title=("newsletter", "email"),
     )
 
 
-class AnonymousGuestCollectionViewSet(GuestCollectionViewSet):
-    description = (
-        "ImproperlyConfigured: a collection whose items cannot name themselves."
-    )
+class AnonymousGuestsViewSet(GuestsViewSet):
+    description = "ImproperlyConfigured: items that cannot name themselves."
     url_name = "anonymous-guests"
-    member_key = "anonymous-guests"
-    collection = replace(GUESTS, item_title=None)
+    key = "anonymous-guests"
+    add_another = GUESTS.replace(item_title=None)
 
 
-class OffRouteGuestCollectionViewSet(GuestCollectionViewSet):
+class OffRouteGuestsViewSet(GuestsViewSet):
     """Items named by a step that is not on the route the user took, so the
     row falls back to a positional name rather than inventing one."""
 
-    description = "A collection whose items answer nothing that names them."
+    description = "Items that answer nothing that names them."
     url_name = "off-route-guests"
-    member_key = "off-route-guests"
-    collection = replace(GUESTS, item_title=("not-on-this-route", "name"))
+    key = "off-route-guests"
+    add_another = GUESTS.replace(item_title=("not-on-this-route", "name"))
 
 
-class ReshapedGuestCollectionViewSet(GuestCollectionViewSet):
+class ReshapedGuestsViewSet(GuestsViewSet):
     """A deploy reshaped the item, so the label moved — once, for both the
     stamp and the check."""
 
-    description = "A collection whose item shape was reshaped and re-labelled."
+    description = "Items whose shape was reshaped and re-labelled."
     url_name = "reshaped-guests"
-    member_key = "reshaped-guests"
-    collection = replace(GUESTS, label="guests-v2", item_name=None)
+    key = "reshaped-guests"
+    add_another = GUESTS.replace(label="guests-v2", item_name=None)
 
 
-class DurableGuestCollectionViewSet(GuestCollectionViewSet):
-    """A collection on model-backed storage — both stores swapped, which is
-    what a list the user grows over days needs."""
+class DurableGuestsViewSet(GuestsViewSet):
+    """Items on model-backed storage — both stores swapped, which is what a
+    list the user grows over days needs."""
 
-    description = "A collection whose items and registry outlive the session."
+    description = "Items whose runs and registry outlive the session."
     url_name = "durable-guests"
-    member_key = "durable-guests"
+    key = "durable-guests"
     storage_class = ModelStorage
     journey_store_class = ModelCollectionStore
-    hub_url_name = "durable-hub"
+    tasklist_url_name = "durable-hub"
 
 
 # --- Journeys ----------------------------------------------------------------
@@ -2240,23 +2254,24 @@ class ShortMemoryJourneyStore(SessionJourneyStore):
     max_completed_journeys = 1
 
 
-class SubmitHubViewSet(HubViewSet):
-    """A journey-mounted hub whose submit records nothing: the tombstone it
-    leaves is the bare one, and its default `submitted()` is the
-    404 the library ships."""
+class Submit(TaskList):
+    first = Section(FIRST_STEP, title="First")
+    second = Section(FIRST_STEP, title="Second")
+
+
+class SubmitViewSet(TaskListViewSet):
+    """A journey-mounted task list whose submit records nothing: the
+    tombstone it leaves is the bare one, and its default `submitted()` is
+    the 404 the library ships."""
 
     description = (
-        "Journeys: a hub under a journey segment, submitting to a bare tombstone."
+        "Journeys: a task list under a journey segment, submitting to a bare tombstone."
     )
     template_name = "testapp/journey_hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    section_template_name = "testapp/linear_wizard.html"
     url_name = "submit-hub"
     journey_store_class = ShortMemoryJourneyStore
-    hub = (
-        Hub()
-        .member("first", FIRST_STEP, title="First")
-        .member("second", FIRST_STEP, title="Second")
-    )
+    tasklist = Submit
 
-    def journey_done(self, hub, store):
+    def journey_done(self, page, store):
         return HttpResponse(f"submitted {self.get_journey()}")

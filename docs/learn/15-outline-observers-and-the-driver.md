@@ -89,4 +89,4 @@ which ships beside the library rather than inside it.
 
 ---
 
-[← Chapter 14 — Journeys: scope, memory, nesting and an ending](14-journeys.md) · [Learn](README.md) · [Coming from `django-formtools` →](coming-from-django-formtools.md)
+[← Chapter 14 — Journeys: scope, memory, groups and an ending](14-journeys.md) · [Learn](README.md) · [Coming from `django-formtools` →](coming-from-django-formtools.md)

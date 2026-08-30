@@ -19,7 +19,7 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects
 
 from gandalf.context import WizardContext
-from gandalf.hubs import COMPLETE, INCOMPLETE, NOT_STARTED
+from gandalf.tasklists import COMPLETE, INCOMPLETE, NOT_STARTED
 from gandalf.storage import RunNotFound
 from tests.testapp.durable import (
     ModelCollectionStore,
@@ -114,7 +114,7 @@ def test_the_hub_reads_every_status_off_model_storage(logged_in):
 
 
 def _status(client):
-    (row,) = client.get(HUB_URL).context["hub"].rows
+    (row,) = client.get(HUB_URL).context["tasklist"].rows
     return row.status
 
 
@@ -132,7 +132,7 @@ def test_a_half_answered_member_survives_the_session_being_lost(logged_in, user)
     logged_in.force_login(user)
 
     response = logged_in.get(HUB_URL)
-    assert response.context["hub"].rows[0].status == INCOMPLETE
+    assert response.context["tasklist"].rows[0].status == INCOMPLETE
     assertRedirects(logged_in.get(DOOR_URL), _step_url(run.pk, "second"))
 
 
@@ -173,7 +173,7 @@ def test_one_users_run_is_not_another_users_to_resume(client, user, logged_in):
     # Not this session's run, so the wizard answers exactly as it would for a
     # run that never existed: back to the start.
     assertRedirects(response, DOOR_URL, fetch_redirect_response=False)
-    assert client.get(HUB_URL).context["hub"].rows[0].status == NOT_STARTED
+    assert client.get(HUB_URL).context["tasklist"].rows[0].status == NOT_STARTED
 
 
 # --- the storage protocol's own contracts ------------------------------------
@@ -251,7 +251,7 @@ def test_the_users_answer_to_add_another_lives_in_the_database(logged_in):
     logged_in.post(COLLECTION_URL, {"add_another": "no"})
 
     assert CollectionRecord.objects.get().declared_done is True
-    assert logged_in.get(COLLECTION_URL).context["collection"].status == COMPLETE
+    assert logged_in.get(COLLECTION_URL).context["items"].status == COMPLETE
 
 
 def test_a_half_finished_item_survives_the_session_being_lost(logged_in, user):
@@ -261,10 +261,8 @@ def test_a_half_finished_item_survives_the_session_being_lost(logged_in, user):
     logged_in.force_login(user)
 
     response = logged_in.get(COLLECTION_URL)
-    assert [row.status for row in response.context["collection"].rows] == [INCOMPLETE]
-    assert [str(row.title) for row in response.context["collection"].rows] == [
-        "Guest 1"
-    ]
+    assert [row.status for row in response.context["items"].rows] == [INCOMPLETE]
+    assert [str(row.title) for row in response.context["items"].rows] == ["Guest 1"]
 
 
 def test_a_finished_item_reopens_from_the_database_after_a_new_session(logged_in, user):
@@ -317,7 +315,7 @@ def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
 
     response = logged_in.get(COLLECTION_URL)
 
-    assert response.context["collection"].is_empty
+    assert response.context["items"].is_empty
 
 
 # --- the journey ------------------------------------------------------------

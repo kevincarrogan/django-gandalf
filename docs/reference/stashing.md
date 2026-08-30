@@ -102,13 +102,13 @@ Falls back to the bare run URL for a wizard with no steps at all.
 
 `ValueError` raised by `resurrect()` and `reopen()` for a payload that
 cannot seed a run: not a stash envelope, an unsupported version, or a label
-that does not match. A hub turns it into `stash_unusable()`; by hand,
+that does not match. A task list turns it into `stash_unusable()`; by hand,
 catch it alongside `StashNotFound` and start fresh.
 
 ### `SessionStashStore(context, home=None)`
 
 Keyed payloads in the session — the shipped home for a stash a caller
-keeps by hand, and what a hub keeps its members' stashes in. Server-side,
+keeps by hand, and what a task list keeps its sections' stashes in. Server-side,
 so a payload cannot be tampered with in transit.
 
 **Parameters**
@@ -119,7 +119,7 @@ so a payload cannot be tampered with in transit.
   `read()` must return the mapping or an empty one without creating
   anything, so a render cannot dirty the session; `write()` returns it,
   creating it on the way. `SessionJourneyStore` passes the `"stashes"`
-  mapping inside a journey's record, which is how a hub's stashes are this
+  mapping inside a journey's record, which is how a task list's stashes are this
   class too, scoped to the journey and torn down with it.
 
 **Attributes** — `SESSION_KEY = "gandalf_stashes"`.
@@ -291,4 +291,4 @@ should stay re-openable, and `pop()` only when re-opening consumes it.
 
 ---
 
-**Learn:** [Chapter 10 — Stashing: leave and come back](../learn/10-stashing.md) · **Related:** [`BoundWizard`](bound-wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Hubs](hubs.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 10 — Stashing: leave and come back](../learn/10-stashing.md) · **Related:** [`BoundWizard`](bound-wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [Run metadata](run-metadata.md), [Task lists](tasklists.md), [Journey store](journey-store.md)

@@ -6,10 +6,10 @@
     <div class="card">
         <h1>Your application</h1>
         <p class="lede">
-            You have completed {{ hub.completed }} of {{ hub.count }} section{{ hub.count|pluralize }}.
+            You have completed {{ tasklist.completed }} of {{ tasklist.count }} section{{ tasklist.count|pluralize }}.
         </p>
         <ul class="task-list">
-            {% for row in hub.rows %}
+            {% for row in tasklist.rows %}
                 <li class="task-list__item">
                     {% if row.is_blocked %}
                         <span>{{ row.title }}</span>

@@ -181,13 +181,13 @@ See [Storage](storage.md).
 
 ### `journey_store_class`
 
-Hubs and their members keep journey state — which run each member is on,
-its stash, the journey's decided data — in a store separate from run
-storage. It is a class attribute of the root hub viewset, handed to every
-member it builds, not a configure key:
+Task lists and their sections keep journey state — which run each section
+is on, its stash, the journey's decided data — in a store separate from run
+storage. It is a class attribute of the root task list viewset, handed to
+every entry it builds, not a configure key:
 
 ```python
-class GrantApplicationViewSet(HubViewSet):
+class GrantApplicationViewSet(TaskListViewSet):
     journey_store_class = DurableJourneyStore
 ```
 
@@ -196,11 +196,11 @@ Default `gandalf.storage.SessionCollectionStore`. Built per request as
 
 **Contract** — the `gandalf.types.JourneyStore` protocol (`get_run`,
 `set_run`, `clear_run`, `get_stash`, `has_stash`, `put_stash`,
-`delete_stash`, `keys`, `data`, `complete`, `is_complete`); a hub with
-collections needs the `CollectionStore` extension (`item_ids`, `has_item`,
+`delete_stash`, `keys`, `data`, `complete`, `is_complete`); a tree with an
+add-another list needs the `CollectionStore` extension (`item_ids`, `has_item`,
 `add_item`, `remove_item`, `get_item_title`, `set_item_title`,
 `is_declared_done`, `set_declared_done`). See [Journey store](journey-store.md)
-and [Hubs](hubs.md).
+and [Task lists](tasklists.md).
 
 ### `WizardViewSet.configure_wizard(wizard)`
 

@@ -3,9 +3,15 @@ to one journey, with an ending."""
 
 from django.shortcuts import redirect, render
 
-from gandalf.collections import Collection
-from gandalf.hubs import Hub, HubViewSet
 from gandalf.observers import WizardObserver
+from gandalf.tasklists import (
+    AddAnother,
+    Group,
+    Section,
+    SectionViewSet,
+    TaskList,
+    TaskListViewSet,
+)
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
@@ -40,12 +46,12 @@ class CountRejections(WizardObserver):
             rejections.append(step.context["name"])
 
 
-# --- what the members decide ---------------------------------------------------
+# --- what the sections decide ---------------------------------------------------
 
 
 def record_applying_as(store, bound_wizard):
     """Read the one answer the rest of the journey turns on, once, and write
-    it where every other member can read it without a walk."""
+    it where every other section can read it without a walk."""
     step = bound_wizard.path.find_step(name="applying_as")
     store.data["applying_as"] = step.form.cleaned_data["applying_as"]
 
@@ -82,10 +88,11 @@ project = (
     .step(ReviewStepView, name="review")
 )
 
-budget = Collection(
+budget = AddAnother(
     Wizard()
     .step(BudgetLineForm, name="line", label="Budget line")
     .step(ReviewStepView, name="review"),
+    title="Budget",
     item_name="Budget line",
     item_title=("line", "item"),
     min_items=1,
@@ -105,67 +112,99 @@ documents = (
 )
 
 
-# --- a task list within the task list -------------------------------------------
+# --- sections with something to do ---------------------------------------------
 
 
-supporting = (
-    Hub()
-    # Locked until contact details are finished. `contact` is a root key:
-    # the record is the journey's, whichever hub reads it.
-    .member(
-        "referees",
-        referees,
-        title="Referees",
-        blocked=lambda store: not store.has_stash("contact"),
+class SetupSection(SectionViewSet):
+    wizard = setup
+
+    def run_done(self, bound_wizard):
+        record_applying_as(self.get_journey_store(), bound_wizard)
+        return super().run_done(bound_wizard)
+
+
+class ContactSection(SectionViewSet):
+    wizard = contact
+
+    def run_done(self, bound_wizard):
+        record_email(self.get_journey_store(), bound_wizard)
+        return super().run_done(bound_wizard)
+
+
+class ProjectSection(SectionViewSet):
+    wizard = project
+
+    def run_done(self, bound_wizard):
+        record_amount(self.get_journey_store(), bound_wizard)
+        return super().run_done(bound_wizard)
+
+
+class MatchFundingSection(SectionViewSet):
+    """Not there until the amount asked for crosses the threshold."""
+
+    wizard = match_funding
+
+    @classmethod
+    def hidden(cls, store):
+        return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
+
+
+class RefereesSection(SectionViewSet):
+    """Locked until contact details are finished."""
+
+    wizard = referees
+
+    @classmethod
+    def blocked(cls, store):
+        return not store.has_stash("contact")
+
+
+class DocumentsSection(SectionViewSet):
+    """Only for organisations — an answer the setup section wrote at the root."""
+
+    wizard = documents
+
+    @classmethod
+    def hidden(cls, store):
+        return store.data.get("applying_as") != "organisation"
+
+
+# --- the task list ---------------------------------------------------------------
+
+
+class SupportingInformation(TaskList):
+    referees = Section(RefereesSection, title="Referees")
+    documents = Section(DocumentsSection, title="Governing document")
+
+
+class GrantApplication(TaskList):
+    """What the application is: its sections, in the order the page lists
+    them. A value — `GrantApplication.begin(request)` starts one."""
+
+    setup = Section(SetupSection, title="Applying as")
+    contact = Section(ContactSection, title="Contact details", reopen="review")
+    project = Section(ProjectSection, title="Project", reopen="review")
+    budget = budget
+    match_funding = Section(MatchFundingSection, title="Match funding")
+    supporting = Group(
+        SupportingInformation,
+        title="Supporting information",
+        template_name="testapp/nested_hub.html",
     )
-    # Written by the setup member at the root; one record, so a member two
-    # hubs down reads it without being handed anything.
-    .member(
-        "documents",
-        documents,
-        title="Governing document",
-        hidden=lambda store: store.data.get("applying_as") != "organisation",
-    )
-    .configure(template_name="testapp/nested_hub.html")
-)
 
 
-# --- the journey ---------------------------------------------------------------
-
-
-application = (
-    Hub()
-    .member("setup", setup, title="Applying as", done=record_applying_as)
-    .member(
-        "contact", contact, title="Contact details", reopen="review", done=record_email
-    )
-    .member("project", project, title="Project", reopen="review", done=record_amount)
-    .collection("budget", budget, title="Budget")
-    .member(
-        "match_funding",
-        match_funding,
-        title="Match funding",
-        hidden=lambda store: store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD,
-    )
-    .hub("supporting", supporting, title="Supporting information")
-)
-
-
-class GrantApplicationViewSet(HubViewSet):
-    """Mounted under `apply/<journey>/`, so every request — the page, the
-    doors, and each member's own wizard beneath it — reads the same journey,
+class GrantApplicationViewSet(TaskListViewSet):
+    """The page. Mounted under `apply/<journey>/`, so every request —
+    the page, the doors, each section beneath it — reads the same journey,
     and two applications are two URLs."""
 
     description = "Chapter 14: the application's task list, with a submit."
-    template_name = "testapp/journey_hub.html"
-    member_template_name = "testapp/linear_wizard.html"
     url_name = "readme-apply"
-    hub = application
+    template_name = "testapp/journey_hub.html"
+    section_template_name = "testapp/linear_wizard.html"
+    tasklist = GrantApplication
 
-    def journey_done(self, hub, store):
-        # The stashes are still readable here, but `data` is what the
-        # members wrote for reading back; the tombstone keeps only `data`,
-        # so whatever the done page needs goes there too.
+    def journey_done(self, page, store):
         application = Application.objects.create()
         application.submit(store.data["email"])
         store.data["reference"] = application.reference
@@ -179,19 +218,20 @@ class GrantApplicationViewSet(HubViewSet):
         )
 
 
-# --- minting -----------------------------------------------------------------
+# --- minting ---------------------------------------------------------------------
 
 
 class ApplicationStartViewSet(WizardViewSet):
-    """The first wizard. There is no journey yet, so `done()` begins one,
-    records these answers as its `setup` member — stashed, `run_done()`
-    run — and sends the applicant to the hub under the new id."""
+    """The first wizard, before there is a journey to be a section of:
+    begin one, record this run as its `setup` section, go there."""
 
-    description = "Chapter 14: the setup wizard that mints an application."
+    description = (
+        "Chapter 14 as a task list: the setup wizard that begins an application."
+    )
     url_name = "readme-apply-start"
     wizard = setup
 
     def done(self, bound_wizard):
-        journey = GrantApplicationViewSet.begin(self.request)
+        journey = GrantApplication.begin(self.request)
         journey.finish("setup", bound_wizard)
         return redirect(journey.url)

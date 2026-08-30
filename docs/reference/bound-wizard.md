@@ -144,7 +144,7 @@ without a URL reverser.
 
 ### `entry_url(step=None)`
 
-The link *into* a run from outside it: a hub row, a resurrected stash, a
+The link *into* a run from outside it: a task list row, a resurrected stash, a
 link in an email. Never the bare run URL, because on a run whose answers
 all validate that URL redirects straight to completion and fires `done()`.
 
@@ -315,7 +315,7 @@ receives — that is a `WizardContext`.
 | Exception | Base | Imported from | Raised when |
 | --- | --- | --- | --- |
 | `StepNotFound` | `LookupError` | `gandalf.runtime` | `render_step()` / `RunDriver.submit()` target a step the run cannot reach or that has no stored answer. |
-| `InvalidStash` | `ValueError` | `gandalf.runtime` | `resurrect()` is given a non-envelope, an unsupported `version`, or a mismatched label. Hubs route it to `stash_unusable()`. |
+| `InvalidStash` | `ValueError` | `gandalf.runtime` | `resurrect()` is given a non-envelope, an unsupported `version`, or a mismatched label. Task lists route it to `stash_unusable()`. |
 | `RunNotFound` | `LookupError` | `gandalf.storage` | `retrieve_run()` / `get_run_data()` are asked for an id this storage does not hold — never started, obliterated, or lost with the session. The viewset answers it with `run_unavailable(..., "unknown")`. |
 | `MultipleStepsReturned` | `ValueError` | `gandalf.tree` | `find_step()` matches more than one step. |
 

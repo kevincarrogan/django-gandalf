@@ -18,7 +18,7 @@ from examples.copilotkit.wizards import (
     HybridIdentityViewSet,
     HybridLicenceViewSet,
     HybridQuoteViewSet,
-    HybridVehicleCollectionViewSet,
+    HybridVehiclesViewSet,
 )
 
 urlpatterns = [
@@ -30,5 +30,5 @@ urlpatterns = [
     path("licence/", include(HybridLicenceViewSet.urls())),
     path("identity-agent/", views.identity_endpoint, name="identity-agent"),
     path("identity/", include(HybridIdentityViewSet.urls())),
-    path("vehicles/", include(HybridVehicleCollectionViewSet.urls())),
+    path("vehicles/", include(HybridVehiclesViewSet.urls())),
 ]

@@ -22,15 +22,15 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import resolve, reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
-from gandalf.collections import COMPLETE, INCOMPLETE, NOT_STARTED, CollectionViewSet
+from gandalf.add_another import COMPLETE, INCOMPLETE, NOT_STARTED, AddAnotherViewSet
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
-from tests.testapp.views import GuestCollectionViewSet, PartyHubViewSet
+from tests.testapp.views import GuestsViewSet, PartyViewSet
 from gandalf.testing import (
-    seed_collection_item,
-    stored_collection_items,
-    stored_member_run,
-    stored_member_stashes,
+    seed_item,
+    stored_items,
+    stored_section_run,
+    stored_section_stashes,
 )
 
 
@@ -49,11 +49,11 @@ def _remove(item_id):
 
 
 def _statuses(response):
-    return [row.status for row in response.context["collection"].rows]
+    return [row.status for row in response.context["items"].rows]
 
 
 def _titles(response):
-    return [str(row.title) for row in response.context["collection"].rows]
+    return [str(row.title) for row in response.context["items"].rows]
 
 
 def _add(client, page=PAGE):
@@ -75,13 +75,13 @@ def _complete(client, name, page=PAGE):
 # --- the empty page ---------------------------------------------------------
 
 
-def test_a_collection_nobody_has_added_to_offers_only_the_first_item(client):
+def test_a_list_nobody_has_added_to_offers_only_the_first_item(client):
     response = client.get(PAGE)
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/collection.html")
-    assert response.context["collection"].is_empty
-    assert response.context["collection"].status == NOT_STARTED
+    assert response.context["items"].is_empty
+    assert response.context["items"].status == NOT_STARTED
     assertContains(response, "You have not added any guests")
 
 
@@ -91,14 +91,14 @@ def test_a_collection_nobody_has_added_to_offers_only_the_first_item(client):
 def test_adding_an_item_lands_the_user_on_its_first_step(client):
     response = client.post(PAGE, {"add_another": "yes"})
 
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
     assertRedirects(
         response,
         reverse(
             "party-hub-guests-item-step",
             kwargs={
                 "item": item_id,
-                "run_id": stored_member_run(client, f"guests:{item_id}"),
+                "run_id": stored_section_run(client, f"guests:{item_id}"),
                 "gandalf_step": "guest",
             },
         ),
@@ -111,8 +111,8 @@ def test_an_item_is_registered_before_its_wizard_starts(client):
     leaves a recoverable row rather than an orphan run if entering fails."""
     _add(client)
 
-    assert len(stored_collection_items(client, "guests")) == 1
-    assert stored_member_stashes(client) == {}
+    assert len(stored_items(client, "guests")) == 1
+    assert stored_section_stashes(client) == {}
 
 
 def test_an_item_the_user_started_but_never_finished_reads_as_incomplete(client):
@@ -121,7 +121,7 @@ def test_an_item_the_user_started_but_never_finished_reads_as_incomplete(client)
     response = client.get(PAGE)
 
     assert _statuses(response) == [INCOMPLETE]
-    assert response.context["collection"].status == INCOMPLETE
+    assert response.context["items"].status == INCOMPLETE
 
 
 def test_an_unfinished_item_is_named_by_its_position(client):
@@ -159,7 +159,7 @@ def test_the_add_another_question_has_to_be_answered(client):
 
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "Select yes if you want to add another")
-    assert len(stored_collection_items(client, "guests")) == 1
+    assert len(stored_items(client, "guests")) == 1
 
 
 # --- changing ---------------------------------------------------------------
@@ -167,35 +167,35 @@ def test_the_add_another_question_has_to_be_answered(client):
 
 def test_the_door_resumes_a_half_finished_item_where_it_left_off(client):
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     response = client.get(_door(item_id))
 
     assert response["Location"].rstrip("/").rsplit("/", 1)[-1] == "review"
 
 
-def test_a_locked_items_door_sends_the_user_back_to_the_collection_page(client):
+def test_a_locked_items_door_sends_the_user_back_to_the_list_page(client):
     """An app may gate its items too. The door then has nothing to hand back,
     and must say so rather than redirect to `None`."""
-    seed_collection_item(client, "locked-guests", ITEM)
+    seed_item(client, "locked-guests", ITEM)
 
     response = client.get(reverse("locked-guests-item", kwargs={"item": ITEM}))
 
     assertRedirects(response, "/locked-guests/")
 
 
-def test_adding_to_a_locked_collection_leaves_the_row_and_the_page(client):
+def test_adding_to_a_locked_list_leaves_the_row_and_the_page(client):
     """`add_item()` registers before it enters, so the item exists even though
     the door declined — a listed, removable, not-started row."""
     response = client.post("/locked-guests/", {"add_another": "yes"})
 
     assertRedirects(response, "/locked-guests/")
-    assert len(stored_collection_items(client, "locked-guests")) == 1
+    assert len(stored_items(client, "locked-guests")) == 1
 
 
 def test_the_door_reopens_a_finished_item_with_its_answers_in_place(client):
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     response = client.get(_door(item_id), follow=True)
 
@@ -208,7 +208,7 @@ def test_changing_a_finished_item_re_saves_it_and_re_caches_its_name(client):
     submission walks to the end and fires `done()` again — and `done()` is
     where the title is cached, so a rename shows on the page."""
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
     step_url = client.get(_door(item_id))["Location"]
 
     response = _answer(client, step_url, "Ada Lovelace")
@@ -220,11 +220,11 @@ def test_changing_a_finished_item_re_saves_it_and_re_caches_its_name(client):
 def test_reopening_an_item_leaves_the_others_untouched(client):
     _complete(client, "Ada")
     _complete(client, "Grace")
-    first, second = stored_collection_items(client, "guests")
+    first, second = stored_items(client, "guests")
 
     client.get(_door(first))
 
-    assert stored_collection_items(client, "guests") == [first, second]
+    assert stored_items(client, "guests") == [first, second]
     assert _titles(client.get(PAGE)) == ["Ada", "Grace"]
 
 
@@ -233,26 +233,26 @@ def test_reopening_an_item_leaves_the_others_untouched(client):
 
 def test_removing_an_item_asks_first(client):
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     response = client.get(_remove(item_id))
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/collection_remove.html")
     assertContains(response, "Are you sure you want to remove Ada?")
-    assert stored_collection_items(client, "guests") == [item_id]
+    assert stored_items(client, "guests") == [item_id]
 
 
 def test_removing_an_item_takes_its_row_its_stash_and_its_run(client):
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     response = client.post(_remove(item_id))
 
     assertRedirects(response, PAGE)
-    assert stored_collection_items(client, "guests") == []
-    assert stored_member_stashes(client) == {}
-    assert stored_member_run(client, f"guests:{item_id}") is None
+    assert stored_items(client, "guests") == []
+    assert stored_section_stashes(client) == {}
+    assert stored_section_run(client, f"guests:{item_id}") is None
 
 
 def test_removing_from_the_middle_renumbers_nothing(client):
@@ -260,14 +260,14 @@ def test_removing_from_the_middle_renumbers_nothing(client):
     a link the user already has still names the item they meant."""
     for name in ("Ada", "Grace", "Katherine"):
         _complete(client, name)
-    first, second, third = stored_collection_items(client, "guests")
+    first, second, third = stored_items(client, "guests")
 
     client.post(_remove(second))
 
-    assert stored_collection_items(client, "guests") == [first, third]
+    assert stored_items(client, "guests") == [first, third]
     response = client.get(PAGE)
     assert _titles(response) == ["Ada", "Katherine"]
-    assert [row.url for row in response.context["collection"].rows] == [
+    assert [row.url for row in response.context["items"].rows] == [
         _door(first),
         _door(third),
     ]
@@ -275,8 +275,8 @@ def test_removing_from_the_middle_renumbers_nothing(client):
 
 def test_removing_an_item_the_user_was_halfway_through_discards_its_run(client):
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_member_run(client, f"guests:{item_id}")
+    (item_id,) = stored_items(client, "guests")
+    run_id = stored_section_run(client, f"guests:{item_id}")
 
     client.post(_remove(item_id))
 
@@ -287,8 +287,8 @@ def test_a_removed_items_own_wizard_url_is_refused(client):
     """A second tab still on a step URL must not answer for an item that no
     longer exists, and must not mint a fresh run for it either."""
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_member_run(client, f"guests:{item_id}")
+    (item_id,) = stored_items(client, "guests")
+    run_id = stored_section_run(client, f"guests:{item_id}")
     step_url = reverse(
         "party-hub-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
@@ -298,21 +298,21 @@ def test_a_removed_items_own_wizard_url_is_refused(client):
     response = client.post(step_url, {"name": "Ada", "dietary_requirements": ""})
 
     assertRedirects(response, PAGE)
-    assert stored_collection_items(client, "guests") == []
+    assert stored_items(client, "guests") == []
 
 
 def test_removing_the_last_item_empties_the_page(client):
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     client.post(_remove(item_id))
 
     response = client.get(PAGE)
-    assert response.context["collection"].is_empty
+    assert response.context["items"].is_empty
     assertContains(response, "You have not added any guests")
 
 
-def test_an_item_this_collection_does_not_list_is_sent_back_to_the_page(client):
+def test_an_item_this_list_does_not_list_is_sent_back_to_the_page(client):
     unknown = "11111111-1111-1111-1111-111111111111"
 
     assertRedirects(client.get(_door(unknown)), PAGE)
@@ -323,16 +323,16 @@ def test_posting_to_an_items_door_is_refused_and_removes_nothing(client):
     id, and the view used to branch on the id alone — so a POST to the URL a
     row links to took the item with it (#101)."""
     _complete(client, "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
 
     response = client.post(_door(item_id))
 
     assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
-    assert stored_collection_items(client, "guests") == [item_id]
+    assert stored_items(client, "guests") == [item_id]
     assert _titles(client.get(PAGE)) == ["Ada"]
 
 
-def test_removing_an_item_this_collection_does_not_list_is_sent_back(client):
+def test_removing_an_item_this_list_does_not_list_is_sent_back(client):
     unknown = "11111111-1111-1111-1111-111111111111"
 
     assertRedirects(client.post(_remove(unknown)), PAGE)
@@ -341,17 +341,17 @@ def test_removing_an_item_this_collection_does_not_list_is_sent_back(client):
 # --- declaring there are no more --------------------------------------------
 
 
-def test_a_collection_is_only_complete_once_the_user_says_so(client):
+def test_a_list_is_only_complete_once_the_user_says_so(client):
     """No reading of storage can say whether there are more guests to add —
     only the user can, so the page asks."""
     _complete(client, "Ada")
 
-    assert client.get(PAGE).context["collection"].status == INCOMPLETE
+    assert client.get(PAGE).context["items"].status == INCOMPLETE
 
     response = client.post(PAGE, {"add_another": "no"})
 
     assertRedirects(response, "/party/", target_status_code=HTTPStatus.OK)
-    assert client.get(PAGE).context["collection"].status == COMPLETE
+    assert client.get(PAGE).context["items"].status == COMPLETE
 
 
 def test_declaring_no_more_over_a_half_finished_item_is_still_incomplete(client):
@@ -366,8 +366,8 @@ def test_declaring_no_more_over_a_half_finished_item_is_still_incomplete(client)
     # The answer stands, but Continue is a submit and an incomplete one is
     # refused: back to the page, not up to the hub.
     assertRedirects(response, PAGE)
-    assert client.get(PAGE).context["collection"].declared_done is True
-    assert client.get(PAGE).context["collection"].status == INCOMPLETE
+    assert client.get(PAGE).context["items"].declared_done is True
+    assert client.get(PAGE).context["items"].status == INCOMPLETE
 
 
 def test_adding_another_withdraws_the_users_answer(client):
@@ -378,7 +378,7 @@ def test_adding_another_withdraws_the_users_answer(client):
 
     _add(client)
 
-    assert client.get(PAGE).context["collection"].declared_done is False
+    assert client.get(PAGE).context["items"].declared_done is False
 
 
 def test_removing_an_item_does_not_re_ask_the_question(client):
@@ -387,58 +387,58 @@ def test_removing_an_item_does_not_re_ask_the_question(client):
     _complete(client, "Ada")
     _complete(client, "Grace")
     client.post(PAGE, {"add_another": "no"})
-    first, _second = stored_collection_items(client, "guests")
+    first, _second = stored_items(client, "guests")
 
     client.post(_remove(first))
 
-    assert client.get(PAGE).context["collection"].declared_done is True
-    assert client.get(PAGE).context["collection"].status == COMPLETE
+    assert client.get(PAGE).context["items"].declared_done is True
+    assert client.get(PAGE).context["items"].status == COMPLETE
 
 
-def test_a_collection_that_needs_an_item_is_incomplete_while_empty(client):
+def test_a_list_that_needs_an_item_is_incomplete_while_empty(client):
     page = "/minimum-guests/"
 
     client.post(page, {"add_another": "no"})
 
-    assert client.get(page).context["collection"].status == INCOMPLETE
+    assert client.get(page).context["items"].status == INCOMPLETE
 
 
-def test_a_collection_that_needs_an_item_completes_once_it_has_one(client):
+def test_a_list_that_needs_an_item_completes_once_it_has_one(client):
     page = "/minimum-guests/"
     _complete(client, "Ada", page=page)
 
     client.post(page, {"add_another": "no"})
 
-    assert client.get(page).context["collection"].status == COMPLETE
+    assert client.get(page).context["items"].status == COMPLETE
 
 
 # --- the parent task list ---------------------------------------------------
 
 
-def test_a_task_list_links_straight_at_a_collection_page(client):
+def test_a_task_list_links_straight_at_a_list_page(client):
     """A collection page is not a wizard, so the row links past the hub's own
     door — there is no run for the door to walk."""
     response = client.get("/party/")
 
-    rows = {row.key: row for row in response.context["hub"].rows}
+    rows = {row.key: row for row in response.context["tasklist"].rows}
     assert rows["guests"].url == PAGE
-    assert rows["venue"].url == reverse("party-hub-member", kwargs={"member": "venue"})
+    assert rows["venue"].url == reverse("party-hub-entry", kwargs={"entry": "venue"})
 
 
-def test_a_task_list_reports_the_collections_own_status(client):
+def test_a_task_list_reports_the_lists_own_status(client):
     _complete(client, "Ada")
     client.post(PAGE, {"add_another": "no"})
 
     response = client.get("/party/")
 
-    rows = {row.key: row.status for row in response.context["hub"].rows}
+    rows = {row.key: row.status for row in response.context["tasklist"].rows}
     assert rows == {"venue": NOT_STARTED, "guests": COMPLETE}
 
 
-def test_the_hub_door_for_a_collection_is_its_page(client):
+def test_the_hub_door_for_a_list_is_its_page(client):
     """A collection is mounted at its own segment beneath the hub, so the
     URL the hub's door would answer for it is the page itself."""
-    door = reverse("party-hub-member", kwargs={"member": "guests"})
+    door = reverse("party-hub-entry", kwargs={"entry": "guests"})
 
     assert door == PAGE
     assert client.get(door).status_code == HTTPStatus.OK
@@ -447,12 +447,12 @@ def test_the_hub_door_for_a_collection_is_its_page(client):
 # --- the invariants ---------------------------------------------------------
 
 
-def test_a_collection_door_hands_out_a_step_url_not_a_bare_run_url(client):
+def test_a_list_door_hands_out_a_step_url_not_a_bare_run_url(client):
     """The invariant, asserted directly: whatever state an item is in, its
     door redirects to a step URL."""
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_member_run(client, f"guests:{item_id}")
+    (item_id,) = stored_items(client, "guests")
+    run_id = stored_section_run(client, f"guests:{item_id}")
 
     response = client.get(_door(item_id))
 
@@ -469,25 +469,25 @@ def test_an_item_parked_with_every_answer_valid_still_gets_a_step_url(client):
     page = "/advancing-guests/"
     step_url = _add(client, page)
     client.post(step_url, {"email": "ada@example.com"})
-    (item_id,) = stored_collection_items(client, "advancing-guests")
+    (item_id,) = stored_items(client, "advancing-guests")
 
     response = client.get(reverse("advancing-guests-item", kwargs={"item": item_id}))
 
-    run_id = stored_member_run(client, f"advancing-guests:{item_id}")
+    run_id = stored_section_run(client, f"advancing-guests:{item_id}")
     assert response["Location"] != reverse(
         "advancing-guests-item-run", kwargs={"item": item_id, "run_id": run_id}
     )
     assert response["Location"].endswith("/newsletter/")
 
 
-def test_the_item_wizards_bare_url_is_the_collections_door():
+def test_the_item_wizards_bare_url_is_the_lists_door():
     """The item wizard is mounted beneath the door for its item, and its
     start URL — the one that would complete a valid run on a GET — is the
     door itself, so there is no bare run URL to publish."""
     item_id = "11111111-1111-1111-1111-111111111111"
 
     match = resolve(_door(item_id))
-    assert match.func.view_class is PartyHubViewSet.viewset_for("guests")
+    assert match.func.view_class is PartyViewSet.viewset_for("guests")
     assert match.url_name == "party-hub-guests-item"
 
 
@@ -512,31 +512,31 @@ def test_building_the_rows_never_walks_an_item(client, monkeypatch):
 # --- mount-prefix kwargs ----------------------------------------------------
 
 
-def test_a_collection_forwards_its_mount_prefix_into_every_url_it_builds(client):
-    page = "/org/acme/hub/org-guests/"
+def test_a_list_forwards_its_mount_prefix_into_every_url_it_builds(client):
+    page = "/org/acme/hub/org_guests/"
     _add(client, page)
-    (item_id,) = stored_collection_items(client, "org-guests")
+    (item_id,) = stored_items(client, "org_guests")
 
     response = client.get(page)
 
-    (row,) = response.context["collection"].rows
+    (row,) = response.context["items"].rows
     assert row.url == f"{page}{item_id}/"
     assert row.remove_url == f"{page}{item_id}/remove/"
 
 
 def test_an_item_wizard_carries_the_prefix_and_its_item_id_end_to_end(client):
-    page = "/org/acme/hub/org-guests/"
+    page = "/org/acme/hub/org_guests/"
 
     step_url = _add(client, page)
 
-    (item_id,) = stored_collection_items(client, "org-guests")
+    (item_id,) = stored_items(client, "org_guests")
     assert step_url.startswith(f"{page}{item_id}/")
 
 
-def test_a_finished_item_returns_to_its_collection_not_to_its_own_item_url(client):
+def test_a_finished_item_returns_to_its_list_not_to_its_own_item_url(client):
     """`get_hub_url()` drops the item segment: it is the wizard's own mount,
     and the collection's URL has no place for it."""
-    page = "/org/acme/hub/org-guests/"
+    page = "/org/acme/hub/org_guests/"
 
     response = _complete(client, "Ada", page=page)
 
@@ -546,7 +546,7 @@ def test_a_finished_item_returns_to_its_collection_not_to_its_own_item_url(clien
 def test_a_seeded_item_with_no_run_reads_as_not_started(client):
     """A row exists from the moment the item is registered, so an item whose
     run the storage has since forgotten still has one."""
-    seed_collection_item(client, "guests", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    seed_item(client, "guests", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
     response = client.get(PAGE)
 
@@ -555,9 +555,7 @@ def test_a_seeded_item_with_no_run_reads_as_not_started(client):
 
 
 def test_a_seeded_item_keeps_the_title_it_was_given(client):
-    seed_collection_item(
-        client, "guests", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", title="Ada"
-    )
+    seed_item(client, "guests", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", title="Ada")
 
     assert _titles(client.get(PAGE)) == ["Ada"]
 
@@ -590,7 +588,7 @@ def test_an_item_whose_naming_step_is_off_its_route_falls_back_to_a_number(clien
     assert _statuses(response) == [COMPLETE]
 
 
-def test_a_collection_names_its_items_from_its_own_key_by_default(client):
+def test_a_list_names_its_items_from_its_own_key_by_default(client):
     page = "/reshaped-guests/"
     _add(client, page)
 
@@ -602,10 +600,10 @@ def test_a_reshaped_item_stamps_the_bumped_label_into_its_stash(client):
     accepted at the door."""
     page = "/reshaped-guests/"
     _complete(client, "Ada", page=page)
-    (item_id,) = stored_collection_items(client, "reshaped-guests")
+    (item_id,) = stored_items(client, "reshaped-guests")
 
     assert (
-        stored_member_stashes(client)[f"reshaped-guests:{item_id}"]["label"]
+        stored_section_stashes(client)[f"reshaped-guests:{item_id}"]["label"]
         == "guests-v2"
     )
     response = client.get(
@@ -621,8 +619,8 @@ def test_a_listed_item_whose_run_the_storage_forgot_returns_to_the_page(client):
     """Not to the item wizard's own start URL, which would mint a fresh run
     whose completion would stash under a key the page still lists."""
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_member_run(client, f"guests:{item_id}")
+    (item_id,) = stored_items(client, "guests")
+    run_id = stored_section_run(client, f"guests:{item_id}")
     step_url = reverse(
         "party-hub-guests-item-step",
         kwargs={"item": item_id, "run_id": run_id, "gandalf_step": "guest"},
@@ -654,42 +652,42 @@ def _dispatch(rf, client, view, path=PAGE, method="get", data=None, **kwargs):
     return view.as_view()(request, **kwargs)
 
 
-def test_a_collection_with_no_key_is_misconfigured():
-    with pytest.raises(ImproperlyConfigured, match="member_key"):
-        type("_Keyless", (GuestCollectionViewSet,), {"member_key": None})
+def test_a_list_with_no_key_is_misconfigured():
+    with pytest.raises(ImproperlyConfigured, match="key"):
+        type("_Keyless", (GuestsViewSet,), {"key": None})
 
 
-def test_a_collection_with_no_declaration_is_misconfigured(rf, client):
-    class _Undeclared(CollectionViewSet):
+def test_a_list_with_no_declaration_is_misconfigured(rf, client):
+    class _Undeclared(AddAnotherViewSet):
         url_name = "standalone-guests"
-        member_key = "guests"
+        key = "guests"
 
-    with pytest.raises(ImproperlyConfigured, match="collection"):
+    with pytest.raises(ImproperlyConfigured, match="add_another"):
         _dispatch(rf, client, _Undeclared)
 
 
-def test_a_collection_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
-    class _Endless(GuestCollectionViewSet):
-        hub_url_name = None
+def test_a_list_listed_by_no_hub_is_a_root_and_needs_a_journey_done(rf, client):
+    class _Endless(GuestsViewSet):
+        tasklist_url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="journey_done"):
         _dispatch(rf, client, _Endless, method="post", data={"add_another": "no"})
 
 
-def test_a_collection_without_a_url_name_cannot_publish_urls():
-    class _Nameless(CollectionViewSet):
+def test_a_list_without_a_url_name_cannot_publish_urls():
+    class _Nameless(AddAnotherViewSet):
         url_name = None
 
     with pytest.raises(ImproperlyConfigured, match="url_name"):
         _Nameless.urls()
 
 
-def test_a_collection_with_no_confirmation_page_is_misconfigured(rf, client):
-    class _Blunt(GuestCollectionViewSet):
+def test_a_list_with_no_confirmation_page_is_misconfigured(rf, client):
+    class _Blunt(GuestsViewSet):
         remove_template_name = None
 
     _add(client, STANDALONE)
-    (item_id,) = stored_collection_items(client, "standalone-guests")
+    (item_id,) = stored_items(client, "standalone-guests")
     request = rf.get(f"{STANDALONE}{item_id}/remove/")
     request.session = client.session
     request.resolver_match = type(
@@ -709,14 +707,14 @@ def test_an_item_wizard_that_cannot_name_its_items_says_so_at_completion(client)
         client.post(response["Location"], {})
 
 
-def test_an_item_wizard_with_no_collection_key_is_misconfigured(rf, client):
-    class _Homeless(GuestCollectionViewSet.item_viewset):
-        collection_key = None
+def test_an_item_wizard_with_no_list_key_is_misconfigured(rf, client):
+    class _Homeless(GuestsViewSet.item_viewset):
+        list_key = None
 
     request = rf.get(f"/standalone-guests/{ITEM}/")
     request.session = client.session
 
-    with pytest.raises(ImproperlyConfigured, match="collection"):
+    with pytest.raises(ImproperlyConfigured, match="no list"):
         _Homeless.as_view()(request, item=ITEM)
 
 
@@ -725,18 +723,18 @@ def test_an_item_wizard_not_mounted_under_an_item_is_misconfigured(rf, client):
     request.session = client.session
 
     with pytest.raises(ImproperlyConfigured, match="item segment"):
-        GuestCollectionViewSet.item_viewset.as_view()(request)
+        GuestsViewSet.item_viewset.as_view()(request)
 
 
-def test_a_driver_can_address_one_item_of_a_collection(client):
+def test_a_driver_can_address_one_item_of_a_list(client):
     """The generated item viewset is public, for a script or an agent that
     adds an item without a browser."""
     _add(client)
-    (item_id,) = stored_collection_items(client, "guests")
+    (item_id,) = stored_items(client, "guests")
     context = WizardContext(session=client.session)
 
     driver = RunDriver.begin(
-        PartyHubViewSet.viewset_for("guests").item_viewset,
+        PartyViewSet.viewset_for("guests").item_viewset,
         item=item_id,
         context=context,
     )
@@ -747,13 +745,13 @@ def test_a_driver_can_address_one_item_of_a_collection(client):
 # --- the registry's edges ---------------------------------------------------
 
 
-def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, client):
+def test_registering_an_id_a_list_already_lists_does_not_duplicate_it(rf, client):
     """Ids need not be uuids — a collection whose items are named by the
     domain can press Add twice for the same one."""
 
     from gandalf.storage import SessionCollectionStore
 
-    class _Fixed(GuestCollectionViewSet):
+    class _Fixed(GuestsViewSet):
         def new_item_id(self):
             return ITEM
 
@@ -767,25 +765,23 @@ def test_registering_an_id_a_collection_already_lists_does_not_duplicate_it(rf, 
     assert store.item_ids("standalone-guests") == [ITEM]
 
 
-def test_an_item_a_collection_lists_but_never_registered_is_named_by_position(
-    rf, client
-):
+def test_an_item_a_list_lists_but_never_registered_is_named_by_position(rf, client):
     """The seam for a collection built from the application's own records
     rather than the registry: there is no cached title to read."""
 
-    class _FromElsewhere(GuestCollectionViewSet):
+    class _FromElsewhere(GuestsViewSet):
         def get_item_ids(self):
             return [ITEM]
 
     response = _dispatch(rf, client, _FromElsewhere)
 
-    (row,) = response.context_data["collection"].rows
+    (row,) = response.context_data["items"].rows
     assert str(row.title) == "Guest 1"
     assert row.status == NOT_STARTED
 
 
 def test_removing_an_item_that_was_never_registered_is_not_an_error(rf, client):
-    class _FromElsewhere(GuestCollectionViewSet):
+    class _FromElsewhere(GuestsViewSet):
         def get_item_ids(self):
             return [ITEM]
 
@@ -803,18 +799,18 @@ def test_removing_an_item_that_was_never_registered_is_not_an_error(rf, client):
 
 def test_removing_an_item_whose_run_the_storage_forgot_is_not_an_error(client):
     _answer(client, _add(client), "Ada")
-    (item_id,) = stored_collection_items(client, "guests")
-    run_id = stored_member_run(client, f"guests:{item_id}")
+    (item_id,) = stored_items(client, "guests")
+    run_id = stored_section_run(client, f"guests:{item_id}")
     session = client.session
     del session["gandalf_runs"][run_id]
     session.save()
 
     assertRedirects(client.post(_remove(item_id)), PAGE)
-    assert stored_collection_items(client, "guests") == []
+    assert stored_items(client, "guests") == []
 
 
-def test_a_collection_reports_its_own_shape_to_a_template(client):
-    empty = client.get(PAGE).context["collection"]
+def test_a_list_reports_its_own_shape_to_a_template(client):
+    empty = client.get(PAGE).context["items"]
     assert (empty.is_not_started, empty.is_incomplete, empty.is_complete) == (
         True,
         False,
@@ -822,7 +818,7 @@ def test_a_collection_reports_its_own_shape_to_a_template(client):
     )
 
     _complete(client, "Ada")
-    started = client.get(PAGE).context["collection"]
+    started = client.get(PAGE).context["items"]
     assert (started.is_not_started, started.is_incomplete, started.is_complete) == (
         False,
         True,
@@ -830,7 +826,7 @@ def test_a_collection_reports_its_own_shape_to_a_template(client):
     )
 
     client.post(PAGE, {"add_another": "no"})
-    done = client.get(PAGE).context["collection"]
+    done = client.get(PAGE).context["items"]
     assert (done.is_not_started, done.is_incomplete, done.is_complete) == (
         False,
         False,
@@ -838,21 +834,21 @@ def test_a_collection_reports_its_own_shape_to_a_template(client):
     )
 
 
-def test_a_collection_page_counts_its_items_without_a_loop_in_the_template(client):
+def test_a_list_page_counts_its_items_without_a_loop_in_the_template(client):
     """The `Hub` counts, on the object that already was one. A page saying
     "2 of 3 finished" derived it by looping the rows until now."""
     _complete(client, "Ada")
     _complete(client, "Grace")
     _add(client)
 
-    collection = client.get(PAGE).context["collection"]
+    collection = client.get(PAGE).context["items"]
 
     assert (collection.count, collection.completed, collection.remaining) == (3, 2, 1)
     assert collection.blocked == 0
     assertContains(client.get(PAGE), "You have completed 2 of 3 guests")
 
 
-def test_a_driver_fills_one_item_of_a_collection():
+def test_a_driver_fills_one_item_of_a_list():
     """An item is a run like any other, and its id is a URL kwarg.
 
     This is the shape an agent needs: one context held for whoever it is
@@ -862,13 +858,13 @@ def test_a_driver_fills_one_item_of_a_collection():
     whichever door it was reached through.
     """
     context = WizardContext()
-    page = GuestCollectionViewSet()
+    page = GuestsViewSet()
     page.setup(context.http_request())
     page.add_item()
     item_id = page.get_item_ids()[-1]
 
     driver = RunDriver.begin(
-        GuestCollectionViewSet.item_viewset,
+        GuestsViewSet.item_viewset,
         item=item_id,
         context=context,
         may_finish=True,
@@ -877,9 +873,9 @@ def test_a_driver_fills_one_item_of_a_collection():
     driver.submit({"confirmed": True}, step="review")
     driver.finish()
 
-    seen = GuestCollectionViewSet()
+    seen = GuestsViewSet()
     seen.setup(context.http_request())
-    assert [str(row.title) for row in seen.get_member_rows()] == ["Ada Lovelace"]
+    assert [str(row.title) for row in seen.get_rows()] == ["Ada Lovelace"]
 
 
 def test_addressing_a_second_item_does_not_disturb_the_first():
@@ -887,12 +883,8 @@ def test_addressing_a_second_item_does_not_disturb_the_first():
     naming it must not hand the second run the first one's identity."""
     context = WizardContext()
 
-    first = RunDriver.begin(
-        GuestCollectionViewSet.item_viewset, item="one", context=context
-    )
-    second = RunDriver.begin(
-        GuestCollectionViewSet.item_viewset, item="two", context=context
-    )
+    first = RunDriver.begin(GuestsViewSet.item_viewset, item="one", context=context)
+    second = RunDriver.begin(GuestsViewSet.item_viewset, item="two", context=context)
 
     assert first.view.kwargs == {"item": "one"}
     assert second.view.kwargs == {"item": "two"}

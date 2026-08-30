@@ -65,7 +65,7 @@ first and the wizard resolved against it (`WizardViewSet.begin_for()`), so
 - `viewset_class` — a `WizardViewSet` subclass.
 - `context` — a `WizardContext` to use as it stands. `url_kwargs` named
   alongside it still apply and win over the context's own, so a context
-  held for a conversation can address one collection item and then the
+  held for a conversation can address one add-another item and then the
   next.
 - `actor` — whoever the run is for; what a durable storage scopes runs by.
   Ignored when `context` is given.
@@ -75,7 +75,7 @@ first and the wizard resolved against it (`WizardViewSet.begin_for()`), so
   only as long as the context. Ignored when `context` is given.
 - `may_finish` — sets the driver's `may_finish`; `None` leaves the class
   default.
-- `**url_kwargs` — mount-prefix kwargs (a tenant slug, a collection item
+- `**url_kwargs` — mount-prefix kwargs (a tenant slug, an add-another item
   id), forwarded to the viewset exactly as URL kwargs would be.
 
 **Returns** a `RunDriver`.
@@ -244,7 +244,7 @@ JSON Schema of its form.
 | `switch` | `decided_by`, `description`, `cases`, `default`, `source` | `cases` are named outcomes, each `{"case": value, "steps": [...]}`. `source` — `{"step": ..., "field": ...}` — is present only when the selector is an `on_field`. |
 | `expand` | — | A marker. The steps an expansion grows do not exist until the answer that shapes them does. |
 
-A dynamic `get_wizard()` is outlined as currently resolved. Collections
+A dynamic `get_wizard()` is outlined as currently resolved. Add-another lists
 are not steps and do not appear.
 
 ### `finish()`

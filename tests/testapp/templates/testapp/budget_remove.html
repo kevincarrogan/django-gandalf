@@ -9,6 +9,6 @@
             {% csrf_token %}
             <button type="submit">Remove {{ row.title }}</button>
         </form>
-        <p><a href="{{ collection.url }}">Cancel</a></p>
+        <p><a href="{{ items.url }}">Cancel</a></p>
     </div>
 {% endblock %}

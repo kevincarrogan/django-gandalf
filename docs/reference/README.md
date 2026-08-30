@@ -28,8 +28,8 @@ a pointer back to the [Learn](../learn/README.md) chapter that introduces it.
 
 ## A task list of wizards
 
-- [Hubs](hubs.md) — `Hub()`, `HubViewSet`, statuses, `blocked` / `hidden` rules, journeys, nesting, ending
-- [Collections](collections.md) — `Collection`, `CollectionViewSet`, add / change / remove
+- [Task lists](tasklists.md) — `TaskList`, `Section`, `Group`, `TaskListViewSet`, `SectionViewSet`, statuses, `blocked()` / `hidden()`, journeys, groups, ending
+- [Add another](add-another.md) — `AddAnother`, `AddAnotherViewSet`, `ItemViewSet`, add / change / remove
 - [Journey store](journey-store.md) — `SessionJourneyStore`, `store.data`, the `JourneyStore` / `CollectionStore` protocols
 
 ## From outside

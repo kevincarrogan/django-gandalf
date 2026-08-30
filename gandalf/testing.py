@@ -5,7 +5,7 @@ names (`<url_name>`, `<url_name>-run`, `<url_name>-step`) and hands out
 `WizardRun` objects that make requests and read stored state without the
 caller ever touching the session keys directly. The module-level functions
 peek at (and seed) the session stores for tests that arrange or assert on
-raw run and stash payloads, and a journey's record — its member runs and
+raw run and stash payloads, and a journey's record — its section runs and
 stashes, its collections, its data, its tombstone — under one journey key,
 `"default"` unless the hub is mounted under a journey segment.
 
@@ -43,22 +43,22 @@ __all__ = [
     "RunDiscoveryError",
     "WizardTestDriver",
     "WizardRun",
-    "seed_collection_item",
+    "seed_item",
     "seed_journey_complete",
     "seed_journey_data",
     "seed_run",
-    "seed_member_run",
-    "seed_member_stash",
+    "seed_section_run",
+    "seed_section_stash",
     "seed_stash",
-    "stored_collection_items",
+    "stored_items",
     "stored_journey",
     "stored_journey_data",
     "stored_run",
     "stored_runs",
-    "stored_member_run",
-    "stored_member_runs",
-    "stored_member_stash",
-    "stored_member_stashes",
+    "stored_section_run",
+    "stored_section_runs",
+    "stored_section_stash",
+    "stored_section_stashes",
     "stored_stash",
     "stored_stashes",
 ]
@@ -126,7 +126,7 @@ def seed_stash(client: Client, key: str, payload: Stash) -> None:
 
 def stored_journey(client: Client, journey: str = "default") -> JourneyRecord:
     """The session's record for `journey`, or an empty dict before anything
-    has been written to it — its member runs, its stashes, its collections,
+    has been written to it — its section runs, its stashes, its collections,
     its data, or the tombstone a submitted journey leaves behind."""
     journeys: dict[str, JourneyRecord] = client.session.get(
         SessionJourneyStore.SESSION_KEY, {}
@@ -144,54 +144,58 @@ def _seed_journey(
     session.save()
 
 
-def stored_member_runs(client: Client, journey: str = "default") -> dict[str, str]:
-    """The journey's member-to-run mapping, or an empty dict before any member
+def stored_section_runs(client: Client, journey: str = "default") -> dict[str, str]:
+    """The journey's section-to-run mapping, or an empty dict before any section
     has been entered."""
     runs: dict[str, str] = stored_journey(client, journey).get("runs", {})
     return runs
 
 
-def stored_member_run(client: Client, key: str, journey: str = "default") -> str | None:
-    """The run id recorded for member `key`, or None when the member is not
+def stored_section_run(
+    client: Client, key: str, journey: str = "default"
+) -> str | None:
+    """The run id recorded for section `key`, or None when the section is not
     being answered.
 
-    A member's completion is its stash, not its run — read it with
-    `stored_member_stash(client, key)`.
+    A section's completion is its stash, not its run — read it with
+    `stored_section_stash(client, key)`.
     """
-    return stored_member_runs(client, journey).get(key)
+    return stored_section_runs(client, journey).get(key)
 
 
-def seed_member_run(
+def seed_section_run(
     client: Client, key: str, run_id: str, journey: str = "default"
 ) -> None:
-    """Record `run_id` as where member `key` is being answered.
+    """Record `run_id` as where section `key` is being answered.
 
     Creates the journey's record when the session has never held one. For
     arranging the states a hub reaches only after several requests: a
-    member left half-answered, or one pointing at a run the storage no
+    section left half-answered, or one pointing at a run the storage no
     longer holds.
     """
     _seed_journey(client, journey, "runs", key, str(run_id))
 
 
-def stored_member_stashes(client: Client, journey: str = "default") -> dict[str, Stash]:
-    """The journey's stash mapping — one payload per finished member — or
-    an empty dict before any member has finished."""
+def stored_section_stashes(
+    client: Client, journey: str = "default"
+) -> dict[str, Stash]:
+    """The journey's stash mapping — one payload per finished section — or
+    an empty dict before any section has finished."""
     stashes: dict[str, Stash] = stored_journey(client, journey).get("stashes", {})
     return stashes
 
 
-def stored_member_stash(client: Client, key: str, journey: str = "default") -> Stash:
-    """The stash a finished member left under `key`, raising `KeyError` for
+def stored_section_stash(client: Client, key: str, journey: str = "default") -> Stash:
+    """The stash a finished section left under `key`, raising `KeyError` for
     one that has not finished."""
-    return stored_member_stashes(client, journey)[key]
+    return stored_section_stashes(client, journey)[key]
 
 
-def seed_member_stash(
+def seed_section_stash(
     client: Client, key: str, payload: Stash, journey: str = "default"
 ) -> None:
-    """Record member `key` as finished with `payload`. For arranging a hub
-    with members already done, or a hand-built or tampered stash."""
+    """Record section `key` as finished with `payload`. For arranging a hub
+    with sections already done, or a hand-built or tampered stash."""
     _seed_journey(client, journey, "stashes", key, payload)
 
 
@@ -205,8 +209,8 @@ def stored_journey_data(client: Client, journey: str = "default") -> Metadata:
 def seed_journey_data(client: Client, data: Metadata, journey: str = "default") -> None:
     """Merge `data` into the journey's own decided facts (the top-level
     bucket `store.data` reads), keeping what is already there. For arranging
-    a hub whose members have already decided something — an answer that
-    hides or unlocks another member."""
+    a hub whose sections have already decided something — an answer that
+    hides or unlocks another section."""
     session = client.session
     journeys = session.setdefault(SessionJourneyStore.SESSION_KEY, {})
     record = journeys.setdefault(journey, {})
@@ -227,9 +231,7 @@ def seed_journey_complete(client: Client, journey: str = "default") -> None:
     session.save()
 
 
-def stored_collection_items(
-    client: Client, key: str, journey: str = "default"
-) -> list[str]:
+def stored_items(client: Client, key: str, journey: str = "default") -> list[str]:
     """The item ids a collection lists, in the order the user added them.
 
     Empty for a collection nobody has added to. A row exists from the moment
@@ -243,7 +245,7 @@ def stored_collection_items(
     return [item["id"] for item in record.get("items", [])]
 
 
-def seed_collection_item(
+def seed_item(
     client: Client,
     key: str,
     item_id: str,

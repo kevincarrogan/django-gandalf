@@ -8,8 +8,8 @@ You build a flow with a small, immutable builder — `.step()` to add a form,
 and mount it as an ordinary Django view. Gandalf handles the per-step URLs,
 the session state, back-navigation, editing, file uploads, and running your
 completion logic exactly once. When one wizard is not enough, it handles the
-task list of wizards too: members the user does in any order, lists they
-grow, members that unlock or appear because of what they said elsewhere, and
+task list of wizards too: sections the user does in any order, lists they
+grow, sections that unlock or appear because of what they said elsewhere, and
 a submit at the end of all of it.
 
 ```python
@@ -49,7 +49,7 @@ why it exists, and leaves a runnable application behind. It deliberately does
 not cover every hook and every edge — read it start to finish the first time.
 
 **[Reference](docs/reference/README.md)** is one page per thing —
-`Wizard`, `WizardViewSet`, the summary, hubs, collections, storage, the
+`Wizard`, `WizardViewSet`, the summary, task lists, add another, storage, the
 driver, the testing helpers — each with the complete API, worked usage, and
 troubleshooting. Come here when you know what you are looking for.
 
@@ -58,7 +58,7 @@ troubleshooting. Come here when you know what you are looking for.
 | build my first wizard | [Learn, chapter 1](docs/learn/01-steps-and-completion.md) |
 | see every builder method | [Reference: Wizard](docs/reference/wizard.md) |
 | override a viewset hook | [Reference: WizardViewSet](docs/reference/viewsets.md) |
-| build a task list of wizards | [Learn, chapter 11](docs/learn/11-hubs.md) · [Reference: Hubs](docs/reference/hubs.md) |
+| build a task list of wizards | [Learn, chapter 11](docs/learn/11-task-lists.md) · [Reference: Task lists](docs/reference/tasklists.md) |
 | test a wizard | [Reference: Testing](docs/reference/testing.md) |
 | migrate from `django-formtools` | [Coming from formtools](docs/learn/coming-from-django-formtools.md) |
 | know what replaying costs | [Reference: Walk costs](docs/reference/walk-costs.md) |

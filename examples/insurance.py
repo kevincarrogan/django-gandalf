@@ -16,7 +16,8 @@ from django import forms
 from django.http import HttpResponse
 
 from examples.eventlog import log_event
-from gandalf.collections import Collection, CollectionViewSet
+from gandalf.add_another import AddAnotherViewSet, ItemViewSet
+from gandalf.tasklists import AddAnother
 from gandalf.contrib.agent import AgentProfile
 from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
@@ -248,7 +249,7 @@ def quote_for(bound_wizard, *, vehicle_values=None):
 #
 # Vehicles used to be a count step and one step per vehicle, which suited an
 # agent filling a form and nobody else: a person who bought a third van had to
-# go back and change the count. `gandalf.collections` is the shape that fits
+# go back and change the count. `gandalf.add_another` is the shape that fits
 # what this actually is — a list with Change and Remove on every row and an
 # "add another" question at the end.
 #
@@ -312,36 +313,37 @@ class VehicleReviewStepView(SummaryMixin, StepFormView):
     template_name = "hybrid/summary.html"
 
 
-def save_vehicle_item(store, bound_wizard):
-    """`Collection.done`: the run's context knows which item it is."""
-    context = bound_wizard.context
-    save_vehicle(context.request, context.url_kwargs["item"], bound_wizard)
+class VehicleItem(ItemViewSet):
+    """One vehicle: saved when it finishes, forgotten when it is removed."""
+
+    wizard = (
+        Wizard()
+        .step(VehicleForm, name="vehicle", label="Vehicle")
+        .step(VehicleReviewStepView, name="review")
+        .configure(template_name="hybrid/step.html")
+    )
+
+    def run_done(self, bound_wizard):
+        save_vehicle(self.request, self.get_item_id(), bound_wizard)
+        return super().run_done(bound_wizard)
+
+    def item_removed(self, store):
+        forget_vehicle(self.request, self.get_item_id())
 
 
-vehicles = Collection(
-    Wizard()
-    .step(VehicleForm, name="vehicle", label="Vehicle")
-    .step(VehicleReviewStepView, name="review")
-    .configure(template_name="hybrid/step.html"),
-    item_name="Vehicle",
-    item_title=("vehicle", "registration"),
-    reopen="review",
-    done=save_vehicle_item,
-    template_name="hybrid/collection.html",
-    remove_template_name="hybrid/remove_item.html",
-)
-
-
-class VehicleCollectionViewSet(CollectionViewSet):
+class VehiclesViewSet(AddAnotherViewSet):
     """The fleet page: what has been added, and whether there is more. One
     item wizard, mounted under an item id beneath the page, serves every
     row."""
 
     url_name = "vehicles"
-    member_key = "vehicles"
-    collection = vehicles
-    hub_url_name = "quote"
-
-    def item_removed(self, item_id, member, store):
-        forget_vehicle(self.request, item_id)
-        return super().item_removed(item_id, member, store)
+    key = "vehicles"
+    add_another = AddAnother(
+        VehicleItem,
+        item_name="Vehicle",
+        item_title=("vehicle", "registration"),
+        reopen="review",
+        template_name="hybrid/collection.html",
+        remove_template_name="hybrid/remove_item.html",
+    )
+    tasklist_url_name = "quote"
