@@ -72,7 +72,7 @@ urlpatterns = [
     path("readme/tasklist/new/", include(ch14_tasklist.TaskListStartViewSet.urls())),
     path(
         "readme/tasklist/<slug:journey>/",
-        include(ch14_tasklist.GrantApplication.urls()),
+        include(ch14_tasklist.GrantApplicationViewSet.urls()),
     ),
     path(
         "path-aware-walked-past-wizard/",

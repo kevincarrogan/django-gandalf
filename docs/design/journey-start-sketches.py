@@ -27,7 +27,7 @@ What every version has to do, somehow:
 # `setup` is the section the start wizard's answers become. `SetupMember`
 # is the section's viewset: the same wizard, plus what to do when it
 # finishes. `GrantApplication` is a TemplateView underneath, mounted with
-# `include(GrantApplication.urls())` under `apply/<slug:journey>/`.
+# `include(GrantApplicationViewSet.urls())` under `apply/<slug:journey>/`.
 
 
 class SetupMember(MemberViewSet):
@@ -39,16 +39,19 @@ class SetupMember(MemberViewSet):
 
 
 class GrantApplication(TaskList):
-    url_name = "apply"
-    template_name = "apply/hub.html"
-    member_template_name = "apply/step.html"
-
     setup = Section(SetupMember, title="Applying as")
     contact = Section(ContactMember, title="Contact details", reopen="review")
     project = Section(ProjectMember, title="Project", reopen="review")
     budget = AddAnother(budget, title="Budget")
     match_funding = Section(MatchFundingMember, title="Match funding")
     supporting = Group(SupportingInformation, title="Supporting information")
+
+
+class GrantApplicationViewSet(TaskListViewSet):
+    url_name = "apply"
+    template_name = "apply/hub.html"
+    member_template_name = "apply/step.html"
+    tasklist = GrantApplication
 
     def journey_done(self, hub, store):
         application = Application.objects.create()
@@ -82,7 +85,7 @@ class ApplicationStartViewSet(WizardViewSet):
 
 urlpatterns = [
     path("apply/new/", include(ApplicationStartViewSet.urls())),
-    path("apply/<slug:journey>/", include(GrantApplication.urls())),
+    path("apply/<slug:journey>/", include(GrantApplicationViewSet.urls())),
 ]
 
 
@@ -170,8 +173,8 @@ class ApplicationStartViewSet(StartsJourney, WizardViewSet):
 # journey.
 
 urlpatterns = [
-    path("apply/new/", include(GrantApplication.viewset_for("setup").urls())),
-    path("apply/<slug:journey>/", include(GrantApplication.urls())),
+    path("apply/new/", include(GrantApplicationViewSet.viewset_for("setup").urls())),
+    path("apply/<slug:journey>/", include(GrantApplicationViewSet.urls())),
 ]
 
 
@@ -208,4 +211,4 @@ class GrantApplication(TaskList):
     ...
 
 
-urlpatterns = [path("apply/", include(GrantApplication.urls()))]
+urlpatterns = [path("apply/", include(GrantApplicationViewSet.urls()))]

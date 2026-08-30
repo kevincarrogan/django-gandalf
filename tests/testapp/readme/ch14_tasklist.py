@@ -4,7 +4,7 @@ body. Sections carry facts; the thing in the slot carries behaviour."""
 from django.shortcuts import redirect, render
 
 from gandalf.hubs import MemberViewSet
-from gandalf.tasklists import AddAnother, Group, Section, TaskList
+from gandalf.tasklists import AddAnother, Group, Section, TaskList, TaskListViewSet
 from gandalf.viewsets import WizardViewSet
 
 from ..models import Application
@@ -90,10 +90,8 @@ class SupportingInformation(TaskList):
 
 
 class GrantApplication(TaskList):
-    description = "Chapter 14 as a task list: the application declared as a class body."
-    url_name = "readme-tasklist"
-    template_name = "testapp/journey_hub.html"
-    member_template_name = "testapp/linear_wizard.html"
+    """What the application is: its sections, in the order the page lists
+    them. A value — `GrantApplication.begin(request)` starts one."""
 
     setup = Section(SetupMember, title="Applying as")
     contact = Section(ContactMember, title="Contact details", reopen="review")
@@ -101,6 +99,18 @@ class GrantApplication(TaskList):
     budget = AddAnother(budget, title="Budget")
     match_funding = Section(MatchFundingMember, title="Match funding")
     supporting = Group(SupportingInformation, title="Supporting information")
+
+
+class GrantApplicationViewSet(TaskListViewSet):
+    """The page. Mounted under `tasklist/<journey>/`, so every request —
+    the page, the doors, each section beneath it — reads the same journey,
+    and two applications are two URLs."""
+
+    description = "Chapter 14 as a task list: the application declared as a class body."
+    url_name = "readme-tasklist"
+    template_name = "testapp/journey_hub.html"
+    member_template_name = "testapp/linear_wizard.html"
+    tasklist = GrantApplication
 
     def journey_done(self, hub, store):
         application = Application.objects.create()
