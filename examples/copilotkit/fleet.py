@@ -9,7 +9,7 @@ is the honest thing to do about a limit and no substitute for lifting it.
 Lifting it needs no new library API. A collection page is an ordinary Django
 view, and its four verbs — add, change, remove, declare done — are ordinary
 methods on it: `add_item()` mints and registers an id, `get_item_ids()` is
-the registry, `get_member_rows()` is what the person would see. Set the view
+the registry, `get_items()` is what the person would see. Set the view
 up against a fabricated request and they all answer. What the item id then
 buys is a URL kwarg, and `RunDriver.begin(ItemViewSet, item=…)` already takes
 those — so filling one vehicle is the same driver doing the same thing it

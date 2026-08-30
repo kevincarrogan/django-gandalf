@@ -72,7 +72,7 @@ class _Page(TaskListViewSet):
     """Named after this project's real task list, so every URL it builds
     reverses through the URLconf rather than being faked."""
 
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "readme-hub"
     task_list = _Contact
@@ -90,7 +90,7 @@ def _view(task_list, **attributes):
         "_ViewSet",
         (TaskListViewSet,),
         {
-            "template_name": "testapp/hub.html",
+            "template_name": "testapp/task_list.html",
             "section_template_name": "testapp/linear_wizard.html",
             "url_name": "readme-hub",
             # Each throwaway page gets its own list: one list, one page.
@@ -851,7 +851,7 @@ def test_the_entries_are_chosen_once_per_request(rf):
 
 def test_a_page_without_a_task_list_is_misconfigured(rf):
     class _Bare(TaskListViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         url_name = "readme-hub"
 
     with pytest.raises(ImproperlyConfigured, match="task_list"):
@@ -1216,7 +1216,7 @@ def test_a_section_without_a_page_to_return_to_is_misconfigured(rf):
     view = _contact_view(rf, cls=_Homeless)
 
     with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
-        view.get_tasklist_url()
+        view.get_task_list_url()
 
 
 # --- URLs ------------------------------------------------------------------
@@ -1856,14 +1856,14 @@ def test_a_list_mounted_twice_by_unrelated_pages_is_refused():
 
     class _First(TaskListViewSet):
         url_name = "readme-hub"
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         task_list = _Twice
 
     with pytest.raises(ImproperlyConfigured, match="already mounted by _First"):
 
         class _Second(TaskListViewSet):
             url_name = "readme-apply"
-            template_name = "testapp/hub.html"
+            template_name = "testapp/task_list.html"
             task_list = _Twice
 
 
@@ -1876,7 +1876,7 @@ def test_a_subclass_of_the_mounting_page_is_the_same_page():
 
     class _Page(TaskListViewSet):
         url_name = "readme-hub"
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         task_list = _Once
 
     class _Refined(_Page):

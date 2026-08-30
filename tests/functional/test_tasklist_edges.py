@@ -77,7 +77,7 @@ def test_a_plain_wizard_viewset_in_the_slot_is_made_a_section():
 
     class _Page(TaskListViewSet):
         url_name = "readme-hub"
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         task_list = _List
 
     viewset = _Page.viewset_for("plain")
@@ -184,7 +184,7 @@ def test_a_journeys_store_is_the_lists_store(client):
 
 def test_a_page_without_a_url_name_cannot_reverse_itself_or_a_door(rf):
     class _Nameless(TaskListViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
 
     view = _Nameless()
     view.setup(rf.get("/"))

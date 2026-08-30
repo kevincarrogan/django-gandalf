@@ -159,10 +159,10 @@ def test_a_group_without_a_page_of_its_own_renders_with_its_roots():
 
     class _RootViewSet(TaskListViewSet):
         url_name = "readme-apply"
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         task_list = type("_Root", (_Root,), {})
 
-    assert _RootViewSet.viewset_for("inner").template_name == "testapp/hub.html"
+    assert _RootViewSet.viewset_for("inner").template_name == "testapp/task_list.html"
 
 
 def test_a_group_inherits_its_parents_section_template():

@@ -577,18 +577,18 @@ class JourneyScoped:
             ),
         )
 
-    def get_tasklist_url(self) -> str:
+    def get_task_list_url(self) -> str:
         """Where finishing sends the user back to: the page above, under the
-        URL kwargs `get_tasklist_url_kwargs()` supplies."""
+        URL kwargs `get_task_list_url_kwargs()` supplies."""
         if self.task_list_url_name is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
-                f"Set task_list_url_name (or override get_tasklist_url) on {name}."
+                f"Set task_list_url_name (or override get_task_list_url) on {name}."
             )
-        return reverse(self.task_list_url_name, kwargs=self.get_tasklist_url_kwargs())
+        return reverse(self.task_list_url_name, kwargs=self.get_task_list_url_kwargs())
 
     @abstractmethod
-    def get_tasklist_url_kwargs(self) -> dict[str, Any]:
+    def get_task_list_url_kwargs(self) -> dict[str, Any]:
         """The URL kwargs the page above is reversed with."""
 
     def dispatch(
@@ -606,7 +606,7 @@ class JourneyScoped:
         store = self.get_journey_store()
         if store.is_complete():
             if self.is_nested:
-                return redirect(self.get_tasklist_url())
+                return redirect(self.get_task_list_url())
             return self.submitted(store)
         return cast(HttpResponseBase, super().dispatch(request, *args, **kwargs))  # type: ignore[misc]
 
@@ -678,7 +678,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
     def default_label(self) -> str:
         return self.get_key()
 
-    def get_tasklist_url_kwargs(self) -> dict[str, Any]:
+    def get_task_list_url_kwargs(self) -> dict[str, Any]:
         return self.get_url_kwargs()
 
     def done(self, run: Run) -> HttpResponseBase:
@@ -709,7 +709,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         another section's `blocked()` or `hidden()` needs to know is read
         off the path now and written to `store.data`, once. The default
         sends the user back to the task list."""
-        return redirect(self.get_tasklist_url())
+        return redirect(self.get_task_list_url())
 
 
 # --- the page ----------------------------------------------------------------
@@ -1205,7 +1205,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             )
         return reverse(self.url_name, kwargs=self.get_page_url_kwargs())
 
-    def get_tasklist_url_kwargs(self) -> dict[str, Any]:
+    def get_task_list_url_kwargs(self) -> dict[str, Any]:
         return self.get_page_url_kwargs()
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -1305,7 +1305,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
 
     def group_done(self, page: TaskListPage, store: JourneyStore) -> HttpResponseBase:
         """A group's Continue, every row complete: back to the parent."""
-        return redirect(self.get_tasklist_url())
+        return redirect(self.get_task_list_url())
 
     def journey_done(self, page: TaskListPage, store: JourneyStore) -> HttpResponseBase:
         """The journey's work, and the one thing with no default. Runs once;

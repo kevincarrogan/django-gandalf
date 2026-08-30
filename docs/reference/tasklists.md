@@ -256,7 +256,7 @@ never runs them.
 - `get_journey()` — the URL's `journey_url_kwarg` when present, otherwise
   `journey`, as a string.
 - `get_journey_store()` — `journey_store_class(WizardContext.from_request(request), get_journey())`.
-- `get_tasklist_url()` — `reverse(task_list_url_name, kwargs=get_tasklist_url_kwargs())`,
+- `get_task_list_url()` — `reverse(task_list_url_name, kwargs=get_task_list_url_kwargs())`,
   the page *above*. Raises `ImproperlyConfigured` when `task_list_url_name`
   is `None`.
 - `dispatch()` — reads `store.is_complete()` once per request. For a
@@ -303,8 +303,8 @@ never runs them.
 - `get_page_url_kwargs()` — everything the request captured except
   `entry_url_kwarg`; used for the page's own URLs.
 - `get_page_url()` — `reverse(url_name, kwargs=get_page_url_kwargs())`,
-  this page. Not `get_tasklist_url()`, which is the page *above*.
-- `get_tasklist_url_kwargs()` — `get_page_url_kwargs()`; a group's page
+  this page. Not `get_task_list_url()`, which is the page *above*.
+- `get_task_list_url_kwargs()` — `get_page_url_kwargs()`; a group's page
   and its parent share a mount.
 - `get_context_data(**kwargs)` — adds `get_page()` under
   `page_context_name`.
@@ -344,7 +344,7 @@ never runs them.
   `journey_done()` that raises leaves every section resumable, and it runs
   while the stashes are still readable.
 - `group_done(page, store)` — a group's Continue. Default
-  `redirect(get_tasklist_url())`.
+  `redirect(get_task_list_url())`.
 - `journey_done(page, store)` — the root's submit. No default: raises
   `ImproperlyConfigured` (*"… has nothing to do when its journey is
   submitted"*). Anything the done page needs goes into `store.data`, which
@@ -399,7 +399,7 @@ attributes of its page.
   `entry_blocked()` / `entry_hidden()` instead.
 - `get_key()` / `get_label()` / `default_label()` — the key, and the label
   stamped into the stash (`label`, else the key).
-- `get_tasklist_url_kwargs()` — the wizard's own `get_url_kwargs()`, the
+- `get_task_list_url_kwargs()` — the wizard's own `get_url_kwargs()`, the
   journey and any mount prefix among them.
 - `done(run)` — in order: `store.put_stash(key, run.stash(label=...))`;
   `run_recorded(run, store, key)`; `response = run_done(run)`;
@@ -413,7 +413,7 @@ attributes of its page.
   beyond being recorded. Runs on every completion — the first and each
   re-save — after the stash is written. Write what the rest of the journey
   needs into `store.data` here; the run is still readable. Default
-  `redirect(get_tasklist_url())`.
+  `redirect(get_task_list_url())`.
 - `dispatch()` / `submitted(store)` — a bookmarked run URL under a
   submitted journey is sent back to the page.
 

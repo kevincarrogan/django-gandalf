@@ -223,9 +223,9 @@ def test_rendering_a_hub_walks_nothing(counting_hub):
 
 
 def test_a_hub_asked_for_its_rows_twice_builds_them_once(counting_hub):
-    """The `Hub` counts them and the view asks again for the first unfinished
+    """The page counts them and the view asks again for the first unfinished
     one. A row is two storage reads and a `reverse()`, and a whole
-    `Collection` for a member that is one, so the second ask is cached."""
+    add-another page for an entry that is one, so the second ask is cached."""
     response = counting_hub.get("/counting-hub/")
 
     assert response.context["builds"] == 1

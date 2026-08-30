@@ -88,7 +88,7 @@ def test_a_list_nobody_has_added_to_offers_only_the_first_item(client):
     response = client.get(PAGE)
 
     assert response.status_code == HTTPStatus.OK
-    assertTemplateUsed(response, "testapp/collection.html")
+    assertTemplateUsed(response, "testapp/items.html")
     assert response.context["items"].is_empty
     assert response.context["items"].status == NOT_STARTED
     assertContains(response, "You have not added any guests")
@@ -750,13 +750,13 @@ def test_an_item_wizard_the_declaration_cannot_see_is_taken_on_trust(rf):
 
 def test_an_add_another_base_that_names_its_own_pages_keeps_them():
     class _Themed(AddAnotherViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
 
     class _Party(PartyViewSet):
         url_name = "themed-party"
         add_another_viewset_class = _Themed
 
-    assert _Party.viewset_for("guests").template_name == "testapp/hub.html"
+    assert _Party.viewset_for("guests").template_name == "testapp/task_list.html"
     assert (
         _Party.viewset_for("guests").remove_template_name
         == "testapp/collection_remove.html"
@@ -916,7 +916,7 @@ def test_a_list_reports_its_own_shape_to_a_template(client):
 
 
 def test_a_list_page_counts_its_items_without_a_loop_in_the_template(client):
-    """The `Hub` counts, on the object that already was one. A page saying
+    """The page counts, on the object that already was one. A page saying
     "2 of 3 finished" derived it by looping the rows until now."""
     _complete(client, "Ada")
     _complete(client, "Grace")

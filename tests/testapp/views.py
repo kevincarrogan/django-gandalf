@@ -2029,7 +2029,7 @@ class Scenario(TaskList):
 
 class ScenarioViewSet(TaskListViewSet):
     description = "Task list over sections that exercise the awkward run states."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "scenario-hub"
     task_list = Scenario
@@ -2053,9 +2053,9 @@ class OrgViewSet(TaskListViewSet):
     every URL the page builds."""
 
     description = "Task list whose entries carry mount-prefix URL kwargs."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    add_another_template_name = "testapp/collection.html"
+    add_another_template_name = "testapp/items.html"
     remove_template_name = "testapp/collection_remove.html"
     url_name = "org-hub"
     task_list = Org
@@ -2080,7 +2080,7 @@ class Counting(TaskList):
 
 class CountingViewSet(TaskListViewSet):
     description = "Task list over counting sections, for asserting a row's cost."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     url_name = "counting-hub"
     task_list = Counting
     builds = 0
@@ -2114,7 +2114,7 @@ class DurableViewSet(TaskListViewSet):
     """Both stores swapped once, on the root, and every section gets them."""
 
     description = "Task list whose sections and bookkeeping outlive the session."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "durable-hub"
     storage_class = ModelStorage
@@ -2140,7 +2140,7 @@ class Gated(TaskList):
 
 class GatedViewSet(TaskListViewSet):
     description = "Task list whose second section unlocks when the first ends."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "gated-hub"
     task_list = Gated
@@ -2153,9 +2153,9 @@ class Party(TaskList):
 
 class PartyViewSet(TaskListViewSet):
     description = "Task list with an add-another row beside a plain section."
-    template_name = "testapp/hub.html"
+    template_name = "testapp/task_list.html"
     section_template_name = "testapp/linear_wizard.html"
-    add_another_template_name = "testapp/collection.html"
+    add_another_template_name = "testapp/items.html"
     remove_template_name = "testapp/collection_remove.html"
     url_name = "party-hub"
     task_list = Party
@@ -2169,7 +2169,7 @@ class GuestsViewSet(AddAnotherViewSet):
     not listed by — the shape `examples/insurance.py` uses."""
 
     description = "Add another: a list of items with full CRUD."
-    template_name = "testapp/collection.html"
+    template_name = "testapp/items.html"
     remove_template_name = "testapp/collection_remove.html"
     section_template_name = "testapp/linear_wizard.html"
     url_name = "standalone-guests"

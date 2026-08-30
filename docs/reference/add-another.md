@@ -177,7 +177,7 @@ The actions:
 | `remove_item(item_id)` | destroy the item in the order below; redirect to the page | — |
 | `discard_item_run(entry, store)` | `inspect()` the item's recorded run and `obliterate()` it; a run the storage has forgotten is not an error | — |
 | `submit()` | `page_incomplete()` unless `items.is_complete`; else `group_done()` when nested, `journey_done()` then `store.complete()` at a root | — |
-| `group_done(page, store)` | redirect to `get_tasklist_url()` | work that runs once per Continue |
+| `group_done(page, store)` | redirect to `get_task_list_url()` | work that runs once per Continue |
 | `page_incomplete(page)` | redirect to `get_page_url()` | render the page with an error |
 | `journey_done(page, store)` | `ImproperlyConfigured` | required on a root page |
 | `submitted(store)` | root: `Http404`; nested: redirect up | a done page |
@@ -339,7 +339,7 @@ attributes of the page.
 | `run_recorded(run, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
 | `run_done(run)` | back to the page; override to save the item first |
 | `item_removed(store)` | nothing; override to undo what `run_done()` did. Runs while the item is still listed, on a viewset set up for it, so `get_item_id()` says which |
-| `get_tasklist_url_kwargs()` | `get_url_kwargs()` without `item` — the page has no place for the item segment; a journey or tenant prefix is forwarded |
+| `get_task_list_url_kwargs()` | `get_url_kwargs()` without `item` — the page has no place for the item segment; a journey or tenant prefix is forwarded |
 | `run_unavailable(run, reason)` | redirect to the page rather than start a run for an item that may no longer exist |
 | `dispatch()` | refuses any request for an item the registry does not list, before `WizardViewSet` sees it, with `item_unavailable()` |
 | `item_unavailable()` | redirect to the page; override to raise `Http404` |

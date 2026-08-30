@@ -65,7 +65,7 @@ class _Guests(AddAnotherViewSet):
     """Named after the test app's standalone page, so every URL it builds
     reverses through the URLconf rather than being faked."""
 
-    template_name = "testapp/collection.html"
+    template_name = "testapp/items.html"
     remove_template_name = "testapp/collection_remove.html"
 
     url_name = "standalone-guests"
@@ -146,33 +146,33 @@ def test_an_add_another_builds_its_item_viewset():
     assert _ItemViewSet.task_list_url_name == "standalone-guests"
     assert _ItemViewSet.item_title == "name"
     assert _ItemViewSet.template_name == "testapp/linear_wizard.html"
-    assert _Guests.template_name == "testapp/collection.html"
+    assert _Guests.template_name == "testapp/items.html"
     assert _Guests.remove_template_name == "testapp/collection_remove.html"
 
 
 def test_a_task_list_hands_its_add_another_pages_to_the_lists_it_builds():
     viewset = _view(
         _list(guests=GUESTS.replace(title="Guests")),
-        add_another_template_name="testapp/collection.html",
+        add_another_template_name="testapp/items.html",
         remove_template_name="testapp/collection_remove.html",
     ).viewset_for("guests")
 
-    assert viewset.template_name == "testapp/collection.html"
+    assert viewset.template_name == "testapp/items.html"
     assert viewset.remove_template_name == "testapp/collection_remove.html"
 
 
 def test_an_add_another_base_that_names_its_own_pages_keeps_them():
     class _Themed(AddAnotherViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         remove_template_name = "testapp/collection_remove.html"
 
     viewset = _view(
         _list(guests=GUESTS.replace(title="Guests")),
         add_another_viewset_class=_Themed,
-        add_another_template_name="testapp/collection.html",
+        add_another_template_name="testapp/items.html",
     ).viewset_for("guests")
 
-    assert viewset.template_name == "testapp/hub.html"
+    assert viewset.template_name == "testapp/task_list.html"
 
 
 def test_an_item_name_defaults_to_the_first_steps_label(rf):
@@ -677,7 +677,7 @@ def test_the_item_label_moves_with_its_items(rf):
 def test_a_finished_item_returns_to_its_page_without_its_own_id(rf):
     view = _item_view(rf)
 
-    assert view.get_tasklist_url() == PAGE
+    assert view.get_task_list_url() == PAGE
 
 
 def test_an_item_caches_the_answer_that_names_it(rf):
@@ -871,7 +871,7 @@ def test_an_item_wizard_without_a_page_to_return_to_is_misconfigured(rf):
     view = _item_view(rf, cls=_Adrift)
 
     with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
-        view.get_tasklist_url()
+        view.get_task_list_url()
 
 
 def test_an_item_wizard_that_cannot_name_its_items_is_misconfigured(rf):
@@ -932,7 +932,7 @@ def test_the_page_route_renders_the_items(rf):
 
     assert response.status_code == 200
     assert response.context_data["items"].count == 1
-    assert response.template_name == ["testapp/collection.html"]
+    assert response.template_name == ["testapp/items.html"]
 
 
 def test_the_page_route_registers_an_item_and_redirects_into_its_wizard(rf):

@@ -603,7 +603,7 @@ def _view(task_list=None, **attributes):
         "_ViewSet",
         (TaskListViewSet,),
         {
-            "template_name": "testapp/hub.html",
+            "template_name": "testapp/task_list.html",
             "section_template_name": "testapp/linear_wizard.html",
             "task_list": task_list,
             **attributes,
@@ -710,7 +710,7 @@ def test_a_section_without_a_page_to_return_to_cannot_send_the_user_back(rf):
     view.setup(rf.get("/readme/hub/contact/"))
 
     with pytest.raises(ImproperlyConfigured, match="task_list_url_name"):
-        view.get_tasklist_url()
+        view.get_task_list_url()
 
 
 def test_a_section_can_bump_its_stash_label_without_renaming_itself(rf, client):
@@ -734,7 +734,7 @@ def test_stash_unusable_can_be_overridden_to_start_the_section_over(rf, client):
     _complete_contact(client)
 
     class _Forgiving(TaskListViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         section_template_name = "testapp/linear_wizard.html"
         url_name = "readme-hub"
         task_list = _list(contact=Section(contact, label="contact-v2"))
@@ -789,7 +789,7 @@ def test_a_pages_entries_are_chosen_once_per_request(rf, client):
     calls = []
 
     class _Counting(TaskListViewSet):
-        template_name = "testapp/hub.html"
+        template_name = "testapp/task_list.html"
         section_template_name = "testapp/linear_wizard.html"
         url_name = "readme-hub"
         task_list = _list(contact=Section(contact))

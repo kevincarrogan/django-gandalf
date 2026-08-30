@@ -105,7 +105,7 @@ arm. A row's `label` is the step's `label` keyword — `.step(Form,
 name="contact", label="How to reach you")` — else its name made readable.
 `name` and `label` are the two keywords the Learn track uses; any keyword
 given to `.step()` is kept on the step, and the
-[reference](../reference/wizard.md#wizardstepform_class_or_form_view_class-context)
+[reference](../reference/wizard.md#wizardstepform_class_or_form_view_class--context)
 lists which ones mean something. Values are display text, not stored data: a choice shows its
 label, a boolean shows Yes/No, an upload shows its filename.
 

@@ -72,6 +72,7 @@ from gandalf.tasklists import (
     class_name_for,
 )
 from gandalf.types import CollectionStore, JourneyStore, StrOrPromise
+from gandalf.viewsets import RunUnavailable
 
 __all__ = [
     "BLOCKED",
@@ -243,15 +244,15 @@ class ItemViewSet(SectionViewSet):
         """This item is about to leave the list. Undo whatever finishing it
         did elsewhere; `self.get_item_id()` says which."""
 
-    def get_tasklist_url_kwargs(self) -> dict[str, Any]:
+    def get_task_list_url_kwargs(self) -> dict[str, Any]:
         return {
             key: value
             for key, value in self.get_url_kwargs().items()
             if key != self.item_url_kwarg
         }
 
-    def run_unavailable(self, run: Run, reason: str) -> HttpResponseBase:
-        return redirect(self.get_tasklist_url())
+    def run_unavailable(self, run: Run, reason: RunUnavailable) -> HttpResponseBase:
+        return redirect(self.get_task_list_url())
 
     def dispatch(
         self, request: HttpRequest, *args: Any, **kwargs: Any
@@ -264,7 +265,7 @@ class ItemViewSet(SectionViewSet):
         return super().dispatch(request, *args, **kwargs)
 
     def item_unavailable(self) -> HttpResponseBase:
-        return redirect(self.get_tasklist_url())
+        return redirect(self.get_task_list_url())
 
 
 # --- the page ----------------------------------------------------------------

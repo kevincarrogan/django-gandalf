@@ -161,7 +161,7 @@ said so in a comment while the wizard's `AgentProfile` said so out loud.
 `fleet.py` lifts that, and needs no new library API to do it. A collection
 page is an ordinary Django view whose four verbs — add, change, remove,
 declare done — are ordinary methods: `add_item()` mints and registers an id,
-`get_item_ids()` is the registry, `get_member_rows()` is what the person
+`get_item_ids()` is the registry, `get_items()` is what the person
 sees. Set it up against a fabricated request and they all answer. The item
 id is then just a URL kwarg, and `RunDriver.begin(ItemViewSet, item=…)`
 already takes those. Same driver, same walk, a different run.
