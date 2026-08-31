@@ -108,7 +108,7 @@ from gandalf.storage import (
     StashNotFound,
 )
 from gandalf.types import JourneyStore, State, StorageClass, StrOrPromise
-from gandalf.viewsets import WizardViewSet
+from gandalf.viewsets import DoorRefused, WizardViewSet
 from gandalf.wizard import ConfiguredWizard, Wizard, declared_step_names
 
 if TYPE_CHECKING:
@@ -118,6 +118,7 @@ __all__ = [
     "BLOCKED",
     "COMPLETE",
     "EntryStatus",
+    "EntryUnavailable",
     "INCOMPLETE",
     "NOT_STARTED",
     "AddAnother",
@@ -134,6 +135,25 @@ __all__ = [
     "TaskListPage",
     "TaskListViewSet",
 ]
+
+
+class EntryUnavailable(str, Enum):
+    """Why a task list will not open one of its entries — the `reason` on a
+    `DoorRefused`. A `str` too, so `"blocked"` still compares equal.
+
+    Not `EntryStatus`. A status is what a *row* says, and every entry has
+    one; this is why a *door* did not open, which only some entries ever
+    answer. `HIDDEN` has no status at all — a hidden entry is not a row.
+    """
+
+    #: The journey has been submitted, so nothing on it can be answered.
+    SUBMITTED = "submitted"
+    #: `hidden()` — not listed for this request, and its door refuses too.
+    HIDDEN = "hidden"
+    #: `blocked()` — listed, but not open to the user yet.
+    BLOCKED = "blocked"
+
+    __str__ = str.__str__
 
 
 class EntryStatus(str, Enum):
@@ -651,6 +671,29 @@ class JourneyScoped:
         — not in the rows, not in the counts, its door refusing a stale
         link. One read of the store; `False` by default."""
         return False
+
+    def check_door(self) -> None:
+        """The page's own rules, asked of a caller that made no request.
+
+        `dispatch()` above refuses a submitted journey and `enter()` refuses
+        an entry that is hidden or blocked, and between them that was the
+        whole guard — until a driver, which comes through neither. It could
+        open a section whose row reads *Cannot start yet*, and finish one
+        into a journey already submitted, writing a stash into the
+        tombstone that exists to say nothing more will be written.
+
+        One store read, and the same precedence the rows use: submitted
+        outranks everything, because a finished journey has no open entries
+        of any kind; then hidden, which says the entry is not part of this
+        journey at all; then blocked, which says only *not yet*.
+        """
+        store = self.get_journey_store()
+        if store.is_complete():
+            raise DoorRefused(EntryUnavailable.SUBMITTED)
+        if type(self).hidden(store):
+            raise DoorRefused(EntryUnavailable.HIDDEN)
+        if type(self).blocked(store):
+            raise DoorRefused(EntryUnavailable.BLOCKED)
 
 
 class SectionViewSet(JourneyScoped, WizardViewSet):

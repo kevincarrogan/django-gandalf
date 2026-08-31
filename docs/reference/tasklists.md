@@ -76,6 +76,31 @@ How an entry's status is derived, in precedence order:
 | A run is recorded for the entry and its state holds at least one answer | `INCOMPLETE` |
 | Everything else | `NOT_STARTED` — including a run opened and never answered, and a recorded run the storage has forgotten or tombstoned |
 
+### Both doors
+
+`blocked()` and `hidden()` are asked at the door as well as in the row, and
+there are two doors. A browser reaches a section through the page, which
+refuses an entry it will not open (`entry_unavailable()`) and refuses every
+request once the journey has been submitted (`JourneyScoped.dispatch()`).
+A caller with no request — a [driver](driver.md), a management command —
+reaches the section directly and dispatches nothing, so `JourneyScoped`
+implements [`check_door()`](viewsets.md), which asks the same three
+questions in the same order and raises `DoorRefused`:
+
+| `EntryUnavailable` | Asked | Meaning |
+| --- | --- | --- |
+| `SUBMITTED` | `store.is_complete()` | the journey is finished; nothing on it can be answered |
+| `HIDDEN` | the section's `hidden()` | the entry is not part of this journey at all |
+| `BLOCKED` | the section's `blocked()` | listed, but not open to the user yet |
+
+The precedence is the rows': a submitted journey has no open entries of any
+kind, and hidden outranks blocked because a section that is not there
+cannot also be waiting. Note that `check_door()` asks the *section's* own
+`hidden()` and `blocked()` rather than the page's `entry_hidden()` /
+`entry_blocked()` overrides — a caller addressing a section directly has no
+page in hand, so a rule that spans rows belongs on the section if it is to
+hold at both doors.
+
 Whether stored answers still *validate* is never asked; it would cost a
 form `clean()` per answered step and would not change the row.
 

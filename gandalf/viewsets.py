@@ -46,6 +46,25 @@ def _retire(run: Run) -> None:
     run.discard_proofs()
 
 
+class DoorRefused(Exception):
+    """Raised when a driven caller opens a run the page's door would refuse.
+
+    A wizard reached over HTTP comes through a dispatch, and anything
+    guarding it — a task list checking whether a section is open yet —
+    guards it there. A driver comes through `for_context()` instead and
+    dispatches nothing, so it is a second door onto the same run, and the
+    rules have to be asked at both.
+
+    `reason` says which rule; it is a plain `str` so this module needs to
+    know none of them. `EntryUnavailable` in `gandalf.tasklists` holds the
+    ones a task list raises.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class WizardViewSet(View):
     storage_class: StorageClass = SessionStorage
     url_name: str | None = None
@@ -110,6 +129,46 @@ class WizardViewSet(View):
         run, then resolve, because a dynamic `get_wizard()` is entitled to
         read the run's state to decide its shape."""
         view, run = cls.for_context(context)
+        run.retrieve(run_id)
+        view._resolve_wizard(run)
+        return view, run
+
+    def check_door(self) -> None:
+        """Refuse a run this caller may not open, by raising `DoorRefused`.
+
+        Does nothing by default: a wizard mounted on its own is open to
+        whoever can reach its URL, and that is the whole of its rule.
+
+        The hook exists because a caller with no request does not go
+        through a dispatch, so anything a dispatch would have checked has
+        to be asked for here instead. `JourneyScoped` implements it over
+        the journey's store, which is what makes a blocked section blocked
+        for a driver as well as for a browser.
+        """
+
+    @classmethod
+    def begin_driven_for(cls, context: WizardContext) -> tuple[WizardViewSet, Run]:
+        """`begin_for()` for a caller with no request — the driven door.
+
+        The check goes between resolving the view and minting the run, so a
+        refusal leaves nothing behind: no run id, no state, nothing for the
+        page above to find and count.
+        """
+        view, run = cls.for_context(context)
+        view.check_door()
+        view._begin(run)
+        return view, run
+
+    @classmethod
+    def inspect_driven_for(
+        cls, context: WizardContext, run_id: str
+    ) -> tuple[WizardViewSet, Run]:
+        """`inspect_for()` for a caller with no request. Refused before the
+        run is retrieved: a door that has closed since the run was started
+        closes on the run too, exactly as it does when a browser comes back
+        to a section whose prerequisite was withdrawn."""
+        view, run = cls.for_context(context)
+        view.check_door()
         run.retrieve(run_id)
         view._resolve_wizard(run)
         return view, run

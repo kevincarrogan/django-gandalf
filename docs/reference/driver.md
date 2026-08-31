@@ -82,9 +82,14 @@ first and the wizard resolved against it (`WizardViewSet.begin_for()`), so
 
 ### `RunDriver.resume(viewset_class, run_id, *, context=None, actor=None, session=None, may_finish=None, **url_kwargs)`
 
-A driver over an existing run (`WizardViewSet.inspect_for()`): the run is
-retrieved, then the wizard resolved against it. `run_started()` does not
-fire. Parameters as `begin()`.
+A driver over an existing run (`WizardViewSet.inspect_driven_for()`): the
+door is asked, the run retrieved, then the wizard resolved against it.
+`run_started()` does not fire. Parameters as `begin()`.
+
+**Raises** `RunNotFound` for a run this storage does not hold, and
+`DoorRefused` for a section shut since the run started — its prerequisite
+withdrawn, its journey submitted. The door comes first, which is what a
+browser returning to the same section gets.
 
 **Raises** `gandalf.storage.RunNotFound` for a run the storage does not
 hold — pass the `session` the run lives in, or the `actor` a durable

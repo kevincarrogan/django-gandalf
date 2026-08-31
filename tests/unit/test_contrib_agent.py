@@ -806,6 +806,73 @@ def test_the_agent_is_told_the_form_may_have_moved_under_it():
     assert "filling it in themselves while you are talking" in instructions
 
 
+# --- a door that will not open -----------------------------------------
+
+
+def _gated_ctx():
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from gandalf.context import WizardContext
+
+    return _ctx(context=WizardContext(session=SessionStore()))
+
+
+def test_a_section_that_cannot_be_started_yet_is_a_retry():
+    """A refusal reaches the model as words about the application rather
+    than as an exception through the framework — and as words that say what
+    would have to change, so it does not simply try the same thing again."""
+    from tests.testapp.views import GatedViewSet
+
+    tools = _tools(GatedViewSet.viewset_for("second"))
+
+    with pytest.raises(ModelRetry, match="finished first"):
+        tools["start_run"](_gated_ctx())
+
+
+def test_a_submitted_journey_is_a_retry_that_says_to_stop():
+    """The one refusal with no way round it. Everything on the journey is
+    finished, so there is nothing for the agent to do but say so."""
+    from gandalf.context import WizardContext
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from tests.testapp.readme.ch12_task_list import GrantApplicationViewSet
+
+    session = SessionStore()
+    context = WizardContext(session=session)
+    page = GrantApplicationViewSet()
+    page.setup(context.http_request())
+    page.get_journey_store().complete()
+
+    tools = _tools(GrantApplicationViewSet.viewset_for("contact"))
+
+    with pytest.raises(ModelRetry, match="already been submitted"):
+        tools["start_run"](_ctx(context=context))
+
+
+def test_a_run_whose_door_has_since_closed_cannot_be_picked_back_up():
+    """A section open when the run started can be shut afterwards — its
+    prerequisite withdrawn, the journey submitted. The run is refused at
+    the door rather than resumed, before it is even retrieved, which is
+    what a browser coming back to the same section gets."""
+    from gandalf.context import WizardContext
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from tests.testapp.readme.ch12_task_list import GrantApplicationViewSet
+
+    session = SessionStore()
+    context = WizardContext(session=session)
+    tools = _tools(GrantApplicationViewSet.viewset_for("contact"))
+    ctx = _ctx(context=context)
+    run_id = tools["start_run"](ctx).return_value["run_id"]
+
+    page = GrantApplicationViewSet()
+    page.setup(context.http_request())
+    page.get_journey_store().complete()
+
+    with pytest.raises(ModelRetry, match="already been submitted"):
+        tools["resume_run"](_ctx(context=context), run_id)
+
+
 # --- picking a run back up ---------------------------------------------
 
 

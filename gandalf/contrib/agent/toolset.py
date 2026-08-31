@@ -52,7 +52,7 @@ from gandalf.driver import (
 from gandalf.runtime import StepNotFound
 from gandalf.storage import RunNotFound
 from gandalf.types import Answer
-from gandalf.viewsets import WizardViewSet
+from gandalf.viewsets import DoorRefused, WizardViewSet
 
 
 def accepts_documents(viewset_class: type[WizardViewSet]) -> bool:
@@ -82,6 +82,32 @@ def accepts_documents(viewset_class: type[WizardViewSet]) -> bool:
         prop.get("format") == "binary"
         for entry in outline_steps(outline)
         for prop in (entry["schema"] or {}).get("properties", {}).values()
+    )
+
+
+#: What to tell the model about a door that would not open. Retries rather
+#: than results, because a refusal is something to say to the person and
+#: work around — but never the same way twice, so each one says what would
+#: have to change rather than inviting another attempt at the same thing.
+_CLOSED_DOORS = {
+    "submitted": (
+        "This has already been submitted, so nothing on it can be "
+        "answered now. Tell them, and do not try again."
+    ),
+    "hidden": (
+        "This is not part of their application, so it cannot be filled "
+        "in. Carry on with the parts that are."
+    ),
+    "blocked": (
+        "This cannot be started yet — something earlier has to be "
+        "finished first. Do that part, then come back to this one."
+    ),
+}
+
+
+def _closed_door(refusal: DoorRefused) -> str:
+    return _CLOSED_DOORS.get(
+        refusal.reason, f"This cannot be opened ({refusal.reason})."
     )
 
 
@@ -141,7 +167,10 @@ def build_toolset(
         """Start a fresh wizard run and describe its current step: the
         step's name, a JSON Schema for the answers it wants, everything
         answered so far, and whether the run is complete."""
-        driver = RunDriver.begin(viewset_class, context=ctx.deps.context)
+        try:
+            driver = RunDriver.begin(viewset_class, context=ctx.deps.context)
+        except DoorRefused as refusal:
+            raise ModelRetry(_closed_door(refusal)) from None
         return _sync(ctx, driver)
 
     @toolset.tool
@@ -161,6 +190,8 @@ def build_toolset(
                 "against an earlier tool result, or call start_run if this "
                 "is a new one."
             ) from None
+        except DoorRefused as refusal:
+            raise ModelRetry(_closed_door(refusal)) from None
         ctx.deps.state.run_id = driver.run_id
         return _sync(ctx, driver)
 

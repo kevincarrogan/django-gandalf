@@ -259,6 +259,34 @@ behaviour, taking a `WizardContext` instead of a request, and returning the
 them when the view itself is wanted — to call `view.finish(run)`,
 for instance. `begin_for()` fires `run_started()`; the other two do not.
 
+### `begin_driven_for(context)` / `inspect_driven_for(context, run_id)` *(classmethods)*
+
+The same pair with `check_door()` asked first — what
+[`RunDriver`](driver.md) uses, and the only callers that do. A wizard
+reached over HTTP comes through a dispatch, and whatever guards it guards
+it there; a caller with no request dispatches nothing, so the rules are
+asked here instead.
+
+`begin_driven_for()` checks before the run is minted and
+`inspect_driven_for()` before it is retrieved, so a refusal leaves nothing
+behind and a door that has shut since the run started shuts on the run too.
+
+### `check_door()`
+
+Refuse a run this caller may not open, by raising `DoorRefused`. Does
+nothing by default: a wizard mounted on its own is open to whoever can
+reach its URL, and that is the whole of its rule.
+
+[`JourneyScoped`](tasklists.md) implements it over the journey's store,
+which is what makes a submitted journey, a `hidden()` section and a
+`blocked()` one closed to a driver as well as to a browser.
+
+### `DoorRefused`
+
+`Exception` with a `reason: str`. Re-exported from
+[`gandalf.driver`](driver.md), which is where callers meet it.
+[`EntryUnavailable`](tasklists.md) holds the reasons a task list raises.
+
 ### `begin(request, **url_kwargs)` *(classmethod)*
 
 A fresh run, returned rather than redirected to — what the start URL does,

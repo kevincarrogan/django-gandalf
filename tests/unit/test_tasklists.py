@@ -22,6 +22,7 @@ from gandalf.tasklists import (
     AddAnother,
     Entry,
     EntryNotFound,
+    EntryUnavailable,
     Group,
     Link,
     Row,
@@ -32,7 +33,7 @@ from gandalf.tasklists import (
     TaskListViewSet,
     class_name_for,
 )
-from gandalf.viewsets import WizardViewSet
+from gandalf.viewsets import DoorRefused, WizardViewSet
 from gandalf.wizard import Wizard
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
@@ -1470,6 +1471,29 @@ def test_a_hidden_section_is_unknown_at_the_door(partner_page):
     with pytest.raises(EntryNotFound):
         view.get_entry("address")
     assert SessionJourneyStore(view.request, "default").get_run("address") is None
+
+
+def test_the_driven_door_refuses_a_section_that_is_not_there(partner_page):
+    """`get_entry()` refuses a hidden entry at the page's door. A caller
+    with no request never reaches that door, so the section asks the same
+    question of itself."""
+    view = partner_page()
+    section = type(view).viewset_for("address")()
+    section.setup(view.request)
+
+    with pytest.raises(DoorRefused) as refusal:
+        section.check_door()
+
+    assert refusal.value.reason == EntryUnavailable.HIDDEN
+
+
+def test_the_driven_door_opens_when_the_page_would(partner_page):
+    """The gate is the page's rules, not a rule against callers."""
+    view = partner_page({"data": {"journey": {"has_partner": True}}})
+    section = type(view).viewset_for("address")()
+    section.setup(view.request)
+
+    assert section.check_door() is None
 
 
 def test_hidden_outranks_blocked(rf):

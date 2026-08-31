@@ -17,16 +17,19 @@ from django.urls import reverse
 from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from gandalf.context import WizardContext
+from gandalf.driver import RunDriver
 from gandalf.tasklists import (
     BLOCKED,
     COMPLETE,
     INCOMPLETE,
     NOT_STARTED,
+    EntryUnavailable,
     Link,
     Section,
     TaskList,
     TaskListViewSet,
 )
+from gandalf.viewsets import DoorRefused
 from gandalf.testing import (
     seed_run,
     seed_section_run,
@@ -36,6 +39,8 @@ from gandalf.testing import (
     stored_section_stashes,
 )
 from tests.testapp.readme.ch12_task_list import GrantApplicationViewSet, contact
+from tests.testapp.readme.ch14_gated import GatedViewSet as ReadmeGatedViewSet
+from tests.testapp.views import GatedViewSet
 
 
 ContactSectionViewSet = GrantApplicationViewSet.viewset_for("contact")
@@ -180,6 +185,69 @@ def test_a_locked_sections_door_sends_the_user_back_to_the_task_list(client):
 
     assertRedirects(response, GATED_URL)
     assert stored_section_run(client, "second") is None
+
+
+def test_a_locked_sections_door_refuses_a_driver_too(client):
+    """The gate was on the browser's door alone. A driver comes through
+    `for_context()` and never dispatches, so it asked none of the questions
+    the page asks — and opened a section whose row reads *Cannot start
+    yet*, then accepted answers into it.
+
+    Two doors, one set of rules. Which one a caller came through is not a
+    thing the rules should turn on.
+    """
+    context = WizardContext(session=client.session)
+
+    with pytest.raises(DoorRefused) as refusal:
+        RunDriver.begin(GatedViewSet.viewset_for("second"), context=context)
+
+    assert refusal.value.reason == EntryUnavailable.BLOCKED
+    assert stored_section_run(client, "second") is None
+
+
+def test_a_hidden_sections_door_refuses_a_driver(client):
+    """A hidden entry is *gone* for the person — not listed, not counted,
+    its door refusing a stale link. A driver could open it regardless,
+    which is the same refusal for a stronger reason: hidden says this
+    section is not part of the journey at all."""
+    context = WizardContext(session=client.session)
+
+    with pytest.raises(DoorRefused) as refusal:
+        RunDriver.begin(
+            ReadmeGatedViewSet.viewset_for("match-funding"), context=context
+        )
+
+    assert refusal.value.reason == EntryUnavailable.HIDDEN
+
+
+def test_a_submitted_journey_cannot_be_answered_by_a_driver(client, rf):
+    """`JourneyScoped.dispatch` buys the guarantee that a submitted journey
+    can never be answered again, one store read per request. A driver makes
+    no request, so it made no such read — and a section finished through
+    one wrote its stash into the tombstone, which is the exact thing the
+    guarantee exists to prevent."""
+    session = client.session
+    request = rf.get(HUB_URL)
+    request.session = session
+    page = GrantApplicationViewSet()
+    page.setup(request)
+    page.get_journey_store().complete()
+
+    context = WizardContext(session=session)
+    with pytest.raises(DoorRefused) as refusal:
+        RunDriver.begin(GrantApplicationViewSet.viewset_for("contact"), context=context)
+
+    assert refusal.value.reason == EntryUnavailable.SUBMITTED
+    assert not page.get_journey_store().has_stash("contact")
+
+
+def test_a_driver_may_still_open_a_section_the_page_would_open(client):
+    """The gate is the page's rules, not a rule against drivers."""
+    context = WizardContext(session=client.session)
+
+    driver = RunDriver.begin(GatedViewSet.viewset_for("first"), context=context)
+
+    assert driver.describe().step == "first"
 
 
 def test_a_section_unlocks_once_its_prerequisite_is_finished(client):

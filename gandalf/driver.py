@@ -51,7 +51,7 @@ from gandalf.runtime import (
 )
 from gandalf.summary import _flatten_choices
 from gandalf.types import Answer, FileRefs, Metadata, Submission
-from gandalf.viewsets import WizardViewSet
+from gandalf.viewsets import DoorRefused, WizardViewSet
 
 if TYPE_CHECKING:
     from django.views.generic.edit import FormView
@@ -66,6 +66,7 @@ __all__ = [
     "RunDriver",
     "RunIncomplete",
     "ConfirmationRequired",
+    "DoorRefused",
     "Placement",
     "StepDescription",
     "SubmitResult",
@@ -273,7 +274,7 @@ class RunDriver:
         conversation can address one item of a collection and then the
         next.
         """
-        view, run = viewset_class.begin_for(
+        view, run = viewset_class.begin_driven_for(
             _context(context, actor, session, url_kwargs)
         )
         return cls(view, run, may_finish=may_finish)
@@ -293,7 +294,7 @@ class RunDriver:
         """A driver over an existing run. Raises `RunNotFound` for a run the
         storage does not hold — pass the `session` the run lives in, or the
         `actor` a durable storage scopes it to."""
-        view, run = viewset_class.inspect_for(
+        view, run = viewset_class.inspect_driven_for(
             _context(context, actor, session, url_kwargs), run_id
         )
         return cls(view, run, may_finish=may_finish)
