@@ -278,6 +278,19 @@ def test_a_model_multiple_choice_field_maps_to_an_array():
     assert schema["items"]["type"] == "string"
 
 
+class CountingApplicationField(forms.ModelChoiceField):
+    """A model choice field that counts the rows it was asked to label —
+    which is one per row the description read."""
+
+    def __init__(self, *args, **kwargs):
+        self.labelled = 0
+        super().__init__(*args, **kwargs)
+
+    def label_from_instance(self, obj):
+        self.labelled += 1
+        return super().label_from_instance(obj)
+
+
 def test_a_long_list_of_choices_is_not_enumerated():
     """Past the cap the enum is dropped rather than cut short. A short enum
     that does not say it is short is worse than none: a caller reads `enum`
@@ -309,23 +322,6 @@ def test_a_list_of_choices_at_the_cap_is_still_enumerated():
     assert schema["x-note"].startswith("Choices: 0 (Option 0), ")
 
 
-def test_describing_a_field_reads_no_more_choices_than_it_lists():
-    """The cap is on the reading, not on the output. A `ModelChoiceField`'s
-    choices are a queryset, so a cap applied after enumerating them would
-    still have pulled the whole table in to describe one step."""
-    read = []
-
-    def choices():
-        for n in range(1000):
-            read.append(n)
-            yield (str(n), f"Option {n}")
-
-    field_json_schema(forms.ChoiceField(choices=choices))
-
-    # One past the cap, which is what tells a full list from a long one.
-    assert read == list(range(MAX_DESCRIBED_CHOICES + 1))
-
-
 def test_a_long_multiple_choice_field_omits_the_choices_from_its_items():
     """The values belong to the items, so what is said about them belongs
     there too — beside where the enum would have been."""
@@ -345,20 +341,26 @@ def test_describing_a_model_choice_field_does_not_enumerate_a_table(
 ):
     """Describing a form should not read a reference table into a prompt.
     `RunDriver.outline_for()` describes every declared step, and
-    `accepts_documents()` builds the whole outline to answer one boolean."""
+    `accepts_documents()` builds the whole outline to answer one boolean.
+
+    The cap is on the reading rather than on the output: a `ModelChoiceField`
+    labels each row as it reaches it, so one applied after the fact would
+    still have pulled the whole table in to describe one step."""
     Application.objects.bulk_create(
         [
             Application(reference=f"GF-{n:05d}")
             for n in range(MAX_DESCRIBED_CHOICES + 10)
         ]
     )
-    field = forms.ModelChoiceField(queryset=Application.objects.all())
+    field = CountingApplicationField(queryset=Application.objects.all())
 
     with django_assert_num_queries(1):
         schema = field_json_schema(field)
 
     assert "enum" not in schema
     assert schema["x-choices-omitted"] is True
+    # One past the cap, which is what tells a full list from a long one.
+    assert field.labelled == MAX_DESCRIBED_CHOICES + 1
 
 
 @pytest.mark.django_db
