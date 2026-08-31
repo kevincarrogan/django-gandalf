@@ -192,6 +192,23 @@ class FormSetStepView(StepFormView):
             errors["__all__"] = non_form.get_json_data()
         return errors
 
+    def get_answer(self, form: Any) -> Any:
+        """Each row's own cleaned data, in the order they were entered.
+
+        Read off the rows rather than off the formset, which is the same
+        list when everything validated — `BaseFormSet.cleaned_data` *is*
+        each row's — and the only reading that survives when something did
+        not. A formset refuses `cleaned_data` outright unless the whole
+        thing is valid, and a run parked on a rejected submission is
+        exactly the state anything reading a run is most likely to meet:
+        the walk keeps what was rejected so the errors can be re-reported
+        until a valid answer replaces them.
+
+        A row that failed carries what it managed to clean, which is what
+        a plain form does too.
+        """
+        return [row.cleaned_data for row in form.forms]
+
     def get_answer_fields(self, form: Any) -> Iterable[Any]:
         """Every row's fields, row by row, in the order they were entered.
 

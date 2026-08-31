@@ -262,3 +262,63 @@ def test_changing_the_number_makes_the_code_be_verified_again(wizard_driver):
     assert parked["Location"] == run.step_url("validation")
     assert len(two_factor.VERIFICATIONS) == 1
     assert "voided by a change" in unescape(run.get_step("validation").content.decode())
+
+
+# --- the same wizards, driven ------------------------------------------------
+
+
+def test_a_ported_formset_wizard_is_driven_with_the_rows_it_reads_back():
+    """The acceptance case for the round trip, against a wizard someone
+    ships rather than a fixture. `answers()` hands back a list of rows and
+    `submit()` takes it, so an edit is read it, change one field, send it
+    back — the step view renders its own management form.
+    """
+    from gandalf.driver import RunDriver
+    from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
+
+    driver = RunDriver.begin(OrganiseAnEventViewSet)
+    driver.submit({"has_organised_before": "no"})
+    driver.submit({"about_you": "An engine", "why": "To teach"})
+    driver.submit([{"email": "ada@example.com", "first_name": "Ada"}])
+
+    rows = driver.answers()["organisers"]
+    driver.submit([{**rows[0], "first_name": "Grace"}], step="organisers")
+
+    assert driver.answers()["organisers"] == [
+        {"email": "ada@example.com", "first_name": "Grace"}
+    ]
+
+
+def test_a_step_view_with_a_prefix_is_driven_without_the_caller_knowing():
+    """A prefix is the step view's business, so the caller sends bare field
+    names either way — which is the same rule the formset above follows,
+    with a different answer."""
+    from django import forms
+
+    from gandalf.driver import RunDriver
+    from gandalf.form_views import StepFormView
+    from gandalf.viewsets import WizardViewSet
+    from gandalf.wizard import Wizard
+    from django.http import HttpResponse
+
+    class _Form(forms.Form):
+        town = forms.CharField()
+
+    class _PrefixedStepView(StepFormView):
+        form_class = _Form
+        prefix = "venue"
+        template_name = "testapp/linear_wizard.html"
+
+    class _ViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+        wizard = Wizard().step(_PrefixedStepView, name="where")
+
+        def done(self, run):
+            return HttpResponse(b"done")
+
+    driver = RunDriver.begin(_ViewSet)
+
+    result = driver.submit({"town": "Hull"})
+
+    assert result.status == "complete"
+    assert driver.answers()["where"] == {"town": "Hull"}

@@ -127,6 +127,14 @@ class OpeningHoursStepView(FormSetStepView):
     template_name = "hours/step.html"
 ```
 
+**`get_answer(form)`** — each row's own cleaned data, in order. Read off the
+rows rather than off the formset, which is the same list when everything
+validated (`BaseFormSet.cleaned_data` *is* each row's) and the only reading
+that survives when something did not: a formset refuses `cleaned_data`
+outright unless the whole thing is valid, and a run parked on a rejected
+submission is exactly the state anything reading a run is most likely to
+meet.
+
 **`get_answer_errors(form)`** — a row's errors keyed by the row's index and
 the field name, `"0-email"`, because `"email"` names nothing when several
 people are being asked at once. Errors belonging to the formset itself

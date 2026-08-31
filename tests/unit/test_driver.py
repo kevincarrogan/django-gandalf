@@ -2275,6 +2275,38 @@ def test_prefill_takes_a_formset_steps_rows_as_it_reads_them():
     assert driver.answers()["opening-hours"] == [{"day": "Monday", "opens": "09:00"}]
 
 
+def test_a_run_holding_a_rejected_formset_can_still_be_read(organisers_driver):
+    """The walk keeps a rejected submission, exactly as the HTTP path does,
+    so the errors are re-reported until a valid answer replaces them —
+    which means every read of the run has to survive one being there.
+
+    A formset's `cleaned_data` raises unless the whole thing validated, so
+    reading a run parked on a rejected one raised `AttributeError` from
+    inside Django rather than reporting what had been answered. For an
+    agent that is the state it is *most* likely to read: it submits, is
+    told the submission failed, and looks at the run.
+    """
+    result = organisers_driver.submit(
+        [{"email": "not-an-email", "first_name": "Ada"}], step="organisers"
+    )
+    assert result.status == "invalid"
+
+    assert organisers_driver.answers()["organisers"] == [
+        {"first_name": "Ada"},
+    ]
+    assert organisers_driver.describe().step == "organisers"
+
+
+def test_a_valid_formset_reads_the_same_either_way(organisers_driver):
+    """Reading row by row rather than off the formset is what survives an
+    invalid one; it must not change what a valid one says."""
+    organisers_driver.submit(ORGANISERS, step="organisers")
+
+    assert organisers_driver.answers()["organisers"] == [
+        {"email": "ada@example.com", "first_name": "Ada"}
+    ]
+
+
 def test_a_posted_formset_is_still_taken_as_it_always_was(organisers_driver):
     """The management-form shape a browser sends is a submission already,
     and stays one — the rows are the addition, not the replacement."""
