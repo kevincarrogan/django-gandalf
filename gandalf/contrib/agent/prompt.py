@@ -32,8 +32,9 @@ author can say which document holds what.
 
 from __future__ import annotations
 
+from typing import Any
+
 from gandalf.contrib.agent.profile import AgentProfile
-from gandalf.viewsets import WizardViewSet
 
 PROCEDURE = """\
 Work through this silently, without narrating it:
@@ -64,6 +65,37 @@ run again before you say anything about what it contains — what you were
 told the last time you touched it is a memory, not the form.\
 """
 
+JOURNEY_PROCEDURE = """\
+Work through this silently, without narrating it:
+
+1. Start the application, then look at every part of it before doing
+   anything else.
+2. Take everything you already know — from this conversation and from any
+   context you were given about the person — and check it against the parts
+   it belongs to before you act on it. That tells you what is wrong and
+   what is still missing.
+3. If anything is genuinely missing or wrong, ask for all of it in one
+   message. Never ask twice, and never ask for something you were already
+   told. Where what they tell you now differs from what you were given
+   about them, believe them — they are the ones who would know.
+4. Fill in each part you have answers for. A part you cannot start yet is
+   waiting on another one: do that one first rather than telling them it
+   is unavailable. If some answers could not be placed, supply what is
+   being waited on and place them — do not ask the person again.
+5. When there is nothing left for you to fill in, hand it back to them with
+   their link so they can check each part over, confirm it, and submit.
+
+At any point, if they ask to see it, take over, finish it themselves or
+carry on later, give them their link. It is their application; being asked
+for it is not a request you have to weigh, and there is never a reason to
+keep it from them until you are ready.
+
+They can be filling parts in themselves while you are talking to them, and
+a part you filled may not be as you left it. Look at the application again
+before you say anything about what it contains — what you were told the
+last time you touched it is a memory, not the form.\
+"""
+
 DOCUMENTS = """\
 If they share a photo or a scan:
 
@@ -90,14 +122,17 @@ How to talk to them:
 """
 
 
-def profile_for(viewset_class: type[WizardViewSet]) -> AgentProfile | None:
+def profile_for(viewset_class: type[Any]) -> AgentProfile | None:
     """The `AgentProfile` a viewset declares, or None."""
     profile = getattr(viewset_class, "agent", None)
     return profile if isinstance(profile, AgentProfile) else None
 
 
 def build_instructions(
-    viewset_class: type[WizardViewSet], profile: AgentProfile | None = None
+    viewset_class: type[Any],
+    profile: AgentProfile | None = None,
+    *,
+    procedure: str = PROCEDURE,
 ) -> str:
     """The system prompt for an agent driving `viewset_class`.
 
@@ -108,6 +143,13 @@ def build_instructions(
     A wizard with no profile still gets a working prompt — it is told it
     is helping with "this application", which is enough to drive the
     thing and not enough to talk about it.
+
+    `procedure` is the silent method the agent runs. It defaults to the
+    one for a single wizard; `JOURNEY_PROCEDURE` is the same shape for a
+    task list, where there are several parts and one of them may be
+    waiting on another. `viewset_class` is typed loosely for that reason —
+    a `TaskListViewSet` carries an `AgentProfile` exactly as a
+    `WizardViewSet` does, and nothing here reads anything else off it.
     """
     if profile is None:
         profile = profile_for(viewset_class)
@@ -115,7 +157,7 @@ def build_instructions(
     instructions = (
         f"You are helping someone with {purpose}. You do the filling in; "
         "they stay in charge of what it says.\n\n"
-        f"{PROCEDURE}\n\n{DOCUMENTS}\n\n{REGISTER}"
+        f"{procedure}\n\n{DOCUMENTS}\n\n{REGISTER}"
     )
     # Anything true of this wizard that the wizard itself cannot say. It
     # describes its own steps; it cannot know that something the customer

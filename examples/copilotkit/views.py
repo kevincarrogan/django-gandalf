@@ -13,7 +13,8 @@ from functools import partial
 from django.shortcuts import render
 from django.utils import timezone
 
-from examples.copilotkit.agent import build_agent, resolve_model
+from examples.copilotkit.agent import build_agent, build_journey_agent, resolve_model
+from examples.copilotkit.application import ApplicationViewSet
 from examples.copilotkit.fleet import FLEET_RULE, fleet_tools
 from examples.copilotkit.transcripts import record
 from examples.copilotkit.wizards import (
@@ -27,6 +28,12 @@ from gandalf.contrib.agent.agui import endpoint_for
 agent = build_agent(HybridQuoteViewSet, resolve_model())
 licence_agent = build_agent(HybridLicenceViewSet, resolve_model())
 identity_agent = build_agent(HybridIdentityViewSet, resolve_model())
+
+# The whole application rather than one wizard: four parts, one of which is
+# waiting on another. Its tools are keyed by part, so there is no "current
+# section" here to fall out of step with what the person is doing in the
+# browser at the same time.
+application_agent = build_journey_agent(ApplicationViewSet, resolve_model())
 
 
 def run_instructions(run_input):
@@ -69,6 +76,9 @@ licence_endpoint = endpoint_for(
 )
 identity_endpoint = endpoint_for(
     identity_agent, instructions=run_instructions, on_complete=record
+)
+application_endpoint = endpoint_for(
+    application_agent, instructions=run_instructions, on_complete=_chat
 )
 
 

@@ -158,6 +158,53 @@ class ApplicationViewSet(WizardViewSet):
 agent = build_agent(ApplicationViewSet, "openai:gpt-5.2")
 ```
 
+### `build_journey_agent(task_list_viewset, model, *, wrap=None)`
+
+An agent that drives a whole [task list](tasklists.md). `build_agent` one
+level up, with the same `wrap` hook and a procedure that knows there are
+several parts and that one of them may be waiting on another.
+
+### `build_journey_toolset(task_list_viewset)`
+
+The `FunctionToolset[WizardDeps]` over [`JourneyDriver`](driver.md).
+
+| Tool | Driver call |
+| --- | --- |
+| `start_application()` | `JourneyDriver.begin()` |
+| `resume_application(journey_id)` | `JourneyDriver.resume()` |
+| `get_application()` | `rows()` |
+| `get_part(part)` | `section(part).describe()` |
+| `check_part(part, answers)` | `section(part).check()` |
+| `fill_part(part, answers)` | `section(part).prefill()` |
+| `add_to_list(part, answers)` | `add(part)` then `prefill()` |
+| `remove_from_list(part, item_id)` | `remove(part, item_id)` |
+| `handoff()` | `url` |
+
+**Every tool names the part it is about.** There is no *current section* in
+the state, so nothing can fall out of step with what the person has been
+doing in the browser at the same time — which is the failure this shape
+exists to avoid, since an agent-filled journey is an ordinary journey the
+person may be editing meanwhile.
+
+The verbs are whole parts rather than steps, because that is what
+front-loading a journey is: read the shape, ask once, fill what you were
+told. There is **no tool that submits an application**, for the reason
+there is none that concludes a run.
+
+Every tool returns the page — `journey_id`, `url`, `rows`, `complete` —
+and the ones about one part add it under `part`, keyed rather than splatted:
+both have a `complete`, and *this part is answered* is not *every part is*.
+
+A part a driver may not open comes back as a `ModelRetry` saying what would
+have to change (a part is waiting on another, is not part of this
+application, or the application has been submitted), so the model works
+around it rather than trying the same thing again.
+
+**Filling a part is not finishing it.** `fill_part` answers a part; ending
+it fires that section's own `done()`, and there is no tool that does. A part
+an agent filled reads as *Incomplete* until the person confirms it — the
+row telling the truth, and the same handover a single wizard makes.
+
 ### Pointing one at a task-list section
 
 A section is an ordinary `WizardViewSet`, so it takes an agent like any

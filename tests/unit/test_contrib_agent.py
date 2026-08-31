@@ -806,6 +806,245 @@ def test_the_agent_is_told_the_form_may_have_moved_under_it():
     assert "filling it in themselves while you are talking" in instructions
 
 
+# --- driving a whole application ---------------------------------------
+
+
+def _journey_tools(task_list_viewset):
+    from gandalf.contrib.agent import build_journey_toolset
+
+    toolset = build_journey_toolset(task_list_viewset)
+    return {name: tool.function for name, tool in toolset.tools.items()}
+
+
+def _application():
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from gandalf.context import WizardContext
+    from tests.testapp.views import SubmitViewSet
+
+    tools = _journey_tools(SubmitViewSet)
+    ctx = _ctx(context=WizardContext(session=SessionStore()))
+    tools["start_application"](ctx)
+    return tools, ctx
+
+
+def test_the_journey_toolset_reads_a_page_and_fills_its_parts():
+    from tests.testapp.views import SubmitViewSet
+
+    assert set(_journey_tools(SubmitViewSet)) == {
+        "start_application",
+        "resume_application",
+        "get_application",
+        "get_part",
+        "check_part",
+        "fill_part",
+        "add_to_list",
+        "remove_from_list",
+        "handoff",
+    }
+
+
+def test_there_is_no_tool_that_submits_an_application():
+    """`journey_done()` is the task list's `done()`, and the same rule
+    holds one level up: an agent that can reach it will eventually reach it
+    on somebody's behalf."""
+    from tests.testapp.views import SubmitViewSet
+
+    tools = _journey_tools(SubmitViewSet)
+
+    assert "submit_application" not in tools
+    assert "submit" not in tools
+
+
+def test_starting_one_describes_every_part_of_it():
+    tools, ctx = _application()
+
+    result = tools["get_application"](ctx)
+
+    assert [row["key"] for row in result.return_value["rows"]] == ["first", "second"]
+    assert result.return_value["complete"] is False
+
+
+def test_a_part_is_filled_by_naming_it():
+    """Every tool takes the part it is about, so there is no current
+    section to fall out of step with what the person has been doing in the
+    browser meanwhile."""
+    tools, ctx = _application()
+
+    result = tools["fill_part"](ctx, "first", {"first": {"name": "Ada"}})
+
+    assert result.return_value["part"]["placed"] == ["first"]
+    assert result.return_value["part"]["waiting_on"] is None
+
+
+def test_a_filled_part_is_not_a_finished_one():
+    """The handover, one level up. Filling a part answers it; *ending* it
+    fires that section's own `done()`, and there is no tool that does —
+    the person confirms each part and submits the application, exactly as
+    they confirm a run the agent filled.
+
+    So a part an agent has filled reads as Incomplete until they say so.
+    That is the row telling the truth, not the fill having failed.
+    """
+    tools, ctx = _application()
+
+    result = tools["fill_part"](ctx, "first", {"first": {"name": "Ada"}})
+
+    assert result.return_value["rows"][0]["status"] == "incomplete"
+    assert result.return_value["complete"] is False
+
+
+def test_a_part_can_be_tried_before_it_is_filled():
+    tools, ctx = _application()
+
+    result = tools["check_part"](ctx, "first", {"first": {"name": "Ada"}})
+
+    assert result.return_value["ok"] == ["first"]
+
+
+def test_a_part_that_refuses_an_answer_is_a_retry():
+    tools, ctx = _application()
+
+    with pytest.raises(ModelRetry, match="not accepted"):
+        tools["fill_part"](ctx, "first", {"first": {"name": ""}})
+
+
+def test_a_part_the_application_does_not_have_is_a_retry_that_lists_them():
+    """A model inventing a name gets told which ones are real, rather than
+    an exception through the framework."""
+    tools, ctx = _application()
+
+    with pytest.raises(ModelRetry, match="first, second"):
+        tools["get_part"](ctx, "nope")
+
+
+def test_a_tool_called_before_an_application_exists_asks_for_one():
+    from tests.testapp.views import SubmitViewSet
+
+    tools = _journey_tools(SubmitViewSet)
+
+    with pytest.raises(ModelRetry, match="resume_application"):
+        tools["get_application"](_ctx())
+
+
+def test_handing_the_application_back_gives_them_its_page():
+    tools, ctx = _application()
+
+    result = tools["handoff"](ctx)
+
+    assert result.return_value["handoff_url"] == ctx.deps.state.journey_url
+    assert ctx.deps.state.handoff_url == result.return_value["url"]
+
+
+def test_an_application_can_be_picked_back_up_by_its_id():
+    tools, ctx = _application()
+    tools["fill_part"](ctx, "first", {"first": {"name": "Ada"}})
+    journey_id = ctx.deps.state.journey_id
+
+    again = _ctx(context=ctx.deps.context)
+    result = tools["resume_application"](again, journey_id)
+
+    assert result.return_value["rows"][0]["status"] == "incomplete"
+
+
+# --- a list that grows, one level up -----------------------------------
+
+
+def _party():
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from gandalf.context import WizardContext
+    from tests.testapp.views import PartyViewSet
+
+    tools = _journey_tools(PartyViewSet)
+    ctx = _ctx(context=WizardContext(session=SessionStore()))
+    tools["start_application"](ctx)
+    return tools, ctx
+
+
+def test_one_call_puts_one_thing_on_a_list():
+    tools, ctx = _party()
+
+    result = tools["add_to_list"](ctx, "guests", {"guest": {"name": "Ada"}})
+
+    assert result.return_value["part"]["key"] == "guests"
+    assert result.return_value["rows"][1]["status"] == "incomplete"
+
+
+def test_a_thing_that_does_not_validate_leaves_nothing_behind():
+    """Registered but empty reads on their page as a half-added guest.
+    Taking it back off is what makes the retry safe to act on."""
+    tools, ctx = _party()
+
+    with pytest.raises(ModelRetry, match="nothing was added"):
+        tools["add_to_list"](ctx, "guests", {"guest": {"name": ""}})
+
+    assert tools["get_application"](ctx).return_value["rows"][1]["status"] == (
+        "not-started"
+    )
+
+
+def test_a_thing_can_be_taken_back_off():
+    from gandalf.driver import JourneyDriver
+    from tests.testapp.views import PartyViewSet
+
+    tools, ctx = _party()
+    tools["add_to_list"](ctx, "guests", {"guest": {"name": "Ada"}})
+    journey = JourneyDriver.resume(
+        PartyViewSet, ctx.deps.state.journey_id, context=ctx.deps.context
+    )
+    (item_id,) = [row.item_id for row in journey.items("guests").rows]
+
+    tools["remove_from_list"](ctx, "guests", item_id)
+
+    assert journey.items("guests").rows == ()
+
+
+def test_a_part_that_cannot_be_opened_yet_is_a_retry():
+    """The page's door, reached through a journey tool: the same three
+    answers in the same words, one level up."""
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from gandalf.context import WizardContext
+    from tests.testapp.views import GatedViewSet
+
+    tools = _journey_tools(GatedViewSet)
+    ctx = _ctx(context=WizardContext(session=SessionStore()))
+    tools["start_application"](ctx)
+
+    with pytest.raises(ModelRetry, match="finished first"):
+        tools["get_part"](ctx, "second")
+
+
+def test_removing_from_something_that_is_not_a_list_is_a_retry():
+    tools, ctx = _party()
+
+    with pytest.raises(ModelRetry, match="not a list"):
+        tools["remove_from_list"](ctx, "venue", "whatever")
+
+
+def test_a_part_that_is_not_a_list_is_a_retry():
+    tools, ctx = _party()
+
+    with pytest.raises(ModelRetry, match="not a list"):
+        tools["add_to_list"](ctx, "venue", {})
+
+
+def test_a_journey_agent_is_told_it_may_be_waiting_on_a_part():
+    """The one thing a journey's procedure has to say that a wizard's does
+    not: a part can be waiting on another, and the way past that is to do
+    the other one rather than to report it as unavailable."""
+    from gandalf.contrib.agent import build_journey_agent
+    from gandalf.contrib.agent.prompt import JOURNEY_PROCEDURE
+    from tests.testapp.views import SubmitViewSet
+
+    agent = build_journey_agent(SubmitViewSet, "test")
+
+    (instructions,) = agent._instructions
+    assert JOURNEY_PROCEDURE in instructions
+    assert "waiting on another one" in JOURNEY_PROCEDURE
+
+
 # --- a door that will not open -----------------------------------------
 
 

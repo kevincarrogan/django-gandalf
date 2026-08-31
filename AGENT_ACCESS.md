@@ -296,6 +296,50 @@ is untouched throughout: every prefilled answer replays through the walk
 and is re-proved like any other submission, so a wrong guess surfaces as
 an ordinary validation error rather than a corrupted run.
 
+## The agent and the task list
+
+Everything above is one wizard. A journey is several — a task list of
+parts, each answerable in any order, each with its own check-your-answers
+page, one submit at the end. `JourneyDriver` is that page asked as data,
+and `build_journey_toolset` is the tools over it.
+
+Three decisions, and all three are the single-wizard ones one level up.
+
+**Every tool names its part.** There is no *current section* in the state.
+That is not tidiness: an agent-filled journey is an ordinary journey, and
+the person may be filling a part in the browser while the agent is talking
+to them, so any "where we are" the toolset held would be a memory rather
+than the page. Naming the part on every call means there is nothing to
+fall out of step.
+
+**The verbs are whole parts, not steps.** `fill_part` is `prefill` and
+follows the wizard's own routing to a fixpoint, so an answer that opens a
+branch consumes the answers behind it in the same call. That is what
+front-loading a journey *is* — read the shape, ask once, fill what you
+were told — and stepping through a part one page at a time would be an
+agent impersonating a browser rather than using what it has.
+
+**Filling a part is not finishing it, and nothing submits.** A part an
+agent filled reads as *Incomplete* until the person confirms it, which is
+the review step doing the same job it does inside a run, once per part.
+`journey_done()` is where the price is struck and the record written, so
+there is no tool for it at all — not a tool that refuses, which is a
+weaker thing than a tool that does not exist.
+
+The gate is the part worth watching in the demo. `examples/copilotkit/
+application.py` blocks the cover section until the identity check is
+confirmed, so an agent told to fill everything in meets a rule with no way
+round it and has to work out that the way through is to do the other part
+first. That rule is written once, on the section, and both doors ask it —
+see *Doors*.
+
+What did **not** move into the library is the demo's `fleet.py`. It answers
+a different shape: a collection *beside* a wizard, with nothing above the
+two that knows about both, so the tools that reach it are the
+application's because the relationship is. Keeping both is the point —
+one is what you write when a collection sits beside a form, the other is
+what you stop writing when it is declared as part of something.
+
 ## The handover
 
 Front-loading raises the obvious question: if an agent fills the form,

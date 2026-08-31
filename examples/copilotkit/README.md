@@ -294,6 +294,35 @@ common case: a wizard need not know anything about documents for an agent
 to fill it from one. What makes it ask for a licence is a sentence in
 that wizard's `AgentProfile`, not anything in the library.
 
+### The whole application
+
+`/application/` is the other shape, and the one the other four demos could
+not show: the same wizards declared as four *parts* of one task list —
+who you are, the licence, the vehicles, the cover — answerable in any
+order, each confirmed on its own, with a single submit at the end that
+prices the lot.
+
+Two things it exists for.
+
+**A part waiting on another.** The cover section is `blocked()` until the
+identity check is confirmed, so the row reads *Cannot start yet* and its
+door refuses — and refuses the agent too, because
+[both doors ask](../../AGENT_ACCESS.md#doors). There is no tool that
+overrides it, so an agent told to fill everything in has to work out that
+the way through is to do the other part first. Watching it do that, or
+fail to, is the point.
+
+**A list as a row rather than a page beside one.** The fleet is an
+`AddAnother` entry here, so adding a vehicle is the library's
+`add_to_list` rather than `fleet.py`'s hand-written toolset. Both remain,
+because they answer different shapes — see `fleet.py`'s own note.
+
+The agent for it is `build_journey_agent(ApplicationViewSet, …)`, and its
+tools name the part they are about rather than holding a *current*
+one — the person may be confirming a part in the browser while the agent
+is talking about another, and a remembered position would be a memory
+rather than the page.
+
 ### The model key
 
 The agent runs in the **server** process, so that is where the key has to
@@ -318,6 +347,10 @@ wiring works, the conversation is nonsense.
   test client opens it, edits an answer, and confirms to a changed quote.
 - `tests/functional/test_copilotkit_spike.py` — the AG-UI stream, with a
   scripted streaming model.
+- `tests/functional/test_application_journey.py` — the task list: the four
+  parts, the gate refusing the agent until the part it waits on is
+  confirmed, a vehicle added one at a time, and the page the agent hands
+  over being the page the person opens.
 
 Both run under `just test-agents`, no API key required.
 

@@ -48,6 +48,13 @@ class WizardState(BaseModel):
     complete: bool = False
     handoff_url: str | None = None
 
+    #: Set only by the journey toolset, where a run is one section of
+    #: several. `rows` is the task list as the person sees it, so a
+    #: front end can render the page beside the chat without asking again.
+    journey_id: str | None = None
+    journey_url: str | None = None
+    rows: list[dict[str, Any]] | None = None
+
 
 @dataclass(frozen=True)
 class Attachment:

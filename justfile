@@ -44,7 +44,7 @@ typecheck:
 # or this reports a false all-clear; the CI gate is coverage-functional, which
 # takes the whole directory and cannot go stale this way.
 test-agents:
-    uv run --extra agent --group agents pytest tests/functional/test_copilotkit_spike.py tests/functional/test_hybrid_handoff.py
+    uv run --extra agent --group agents pytest tests/functional/test_copilotkit_spike.py tests/functional/test_hybrid_handoff.py tests/functional/test_application_journey.py
 
 # Port 8000 is busy on most machines (and `just serve` wants it too), so the
 # hybrid demo lives at 8100. Override on both recipes together if you move it.

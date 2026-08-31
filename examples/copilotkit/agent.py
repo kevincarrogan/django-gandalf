@@ -19,7 +19,11 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import CombinedToolset, WrapperToolset
 
 from examples.eventlog import log_event
-from gandalf.contrib.agent import WizardDeps, build_agent as build_wizard_agent
+from gandalf.contrib.agent import (
+    WizardDeps,
+    build_agent as build_wizard_agent,
+    build_journey_agent as build_journey_wizard_agent,
+)
 from gandalf.driver import RunDriver
 from gandalf.viewsets import WizardViewSet
 
@@ -168,6 +172,20 @@ class TheirAnswersToolset(WrapperToolset[WizardDeps]):
             ),
             "change_url": driver.run.entry_url(step),
         }
+
+
+def build_journey_agent(task_list_viewset: Any, model: Any) -> Agent[WizardDeps, str]:
+    """The library's journey agent, with this demo's logging.
+
+    Not `TheirAnswersToolset`. That rule is about re-affirming a step
+    somebody answered, and it reads a run's placements to decide — a
+    journey tool names a part rather than a step, so the rule has nothing
+    to attach itself to here. Writing a journey-shaped version of it is
+    the obvious next thing and deliberately not done on spec: the rule the
+    demo has was written after watching an agent overwrite an answer, and
+    this one should be too.
+    """
+    return build_journey_wizard_agent(task_list_viewset, model, wrap=LoggedToolset)
 
 
 def build_agent(

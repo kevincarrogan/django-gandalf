@@ -33,6 +33,17 @@ there is no tool for it, and the agent hands over the page instead.
 
 Everything it adds is marked `{"unattended": True}` like any other placement,
 so the fleet page and the demo's edit rule can tell whose a row is.
+
+**Why this is still here now that the library has `JourneyDriver`.** It
+answers a different shape. Here the fleet is a page *beside* a wizard: two
+things the person moves between, and nothing above them that knows about
+both — so the tools that reach it are the application's, because the
+relationship is the application's. `application.py` is the other shape,
+where the fleet is a row of a task list and the page above it does know,
+and there `add_to_list` is the library's. Keeping both is the point: the
+first is what an application writes when a collection sits beside a form,
+and the second is what it stops having to write when the collection is
+declared as part of something.
 """
 
 from typing import Any

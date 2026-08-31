@@ -1,0 +1,38 @@
+{% extends "hybrid/base.html" %}
+
+{% block content %}
+    <div class="banner">
+        <strong>Your application</strong>
+        <p>
+            Four parts, in any order. Your copilot can fill any of them in,
+            but each one is yours to check and confirm — and the submit at
+            the end is yours alone.
+        </p>
+    </div>
+
+    <div class="card">
+        <h1>Business insurance application</h1>
+        <p>
+            You have confirmed {{ task_list.completed }} of
+            {{ task_list.count }} part{{ task_list.count|pluralize }}.
+        </p>
+        <ul class="task-list">
+            {% for row in task_list.rows %}
+                <li class="task-list__item">
+                    {% if row.is_blocked %}
+                        <span>{{ row.title }}</span>
+                    {% else %}
+                        <a href="{{ row.url }}">{{ row.title }}</a>
+                    {% endif %}
+                    <strong class="tag tag--{{ row.status }}">{{ row.status_label }}</strong>
+                </li>
+            {% endfor %}
+        </ul>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit"{% if not task_list.is_complete %} disabled{% endif %}>
+                Submit the application
+            </button>
+        </form>
+    </div>
+{% endblock %}

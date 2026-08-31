@@ -44,6 +44,8 @@ if TYPE_CHECKING:
     from gandalf.contrib.agent.toolset import (
         accepts_documents,
         build_agent,
+        build_journey_agent,
+        build_journey_toolset,
         build_toolset,
     )
 
@@ -56,6 +58,8 @@ __all__ = [
     "attachments_from",
     "build_agent",
     "build_instructions",
+    "build_journey_agent",
+    "build_journey_toolset",
     "build_toolset",
     "profile_for",
 ]
@@ -72,6 +76,8 @@ _LAZY = {
     "profile_for": "prompt",
     "accepts_documents": "toolset",
     "build_agent": "toolset",
+    "build_journey_agent": "toolset",
+    "build_journey_toolset": "toolset",
     "build_toolset": "toolset",
 }
 

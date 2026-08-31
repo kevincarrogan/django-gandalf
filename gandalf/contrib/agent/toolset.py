@@ -43,14 +43,16 @@ from pydantic_ai import Agent, ModelRetry, RunContext, ToolReturn
 from pydantic_ai.toolsets import AbstractToolset, FunctionToolset
 
 from gandalf.contrib.agent.deps import WizardDeps, _snapshot
-from gandalf.contrib.agent.prompt import build_instructions
+from gandalf.contrib.agent.prompt import JOURNEY_PROCEDURE, build_instructions
 from gandalf.driver import (
+    JourneyDriver,
     RunComplete,
     RunDriver,
     outline_steps,
 )
 from gandalf.runtime import StepNotFound
 from gandalf.storage import RunNotFound
+from gandalf.tasklists import EntryNotFound, TaskListViewSet
 from gandalf.types import Answer
 from gandalf.viewsets import DoorRefused, WizardViewSet
 
@@ -445,5 +447,271 @@ def build_agent(
         model,
         deps_type=WizardDeps,
         instructions=build_instructions(viewset_class),
+        toolsets=[wrap(toolset) if wrap else toolset],
+    )
+
+
+def _rows(journey: JourneyDriver) -> list[dict[str, Any]]:
+    """The page as data: one row per listed entry, as a person sees it."""
+    return [
+        {
+            "key": row.key,
+            "title": str(row.title),
+            "status": str(row.status),
+            "status_label": str(row.status_label),
+        }
+        for row in journey.rows()
+    ]
+
+
+def _page_sync(
+    ctx: RunContext[WizardDeps],
+    journey: JourneyDriver,
+    extra: dict[str, Any] | None = None,
+) -> ToolReturn:
+    """Every journey tool returns the page, for the reason every run tool
+    returns the run: the answer to "where are we now" must not depend on
+    which tool was called."""
+    state = ctx.deps.state
+    state.journey_id = journey.journey_id
+    state.journey_url = journey.url
+    state.rows = _rows(journey)
+    payload = {
+        "journey_id": journey.journey_id,
+        "url": journey.url,
+        "rows": state.rows,
+        "complete": journey.is_complete,
+        **(extra or {}),
+    }
+    return ToolReturn(return_value=payload, metadata=[_snapshot(state)])
+
+
+def build_journey_toolset(
+    task_list_viewset: type[TaskListViewSet],
+) -> FunctionToolset[WizardDeps]:
+    """The tools for driving a task list, mirroring the page into state.
+
+    `build_toolset` drives one wizard, and its tools need no key because
+    there is only ever one run. A journey is several, so every tool here
+    takes the row it is about — which is what keeps the vocabulary static
+    and stateless: there is no "current section" to get out of step with
+    what the person has been doing in the browser meanwhile.
+
+    The verbs are whole sections rather than steps, because that is what
+    front-loading a journey is: read the whole shape, ask once, fill what
+    you were told. `fill_section` is `prefill` and follows the wizard's own
+    routing to a fixpoint, so an answer that opens a branch consumes the
+    answers behind it in the same call.
+
+    Nothing here submits the journey, for the reason nothing in
+    `build_toolset` concludes a run: `journey_done()` is where the
+    irreversible things live, and the person presses it.
+    """
+    toolset: FunctionToolset[WizardDeps] = FunctionToolset()
+
+    def _journey(ctx: RunContext[WizardDeps]) -> JourneyDriver:
+        journey_id = ctx.deps.state.journey_id
+        if journey_id is None:
+            raise ModelRetry(
+                "No application is open. If you have seen an application id "
+                "in this conversation — every tool returns one — call "
+                "resume_application with it rather than starting again, "
+                "because starting again abandons whatever is already filled "
+                "in. Call start_application only if there is genuinely none."
+            )
+        return JourneyDriver.resume(
+            task_list_viewset, journey_id, context=ctx.deps.context
+        )
+
+    def _section(ctx: RunContext[WizardDeps], key: str) -> RunDriver:
+        try:
+            return _journey(ctx).section(key)
+        except EntryNotFound:
+            known = ", ".join(row["key"] for row in _rows(_journey(ctx)))
+            raise ModelRetry(
+                f"There is no part of this called {key!r}. The parts are: {known}."
+            ) from None
+        except DoorRefused as refusal:
+            raise ModelRetry(_closed_door(refusal)) from None
+
+    def _described(driver: RunDriver) -> dict[str, Any]:
+        description = driver.describe(json_safe=True)
+        return {
+            "run_id": driver.run_id,
+            "step": description.step,
+            "schema": description.schema,
+            "answers": description.answers,
+            "errors": description.errors,
+            "complete": description.complete,
+        }
+
+    @toolset.tool
+    def start_application(ctx: RunContext[WizardDeps]) -> ToolReturn:
+        """Start a fresh application and describe it: its id, its page, and
+        every part of it with how far that part has got."""
+        journey = JourneyDriver.begin(task_list_viewset, context=ctx.deps.context)
+        return _page_sync(ctx, journey, extra={"parts": journey.outline()})
+
+    @toolset.tool
+    def resume_application(ctx: RunContext[WizardDeps], journey_id: str) -> ToolReturn:
+        """Pick an existing application back up by its id.
+
+        Use this rather than `start_application` whenever you know one —
+        you will have seen it in an earlier tool result, and the person may
+        have been filling parts in themselves since."""
+        journey = JourneyDriver.resume(
+            task_list_viewset, journey_id, context=ctx.deps.context
+        )
+        return _page_sync(ctx, journey, extra={"parts": journey.outline()})
+
+    @toolset.tool
+    def get_application(ctx: RunContext[WizardDeps]) -> ToolReturn:
+        """How the application stands now: every part and how far it has
+        got. Look here before you say anything about what it contains —
+        they may have been filling it in themselves while you talked."""
+        return _page_sync(ctx, _journey(ctx))
+
+    @toolset.tool
+    def get_part(ctx: RunContext[WizardDeps], part: str) -> ToolReturn:
+        """One part of the application: what it is waiting on, a JSON
+        Schema for the answers that want, everything answered so far, and
+        anything it refused."""
+        return ToolReturn(return_value=_described(_section(ctx, part)))
+
+    @toolset.tool
+    def check_part(
+        ctx: RunContext[WizardDeps], part: str, answers: dict[str, Answer]
+    ) -> ToolReturn:
+        """Try answers for one part without filling anything in. Says what
+        is wrong and what is still missing, so you can ask for all of it at
+        once rather than one question at a time. `answers` is keyed by the
+        step names that part's schema gives."""
+        result = _section(ctx, part).check(answers)
+        return ToolReturn(
+            return_value={
+                "ok": result.ok,
+                "invalid": result.invalid,
+                "missing": result.missing,
+                "unchecked": result.unchecked,
+                "unknown": result.unknown,
+            }
+        )
+
+    @toolset.tool
+    def fill_part(
+        ctx: RunContext[WizardDeps], part: str, answers: dict[str, Answer]
+    ) -> ToolReturn:
+        """Fill in as much of one part as you hold, keyed by its step names.
+
+        Placement follows the questions wherever the answers lead, so an
+        answer that opens up further questions lets the ones behind it be
+        placed in the same call. What could not be placed comes back
+        saying why."""
+        driver = _section(ctx, part)
+        result = driver.prefill(answers)
+        if result.errors:
+            raise ModelRetry(
+                "Some answers were not accepted: "
+                + json.dumps(result.errors)
+                + ". Fix them and call fill_part again with the same answers "
+                "and the corrections."
+            )
+        # The part goes under its own key rather than beside the page's.
+        # Both have a `complete`, and they mean different things — this
+        # part is answered, versus every part is — so splatting one over
+        # the other tells the model the application is finished the moment
+        # its first section is.
+        return _page_sync(
+            ctx,
+            _journey(ctx),
+            extra={
+                "part": {
+                    "key": part,
+                    "placed": result.placed,
+                    "unused": result.unused,
+                    "waiting_on": result.next_step,
+                    **_described(driver),
+                }
+            },
+        )
+
+    @toolset.tool
+    def add_to_list(
+        ctx: RunContext[WizardDeps], part: str, answers: dict[str, Answer]
+    ) -> ToolReturn:
+        """Put one thing on a part that is a list of them — one call, one
+        thing. `answers` is keyed by the step names of the questions asked
+        about each one."""
+        journey = _journey(ctx)
+        try:
+            driver = journey.add(part)
+        except EntryNotFound as error:
+            raise ModelRetry(str(error)) from None
+        result = driver.prefill(answers)
+        if result.errors:
+            # Registered but empty reads on their page as a half-added
+            # thing. Take it back off rather than leave one.
+            journey.remove(part, _newest(journey, part))
+            raise ModelRetry(
+                "That was not accepted, so nothing was added: "
+                + json.dumps(result.errors)
+                + ". Fix it and call add_to_list again."
+            )
+        return _page_sync(
+            ctx,
+            _journey(ctx),
+            extra={"part": {"key": part, **_described(driver)}},
+        )
+
+    @toolset.tool
+    def remove_from_list(
+        ctx: RunContext[WizardDeps], part: str, item_id: str
+    ) -> ToolReturn:
+        """Take one thing off a part that is a list of them. `item_id` is
+        the id the list reported for it."""
+        journey = _journey(ctx)
+        try:
+            journey.remove(part, item_id)
+        except EntryNotFound as error:
+            raise ModelRetry(str(error)) from None
+        return _page_sync(ctx, _journey(ctx), extra={"part": {"key": part}})
+
+    @toolset.tool
+    def handoff(ctx: RunContext[WizardDeps]) -> ToolReturn:
+        """Give them the link to their application so they can look it
+        over, change anything, and submit it themselves. Say what is left
+        to do. Do this whenever they ask for it, and when there is nothing
+        left for you to fill in."""
+        journey = _journey(ctx)
+        ctx.deps.state.handoff_url = journey.url
+        return _page_sync(ctx, journey, extra={"handoff_url": journey.url})
+
+    return toolset
+
+
+def _newest(journey: JourneyDriver, part: str) -> str:
+    """The item just added, which is the last one on the list."""
+    return journey.items(part).rows[-1].item_id
+
+
+def build_journey_agent(
+    task_list_viewset: type[TaskListViewSet],
+    model: Any,
+    *,
+    wrap: Callable[[FunctionToolset[WizardDeps]], AbstractToolset[WizardDeps]]
+    | None = None,
+) -> Agent[WizardDeps, str]:
+    """An agent that drives a task list with `model`.
+
+    `build_agent` for a journey: the same shape, the same `wrap` hook, and
+    `JOURNEY_PROCEDURE` instead — an agent working through several parts
+    has to be told that one of them may be waiting on another, which is
+    not a thing that happens inside a single wizard.
+    """
+    toolset = build_journey_toolset(task_list_viewset)
+    return Agent(
+        model,
+        deps_type=WizardDeps,
+        instructions=build_instructions(task_list_viewset, procedure=JOURNEY_PROCEDURE),
         toolsets=[wrap(toolset) if wrap else toolset],
     )
