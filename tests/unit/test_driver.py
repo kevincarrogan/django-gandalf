@@ -1854,6 +1854,69 @@ def test_check_cannot_judge_a_step_whose_form_needs_missing_answers():
     assert "second" not in result.ok
 
 
+def test_check_will_not_perform_a_check_that_cannot_be_performed_twice():
+    """The one thing a dry run must never do. Proving a one-time code
+    consumes it, so validating a candidate answer *spends* what it is
+    checking — and records no proof, because nothing was placed. The code
+    was then dead: the real submission that followed could not succeed, and
+    the run was unrecoverable for that answer.
+
+    An agent is told to check everything it holds before acting on it, so
+    following the instructions destroyed the run.
+    """
+    from tests.testapp.from_formtools import two_factor
+
+    two_factor.SPENT.clear()
+    two_factor.VERIFICATIONS.clear()
+    driver = RunDriver.begin(
+        two_factor.SingleMethodSetupViewSet, session=SessionStore()
+    )
+    driver.submit({})
+    driver.describe()
+    code = two_factor.code_for(driver.metadata.for_step("generator")["key"])
+
+    result = driver.check({"generator": {"code": code}})
+
+    assert two_factor.VERIFICATIONS == []
+    assert "generator" in result.unchecked
+    assert "cannot be performed twice" in result.unchecked["generator"]
+
+
+def test_the_answer_a_check_declined_to_judge_still_submits():
+    """The point of declining: the code survives the question, so the
+    placement that follows can still spend it."""
+    from tests.testapp.from_formtools import two_factor
+
+    two_factor.SPENT.clear()
+    two_factor.VERIFICATIONS.clear()
+    driver = RunDriver.begin(
+        two_factor.SingleMethodSetupViewSet, session=SessionStore()
+    )
+    driver.submit({})
+    driver.describe()
+    code = two_factor.code_for(driver.metadata.for_step("generator")["key"])
+    driver.check({"generator": {"code": code}})
+
+    result = driver.submit({"code": code})
+
+    assert result.status == "advanced"
+    assert two_factor.VERIFICATIONS == [code]
+
+
+def test_a_step_that_proves_nothing_is_still_checked():
+    """Declining is for the step that says so, not for every step in a
+    wizard that has one."""
+    from tests.testapp.from_formtools import two_factor
+
+    driver = RunDriver.begin(
+        two_factor.SingleMethodSetupViewSet, session=SessionStore()
+    )
+
+    result = driver.check({"name": {"name": "Ada's phone"}})
+
+    assert result.ok == ["name"]
+
+
 def test_check_notes_an_escape_without_acting_on_it():
     """A dry run must never park, advance or obliterate a run — it is a
     question, not a submission."""

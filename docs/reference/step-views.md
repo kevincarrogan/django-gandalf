@@ -54,6 +54,19 @@ generates answer a submission the same way.
   `form_valid()`, `form_invalid()`, `get_context_data()` — works as it does
   anywhere.
 
+**`consumes_what_it_checks`** — whether validating this step *performs* the
+check it describes: proving a one-time code, authorising a card, claiming a
+reference. `False` by default, which is right for the overwhelming majority
+of steps, whose `clean()` is a pure function of what was submitted. Declared
+rather than derived, because a `clean()` that reaches out is
+indistinguishable from one that does not until it has already reached.
+
+It is the dry-run half of [`run.proof()`](proofs.md), which is the durable
+half, and a step that needs one almost certainly wants both.
+[`RunDriver.check()`](driver.md) reads it and reports such a step as
+`unchecked` rather than spending what it was asked about. The HTTP path is
+unaffected: a real submission performs the check, as it must.
+
 **`get_answer_errors(form)`** — what this step refused, by field name, in
 `ErrorDict.get_json_data()` shape, and empty when the step is satisfied.
 Callers read the *emptiness* rather than testing a Django attribute, which

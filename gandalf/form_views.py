@@ -71,6 +71,23 @@ class StepFormView(_StepFormViewBase):
     def get_success_url(self) -> str:
         return self.request.path
 
+    #: Whether validating this step *performs* the check it describes —
+    #: proving a one-time code, authorising a card, claiming a reference.
+    #: `False` for the overwhelming majority of steps, whose `clean()` is a
+    #: pure function of what was submitted.
+    #:
+    #: Declared rather than derived because only the step knows: a
+    #: `clean()` that reaches out is indistinguishable from one that does
+    #: not until it has already reached. It is the dry-run half of
+    #: `run.proof()`, which is the durable half — a step that needs one
+    #: almost certainly wants this too.
+    #:
+    #: What reads it is `RunDriver.check()`, which reports such a step as
+    #: `unchecked` rather than spending what it was asked about. Nothing on
+    #: the HTTP path is affected: a real submission performs the check, as
+    #: it must.
+    consumes_what_it_checks: bool = False
+
     def get_answer_errors(self, form: Any) -> dict[str, list[dict[str, Any]]]:
         """What this step refused, by field name, in `get_json_data()` shape.
 

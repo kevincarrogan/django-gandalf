@@ -651,6 +651,18 @@ class RunDriver:
     def _check_step(self, declaration: tree.Step, data: Answer) -> tuple[str, Any]:
         try:
             view = self._bound_view(declaration, data)
+            if getattr(view, "consumes_what_it_checks", False):
+                # The one question a dry run must not ask. Validating this
+                # step performs its check, and its check cannot be
+                # performed twice — so judging the candidate would spend
+                # the very thing being judged, and record no proof of
+                # having done so, leaving the real placement to fail on an
+                # answer that was right when it was offered.
+                return "unchecked", (
+                    "validating it performs a check that cannot be performed "
+                    "twice, which a check does not do — place the answer to "
+                    "perform it"
+                )
             form = view.get_form()
             form.is_valid()
         except Escape as escape:

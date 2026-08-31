@@ -187,12 +187,25 @@ the residue. Two driver primitives make that a loop instead of a wish:
   This is what lets an agent ask a person for everything in one message
   instead of discovering the problems one placement at a time.
 
-  Three honesty constraints are built into the result. `ok` is not a
+  Four honesty constraints are built into the result. `ok` is not a
   promise — a standalone form knows nothing about the walk, and the real
   placement re-proves it. Steps behind a branch are left out of `missing`,
   because demanding every arm would ask for things the person will never
   be shown. And a `clean()` that escapes is *reported*, never acted on: a
   check is a question, not a submission.
+
+  The fourth is the one that cost a run to find. Some checks cannot be
+  performed twice — proving a one-time code, authorising a card — and for
+  those, *asking the question is the act*: binding the candidate to the
+  form spends the code, and records no proof of having done so, because a
+  check places nothing. The real placement then fails on an answer that
+  was right when it was offered, and the run is unrecoverable for that
+  step. So a step whose view declares `consumes_what_it_checks` is
+  reported `unchecked` without being validated at all. It is the same fact
+  `run.proof()` holds for the dispatch that comes round again, said to the
+  other reader — and the reason it is declared rather than derived is that
+  a `clean()` which reaches out is indistinguishable from one that does
+  not until it has already reached.
 
 The agent's flow becomes: outline → map known context onto schemas →
 check → ask once for the whole residue → prefill → finish. Correctness

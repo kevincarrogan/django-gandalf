@@ -199,6 +199,14 @@ view, so the same overrides apply — and validated alone.
 - An escape raised while validating a candidate is reported under
   `unchecked` and never acted on. So is a form that cannot be built from
   the answers available yet.
+- A step whose view declares
+  [`consumes_what_it_checks`](step-views.md) is reported under `unchecked`
+  without being validated at all. Judging it would *perform* its check —
+  spending the one-time code it was asked about, and recording no
+  [proof](proofs.md) of having done so, because a check places nothing. The
+  real placement would then fail on an answer that was right when it was
+  offered. A check is a question; this is the step where asking would have
+  been an act.
 - What a candidate refused is the step view's to say, exactly as it is for
   [`submit()`](#submitdata--filesnone-stepnone-metadatanone) — so a
   repeated step's rows are keyed by row and field, and a valid formset

@@ -149,6 +149,11 @@ class CodeStepView(StepFormView):
     template_name = "testapp/two_factor_code.html"
     step_name = "code"
 
+    #: Verifying spends the token, so a dry run of a candidate answer would
+    #: spend it too — and record nothing, since a check places nothing. The
+    #: same fact `run.proof()` exists for, said to the other reader.
+    consumes_what_it_checks = True
+
     def key(self):
         own = self.request.run.metadata.for_step(self.step_name)
         if "key" not in own:

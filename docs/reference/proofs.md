@@ -131,6 +131,32 @@ loudly and parks the user. Nothing is silently waved through.
   `metadata.for_step()`'s job, and voiding on an earlier edit is usually
   what you want there too — in which case a proof is the better fit anyway.
 
+## The other reader
+
+A proof answers the *dispatch* that comes round again. The other thing that
+would perform the check is a dry run: [`RunDriver.check()`](driver.md) binds
+a candidate answer to its step's form to see whether it would be accepted,
+and for a consuming check that question is itself the act — it would spend
+the code and record no proof, because a check places nothing.
+
+So a step that keeps a proof should also say so to that reader, with
+[`consumes_what_it_checks`](step-views.md):
+
+```python
+class CodeStepView(StepFormView):
+    form_class = CodeForm
+    consumes_what_it_checks = True
+
+    def get_form_kwargs(self):
+        proof = self.request.run.proof(self.step_name)
+        return {**super().get_form_kwargs(), "already_proven": proof.get("code")}
+```
+
+Two declarations rather than one because they answer different questions —
+*what did this establish* and *may this be asked hypothetically* — but they
+travel together, and a step with a proof and no flag is one an agent's
+front-loading pass will quietly burn.
+
 ---
 
 ## Usage
