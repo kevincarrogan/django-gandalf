@@ -17,6 +17,7 @@ the same run, one after the other.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
@@ -84,6 +85,8 @@ __all__ = [
     "form_json_schema",
     "outline_steps",
 ]
+
+logger = logging.getLogger(__name__)
 
 # Validation errors as data: `form.errors.get_json_data()`'s shape — field
 # name to a list of {"message", "code"} dicts.
@@ -557,8 +560,11 @@ class RunDriver:
         because an expansion's steps do not exist until the answer that
         shapes them does. A step whose view cannot compose its form yet
         (it reads answers that are still missing) carries `schema: None`;
-        `describe()` supplies the schema once the walk reaches it. A
-        dynamic `get_wizard()` is outlined as currently resolved.
+        `describe()` supplies the schema once the walk reaches it, and
+        `schema_unavailable` beside it names the exception's class — a
+        step that could not be described has to be tellable from one that
+        asks nothing. A dynamic `get_wizard()` is outlined as currently
+        resolved.
         """
         return self._with_schemas(self.run.wizard.outline())
 
@@ -859,7 +865,7 @@ class RunDriver:
             entry = dict(entry)
             if entry["kind"] == "step":
                 entry["step"] = entry.pop("name")
-                entry["schema"] = self._schema_or_none(entry.pop("declaration"))
+                entry.update(self._outline_schema(entry.pop("declaration")))
                 entry.pop("context")
             elif entry["kind"] == "branch":
                 entry["arms"] = [
@@ -876,26 +882,69 @@ class RunDriver:
             described.append(entry)
         return described
 
-    def _schema_or_none(self, declaration: tree.Step) -> dict[str, Any] | None:
-        # A hand-written FormView composes its form through arbitrary user
-        # code that may read answers the run does not hold yet; any failure
-        # means "no schema until reached", not a broken outline.
+    def _outline_schema(self, declaration: tree.Step) -> dict[str, Any]:
+        """The `schema` half of one step's outline entry.
+
+        Composing a step's form and describing the form it composed fail
+        for different reasons, and only the first is the application's to
+        fail at: a hand-written `FormView` builds its form through
+        arbitrary user code that may read answers the run does not hold
+        yet, so *no schema until reached* is the truthful answer for a step
+        the walk has not come to. Describing carries no such excuse — the
+        form object is in hand — so a failure there is the library's, and
+        it raises rather than passing for a step that asks nothing.
+
+        The two used to be one swallow, which is how a formset went a
+        release describing itself as `None` here while `describe()` raised
+        on the same step (#109). Nothing failed, so nothing was noticed.
+        """
         try:
-            return self._schema_for(declaration)
-        except Exception:
-            return None
+            view, form = self._compose_form(declaration)
+        except Exception as exc:
+            # Kept out of the entry itself: the message can quote answers,
+            # and an outline is read by a model. The class is enough to
+            # tell a failure from an absence; the log has the rest.
+            logger.debug(
+                "Outline could not compose the form for step %r",
+                _step_name(declaration),
+                exc_info=True,
+            )
+            return {
+                "schema": None,
+                "schema_unavailable": (
+                    "This step's form could not be built from where the run "
+                    f"stands ({type(exc).__name__}). That is expected of a "
+                    "view composing its form from answers the run does not "
+                    "hold yet, and the step describes itself once the walk "
+                    "reaches it — but the cause is not known here, and a "
+                    "view that fails for its own reasons reads the same."
+                ),
+            }
+        return {"schema": self._describe_form(view, form)}
 
     def _schema_for(self, declaration: tree.Step) -> dict[str, Any]:
-        """The step as JSON Schema, asked of its view.
+        """The step as JSON Schema, asked of its view."""
+        return self._describe_form(*self._compose_form(declaration))
+
+    def _compose_form(self, declaration: tree.Step) -> tuple[FormView[Any], Any]:
+        """The step's view and the form object it builds — user code, both.
+
+        The half of describing a step that can legitimately fail before the
+        walk arrives, which is why it is a method of its own rather than
+        two lines of `_schema_for`.
+        """
+        view = self._view_for(declaration)
+        # GET-shaped, so no phantom "this field is required" errors.
+        return view, view.get_form()
+
+    def _describe_form(self, view: FormView[Any], form: Any) -> dict[str, Any]:
+        """`form` as JSON Schema, asked of the view that built it.
 
         The view built the form object, so it is the one that knows how to
         describe it — `form_json_schema()` walks `form.fields`, which only
         a `BaseForm` has. A step declared with a bare Django `FormView` has
         no say and gets the form reading.
         """
-        view = self._view_for(declaration)
-        # GET-shaped, so no phantom "this field is required" errors.
-        form = view.get_form()
         builder = getattr(view, "get_answer_schema", None)
         if builder is None:
             return form_json_schema(form)

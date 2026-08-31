@@ -1541,7 +1541,10 @@ def test_outline_marks_an_expansion_it_cannot_know_yet():
 def test_outline_degrades_to_no_schema_for_a_view_it_cannot_compose_yet():
     """A hand-written FormView may build its form from earlier answers; for
     a step the run has not reached, that composition can fail — the outline
-    reports the step without a schema rather than refusing the whole tree."""
+    reports the step without a schema rather than refusing the whole tree.
+
+    And says so: a step that could not be described has to be tellable from
+    one that asks nothing, since a bare `None` reads as the second."""
 
     class _DependentStepView(StepFormView):
         form_class = SecondStepForm
@@ -1569,7 +1572,41 @@ def test_outline_degrades_to_no_schema_for_a_view_it_cannot_compose_yet():
     outline = driver.outline()
 
     assert outline[0]["schema"] is not None
-    assert outline[1] == {"kind": "step", "step": "second", "schema": None}
+    assert outline[1]["step"] == "second"
+    assert outline[1]["schema"] is None
+    assert "AttributeError" in outline[1]["schema_unavailable"]
+    assert "schema_unavailable" not in outline[0]
+
+
+def test_outline_raises_when_a_composed_form_cannot_be_described():
+    """The other half of the same guard, and the one that used to go quiet.
+
+    Composing the form is the application's to fail at; describing the form
+    it built is the library's. A formset declared through a plain
+    `StepFormView` gets the form reading, `form_json_schema()` walks
+    `form.fields`, and a formset has none — which is #109, and which the
+    outline reported as `schema: None` while `describe()` raised on the
+    same step."""
+
+    class _RowForm(forms.Form):
+        day = forms.CharField()
+
+    class _MislabelledStepView(StepFormView):
+        form_class = forms.formset_factory(_RowForm)
+        template_name = "testapp/formset_step.html"
+
+    class _MislabelledViewSet(WizardViewSet):
+        url_name = "signup"
+        template_name = "testapp/linear_wizard.html"
+        wizard = Wizard().step(_MislabelledStepView, name="hours")
+
+        def done(self, run):
+            return HttpResponse(b"done")
+
+    driver = RunDriver.begin(_MislabelledViewSet)
+
+    with pytest.raises(AttributeError):
+        driver.outline()
 
 
 # --- Prefill -----------------------------------------------------------------
@@ -2113,9 +2150,10 @@ def test_a_formset_step_is_described_as_an_array_of_rows(organisers_driver):
 
 
 def test_an_outline_carries_a_formset_steps_schema():
-    """`_schema_or_none` swallows any failure as "no schema until reached",
-    which is right for a form composed from answers the run has not got —
-    and was quietly wrong for a formset, which can always be described."""
+    """The outline swallows a *composition* failure as "no schema until
+    reached", which is right for a form built from answers the run has not
+    got — and was quietly wrong for a formset, which can always be
+    described. Describing no longer sits inside that swallow."""
     from tests.testapp.from_formtools.djangogirls import OrganiseAnEventViewSet
 
     outline = RunDriver.outline_for(OrganiseAnEventViewSet)

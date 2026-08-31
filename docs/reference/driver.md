@@ -265,7 +265,7 @@ JSON Schema of its form.
 
 | `kind` | Keys | Notes |
 | --- | --- | --- |
-| `step` | `step`, `schema` | `schema` is `None` for a step whose view cannot compose its form yet (it reads answers the run does not hold); `describe()` supplies it once the walk reaches the step. |
+| `step` | `step`, `schema` | `schema` is `None` for a step whose view cannot compose its form yet (it reads answers the run does not hold); the entry then also carries `schema_unavailable`, a sentence naming the failure's exception class, so a step that could not be described is tellable from one that asks nothing. `describe()` supplies the schema once the walk reaches the step. A form that composes and then cannot be *described* raises instead — see below. |
 | `branch` | `arms`, `default` | Every arm is shown, since which runs depends on answers. Each arm has `when` (the predicate's name), `description` (its docstring, or `None`) and `steps`. `default` is a list of entries. |
 | `switch` | `decided_by`, `description`, `cases`, `default`, `source` | `cases` are named outcomes, each `{"case": value, "steps": [...]}`. `source` — `{"step": ..., "field": ...}` — is present only when the selector is an `on_field`. |
 | `expand` | — | A marker. The steps an expansion grows do not exist until the answer that shapes them does. |
@@ -753,7 +753,32 @@ That is the stored `FileRef` — an open file is not JSON. Use
 
 The step's view composes its form from answers the run does not hold yet,
 so the form cannot be built. `describe()` supplies the schema once the walk
-reaches that step.
+reaches that step. The entry says so in `schema_unavailable`, and the
+exception itself is logged at `DEBUG` to `gandalf.driver` — it is kept out
+of the entry because an outline is read by a model and an exception message
+can quote answers.
+
+The reason is not known at that point, so `schema_unavailable` does not
+claim one: a view failing for its own reasons — a typo in `get_initial()`,
+a misconfigured `get_form_class()` — is indistinguishable here from one
+reaching for an answer that does not exist yet. Both go quiet in the
+outline, and both raise from `describe()` and from rendering the step once
+the walk arrives, so a composing failure is deferred rather than hidden.
+`DEBUG` on `gandalf.driver` is where to look if a step is quiet and you
+did not expect it to be.
+
+### `outline()` raises where it used to give `schema: None`
+
+Composing a step's form and describing the form it composed fail for
+different reasons, and only the first is the application's to fail at. A
+form object the schema mapping cannot read — anything that is not a
+`BaseForm`, reached through a view that does not override
+[`get_answer_schema()`](step-views.md) — now raises out of `outline()`
+rather than passing for a step that asks nothing.
+
+Give the step view a `get_answer_schema()` that describes the object it
+actually builds. `FormSetStepView` already carries one; a formset declared
+through a plain `StepFormView` does not, and is the usual way to meet this.
 
 ### `check()` returns `unknown` for steps an expansion will grow
 
