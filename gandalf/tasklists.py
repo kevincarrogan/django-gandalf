@@ -1436,21 +1436,40 @@ class Journey:
     ) -> None:
         self.task_list_viewset = task_list_viewset
         self.request = request
-        self.id = id
         self.url_kwargs = dict(url_kwargs or {})
+        self._proposed_id = id
 
     @property
     def page_kwargs(self) -> dict[str, Any]:
         """The kwargs the page is reversed with: the mount prefix and, when
         the page is mounted under a journey segment, this journey."""
         viewset = self.task_list_viewset
-        kwargs = {**self.url_kwargs, viewset.journey_url_kwarg: self.id}
+        kwargs = {**self.url_kwargs, viewset.journey_url_kwarg: self._proposed_id}
         try:
             reverse(cast(str, viewset.url_name), kwargs=kwargs)
         except NoReverseMatch:
             # One journey per session: no segment to put the id in.
             return self.url_kwargs
         return kwargs
+
+    @property
+    def id(self) -> str:
+        """This journey's identity — the key its page will actually read.
+
+        Not simply what `begin()` was handed. A page with no `<journey>`
+        segment keeps one journey per session under a fixed key, and has
+        nowhere to put an id that was made up for it; every entry beneath
+        it reads that fixed key through `get_journey()`. Reporting the
+        proposed id would name a store nothing else ever looks in — empty
+        for ever, and anything written through it invisible to the page it
+        was written for.
+        """
+        return str(
+            self.page_kwargs.get(
+                self.task_list_viewset.journey_url_kwarg,
+                self.task_list_viewset.journey,
+            )
+        )
 
     @property
     def url(self) -> str:

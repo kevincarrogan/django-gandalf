@@ -218,6 +218,27 @@ def test_a_journeys_store_is_the_lists_store(client):
     assert journey.url == reverse("readme-apply", kwargs={"journey": "app-1"})
 
 
+def test_a_one_per_session_journeys_store_is_the_one_the_page_reads(client):
+    """`begin()` makes an id up when it is not given one, and a page with
+    no `<journey>` segment has nowhere to put it — it reads a fixed key
+    instead. So the made-up id named a store nothing else would ever look
+    in: `journey.store` was empty for ever, and anything written through it
+    was invisible to the page it was written for.
+
+    The id a journey reports is the one its page will actually read.
+    """
+    request = client.get(reverse("scenario-task-list")).wsgi_request
+
+    journey = ScenarioViewSet.begin(request)
+    journey.store.data["amount"] = 10
+
+    page = ScenarioViewSet()
+    page.setup(request, **journey.page_kwargs)
+
+    assert journey.id == page.get_journey()
+    assert page.get_journey_store().data["amount"] == 10
+
+
 # --- pages that cannot reverse themselves -------------------------------------------
 
 
