@@ -487,6 +487,111 @@ value`. Numeric bounds are the tightest of `min_value`/`max_value` and any
 `MinValueValidator`/`MaxValueValidator`; a callable `limit_value` is left
 out.
 
+## `JourneyDriver`
+
+`RunDriver` drives one run. A [task list](tasklists.md) is several, and
+which are open, which are finished and what the journey is still waiting on
+are the page's to say — so `JourneyDriver` is the page, asked as data.
+
+Everything goes through the page's own methods, so a `get_entries()` that
+chooses per user, an `entry_hidden()` spanning rows, an overridden
+`get_entry_status()` — all of them apply, and a driver sees the page the
+person would.
+
+```python
+from gandalf.driver import JourneyDriver
+
+journey = JourneyDriver.begin(GrantApplicationViewSet, actor=user)
+contact = journey.section("contact", may_finish=True)
+contact.prefill({"name": {"full_name": "Ada"}, "email": {"email": "a@b.com"}})
+journey.url          # where to send them to check it over
+```
+
+### `JourneyDriver.begin(task_list_viewset, *, context=None, actor=None, session=None, journey=None, may_submit=None, **url_kwargs)`
+
+A driver over a fresh journey. `TaskListViewSet.begin()` takes a request and
+this takes a context — `context.http_request()` carries the session and the
+actor without a browser being impersonated, which is what
+[chapter 15](../learn/15-journeys.md) means when it says a management command
+or an agent begins a journey the same way as anything else.
+
+`journey` names one instead of having one made up, for a page mounted under
+a `<journey>` segment. A page without one keeps a single journey per session
+and ignores it. Other parameters are `RunDriver.begin()`'s.
+
+### `JourneyDriver.resume(task_list_viewset, journey_id, *, ...)`
+
+A driver over a journey that already exists. Nothing is retrieved — a
+journey is a key, and its record is whatever has been written under it — so
+an id naming nothing yields an empty page rather than raising, exactly as
+the page itself does.
+
+### `JourneyDriver.outline_for(task_list_viewset, *, ...)`
+
+The declared shape of a whole journey, without beginning one.
+`RunDriver.outline_for()` one level up, and for the same reason: a caller
+deciding what to ask for needs everything the journey will want, before
+there is anything to answer it with.
+
+Every entry gives `key`, `title` and `kind` (`"section"`, `"add-another"`,
+`"group"` or `"link"`). A section adds `steps` — that wizard's own outline,
+schemas included. A group or an add-another adds `entries`, which is this
+again. A link gets neither: it names somewhere else, and what is over there
+is not this journey's to describe.
+
+Declaration-level throughout, so a `hidden()` that turns on an answer hides
+a row from `rows()`, not from here.
+
+### `outline()`
+
+`outline_for()` for the journey in hand.
+
+### `rows()`
+
+The page as a person would see it: a tuple of [`Row`](tasklists.md), each
+with its `key`, `title`, `status` and `url`. Hidden entries are absent, as
+they are for the person — a hidden entry is not a row.
+
+### `section(key, *, may_finish=None)`
+
+A `RunDriver` over the entry `key` names, resuming its run or starting one.
+The page resolves the viewset and the URL kwargs, so a caller names the row
+rather than knowing which viewset a `Section` generated and which kwargs it
+takes. A run this starts is recorded against the journey, so the page shows
+it as *Incomplete* and the next caller resumes it.
+
+**Raises** `EntryNotFound` for a key the page does not list, and
+`DoorRefused` for one it will not open — the section's `check_door()`, so a
+blocked or hidden section, or a submitted journey, refuses here exactly as
+at the page's own door.
+
+### `items(key)` / `add(key, *, may_finish=None)` / `remove(key, item_id)`
+
+An [add-another](add-another.md) entry as its own page, a new item on it
+(driven, in one call, rather than adding one and reading the ids back to
+work out which is new), and an item taken off — its run, its stash, its
+title and its registry place, exactly as the person's Remove does.
+
+`items()` raises `EntryNotFound` for an entry that is not a list.
+
+### `submit()`
+
+Press the page's button: `journey_done()`, then the tombstone. Guarded
+twice, as `finish()` is — `JourneyIncomplete` when a row is still to
+finish (the page refuses its own button there and says so on the page; a
+driver has no page to say it on), and `ConfirmationRequired` unless
+`may_submit` says otherwise.
+
+### `journey_id` / `url` / `store` / `page` / `is_complete`
+
+The journey's key, the page's URL (the handover, one level up from
+`run.entry_url()`), its record, the page view itself, and whether every row
+is complete.
+
+### `JourneyIncomplete`
+
+`Exception`, from `submit()` on a journey with a row still to finish.
+
 ### `outline_steps(entries)`
 
 Yield every `step` entry an outline holds, however deeply an arm or case

@@ -76,6 +76,14 @@ How an entry's status is derived, in precedence order:
 | A run is recorded for the entry and its state holds at least one answer | `INCOMPLETE` |
 | Everything else | `NOT_STARTED` — including a run opened and never answered, and a recorded run the storage has forgotten or tombstoned |
 
+### Driving a page
+
+[`JourneyDriver`](driver.md) is this page asked as data: `rows()` for what
+a person would see, `section(key)` for one of them opened, `items()` /
+`add()` / `remove()` for an add-another entry, and `submit()` for the
+button. Everything goes through the methods below, so an overridden
+`get_entries()`, `entry_hidden()` or `get_entry_status()` applies there too.
+
 ### Both doors
 
 `blocked()` and `hidden()` are asked at the door as well as in the row, and

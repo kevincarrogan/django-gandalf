@@ -81,11 +81,32 @@ placement records who made it**, so a rule like "never overwrite what a
 person typed" can be written — and is yours to write, because whose answer
 this is is a question about your domain rather than about wizards.
 
+And a wizard is not always the whole thing. A journey is a task list of
+them, and which sections are open, which are finished and what the whole
+application is waiting on are the page's to say — so there is a driver for
+that too:
+
+```python
+from gandalf.driver import JourneyDriver
+
+journey = JourneyDriver.begin(GrantApplicationViewSet, actor=user)
+
+journey.rows()                     # the page, as a person would see it
+contact = journey.section("contact")   # the row, opened
+journey.url                        # where to send them to check it over
+```
+
+`section()` goes through the page's door, so a section the row shows as
+*Cannot start yet* is refused here too. That is the same rule and not a
+second copy of it: what the browser is refused, a script is refused, and
+[chapter 14](14-blocked-and-hidden.md)'s gates need writing once.
+
 `gandalf.contrib.agent` is the other half: an agent built on the driver,
 which ships beside the library rather than inside it.
 
 > **Source:** the driver against these wizards is
-> [`test_driver_wizards.py`](../../tests/functional/test_driver_wizards.py) &nbsp;·&nbsp; **Reference:** [`outline()`](../reference/wizard.md), [Observers](../reference/observers.md), [Driver](../reference/driver.md), [Agent](../reference/agent.md)
+> [`test_driver_wizards.py`](../../tests/functional/test_driver_wizards.py), and
+> against a task list [`test_driver_task_lists.py`](../../tests/unit/test_driver_task_lists.py) &nbsp;·&nbsp; **Reference:** [`outline()`](../reference/wizard.md), [Observers](../reference/observers.md), [Driver](../reference/driver.md), [Agent](../reference/agent.md)
 
 ---
 

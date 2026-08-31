@@ -50,7 +50,15 @@ from gandalf.runtime import (
     Walk,
 )
 from gandalf.summary import _flatten_choices
-from gandalf.types import Answer, FileRefs, Metadata, Submission
+from gandalf.types import Answer, FileRefs, JourneyStore, Metadata, Submission
+from gandalf.add_another import AddAnotherPage, AddAnotherViewSet
+from gandalf.tasklists import (
+    Entry,
+    EntryNotFound,
+    Journey,
+    Row,
+    TaskListViewSet,
+)
 from gandalf.viewsets import DoorRefused, WizardViewSet
 
 if TYPE_CHECKING:
@@ -64,6 +72,8 @@ __all__ = [
     "PrefillResult",
     "RunComplete",
     "RunDriver",
+    "JourneyDriver",
+    "JourneyIncomplete",
     "RunIncomplete",
     "ConfirmationRequired",
     "DoorRefused",
@@ -89,6 +99,11 @@ MAX_DESCRIBED_CHOICES = 50
 class RunComplete(Exception):
     """Raised when a submission is placed on a run that has already reached
     completion — there is no step left to answer."""
+
+
+class JourneyIncomplete(Exception):
+    """Raised when `JourneyDriver.submit()` is called on a journey with a
+    row still to finish — the page refuses its own button there."""
 
 
 class RunIncomplete(Exception):
@@ -885,6 +900,328 @@ class RunDriver:
         if builder is None:
             return form_json_schema(form)
         return cast("dict[str, Any]", builder(form))
+
+
+class JourneyDriver:
+    """A task list driven without a browser.
+
+    `RunDriver` drives one run. A journey is several of them, and which are
+    open, which are finished and what the whole thing is still waiting on
+    are the page's to say — so until this the only way to ask was to render
+    it. What that cost is visible in the demo, which reached into
+    `get_items()` and `add_item()` from its own toolset because the library
+    offered nothing; that is the shape of a gap rather than of a recipe.
+
+    Everything here goes through the page's own methods, so a `get_entries()`
+    that chooses per user, an `entry_hidden()` that spans rows, a
+    `get_entry_status()` an application overrode — all of them apply, and a
+    driver sees the page the person would.
+
+        journey = JourneyDriver.begin(GrantApplicationViewSet, actor=user)
+        contact = journey.section("contact", may_finish=True)
+        contact.prefill({"name": {"full_name": "Ada"}})
+        journey.url   # where to send them to check it over
+
+    `submit()` is guarded like `RunDriver.finish()` and for the same
+    reason — `journey_done()` is where the irreversible things live.
+    """
+
+    #: Whether this driver may fire `journey_done()`. False by default, so
+    #: `submit()` raises `ConfirmationRequired` until a caller says
+    #: otherwise.
+    may_submit: bool = False
+
+    def __init__(
+        self,
+        journey: Journey,
+        context: WizardContext,
+        *,
+        may_submit: bool | None = None,
+    ) -> None:
+        self.journey = journey
+        self.context = context
+        if may_submit is not None:
+            self.may_submit = may_submit
+
+    @classmethod
+    def begin(
+        cls,
+        task_list_viewset: type[TaskListViewSet],
+        *,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
+        journey: str | None = None,
+        may_submit: bool | None = None,
+        **url_kwargs: Any,
+    ) -> JourneyDriver:
+        """A driver over a fresh journey on `task_list_viewset`.
+
+        `TaskListViewSet.begin()` takes a request and this takes a context,
+        which is the whole difference: `context.http_request()` carries the
+        session and the actor without a browser being impersonated. Chapter
+        15 already said a management command or an agent begins a journey
+        the same way as anything else; this is what makes that true rather
+        than aspirational.
+
+        `journey` names one instead of having one made up, for a page
+        mounted under a `<journey>` segment. A page without one keeps a
+        single journey per session and ignores it — see `Journey.id`.
+        """
+        environment = _context(context, actor, session, url_kwargs)
+        return cls(
+            task_list_viewset.begin(environment.http_request(), journey, **url_kwargs),
+            environment,
+            may_submit=may_submit,
+        )
+
+    @classmethod
+    def resume(
+        cls,
+        task_list_viewset: type[TaskListViewSet],
+        journey_id: str,
+        *,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
+        may_submit: bool | None = None,
+        **url_kwargs: Any,
+    ) -> JourneyDriver:
+        """A driver over a journey that already exists.
+
+        There is nothing to retrieve — a journey is a key, and its record
+        is whatever has been written under it — so an id naming nothing
+        yields an empty page rather than raising. That is what the page
+        does with the same id, and a journey nobody has answered is a real
+        state rather than a missing one.
+        """
+        environment = _context(context, actor, session, url_kwargs)
+        return cls(
+            Journey(
+                task_list_viewset,
+                environment.http_request(),
+                journey_id,
+                url_kwargs,
+            ),
+            environment,
+            may_submit=may_submit,
+        )
+
+    @property
+    def journey_id(self) -> str:
+        """This journey's identity — the key its page reads, which for a
+        page with no `<journey>` segment is its fixed one."""
+        return self.journey.id
+
+    @property
+    def url(self) -> str:
+        """The page. The handover, one level up from `run.entry_url()`: an
+        agent that has filled what it can hands this over and the person
+        picks up where the rows say they are."""
+        return self.journey.url
+
+    @property
+    def store(self) -> JourneyStore:
+        """The journey's record — its section runs, stashes and data."""
+        return self.journey.store
+
+    @property
+    def page(self) -> TaskListViewSet:
+        """The page, set up for this journey. Rebuilt per access because it
+        caches its rows, and a driver that placed an answer since must not
+        report the page as it was before."""
+        view = self.journey.task_list_viewset()
+        view.setup(self.context.http_request(), **self.journey.page_kwargs)
+        return view
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every row is complete — whether `submit()` would run."""
+        return self.page.get_page().is_complete
+
+    @classmethod
+    def outline_for(
+        cls,
+        task_list_viewset: type[TaskListViewSet],
+        *,
+        context: WizardContext | None = None,
+        actor: Any = None,
+        session: WizardSession | None = None,
+        **url_kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        """The declared shape of a whole journey, without beginning one.
+
+        `RunDriver.outline_for()` one level up, and for the same reason: a
+        caller deciding what to ask for needs everything the journey will
+        want, before there is anything to answer it with. Every entry gives
+        its `key`, `title` and `kind`; a section gives `steps`, which is
+        that wizard's own outline, and a group gives `entries`, which is
+        this again.
+
+        Declaration-level throughout, so nothing here depends on a journey
+        existing — including which entries are listed. A `hidden()` that
+        turns on an answer hides a row from `rows()`, not from this.
+        """
+        environment = _context(context, actor, session, url_kwargs)
+        view = task_list_viewset()
+        view.setup(environment.http_request(), **url_kwargs)
+        return cls._outline(view, environment)
+
+    @classmethod
+    def _outline(
+        cls, page: TaskListViewSet, context: WizardContext
+    ) -> list[dict[str, Any]]:
+        entries = []
+        for entry in page.get_entries():
+            described: dict[str, Any] = {
+                "key": entry.key,
+                "title": str(page.get_entry_title(entry)),
+                "kind": _entry_kind(entry),
+            }
+            viewset = entry.viewset
+            if viewset is not None and issubclass(viewset, TaskListViewSet):
+                # A group or an add-another: a page in its own right, so
+                # what it holds is this again rather than a list of steps.
+                nested = viewset()
+                nested.setup(context.http_request(), **page.entry_url_kwargs(entry))
+                described["entries"] = cls._outline(nested, context)
+            elif viewset is not None:
+                described["steps"] = RunDriver.outline_for(
+                    viewset, context=context, **page.entry_url_kwargs(entry)
+                )
+            # A `Link` has no viewset and so neither key: it names somewhere
+            # else, and what is over there is not this journey's to describe.
+            entries.append(described)
+        return entries
+
+    def outline(self) -> list[dict[str, Any]]:
+        """`outline_for()` for this journey's page."""
+        return self._outline(self.page, self.context)
+
+    def rows(self) -> tuple[Row, ...]:
+        """The page as a person would see it: one `Row` per listed entry,
+        with its title, its status and where its link goes.
+
+        Hidden entries are absent, exactly as they are for the person — a
+        hidden entry is not a row.
+        """
+        return self.page.get_page().rows
+
+    def section(self, key: str, *, may_finish: bool | None = None) -> RunDriver:
+        """A `RunDriver` over the entry `key` names — resuming its run, or
+        starting one.
+
+        The page resolves the entry's viewset and its URL kwargs, so a
+        caller names the row rather than knowing which viewset a `Section`
+        generated and which kwargs it takes.
+
+        Raises `EntryNotFound` for a key this page does not list, and
+        `DoorRefused` for one it will not open: `check_door()` is the
+        section's, so a blocked or hidden section, or a submitted journey,
+        refuses here exactly as it does at the page's own door.
+        """
+        page = self.page
+        return self._entry_driver(page, page.get_entry(key), may_finish)
+
+    def _entry_driver(
+        self, page: TaskListViewSet, entry: Entry, may_finish: bool | None
+    ) -> RunDriver:
+        """A driver over one entry's run: the recorded one, or a fresh one.
+
+        Resume before begin, for the reason `enter()` gives: a second run
+        on every access would leave the first one's answers unreachable.
+        """
+        viewset = page.entry_viewset(entry)
+        url_kwargs = page.entry_url_kwargs(entry)
+        store = page.get_journey_store()
+        run_id = store.get_run(page.full_key(entry))
+        if run_id is not None:
+            return RunDriver.resume(
+                viewset,
+                run_id,
+                context=self.context,
+                may_finish=may_finish,
+                **url_kwargs,
+            )
+        driver = RunDriver.begin(
+            viewset, context=self.context, may_finish=may_finish, **url_kwargs
+        )
+        # What `enter()` does, and the reason a section's run is findable at
+        # all: a run nobody recorded is one the page cannot show as
+        # Incomplete and the next caller cannot resume.
+        store.set_run(page.full_key(entry), driver.run_id)
+        return driver
+
+    def _list(self, key: str) -> AddAnotherViewSet:
+        """The add-another page behind the entry `key` names."""
+        page = self.page
+        entry = page.get_entry(key)
+        viewset = entry.viewset
+        if viewset is None or not issubclass(viewset, AddAnotherViewSet):
+            raise EntryNotFound(
+                f"{key!r} is not a list: only an AddAnother entry has items."
+            )
+        view = viewset()
+        view.setup(self.context.http_request(), **page.entry_url_kwargs(entry))
+        return view
+
+    def items(self, key: str) -> AddAnotherPage:
+        """The add-another entry `key` names, as its own page: a row per
+        item, and whether the person has said there are no more."""
+        return self._list(key).get_items()
+
+    def add(self, key: str, *, may_finish: bool | None = None) -> RunDriver:
+        """Put a new item on the list `key` names, and drive it.
+
+        One call, rather than adding an item and then reading the ids back
+        to work out which one is new. Registering an item enters it, which
+        starts its run, so this resumes that one rather than starting a
+        second — which is what `enter()` does for the same reason.
+        """
+        page = self._list(key)
+        page.add_item()
+        item_id = page.get_item_ids()[-1]
+        return self._entry_driver(page, page.get_item_entry(item_id), may_finish)
+
+    def remove(self, key: str, item_id: str) -> None:
+        """Take an item off the list: its run, its stash, its title and its
+        place in the registry, exactly as the person's Remove does."""
+        self._list(key).remove_item(item_id)
+
+    def submit(self) -> HttpResponseBase:
+        """Press the page's button: `journey_done()`, then the tombstone.
+
+        Guarded twice, as `RunDriver.finish()` is. A journey with a row
+        still to finish raises `JourneyIncomplete` — the page refuses its
+        own button there and says so on the page, and a driver has no page
+        to say it on. And a driver that was not told it may conclude one
+        raises `ConfirmationRequired`, because `journey_done()` is where
+        the irreversible things live and a driver is the unattended path by
+        definition.
+        """
+        if not self.may_submit:
+            raise ConfirmationRequired(
+                "This driver may not submit a journey. Pass may_submit=True, "
+                "or hand the person `url` and let them press it."
+            )
+        page = self.page
+        if not page.get_page().is_complete:
+            raise JourneyIncomplete(
+                "The journey has rows still to finish; `rows()` says which."
+            )
+        return page.submit()
+
+
+def _entry_kind(entry: Entry) -> str:
+    """An entry's kind as a word: what a caller branches on before it looks
+    at anything else. Taken from the declared class, which is where the
+    author said it."""
+    return {
+        "Section": "section",
+        "AddAnother": "add-another",
+        "Group": "group",
+        "Link": "link",
+    }.get(type(entry).__name__, type(entry).__name__.lower())
 
 
 def _step_name(declaration: tree.Step) -> str | None:
