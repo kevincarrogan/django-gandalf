@@ -25,6 +25,7 @@ from django.test import override_settings
 
 from gandalf.context import WizardContext
 from gandalf.driver import (
+    MAX_DESCRIBED_CHOICES,
     ConfirmationRequired,
     RunDriver,
     RunComplete,
@@ -53,7 +54,7 @@ from tests.testapp.forms import (
     SummaryFieldsForm,
     ToppingsForm,
 )
-from tests.testapp.models import WizardRun
+from tests.testapp.models import Application, WizardRun
 
 
 class SignupForm(forms.Form):
@@ -275,6 +276,103 @@ def test_a_model_multiple_choice_field_maps_to_an_array():
 
     assert schema["type"] == "array"
     assert schema["items"]["type"] == "string"
+
+
+def test_a_long_list_of_choices_is_not_enumerated():
+    """Past the cap the enum is dropped rather than cut short. A short enum
+    that does not say it is short is worse than none: a caller reads `enum`
+    as the whole list and rules out every value below the cut."""
+    field = forms.ChoiceField(
+        choices=[(str(n), f"Option {n}") for n in range(MAX_DESCRIBED_CHOICES + 1)]
+    )
+
+    schema = field_json_schema(field)
+
+    assert schema["type"] == "string"
+    assert "enum" not in schema
+    assert schema["x-choices-omitted"] is True
+    assert schema["x-note"].startswith(
+        f"More than {MAX_DESCRIBED_CHOICES} choices, so they are not listed"
+    )
+
+
+def test_a_list_of_choices_at_the_cap_is_still_enumerated():
+    """The cap is a ceiling on a description, not a new shape for one. A
+    dropdown a person could actually use is described as it always was."""
+    field = forms.ChoiceField(
+        choices=[(str(n), f"Option {n}") for n in range(MAX_DESCRIBED_CHOICES)]
+    )
+
+    schema = field_json_schema(field)
+
+    assert len(schema["enum"]) == MAX_DESCRIBED_CHOICES
+    assert schema["x-note"].startswith("Choices: 0 (Option 0), ")
+
+
+def test_describing_a_field_reads_no_more_choices_than_it_lists():
+    """The cap is on the reading, not on the output. A `ModelChoiceField`'s
+    choices are a queryset, so a cap applied after enumerating them would
+    still have pulled the whole table in to describe one step."""
+    read = []
+
+    def choices():
+        for n in range(1000):
+            read.append(n)
+            yield (str(n), f"Option {n}")
+
+    field_json_schema(forms.ChoiceField(choices=choices))
+
+    # One past the cap, which is what tells a full list from a long one.
+    assert read == list(range(MAX_DESCRIBED_CHOICES + 1))
+
+
+def test_a_long_multiple_choice_field_omits_the_choices_from_its_items():
+    """The values belong to the items, so what is said about them belongs
+    there too — beside where the enum would have been."""
+    field = forms.MultipleChoiceField(
+        choices=[(str(n), f"Option {n}") for n in range(MAX_DESCRIBED_CHOICES + 1)]
+    )
+
+    schema = field_json_schema(field)
+
+    assert schema["items"] == {"type": "string", "x-choices-omitted": True}
+    assert schema["minItems"] == 1
+
+
+@pytest.mark.django_db
+def test_describing_a_model_choice_field_does_not_enumerate_a_table(
+    django_assert_num_queries,
+):
+    """Describing a form should not read a reference table into a prompt.
+    `RunDriver.outline_for()` describes every declared step, and
+    `accepts_documents()` builds the whole outline to answer one boolean."""
+    Application.objects.bulk_create(
+        [
+            Application(reference=f"GF-{n:05d}")
+            for n in range(MAX_DESCRIBED_CHOICES + 10)
+        ]
+    )
+    field = forms.ModelChoiceField(queryset=Application.objects.all())
+
+    with django_assert_num_queries(1):
+        schema = field_json_schema(field)
+
+    assert "enum" not in schema
+    assert schema["x-choices-omitted"] is True
+
+
+@pytest.mark.django_db
+def test_a_short_queryset_of_choices_is_enumerated_as_it_always_was():
+    Application.objects.bulk_create(
+        [Application(reference=f"GF-{n:05d}") for n in range(1, 4)]
+    )
+    field = forms.ModelChoiceField(
+        queryset=Application.objects.order_by("pk"), empty_label=None
+    )
+
+    schema = field_json_schema(field)
+
+    assert schema["enum"] == ["1", "2", "3"]
 
 
 def test_temporal_fields_carry_their_formats():

@@ -356,7 +356,7 @@ submission-shaped — what to *send*, not what `cleaned_data` holds.
 | Field | Schema |
 | --- | --- |
 | `MultipleChoiceField`, `ModelMultipleChoiceField` | `{"type": "array", "items": {"type": "string", "enum": [...]}}`; `minItems: 1` when required |
-| `ChoiceField` (and model/typed subclasses) | `{"type": "string", "enum": [...]}`; grouped choices are flattened; the empty prompt choice is dropped when required and kept when optional |
+| `ChoiceField` (and model/typed subclasses) | `{"type": "string", "enum": [...]}`; grouped choices are flattened; the empty prompt choice is dropped when required and kept when optional; [capped](#long-lists-of-choices) at `MAX_DESCRIBED_CHOICES` |
 | `NullBooleanField` | `{"type": ["boolean", "null"]}` |
 | `BooleanField` | `{"type": "boolean"}`; `const: true` when required |
 | `FloatField`, `DecimalField` | `{"type": "number"}` with `minimum`/`maximum` |
@@ -398,10 +398,59 @@ The step view's [`get_answer_schema()`](step-views.md) is the same idea one
 level up, for when the whole step is not form-shaped. Reach for the field
 when one field is unusual, and the view when the object holding them is.
 
+#### Long lists of choices
+
+A description travels to a model, and a reference table does not belong in
+a prompt. A choice field's values are read one past
+`MAX_DESCRIBED_CHOICES` (50) and no further, so describing a step never
+enumerates a queryset — `ModelChoiceField.choices` is one in disguise, and
+`RunDriver.outline_for()` describes every declared step of the wizard.
+
+Past the cap the enum is dropped rather than cut short, because a caller
+reads `enum` as the whole list and would rule out every value below the
+cut:
+
+```json
+{
+  "type": "string",
+  "title": "Application",
+  "x-choices-omitted": true,
+  "x-note": "More than 50 choices, so they are not listed here. Send the value the form expects; it is checked against the real list when the answer is submitted."
+}
+```
+
+`x-choices-omitted` is the half to branch on; the note beside it is prose.
+For a `MultipleChoiceField` both the enum and its absence live on `items`,
+which is what the values belong to.
+
+A field whose values are worth listing however many there are says so
+itself, and is asked before the cap applies:
+
+```python
+from django import forms
+
+
+class ApplicationField(forms.ModelChoiceField):
+    def json_schema(self):
+        pairs = [(application.pk, str(application)) for application in self.queryset]
+        legend = ", ".join(f"{value} ({label})" for value, label in pairs)
+        return {
+            "type": "string",
+            "enum": [str(value) for value, _ in pairs],
+            "x-note": f"Choices: {legend}.",
+        }
+```
+
+That the note is written out here is the point of the hatch rather than an
+oversight: the library's own `x-note` apologises for not knowing, so it is
+dropped when a field answers, and a field listing its own values says what
+they are called.
+
 On every property: `title` from `label`, `description` from `help_text`
 (only when set), `pattern` from the first `RegexValidator` on a string
 field that has no `format`, and `x-note` for a library remark — the choice
-legend (`Choices: value (label), …`), the file instruction, or
+legend (`Choices: value (label), …`) or the reason there is none, the file
+instruction, or
 `<FieldType> is not supported by the schema mapping; submit its raw form
 value`. Numeric bounds are the tightest of `min_value`/`max_value` and any
 `MinValueValidator`/`MaxValueValidator`; a callable `limit_value` is left

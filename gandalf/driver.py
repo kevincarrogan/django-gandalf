@@ -20,6 +20,7 @@ import json
 import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from itertools import islice
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from django import forms
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CheckResult",
+    "MAX_DESCRIBED_CHOICES",
     "PrefillResult",
     "RunComplete",
     "RunDriver",
@@ -75,6 +77,12 @@ __all__ = [
 # Validation errors as data: `form.errors.get_json_data()`'s shape — field
 # name to a list of {"message", "code"} dicts.
 Errors = dict[str, list[dict[str, Any]]]
+
+#: How many of a choice field's values a description will list. Past this it
+#: says there are more instead of naming them, because a description travels
+#: to a model and a reference table does not belong in a prompt. See
+#: `field_json_schema`.
+MAX_DESCRIBED_CHOICES = 50
 
 
 class RunComplete(Exception):
@@ -1004,11 +1012,10 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
     # single-choice branch below and be described as a string. It takes a
     # list, like its non-model sibling, and belongs here with it.
     if isinstance(field, (forms.MultipleChoiceField, forms.ModelMultipleChoiceField)):
-        values, legend = _choice_values(field)
-        array_schema: dict[str, Any] = {
-            "type": "array",
-            "items": {"type": "string", "enum": values},
-        }
+        # The values belong to the items, so the enum — or the note saying
+        # there is no enum — belongs on the items too.
+        items, legend = _choice_schema(field)
+        array_schema: dict[str, Any] = {"type": "array", "items": items}
         # `type: array` says a list is allowed, not that anything has to be in
         # it. Where the field is required the floor is one, and without this
         # only the prose ever said so.
@@ -1016,8 +1023,7 @@ def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
             array_schema["minItems"] = 1
         return array_schema, legend
     if isinstance(field, forms.ChoiceField):
-        values, legend = _choice_values(field)
-        return {"type": "string", "enum": values}, legend
+        return _choice_schema(field)
     # Before `BooleanField`, which it subclasses. Its `validate()` is a no-op,
     # so it never rejects anything: true, false and none are all answers and
     # `required` decides nothing. Its parent's `const: true` would say the
@@ -1145,14 +1151,40 @@ def _string_schema(field: forms.CharField, **extra: Any) -> dict[str, Any]:
     return schema
 
 
-def _choice_values(field: forms.ChoiceField) -> tuple[list[str], str]:
-    pairs = list(_flatten_choices(field.choices))
+def _choice_schema(field: forms.ChoiceField) -> tuple[dict[str, Any], str]:
+    """What one of a choice field's values may be, and the prose naming them.
+
+    The choices are read lazily and stopped one past `MAX_DESCRIBED_CHOICES`.
+    A `ModelChoiceField`'s `choices` is a queryset in disguise, so listing
+    them ran it — and `RunDriver.outline_for()` describes every declared
+    step, so a reference table was read once per such field per description,
+    and arrived in the prompt as an enum of primary keys beside a legend of
+    `str(obj)`.
+
+    Past the cap the enum is dropped rather than cut short, because a short
+    enum that does not say it is short is worse than none: a caller reads
+    `enum` as the whole list and rules out every value below the cut. What
+    is left says so twice over — `x-choices-omitted` for a reader that
+    branches on the schema, prose beside it for one that reads.
+
+    A field whose values are worth listing however many there are says so
+    with a `json_schema()` of its own, which is asked before any of this.
+    """
+    pairs = _flatten_choices(field.choices)
     # The empty choice is a prompt — "Select..." — rather than an answer, and
     # a required field rejects it. Advertising it would invite a caller to
     # send the one value the field is certain to refuse. Where the field is
     # optional it really is submittable: it is how somebody says nothing.
     if field.required:
-        pairs = [(value, label) for value, label in pairs if str(value) != ""]
-    values = [str(value) for value, _ in pairs]
-    legend = ", ".join(f"{value} ({label})" for value, label in pairs)
-    return values, f"Choices: {legend}."
+        pairs = ((value, label) for value, label in pairs if str(value) != "")
+    # One past the cap, which is what tells a full list from a long one.
+    listed = list(islice(pairs, MAX_DESCRIBED_CHOICES + 1))
+    if len(listed) > MAX_DESCRIBED_CHOICES:
+        return {"type": "string", "x-choices-omitted": True}, (
+            f"More than {MAX_DESCRIBED_CHOICES} choices, so they are not "
+            "listed here. Send the value the form expects; it is checked "
+            "against the real list when the answer is submitted."
+        )
+    values = [str(value) for value, _ in listed]
+    legend = ", ".join(f"{value} ({label})" for value, label in listed)
+    return {"type": "string", "enum": values}, f"Choices: {legend}."
