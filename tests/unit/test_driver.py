@@ -2157,6 +2157,69 @@ def test_check_says_which_row_of_a_formset_is_wrong():
     assert list(result.invalid["opening-hours"]) == ["0-opens"]
 
 
+def test_a_formset_steps_rows_can_be_read_changed_and_submitted_back(
+    organisers_driver,
+):
+    """The round trip the driver promises of every step: read the answers,
+    change one field, send them back, with nothing to convert in between.
+
+    A formset answers with rows rather than a mapping, so until this the
+    two halves did not meet — `answers()` handed back what `submit()` would
+    not take, and the caller had to know that a formset is posted as a
+    management form and n prefixed rows.
+    """
+    organisers_driver.submit(ORGANISERS, step="organisers")
+    rows = organisers_driver.answers()["organisers"]
+
+    changed = [{**row, "first_name": "Grace"} for row in rows]
+    result = organisers_driver.submit(changed, step="organisers")
+
+    assert result.status == "advanced"
+    assert organisers_driver.answers()["organisers"] == [
+        {"email": "ada@example.com", "first_name": "Grace"}
+    ]
+
+
+def test_rows_submitted_as_an_answer_are_validated_like_any_other(
+    organisers_driver,
+):
+    """Rendering the management form is a convenience, not a way past the
+    formset's own rules: a row missing a field is refused, named the way a
+    posted one would be."""
+    result = organisers_driver.submit(
+        [{"email": "", "first_name": "Ada"}], step="organisers"
+    )
+
+    assert result.status == "invalid"
+    assert "0-email" in result.errors
+
+
+def test_prefill_takes_a_formset_steps_rows_as_it_reads_them():
+    """`prefill()` is `answers()` in reverse for a whole bag at once, so it
+    takes the same shape a formset step reads back as."""
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    driver = RunDriver.begin(OpeningHoursWizardViewSet, session=SessionStore())
+
+    result = driver.prefill(
+        {
+            "who": {"name": "Ada"},
+            "opening-hours": [{"day": "Monday", "opens": "09:00"}],
+        }
+    )
+
+    assert "opening-hours" in result.placed
+    assert driver.answers()["opening-hours"] == [{"day": "Monday", "opens": "09:00"}]
+
+
+def test_a_posted_formset_is_still_taken_as_it_always_was(organisers_driver):
+    """The management-form shape a browser sends is a submission already,
+    and stays one — the rows are the addition, not the replacement."""
+    result = organisers_driver.submit(ORGANISERS, step="organisers")
+
+    assert result.status == "advanced"
+
+
 # --- A field that describes itself ------------------------------------------
 
 

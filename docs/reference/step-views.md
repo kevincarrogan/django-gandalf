@@ -78,6 +78,14 @@ agent is told it asks. Override it beside a form object
 `form_json_schema()` cannot read: that walks `form.fields`, which only a
 `BaseForm` has.
 
+**`get_submission(answer)`** — `answer` as the POST that would have produced
+it, and the only one of the five that goes the other way: the four above
+describe what a step holds, and this is how something gets *into* it. A
+form's answer is already the shape a browser posts, so the default puts the
+step's `get_prefix()` around it and stops. Override it beside a form object
+whose answer is not a submission; [`RunDriver.submit()`](driver.md) asks here,
+which is what lets a caller read a step, change one field and send it back.
+
 A step declared with a bare Django `FormView` rather than a `StepFormView`
 carries none of these and gets the `BaseForm` readings, so nothing has to
 change to keep working.
@@ -131,6 +139,18 @@ describes what a row *asks* rather than what any row was answered with.
 `min_num` and `max_num` say what the page draws, and `validate_min` /
 `validate_max` say what it will accept. Advertising an unenforced bound
 would tell an agent a rule that is not one.
+
+**`get_submission(answer)`** — rows as the management form and the n
+prefixed rows a browser sends. This is the half that makes a formset step
+*writable* by something that is not a browser: `[{"day": "Monday"}, ...]`
+says nothing about `TOTAL_FORMS`, so until a step could render its own
+submission, a caller reading a formset step back could not submit what it
+had just been handed. The counts come from the unbound formset, so they are
+the ones this step would have rendered.
+
+A mapping is passed through unchanged — that is what a browser posted and
+what the HTTP path stores, so it is a submission already. Rows are the
+addition rather than the replacement.
 
 **Why it is needed at all.** A valid formset's `errors` is `[{}]` — a list
 holding one empty dict per row — which is **truthy**. Code written as `if

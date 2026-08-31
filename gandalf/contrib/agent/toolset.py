@@ -51,6 +51,7 @@ from gandalf.driver import (
 )
 from gandalf.runtime import StepNotFound
 from gandalf.storage import RunNotFound
+from gandalf.types import Answer
 from gandalf.viewsets import WizardViewSet
 
 
@@ -67,12 +68,20 @@ def accepts_documents(viewset_class: type[WizardViewSet]) -> bool:
     same thing in words, and reading *that* would make a sentence somebody
     might reasonably reword into the thing that decides whether an agent
     gets a tool.
+
+    Two kinds of step answer nothing here, and both used to raise rather
+    than answer. A step with no schema yet — a view composing its form from
+    answers the run has not got — cannot be asked; and a step describing
+    itself as an array repeats its fields per row, so a file in one is
+    addressed as `0-document` and placed with the management form, which
+    `attach_document` does not do. Neither is a step this tool could serve,
+    so neither turns it on.
     """
     outline = RunDriver.outline_for(viewset_class)
     return any(
         prop.get("format") == "binary"
         for entry in outline_steps(outline)
-        for prop in entry["schema"]["properties"].values()
+        for prop in (entry["schema"] or {}).get("properties", {}).values()
     )
 
 
@@ -189,7 +198,7 @@ def build_toolset(
 
     @toolset.tool
     def check_answers(
-        ctx: RunContext[WizardDeps], answers: dict[str, dict[str, Any]]
+        ctx: RunContext[WizardDeps], answers: dict[str, Answer]
     ) -> ToolReturn:
         """Try answers against the wizard without submitting any of them.
         Returns which would validate, which would be rejected and why,
@@ -213,9 +222,7 @@ def build_toolset(
         )
 
     @toolset.tool
-    def prefill(
-        ctx: RunContext[WizardDeps], answers: dict[str, dict[str, Any]]
-    ) -> ToolReturn:
+    def prefill(ctx: RunContext[WizardDeps], answers: dict[str, Answer]) -> ToolReturn:
         """Fill many steps at once from answers you already hold, keyed by
         step name. Placement follows the wizard's own routing — an answer
         that selects a branch or grows the tree reveals more steps to
@@ -242,9 +249,10 @@ def build_toolset(
         return _sync(ctx, driver, extra=extra)
 
     @toolset.tool
-    def submit_step(ctx: RunContext[WizardDeps], data: dict[str, Any]) -> ToolReturn:
+    def submit_step(ctx: RunContext[WizardDeps], data: Answer) -> ToolReturn:
         """Submit answers for the current step. `data` maps the current
-        step's field names (from its JSON Schema) to values."""
+        step's field names (from its JSON Schema) to values — or is a list
+        of one such mapping per row, for a step whose schema is an array."""
         driver = _driver(ctx)
         try:
             result = driver.submit(data)
@@ -262,9 +270,7 @@ def build_toolset(
         )
 
     @toolset.tool
-    def edit_step(
-        ctx: RunContext[WizardDeps], step: str, data: dict[str, Any]
-    ) -> ToolReturn:
+    def edit_step(ctx: RunContext[WizardDeps], step: str, data: Answer) -> ToolReturn:
         """Change named fields of an already-answered step. Send only what
         you are changing: every field you leave out keeps the answer it has
         now, which may be one the person set themselves. The run re-routes
@@ -275,8 +281,19 @@ def build_toolset(
         # fields would blank the rest — and re-sending the whole step from
         # memory quietly reverts anything the person corrected in the form
         # since. Merging over what is stored is what makes an edit an edit.
+        #
+        # Rows are the exception, and not an oversight: a step answered
+        # with n of them has no field to merge onto, and merging by
+        # position would silently keep a row the caller meant to drop. A
+        # list replaces what is there, which is also how the person's own
+        # form submits one.
         placement = driver.placements().get(step)
-        merged = {**(placement.answers if placement else {}), **data}
+        stored = placement.answers if placement else {}
+        merged: Answer = (
+            data
+            if isinstance(data, list) or isinstance(stored, list)
+            else {**stored, **data}
+        )
         try:
             result = driver.submit(merged, step=step)
         except StepNotFound:

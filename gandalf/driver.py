@@ -40,7 +40,7 @@ from gandalf import tree
 from gandalf.context import WizardContext, WizardSession
 from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.file_storage import FileRef, StoredUpload
-from gandalf.form_views import answer_errors
+from gandalf.form_views import answer_errors, answer_submission
 from gandalf.runtime import (
     Run,
     Cursor,
@@ -50,7 +50,7 @@ from gandalf.runtime import (
     Walk,
 )
 from gandalf.summary import _flatten_choices
-from gandalf.types import FileRefs, Metadata, Submission
+from gandalf.types import Answer, FileRefs, Metadata, Submission
 from gandalf.viewsets import WizardViewSet
 
 if TYPE_CHECKING:
@@ -138,7 +138,7 @@ class Placement:
     did".
     """
 
-    answers: dict[str, Any]
+    answers: Answer
     files: FileRefs
     metadata: Metadata
 
@@ -155,7 +155,7 @@ class StepDescription:
 
     step: str | None
     schema: dict[str, Any] | None
-    answers: dict[str, dict[str, Any]]
+    answers: dict[str, Answer]
     errors: Errors
     complete: bool
 
@@ -400,7 +400,7 @@ class RunDriver:
         """
         return self.run.file_storage.open(ref)
 
-    def answers(self, *, json_safe: bool = False) -> dict[str, dict[str, Any]]:
+    def answers(self, *, json_safe: bool = False) -> dict[str, Answer]:
         """Every answered step's `cleaned_data`, keyed by step name.
 
         Cleaned values are Python objects rather than the strings they were
@@ -437,7 +437,7 @@ class RunDriver:
 
     def submit(
         self,
-        data: dict[str, Any],
+        data: Answer,
         *,
         files: Mapping[str, UploadedFile] | None = None,
         step: str | None = None,
@@ -489,7 +489,7 @@ class RunDriver:
         else:
             declaration = self._declaration(step)
             claim = {"name": step}
-        submission = self._prefixed(declaration, data)
+        submission = self._submission(declaration, data)
         stored_files = run.store_uploads(files or {})
         walk = run.walk(
             claim=claim,
@@ -546,7 +546,7 @@ class RunDriver:
         """
         return self._with_schemas(self.run.wizard.outline())
 
-    def prefill(self, answers: dict[str, dict[str, Any]]) -> PrefillResult:
+    def prefill(self, answers: dict[str, Answer]) -> PrefillResult:
         """Place as many of `answers` (step name → submission) as the tree
         will take, and report the residue.
 
@@ -597,7 +597,7 @@ class RunDriver:
             escape=escape,
         )
 
-    def check(self, answers: dict[str, dict[str, Any]]) -> CheckResult:
+    def check(self, answers: dict[str, Answer]) -> CheckResult:
         """Judge `answers` against the wizard without placing any of them.
 
         Nothing is walked and nothing is stored: each candidate is bound to
@@ -648,9 +648,7 @@ class RunDriver:
                 yield from self._declared_steps(node.default, conditional=True)
             node = node.next
 
-    def _check_step(
-        self, declaration: tree.Step, data: dict[str, Any]
-    ) -> tuple[str, Any]:
+    def _check_step(self, declaration: tree.Step, data: Answer) -> tuple[str, Any]:
         try:
             view = self._bound_view(declaration, data)
             form = view.get_form()
@@ -672,9 +670,7 @@ class RunDriver:
             return "invalid", errors
         return "ok", {}
 
-    def _bound_view(
-        self, declaration: tree.Step, data: dict[str, Any]
-    ) -> FormView[Any]:
+    def _bound_view(self, declaration: tree.Step, data: Answer) -> FormView[Any]:
         """The step's view, set up with `data` — composed exactly as a real
         placement composes it, so the same overrides apply.
 
@@ -684,7 +680,7 @@ class RunDriver:
         truth."""
         form_view_class = cast("StepViewClass", declaration.form_view)
         request = self.run.dispatcher.build_request(
-            "POST", submission=self._prefixed(declaration, data)
+            "POST", submission=self._submission(declaration, data)
         )
         view = form_view_class()
         view.setup(request)
@@ -780,19 +776,19 @@ class RunDriver:
         finder.visit(self.run.wizard.tree)
         return cast("tree.Step | None", finder.one())
 
-    def _prefixed(
-        self, declaration: tree.Step | None, data: dict[str, Any]
-    ) -> Submission:
-        """Map bare field names through the step view's form prefix, so the
-        caller never has to know one is configured — and reduce the values to
-        the ones a browser would have posted."""
-        data = _json_safe(data)
+    def _submission(self, declaration: tree.Step | None, answer: Answer) -> Submission:
+        """`answer` as the POST that would have produced it.
+
+        Asked of the step view (`get_submission()`), so the caller never
+        has to know that a prefix is configured, or that a formset is
+        posted as a management form and n numbered rows. Values are reduced
+        to the ones a browser would have sent first, because that is true
+        whatever shape the step answers in.
+        """
+        answer = _json_safe(answer)
         if declaration is None:
-            return data
-        prefix = self._view_for(declaration).get_prefix()
-        if prefix is None:
-            return data
-        return {f"{prefix}-{name}": value for name, value in data.items()}
+            return cast("Submission", answer)
+        return answer_submission(self._view_for(declaration), answer)
 
     def _view_for(self, declaration: tree.Step) -> FormView[Any]:
         form_view_class = cast("StepViewClass", declaration.form_view)

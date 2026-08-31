@@ -42,6 +42,14 @@ Submission: TypeAlias = dict[str, Any]
 #: The uploads stored against one step, keyed by form field name.
 FileRefs: TypeAlias = dict[str, FileRef]
 
+#: One step's answer as its view reads it back: a mapping of field name to
+#: cleaned value for a form, and a list of one such mapping per row for a
+#: formset, which repeats its fields rather than declaring any. What
+#: `StepFormView.get_answer()` returns and `get_submission()` takes, so a
+#: step can be read, changed and submitted back without the caller knowing
+#: which of the two it is.
+Answer: TypeAlias = "dict[str, Any] | list[dict[str, Any]]"
+
 #: What a placement recorded about itself: who made it and how, parked
 #: beside the answer rather than inside it. A step's `context` is the
 #: declaration and is the same for every run; this belongs to one answer in

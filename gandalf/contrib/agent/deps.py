@@ -30,6 +30,7 @@ from ag_ui.core import BinaryInputContent, EventType, StateSnapshotEvent
 from pydantic import BaseModel
 
 from gandalf.context import WizardContext
+from gandalf.types import Answer
 
 
 class WizardState(BaseModel):
@@ -39,7 +40,11 @@ class WizardState(BaseModel):
     step: str | None = None
     step_schema: dict[str, Any] | None = None
     outline: list[dict[str, Any]] | None = None
-    answers: dict[str, dict[str, Any]] = {}
+    #: Keyed by step name. A step's answer is a mapping of field name to
+    #: value, or a list of one such mapping per row where the step repeats
+    #: its fields — `Answer`, the shape the driver reads back and takes
+    #: again, rather than the narrower one a form alone would suggest.
+    answers: dict[str, Answer] = {}
     complete: bool = False
     handoff_url: str | None = None
 

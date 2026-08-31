@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, cast
 from django import forms
 from django.views.generic.edit import FormView
 
-from gandalf.types import WizardRequest
+from gandalf.types import Answer, Submission, WizardRequest
 
 
 if TYPE_CHECKING:
@@ -125,6 +125,22 @@ class StepFormView(_StepFormViewBase):
 
         return form_json_schema(form)
 
+    def get_submission(self, answer: Answer) -> Submission:
+        """`answer` as the POST that would have produced it.
+
+        The inverse of `get_answer()`, and what lets a caller read a step,
+        change one field and submit it straight back with nothing to
+        convert in between. A form's answer is already the shape a browser
+        posts — field name to value — so this only puts the step's prefix
+        around it.
+
+        Override beside a form object whose answer is not a submission. It
+        is the one direction the other four hooks do not cover: they all
+        describe what a step holds, and this is how something gets *into*
+        it.
+        """
+        return _under_prefix(self.get_prefix(), answer)
+
 
 class FormSetStepView(StepFormView):
     """A step whose form object is a formset rather than a form.
@@ -195,6 +211,37 @@ class FormSetStepView(StepFormView):
             schema["maxItems"] = form.max_num
         return schema
 
+    def get_submission(self, answer: Answer) -> Submission:
+        """Rows as the management form and n prefixed rows a browser sends.
+
+        A formset's answer is the one that does not already read as a
+        submission: `[{"day": "Monday"}, ...]` says nothing about
+        `TOTAL_FORMS`, and until this a caller reading a formset step back
+        could not submit what it had just been handed. The counts come from
+        the unbound formset, so they are the ones this step would have
+        rendered.
+
+        A mapping is passed through unchanged. That is what a browser
+        posted and what the HTTP path stores, so it is a submission
+        already; rows are the addition rather than the replacement.
+        """
+        if not isinstance(answer, list):
+            return super().get_submission(answer)
+        # `get_form()` is typed as the `BaseForm` a step usually holds; on
+        # this class it is the formset the counts come from.
+        formset = cast("Any", self.get_form())
+        prefix = formset.prefix
+        submission: Submission = {
+            f"{prefix}-TOTAL_FORMS": str(len(answer)),
+            f"{prefix}-INITIAL_FORMS": "0",
+            f"{prefix}-MIN_NUM_FORMS": str(formset.min_num),
+            f"{prefix}-MAX_NUM_FORMS": str(formset.max_num),
+        }
+        for index, row in enumerate(answer):
+            for name, value in row.items():
+                submission[f"{prefix}-{index}-{name}"] = value
+        return submission
+
 
 def answer_errors(view: Any, form: Any) -> dict[str, list[dict[str, Any]]]:
     """What a step refused, by field name, empty when it is settled.
@@ -212,6 +259,31 @@ def answer_errors(view: Any, form: Any) -> dict[str, list[dict[str, Any]]]:
     if reader is None:
         return cast("dict[str, list[dict[str, Any]]]", form.errors.get_json_data())
     return cast("dict[str, list[dict[str, Any]]]", reader(form))
+
+
+def answer_submission(view: Any, answer: Answer) -> Submission:
+    """`answer` as the POST that would have produced it.
+
+    `answer_errors()`'s counterpart on the way in, and the same rule: a
+    step declared with a bare Django `FormView` carries no
+    `get_submission`, has no say, and gets the plain reading — its answer
+    is already a mapping of field name to value, under the view's prefix.
+    """
+    writer = getattr(view, "get_submission", None)
+    if writer is None:
+        return _under_prefix(view.get_prefix(), answer)
+    return cast("Submission", writer(answer))
+
+
+def _under_prefix(prefix: str | None, answer: Answer) -> Submission:
+    """A form's answer is the shape a browser posts; this is the only thing
+    between the two, and both the hook and its fallback use it."""
+    if prefix is None:
+        return cast("Submission", answer)
+    return {
+        f"{prefix}-{name}": value
+        for name, value in cast("dict[str, Any]", answer).items()
+    }
 
 
 def form_view_factory(

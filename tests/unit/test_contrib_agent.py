@@ -11,6 +11,7 @@ not in doubt; what is worth pinning is what each one does to the run.
 
 import json
 import tempfile
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -226,6 +227,45 @@ def test_accepts_documents_reads_the_format_and_not_the_prose():
     assert photo["type"] == "string"
 
 
+def test_a_step_that_repeats_its_fields_is_not_mistaken_for_one_that_has_none():
+    """`accepts_documents` walked `schema["properties"]` for every step. A
+    formset describes itself as an array of rows and has no `properties`,
+    so asking a wizard with one in it raised `KeyError` — and the raise came
+    out of `build_toolset`, so the agent could not be built at all."""
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    assert accepts_documents(OpeningHoursWizardViewSet) is False
+
+
+def test_a_step_with_no_schema_yet_is_not_mistaken_for_one_with_no_fields():
+    """A step whose view composes its form from answers the run has not got
+    yet reports `schema: None` until the walk reaches it. That is not a
+    step with no file field; it is a step nothing can say that about."""
+    from tests.testapp.from_formtools.two_factor import SetupViewSet
+
+    assert accepts_documents(SetupViewSet) is False
+
+
+@pytest.mark.parametrize(
+    "wizard",
+    ["djangogirls", "squest", "two_factor"],
+    ids=["a formset step", "a form composed from answers", "a consuming check"],
+)
+def test_an_agent_can_be_built_for_every_wizard_the_repo_ships(wizard):
+    """The acceptance case: the three ported wizards are the real-world
+    shapes, and until this none of them could be given an agent — the
+    build raised before a tool existed."""
+    from tests.testapp.from_formtools import djangogirls, squest, two_factor
+
+    viewset = {
+        "djangogirls": djangogirls.OrganiseAnEventViewSet,
+        "squest": squest.RequestAServiceViewSet,
+        "two_factor": two_factor.SetupViewSet,
+    }[wizard]
+
+    assert "get_run" in _tools(viewset)
+
+
 # --- driving a run -----------------------------------------------------
 
 
@@ -358,6 +398,56 @@ def test_an_earlier_answer_can_be_corrected():
     result = tools["edit_step"](ctx, "name", {"name": "Grace"})
 
     assert result.return_value["answers"]["name"] == {"name": "Grace"}
+
+
+def test_a_run_holding_rows_is_reported_to_the_browser_without_complaint():
+    """`WizardState.answers` said every step answers with a mapping. A
+    formset answers with rows, and the state is a pydantic model that both
+    refuses them on construction and warns on every serialisation of one —
+    and it is serialised into the AG-UI stream on every tool call.
+
+    The warning is the assertion because the value survived: nothing failed
+    loudly, the type was simply not true, which is the failure that
+    outlives everybody who knew about it.
+    """
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    tools = _tools(OpeningHoursWizardViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = tools["submit_step"](ctx, [{"day": "Monday", "opens": "09:00"}])
+
+    assert result.return_value["answers"]["opening-hours"] == [
+        {"day": "Monday", "opens": "09:00"}
+    ]
+    rebuilt = WizardState(answers=ctx.deps.state.answers)
+    assert rebuilt.answers["opening-hours"] == [{"day": "Monday", "opens": "09:00"}]
+
+
+def test_editing_a_step_that_answered_with_rows_replaces_them():
+    """`edit_step` merges what it is given over what is stored, which reads
+    as `{**stored, **data}` — and a formset's stored answer is a list, so
+    the merge raised. Rows are replaced wholesale rather than merged: there
+    is no field to merge *onto* when the answer is n of them."""
+    from tests.testapp.views import OpeningHoursWizardViewSet
+
+    tools = _tools(OpeningHoursWizardViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    tools["submit_step"](ctx, {"name": "Ada"})
+    tools["submit_step"](ctx, [{"day": "Monday", "opens": "09:00"}])
+
+    result = tools["edit_step"](
+        ctx, "opening-hours", [{"day": "Tuesday", "opens": "10:00"}]
+    )
+
+    assert result.return_value["answers"]["opening-hours"] == [
+        {"day": "Tuesday", "opens": "10:00"}
+    ]
 
 
 def test_editing_a_step_the_run_cannot_reach_is_a_retry():

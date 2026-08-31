@@ -117,13 +117,19 @@ Place `data` at the cursor step, or at the step `step` names.
 
 **Parameters**
 
-- `data` — bare field names to values. Values are reduced to what a
-  browser would have posted: the cleaned values `answers()` hands back
-  (`datetime.date`, `Decimal`, …) are converted through `DjangoJSONEncoder`
-  first, so a step's answers can be read, changed and submitted straight
-  back. A value the encoder cannot render raises `TypeError` here rather
-  than when state is written. Any form prefix the step view configures is
-  applied for you.
+- `data` — an `Answer`: bare field names to values, or a list of one such
+  mapping per row for a step that repeats its fields. Values are reduced to
+  what a browser would have posted: the cleaned values `answers()` hands
+  back (`datetime.date`, `Decimal`, …) are converted through
+  `DjangoJSONEncoder` first, so a step's answers can be read, changed and
+  submitted straight back — rows included. A value the encoder cannot
+  render raises `TypeError` here rather than when state is written.
+
+  Turning an answer into a submission is the step view's to do
+  ([`get_submission()`](step-views.md)), so any form prefix is applied for
+  you, and a repeated step's management form is rendered for you. The shape
+  a browser posts is still taken as it is: rows are the addition, not the
+  replacement.
 - `files` — uploads keyed by form field name, as `django.core.files.uploadedfile.UploadedFile`
   instances, placed exactly as a multipart POST would place them. A file
   belongs here and not in `data`, which is stored as JSON. Omitting
@@ -203,9 +209,11 @@ view, so the same overrides apply — and validated alone.
 
 Every answered step's `cleaned_data`, keyed by step name in walk order.
 
-**Returns** `dict[str, dict[str, Any]]`. With `json_safe=False` the values
-are Python objects — a `DateField` gives a `datetime.date` — and feed
-straight back into `submit()`. With `json_safe=True` they are rendered as
+**Returns** `dict[str, Answer]` — each step's answer as its view reads it
+back, which is a mapping of field name to value, or a list of one such
+mapping per row for a step that repeats its fields. With `json_safe=False`
+the values are Python objects — a `DateField` gives a `datetime.date` — and
+feed straight back into `submit()`. With `json_safe=True` they are rendered as
 JSON holds them (ISO dates, strings for decimals and UUIDs), and still feed
 back into `submit()`. It is the *cleaned* answer either way: a ticked
 checkbox is `True`, not `"on"`. The one exception is an uploaded file,
@@ -279,7 +287,7 @@ Frozen dataclass.
 | --- | --- | --- |
 | `step` | `str \| None` | the current step's name; `None` once complete |
 | `schema` | `dict \| None` | JSON Schema of its form; `None` once complete |
-| `answers` | `dict[str, dict]` | `answers()` |
+| `answers` | `dict[str, Answer]` | `answers()` |
 | `errors` | `dict[str, list[dict]]` | field errors of the last submission made *through this driver* (`{}` when it validated, or after an escape) |
 | `complete` | `bool` | |
 
@@ -331,8 +339,18 @@ Frozen dataclass.
 
 ### `Placement`
 
-Frozen dataclass: `answers` (cleaned data), `files` (`dict[str, FileRef]`),
-`metadata` (`dict`; `{}` when the placement recorded nothing).
+Frozen dataclass: `answers` (cleaned data, as `Answer`), `files`
+(`dict[str, FileRef]`), `metadata` (`dict`; `{}` when the placement recorded
+nothing).
+
+### `Answer`
+
+`dict[str, Any] | list[dict[str, Any]]` — one step's answer as its view
+reads it back. A mapping of field name to cleaned value for a form; a list
+of one such mapping per row for a step that repeats its fields, which
+declares none of its own. It is the same shape in both directions:
+`answers()` hands it out and `submit()`, `prefill()` and `check()` take it
+straight back.
 
 ### `RunComplete`, `RunIncomplete`, `ConfirmationRequired`
 
