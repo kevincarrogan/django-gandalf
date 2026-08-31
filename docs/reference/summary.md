@@ -211,6 +211,7 @@ Module-level. Render one cleaned value as display text; the mixin's
 | `value` | Renders as |
 | --- | --- |
 | `None` or `""` | `""` |
+| anything, where the field carries `format_value()` | whatever the field says, via `str()` |
 | a `list` or `tuple` (a `MultipleChoiceField` answer) | each item formatted and joined with `", "`; `[]` is `""` |
 | a `bool` | `Yes` / `No`, via `gettext` |
 | a `str` or `int` matching one of the field's `choices` (optgroups flattened) | the choice's label |
@@ -223,6 +224,32 @@ Module-level. Render one cleaned value as display text; the mixin's
 Checks run in that order, so a choice value no longer in `choices` renders
 as itself, and a `ModelChoiceField`'s model instance — not a `str` or `int`
 — falls through to its own `__str__` without the queryset being consulted.
+
+**A field can say how it reads.** The table is what Gandalf recognises, and
+a project's own field is by definition not on it — the fall-through is
+`str(value)`, which shows a person checking their answers a Python repr.
+Give the field a `format_value()` and it is asked instead:
+
+```python
+from django import forms
+
+
+class MoneyField(forms.DecimalField):
+    def format_value(self, value):
+        return f"£{value:,.2f}"
+```
+
+Said once on the field rather than again on every page that shows it. It is
+handed the whole answer — a list included, since a field holding several
+things knows how they read together — but not an empty one: that an
+unanswered field shows blank is the page's rule, and a page wanting *Not
+provided* says so by overriding `SummaryMixin.format_value()`.
+
+Django's *widgets* carry a `format_value()` of their own, for rendering an
+input's value. This is the answer's display text, and the two are
+unrelated. The same field can also carry
+[`json_schema()`](driver.md#form_json_schemaform), which is the same idea
+for what an agent is told the field takes.
 
 ---
 

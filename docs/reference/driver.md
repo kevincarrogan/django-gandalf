@@ -370,6 +370,34 @@ submission-shaped — what to *send*, not what `cleaned_data` holds.
 | `FileField`, `ImageField` | `{"type": "string", "format": "binary"}` — `format: binary` is the only part to branch on |
 | anything else | `{"type": "string"}` |
 
+**A field can describe itself.** The table above is what Gandalf recognises;
+a project's own field is by definition not on it, and would be called a bare
+string with an `x-note` saying the mapping gave up. Give the field a
+`json_schema()` and it is asked instead of guessed at — once, for every step
+that asks it:
+
+```python
+from django import forms
+
+
+class MoneyField(forms.DecimalField):
+    def json_schema(self):
+        return {"type": "number", "minimum": 0, "x-unit": "GBP"}
+```
+
+It replaces the type-shaped half only: `title`, `description` and the rest
+are added around it either way, so a field cannot lose its label by
+answering, and the "not supported" note is dropped because the note
+apologises for not knowing. It is consulted *before* the table, so a field
+may correct a description it would otherwise have been given rather than
+only supply a missing one — a `CharField` subclass can carry a `pattern`
+nothing could have derived, and a `pattern` it states is not overwritten by
+one read off a `RegexValidator`.
+
+The step view's [`get_answer_schema()`](step-views.md) is the same idea one
+level up, for when the whole step is not form-shaped. Reach for the field
+when one field is unusual, and the view when the object holding them is.
+
 On every property: `title` from `label`, `description` from `help_text`
 (only when set), `pattern` from the first `RegexValidator` on a string
 field that has no `format`, and `x-note` for a library remark — the choice

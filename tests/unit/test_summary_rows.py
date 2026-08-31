@@ -732,3 +732,28 @@ def test_a_field_named_by_two_specs_is_refused(address_rows):
         address_rows(_View)
 
     assert "town" in str(error.value)
+
+
+class ColourField(forms.Field):
+    """A field whose cleaned value is not a string, and knows how to read."""
+
+    def format_value(self, value):
+        return value["hex"].upper()
+
+
+def test_a_field_that_says_how_it_reads_is_believed():
+    """Without this the page falls to `str(value)` and a person checking
+    their answers is shown a Python repr."""
+    form = forms.Form()
+    form.fields["colour"] = ColourField(label="Colour")
+
+    assert format_value(form["colour"], {"hex": "#ffffff"}) == "#FFFFFF"
+
+
+def test_an_unanswered_field_is_still_empty_however_it_reads():
+    """The empty guard is the page's rule, not the field's: an answer
+    nobody gave is blank rather than whatever a formatter makes of None."""
+    form = forms.Form()
+    form.fields["colour"] = ColourField(label="Colour")
+
+    assert format_value(form["colour"], None) == ""

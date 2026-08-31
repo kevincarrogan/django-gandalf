@@ -205,9 +205,25 @@ def format_value(bound_field: BoundField, value: Any) -> str:
     times take the active locale's format, uploads show their filename, and
     a multi-valued answer is each of those joined with commas. An answer the
     user never gave renders as empty text rather than "None".
+
+    A field carrying `format_value()` is asked instead, and is handed the
+    whole answer — a list included, since a field holding several things
+    knows how they read together. It is the one place a project's own field
+    says how it reads, rather than every page that shows it saying so
+    again; without it the fall-through is `str(value)`, and a person
+    checking their answers is shown a Python repr. (Django's *widgets*
+    carry a `format_value()` of their own, for rendering an input's value.
+    This is the answer's display text, and the two are unrelated.)
+
+    The empty answer is decided before asking. That an unanswered field
+    shows blank is the page's rule rather than the field's — a page wanting
+    "Not provided" says so by overriding `SummaryMixin.format_value`.
     """
     if value is None or value == "":
         return ""
+    formatter = getattr(bound_field.field, "format_value", None)
+    if formatter is not None:
+        return str(formatter(value))
     if isinstance(value, (list, tuple)):
         return ", ".join(format_value(bound_field, item) for item in value)
     if isinstance(value, bool):

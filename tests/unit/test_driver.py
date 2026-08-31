@@ -2055,3 +2055,64 @@ def test_check_says_which_row_of_a_formset_is_wrong():
     )
 
     assert list(result.invalid["opening-hours"]) == ["0-opens"]
+
+
+# --- A field that describes itself ------------------------------------------
+
+
+class ColourField(forms.Field):
+    """The kind of field a project writes: not one of Django's, and holding
+    something a string cannot stand for."""
+
+    def json_schema(self):
+        return {
+            "type": "object",
+            "properties": {"hex": {"type": "string", "pattern": "^#[0-9a-f]{6}$"}},
+        }
+
+
+class PostcodeField(forms.CharField):
+    """A field whose format is enforced in `clean()` rather than by a
+    validator, so nothing about it could be derived."""
+
+    def json_schema(self):
+        return {"type": "string", "pattern": "^[A-Z]{1,2}[0-9].*"}
+
+
+def test_a_field_that_describes_itself_is_believed():
+    """The ladder ends in `{"type": "string"}` and a note telling the model
+    the library gave up. A field that says what it is is taken at its word,
+    and the apology goes with it."""
+    schema = field_json_schema(ColourField(label="Colour"))
+
+    assert schema["type"] == "object"
+    assert "x-note" not in schema
+
+
+def test_a_field_that_describes_itself_still_gets_its_label_and_help():
+    """Only the type-shaped half is the field's to replace. A field cannot
+    lose its own label by answering."""
+    schema = field_json_schema(
+        ColourField(label="Colour", help_text="As a hex triplet")
+    )
+
+    assert schema["title"] == "Colour"
+    assert schema["description"] == "As a hex triplet"
+
+
+def test_a_field_beats_the_ladder_that_would_otherwise_have_matched():
+    """A `CharField` subclass would be described as a bare string. Saying
+    so itself is how it carries a format nothing could have derived."""
+    schema = field_json_schema(PostcodeField(label="Postcode"))
+
+    assert schema["pattern"] == "^[A-Z]{1,2}[0-9].*"
+
+
+def test_a_derived_pattern_does_not_overwrite_the_field_s_own():
+    """A field that states a pattern has said the last word on it, even
+    where a `RegexValidator` would have offered another."""
+
+    class _Both(PostcodeField):
+        default_validators = [RegexValidator(r"^ignored$")]
+
+    assert field_json_schema(_Both())["pattern"] == "^[A-Z]{1,2}[0-9].*"

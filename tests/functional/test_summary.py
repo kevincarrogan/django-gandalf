@@ -189,6 +189,7 @@ def test_summary_renders_answers_that_have_no_plain_text_of_their_own(
             "collect_at": "2025-10-12 09:30",
             "opens_at": "09:30",
             "photo": SimpleUploadedFile("passport.png", b"bytes"),
+            "deposit": "1234.5",
             "note": "",
         },
     )
@@ -200,6 +201,9 @@ def test_summary_renders_answers_that_have_no_plain_text_of_their_own(
         "Collect at": "Oct. 12, 2025, 9:30 a.m.",
         "Opens at": "9:30 a.m.",
         "Photo": "passport.png",
+        # The project's own field, which nothing could have guessed at:
+        # `str()` would have shown `1234.50`.
+        "Deposit": "£1,234.50",
         "Note": "",
     }
 

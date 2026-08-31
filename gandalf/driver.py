@@ -962,6 +962,10 @@ def field_json_schema(field: forms.Field) -> dict[str, Any]:
     `cleaned_data` holds afterwards. A field kind this module does not
     understand degrades to a string with a note saying so, because the
     walk will still validate whatever is sent.
+
+    A field that carries `json_schema()` is asked instead of guessed at —
+    the one place a project's own field can say what it takes, once, rather
+    than each step rewriting its whole schema to describe it.
     """
     schema, note = _base_schema(field)
     pattern = _pattern(field, schema)
@@ -982,7 +986,19 @@ def field_json_schema(field: forms.Field) -> dict[str, Any]:
 
 def _base_schema(field: forms.Field) -> tuple[dict[str, Any], str | None]:
     """The type-shaped half of a field's schema, plus an optional note
-    destined for the property's `x-note`."""
+    destined for the property's `x-note`.
+
+    A field carrying `json_schema()` says this itself and is believed —
+    before the ladder below, so a field may correct a description it would
+    otherwise have been given rather than only supply a missing one. It
+    replaces the type-shaped half only: `title`, `description` and the rest
+    are added around it either way, so a field cannot lose its own label by
+    answering. And the note is dropped, because the note apologises for not
+    knowing.
+    """
+    described = getattr(field, "json_schema", None)
+    if described is not None:
+        return cast("dict[str, Any]", described()), None
     # `ModelMultipleChoiceField` subclasses `ModelChoiceField` rather than
     # `MultipleChoiceField`, so it would otherwise fall through to the
     # single-choice branch below and be described as a string. It takes a
@@ -1069,6 +1085,9 @@ def _pattern(field: forms.Field, schema: dict[str, Any]) -> str | None:
     says it in the vocabulary a reader already knows.
     """
     if schema.get("type") != "string" or "format" in schema:
+        return None
+    if "pattern" in schema:
+        # The field stated one itself, which is the last word on it.
         return None
     for validator in field.validators:
         if isinstance(validator, RegexValidator):

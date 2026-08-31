@@ -98,9 +98,28 @@ class SummaryFieldsForm(forms.Form):
     note = forms.CharField(label="Note", required=False)
 
 
+class MoneyField(forms.DecimalField):
+    """A field that describes itself, both ways.
+
+    A project's own field is the one thing the library cannot recognise:
+    the schema mapping would call this a bare number and a summary page
+    would show `Decimal("12.50")` through `str()`. Saying so here says it
+    once, for every step that asks it and every reader that shows it —
+    rather than each step rewriting its whole schema, and each page its
+    whole formatter, to describe one field.
+    """
+
+    def json_schema(self):
+        return {"type": "number", "minimum": 0, "x-unit": "GBP"}
+
+    def format_value(self, value):
+        return f"£{value:,.2f}"
+
+
 class SummaryDisplayForm(forms.Form):
     """Answers whose display text is nothing like the stored value: a
-    grouped choice, a date and time, and an upload."""
+    grouped choice, a date and time, an upload, and a field that says how
+    it reads because nothing else could."""
 
     delivery = forms.ChoiceField(
         label="Delivery",
@@ -112,6 +131,7 @@ class SummaryDisplayForm(forms.Form):
     collect_at = forms.DateTimeField(label="Collect at")
     opens_at = forms.TimeField(label="Opens at")
     photo = forms.FileField(label="Photo")
+    deposit = MoneyField(label="Deposit")
     note = forms.CharField(label="Note", required=False)
 
 
