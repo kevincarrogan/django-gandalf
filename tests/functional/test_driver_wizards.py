@@ -1,5 +1,8 @@
 """The driver against the README wizards, end to end.
 
+Wizards rather than journeys: a journey is a task list's, and these are one
+wizard each, driven from `begin()` to `done()`.
+
 The unit suite proves the driver's mechanics; these tests prove that the
 exact wizards the README shows can be driven start to `done()` without a
 browser or a test client, and that the policies the README spells out do

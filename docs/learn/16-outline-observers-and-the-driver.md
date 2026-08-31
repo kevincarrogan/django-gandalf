@@ -85,7 +85,7 @@ this is is a question about your domain rather than about wizards.
 which ships beside the library rather than inside it.
 
 > **Source:** the driver against these wizards is
-> [`test_driver_journeys.py`](../../tests/functional/test_driver_journeys.py) &nbsp;·&nbsp; **Reference:** [`outline()`](../reference/wizard.md), [Observers](../reference/observers.md), [Driver](../reference/driver.md), [Agent](../reference/agent.md)
+> [`test_driver_wizards.py`](../../tests/functional/test_driver_wizards.py) &nbsp;·&nbsp; **Reference:** [`outline()`](../reference/wizard.md), [Observers](../reference/observers.md), [Driver](../reference/driver.md), [Agent](../reference/agent.md)
 
 ---
 

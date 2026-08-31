@@ -271,8 +271,8 @@ class RunDriver:
         by; `session` shares a session-backed one with another driver or
         with a browser. Pass a whole `context` instead when you have one —
         url kwargs named beside it still apply, so a context held for a
-        conversation can address one item of a collection and then the
-        next.
+        conversation can address one item of an add-another list and then
+        the next.
         """
         view, run = viewset_class.begin_driven_for(
             _context(context, actor, session, url_kwargs)
@@ -821,8 +821,8 @@ class RunDriver:
     ) -> list[dict[str, Any]]:
         """The shape of `viewset_class`'s wizard, without starting a run.
 
-        What a caller deciding whether to begin needs: the journey ahead,
-        answerable before there is anything to answer it with. No run is
+        What a caller deciding whether to begin needs: the whole wizard
+        ahead, answerable before there is anything to answer it with. No run is
         created, so nothing is left behind by asking — which matters to a
         caller describing several wizards to choose between them.
         """

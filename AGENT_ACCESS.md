@@ -33,7 +33,8 @@ graph TB
     subgraph "gandalf (Django only)"
         AD["RunDriver + form_json_schema\n(gandalf/driver.py)"]
         BW["Run.walk / persist / cursor / path\n(gandalf/runtime.py)"]
-        VS["WizardViewSet.begin / inspect / finish\n(gandalf/viewsets.py)"]
+        VS["WizardViewSet.begin / inspect / finish / check_door\n(gandalf/viewsets.py)"]
+        SV["StepFormView.get_answer_* / get_submission\n(gandalf/form_views.py)"]
     end
 
     UI --> TS
@@ -41,7 +42,9 @@ graph TB
     TS --> AD
     AD --> VS
     AD --> BW
+    AD --> SV
     VS --> BW
+    BW --> SV
 ```
 
 - **`gandalf/driver.py`** — the headless driver, and the substance of this
@@ -52,6 +55,9 @@ graph TB
   far, the last submission's errors), `submit()`, `answers()`, and
   `finish()`. `form_json_schema()` renders a Django form as a JSON Schema
   object so any schema-speaking client can learn what a step wants.
+- **`gandalf/form_views.py`** — where a step says how it should be read.
+  Not part of this work originally, and now load-bearing to it: see *What
+  a step says about itself* below.
 - **`gandalf/contrib/agent/`** — a pydantic-ai `FunctionToolset` wrapping
   `RunDriver`, the instructions that go with it, and an AG-UI endpoint
   that serves it from Django. It ships with the library behind an extra
@@ -139,6 +145,80 @@ branches select and expansions grow. Schema-as-data was chosen because it
 is simpler, survives any tree shape, and translates unchanged to other
 tool-speaking protocols if one is ever needed.
 
+## What a step says about itself
+
+The driver started by reading Django objects directly — `form.fields` for a
+schema, `form.errors` for a refusal, `form.cleaned_data` for an answer. That
+holds exactly as long as every step's form object is a `BaseForm`, and a
+formset is not one. A formset's `errors` is a list of one entry per row and
+is *truthy when every row is valid*, so `if form.errors:` concluded the
+opposite of the truth; `dict()` over its `cleaned_data` read the first row's
+two field names as a key and a value, so an agent was told the run held
+`{"email": "first_name"}`, which nobody had ever answered. No union type
+catches either: the code type-checks against both objects and is wrong about
+one.
+
+So the reads go through the step's *view*, which is the thing that knows
+what its `get_form()` returned. `StepFormView` carries five hooks and
+`FormSetStepView` overrides four of them:
+
+| Hook | What it answers | Read by |
+|---|---|---|
+| `get_answer_errors(form)` | what this step refused, empty when settled | `submit()`, `check()` |
+| `get_answer(form)` | what it was answered with | `answers()`, `placements()` |
+| `get_answer_fields(form)` | the bound fields it reads as | the summary page |
+| `get_answer_schema(form)` | the step as JSON Schema | `describe()`, `outline()` |
+| `get_submission(answer)` | that answer as the POST that made it | `submit()`, `prefill()` |
+
+The last is the only one pointing inwards, and it is what keeps the driver's
+central promise true: `answers()` hands back what `submit()` takes, so an
+edit is *read it, change one field, send it back*. A formset answers with
+rows and is posted as a management form, so without it the two halves stop
+meeting and a caller has to know what `TOTAL_FORMS` is.
+
+A step declared with a bare Django `FormView` carries none of these and gets
+the `BaseForm` readings, so a wizard that never heard of any of this is
+unaffected.
+
+Two things follow for an agent specifically. A repeated step's schema is an
+array of rows rather than an object of fields, so `attach_document` does not
+offer to place a file inside one — a row's file field is `0-document` and
+wants the management form, and a tool an agent cannot use is one it can only
+misuse. And describing a step is *bounded*: `_choice_values` used to
+enumerate a `ModelChoiceField`'s whole queryset into `enum`, which for a
+reference table is a query and thousands of characters, per field, per
+step — and `get_outline` is the first tool an agent is told to call. Choices
+are read lazily and dropped past `MAX_DESCRIBED_CHOICES`, with
+`x-choices-omitted` saying so, because a truncated `enum` a reader cannot
+see the edge of is worse than none: it would have them rule out every value
+below the cut.
+
+## Doors
+
+A wizard reached over HTTP comes through a dispatch, and whatever guards it
+guards it there. A driver comes through `WizardViewSet.for_context()` and
+dispatches nothing, so it is a **second door onto the same run** — and for a
+long time the rules were only on the first one.
+
+What that allowed: opening a task-list section whose row reads *Cannot start
+yet*; opening one that is `hidden()`, which for the person is not part of
+the journey at all; and finishing one into a journey already submitted,
+writing a stash into the tombstone whose whole purpose is to say nothing
+further will be written. `JourneyScoped.dispatch()` claims that one store
+read per request buys the guarantee that a submitted journey can never be
+answered again; the guarantee was true of *requests*.
+
+`WizardViewSet.check_door()` is where a viewset says who may open it, asked
+by `begin_driven_for()` and `inspect_driven_for()` — the driver's own pair,
+so the HTTP path is untouched. It does nothing by default. `JourneyScoped`
+implements it over the journey's store, and the toolset turns the resulting
+`DoorRefused` into a `ModelRetry` that says what would have to change, so
+the agent works around it rather than trying the same thing again.
+
+The general lesson, and the one worth carrying into anything else driven:
+**a guard written into a dispatch is a guard on one door.** Every rule the
+agent path has to honour has to be somewhere both paths ask.
+
 ## Front-loading the interview
 
 The reason an agent is worth pointing at a wizard at all: long wizards are
@@ -149,13 +229,16 @@ the residue. Two driver primitives make that a loop instead of a wish:
 
 - **`outline()`** — the wizard's declared shape as data, before any answers
   exist. This one is not the driver's: `ConfiguredWizard.outline()` is core
-  API, because a journey's shape is a property of the declaration rather
+  API, because a wizard's shape is a property of the declaration rather
   than of a run — the driver only adds a JSON Schema per step, and
   `RunDriver.outline_for(ViewSet)` answers without starting anything. It
   gives: every step with its JSON Schema, every fork with *all* of its
   possible routes, and `expand` markers where the tree grows from an
   answer. A step whose hand-written view composes its form from missing
-  answers reports `schema: None` until the walk reaches it.
+  answers reports `schema: None` until the walk reaches it — which is the
+  limit on front-loading, and a real one: of the three formtools wizards
+  ported into the test app, four of their fourteen steps say `None` before
+  the walk arrives.
 
   How much a fork explains itself depends on how it was declared, and
   there are three levels:
@@ -390,8 +473,9 @@ prove nothing outside `contrib/` imports pydantic-ai.
 A satellite (`django-gandalf-agents`) was considered seriously, and the
 work was kept viable for it: everything the driver uses is public API,
 and `WizardViewSet.finish()` was promoted to public precisely so no
-external package would have to copy the `done() → cleanup_files() →
-complete()` ordering.
+external package would have to copy the `done() → _retire() → complete()`
+ordering (`_retire()` being `cleanup_files()` and `discard_proofs()`, both
+claims on answers that completion has just discarded).
 
 It was rejected on evidence rather than principle. `outline()` reads the
 declaration tree directly, so it tracks the tree's *shape* by design — and

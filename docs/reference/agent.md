@@ -62,8 +62,17 @@ person presses that.
 Every tool on a run returns its `run_id`, `step`, `schema`, `answers`,
 `errors` and `complete`, and snapshots them into `WizardState`
 (`get_outline` before any run returns the outline alone). A rejected
-submission, an unknown run id or an unreachable step comes back as a
-`ModelRetry` rather than a result.
+submission, an unknown run id, an unreachable step, or a
+[door that will not open](driver.md) comes back as a `ModelRetry` rather
+than a result.
+
+`answers` is keyed by step name and each value is an
+[`Answer`](driver.md) — a mapping of field name to value, or a list of one
+such mapping per row for a step that repeats its fields. `submit_step`,
+`edit_step`, `prefill` and `check_answers` take the same shape back.
+`edit_step` merges what it is given over what is stored, except for rows,
+which replace: a step answered with n of them has no field to merge onto,
+and merging by position would keep a row the caller meant to drop.
 
 ### `build_toolset(viewset_class)`
 
@@ -81,7 +90,17 @@ The viewset's `agent` attribute, or `None`.
 
 ### `accepts_documents(viewset_class)`
 
-Whether any step of the wizard takes a file upload.
+Whether any step of the wizard takes a file upload — read off the JSON
+Schema's `format`, which is the machine-readable half of what a field says
+about itself, rather than off the description beside it, which is prose
+somebody may reasonably reword.
+
+Two kinds of step answer nothing here. A step with no schema yet — a view
+composing its form from answers the run has not got — cannot be asked. And
+a step whose schema is an array repeats its fields per row, so a file in one
+is addressed as `0-document` and placed with the management form, which
+`attach_document` does not do. Neither turns the tool on: a tool an agent
+cannot use is one it can only misuse.
 
 ### `WizardDeps`, `WizardState`, `Attachment`, `attachments_from(messages)`
 
@@ -138,6 +157,22 @@ class ApplicationViewSet(WizardViewSet):
 
 agent = build_agent(ApplicationViewSet, "openai:gpt-5.2")
 ```
+
+### Pointing one at a task-list section
+
+A section is an ordinary `WizardViewSet`, so it takes an agent like any
+other — but it is behind the page's door, and the agent is behind it too:
+
+```python
+from gandalf.contrib.agent import build_agent
+
+agent = build_agent(GrantApplicationViewSet.viewset_for("contact"), "openai:gpt-5.2")
+```
+
+`start_run` and `resume_run` come back as a `ModelRetry` when the journey
+has been submitted, or the section is `hidden()` or `blocked()` — the same
+three answers the page gives a browser, in words about the application. See
+[the driven door](driver.md).
 
 A worked CopilotKit front end lives in
 [`examples/copilotkit/`](../../examples/copilotkit/), and the design behind the

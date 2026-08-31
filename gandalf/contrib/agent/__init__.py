@@ -16,7 +16,7 @@ string or a `Model` instance.
     agent = build_agent(QuoteViewSet, "openai:gpt-5.2")
 
 What you get is a `pydantic_ai.Agent` whose tools are the driver: it can
-read the journey before starting, check a bag of answers without placing
+read the outline before starting, check a bag of answers without placing
 any, fill what it holds, correct itself, and hand the run back. It cannot
 conclude one — see `toolset` for why that is not an oversight.
 

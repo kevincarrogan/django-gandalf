@@ -38,7 +38,7 @@ from gandalf.viewsets import WizardViewSet
 PROCEDURE = """\
 Work through this silently, without narrating it:
 
-1. Start a run, then look at the whole journey ahead before doing anything
+1. Start a run, then look at everything it will ask before doing anything
    else.
 2. Take everything you already know — from this conversation and from any
    context you were given about the person — and check it before you act
@@ -117,9 +117,9 @@ def build_instructions(
         "they stay in charge of what it says.\n\n"
         f"{PROCEDURE}\n\n{DOCUMENTS}\n\n{REGISTER}"
     )
-    # Anything true of this journey that the journey itself cannot say. A
-    # wizard describes its own steps; it cannot know that something the
-    # customer needs lives on a different page entirely.
+    # Anything true of this wizard that the wizard itself cannot say. It
+    # describes its own steps; it cannot know that something the customer
+    # needs lives on a different page entirely.
     if profile and profile.notes:
         instructions += f"\n\nAbout this one in particular:\n\n{profile.notes}"
     return instructions

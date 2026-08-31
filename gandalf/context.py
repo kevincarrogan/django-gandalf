@@ -159,7 +159,8 @@ class WizardContext:
 
         A context is held for as long as whoever it describes — a
         conversation, a management command — while the thing it addresses
-        changes within that: one item of a collection, then the next. So
+        changes within that: one item of an add-another list, then the
+        next. So
         the url kwargs are the part worth varying, and this varies only
         them. Names given here win over the ones already held, because a
         call is the more specific statement.
