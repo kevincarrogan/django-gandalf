@@ -12,15 +12,12 @@ from . import ch02_branching as ch02, ch04_expand as ch04
 from .forms import AddressForm, ConfirmForm, EmailForm
 
 
-class ReviewStepView(SummaryMixin, StepFormView):
+class AddressReviewStepView(SummaryMixin, StepFormView):
+    """Check your answers, for a wizard with an address in it: four fields on
+    one line, and the lookup token on none."""
+
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-
-
-class AddressReviewStepView(ReviewStepView):
-    """The same page, for a wizard with an address in it: four fields on one
-    line, and the lookup token on none."""
-
     summary_fields = {
         "address": [
             Group("line_1", "line_2", "town", "postcode"),

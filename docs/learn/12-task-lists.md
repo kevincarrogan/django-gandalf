@@ -11,6 +11,13 @@ its status and one URL that does the right thing whichever state it is in.
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 
 
+class ReviewStepView(SummaryMixin, StepFormView):
+    """A section with no address in it needs no `summary_fields` at all."""
+
+    form_class = ConfirmForm
+    template_name = "testapp/summary_wizard.html"
+
+
 contact = (
     Wizard()
     .step(ApplicantForm, name="name", label="Your name")
@@ -38,6 +45,14 @@ class GrantApplicationViewSet(TaskListViewSet):
     url_name = "readme-task-list"
     task_list = GrantApplication
 ```
+
+Two sections, two shapes, two review views. `AddressReviewStepView` is
+[chapter 7's](07-the-summary.md#the-summary-page), specs and all, because the
+address section is the wizard those specs were written for; the contact
+section has no address step, so its review view carries no specs — naming one
+there would raise `ImproperlyConfigured`. Neither inherits from the other.
+A review view is configured for one wizard's shape, and sections do not share
+a shape.
 
 A wizard chains because it is a sequence. A task list is a *set* — the
 applicant does its sections in whatever order they like — so it is a class

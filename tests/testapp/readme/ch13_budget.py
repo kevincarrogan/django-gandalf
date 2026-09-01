@@ -4,7 +4,7 @@ line, on a task list beside the project itself."""
 from gandalf.tasklists import AddAnother, Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch07_review import ReviewStepView
+from .ch12_task_list import ReviewStepView
 from .forms import BudgetLineForm, ProjectForm
 
 

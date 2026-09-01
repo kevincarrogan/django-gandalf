@@ -44,12 +44,9 @@ class ConfirmForm(forms.Form):
     """No fields at all. The button *is* the confirmation."""
 
 
-class ReviewStepView(SummaryMixin, StepFormView):
+class AddressReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-
-
-class AddressReviewStepView(ReviewStepView):
     summary_fields = {
         "address": [
             Group("line_1", "line_2", "town", "postcode"),
@@ -112,9 +109,12 @@ label, a boolean shows Yes/No, an upload shows its filename.
 One field per answer suits most steps and not all of them: an address is five
 answers and one line. `summary_fields`, keyed by step name, says so — `Group`
 shows several fields as one answer, `Hide` shows none of them. A key naming a
-step the wizard does not declare raises `ImproperlyConfigured`, which is why
-the address spec lives on `AddressReviewStepView` and the plain
-`ReviewStepView` is what chapters without an address use.
+step the wizard does not declare raises `ImproperlyConfigured`: a review view
+is configured for the wizard it sits in, which is what the name
+`AddressReviewStepView` is saying. A wizard without an address wants its own
+review view, carrying its own specs or none — plain `SummaryMixin,
+StepFormView` siblings, not a hierarchy. [Chapter 12](12-task-lists.md) puts
+two of them side by side.
 
 Every decision — which steps get a row, how a row is labelled, how a value
 reads — is a hook on the mixin. They are listed in the

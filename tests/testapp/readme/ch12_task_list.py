@@ -1,11 +1,22 @@
 """Chapter 12 — a task list. The application becomes several wizards the
 applicant can do in any order."""
 
+from gandalf.form_views import StepFormView
+from gandalf.summary import SummaryMixin
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch07_review import AddressReviewStepView, ReviewStepView
-from .forms import AddressForm, ApplicantForm, EmailForm
+from .ch07_review import AddressReviewStepView
+from .forms import AddressForm, ApplicantForm, ConfirmForm, EmailForm
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    """Check your answers, for a wizard with nothing in it that needs
+    shaping. A review view is configured for the wizard it sits in, so a
+    section without an address carries no `summary_fields` at all."""
+
+    form_class = ConfirmForm
+    template_name = "testapp/summary_wizard.html"
 
 
 contact = (

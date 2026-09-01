@@ -4,7 +4,7 @@ there until an answer says it should be."""
 from gandalf.tasklists import Section, SectionViewSet, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch07_review import ReviewStepView
+from .ch12_task_list import ReviewStepView
 from .forms import MatchFundingForm, ProjectForm, RefereeForm
 
 

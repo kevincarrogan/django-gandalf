@@ -382,8 +382,10 @@ read costs nothing extra.
 A key in `summary_fields` names no step of the wizard the view is mounted
 in — usually a step renamed since the spec was written, or a review view
 shared between wizards of which only some have that step. Rename the key,
-or subclass the view per wizard so each carries only the specs its steps
-need.
+or give each wizard its own review view, so each carries only the specs its
+own steps need. Two review views are two siblings mixing `SummaryMixin` into
+`StepFormView`, not a base and an override: what one wizard shows is not a
+partial version of what another shows.
 
 ### `ImproperlyConfigured: … names 'town' more than once for step 'address'`
 
