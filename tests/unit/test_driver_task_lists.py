@@ -49,9 +49,9 @@ def journey():
 
 def test_a_journey_begins_without_a_request(journey):
     """`TaskList.begin()` takes an `HttpRequest`, and a driver has a
-    context. The demo bridged that by hand with `context.http_request()`;
-    chapter 15 already claimed an agent begins a journey the same way as
-    anything else, and this is what makes that true."""
+    context. This bridged that by fabricating one; `begin_for()` takes the
+    context whole, so nothing on the way to a journey impersonates a
+    browser."""
     assert journey.journey_id
     assert journey.url == "/readme/task-list/"
 

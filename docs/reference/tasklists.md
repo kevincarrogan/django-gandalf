@@ -134,6 +134,8 @@ them.
   journey on this list through its viewset; see `Journey` below. Raises
   `ImproperlyConfigured` (*"… is not mounted"*) until a viewset declares
   `task_list = …`.
+- `begin_for(context, journey=None)` *(classmethod)* — the same with no
+  request; see `TaskListViewSet.begin_for()`.
 
 ### Entries
 
@@ -278,6 +280,10 @@ never runs them.
   `EntryNotFound`.
 - `begin(request, journey=None, **url_kwargs)` *(classmethod)* — a
   `Journey` on this page; see below.
+- `begin_for(context, journey=None)` *(classmethod)* — a `Journey` for a
+  caller with no request: a management command, an agent, anything that is
+  not a browser. `context.url_kwargs` are the mount-prefix kwargs.
+  `begin()` is this with a request wrapped in a `WizardContext`.
 - `declared_entries()` *(classmethod)* — `task_list.entries`, or `None`.
 - `materialise()` / `materialise_entry()` / `build_section()` /
   `build_add_another()` / `build_group()` *(classmethods)* — the
@@ -471,7 +477,7 @@ if the user should get a confirm gate first.
 ### `Journey`
 
 A journey begun from outside the page's own requests — what a start wizard,
-an "apply again" link, a command or an agent uses:
+a plain view, an "apply again" link, a command or an agent uses:
 
 ```python
 def done(self, run):
@@ -484,9 +490,18 @@ def done(self, run):
 is made up when not given, and `url_kwargs` are the page's mount-prefix
 kwargs, if any.
 
+Built on a [`WizardContext`](run.md#wizardcontext), not a request. An id, a
+record keyed by it and a URL to the page are the whole of a journey, and
+none of the three is HTTP — so `begin_for()` needs no request at all, and
+`Journey(viewset, context, id)` is the constructor. Only `finish()` needs
+one, because recording a section dispatches a Django view; it uses the
+browser's where there is one and `context.http_request()` where there is
+not, the same seam as `WizardViewSet.for_context()`.
+
 **Attributes** — `id`; `store` (the page's `journey_store_class` for this
 id); `url` (the page under this id, or the page's one URL for a list not
-mounted under a journey segment); `task_list_viewset`; `request`.
+mounted under a journey segment); `page_kwargs`; `task_list_viewset`;
+`context`.
 
 - `finish(section, run)` — record a finished run as `section`,
   exactly as finishing it from the page would: stashed under the section's
@@ -672,7 +687,29 @@ Mount the page under a journey segment so two applications in two tabs are
 two records: `path("apply/<slug:journey>/", include(GrantApplicationViewSet.urls()))`.
 Every entry is beneath it, so every entry reads the same segment.
 
-### Beginning a journey from a wizard that has none yet
+### Beginning a journey
+
+A journey needs no wizard to start it. The shortest start is a plain view,
+mounted at `apply/new/`, before the journey segment:
+
+```python
+def start_application(request):
+    return redirect(GrantApplication.begin(request).url)
+```
+
+An application whose first fact is already known writes it rather than
+asking, and every `hidden()` and `blocked()` reads it on the first render:
+
+```python
+def start_application(request):
+    journey = GrantApplication.begin(request)
+    journey.store.data["applying_as"] = request.user.applying_as
+    return redirect(journey.url)
+```
+
+A setup wizard is for when that fact has to be *asked* for. `finish()`
+records its run as the list's `setup` section, so the same wizard arrives
+complete and can be re-opened from the page:
 
 ```python
 class ApplicationStartViewSet(WizardViewSet):
@@ -685,9 +722,16 @@ class ApplicationStartViewSet(WizardViewSet):
         return redirect(journey.url)
 ```
 
-Mounted at `apply/new/`, before the journey segment. The same wizard is the
-list's `setup` section, so it arrives complete and can be re-opened from
-the page. An "apply again" link is `redirect(GrantApplication.begin(request).url)`.
+With no request — a management command, an agent — `begin_for()` takes a
+[`WizardContext`](run.md#wizardcontext) instead:
+
+```python
+journey = GrantApplication.begin_for(WizardContext(actor=applicant))
+```
+
+A list whose page has no `<journey>` segment keeps one journey per session
+under `journey = "default"` and has nothing to begin: link straight at the
+page.
 
 ### A task list inside a task list
 

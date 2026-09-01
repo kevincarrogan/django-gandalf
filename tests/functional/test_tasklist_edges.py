@@ -9,6 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 
 from gandalf.context import WizardContext
+from gandalf.driver import RunDriver
 from gandalf.tasklists import (
     SectionViewSet,
     COMPLETE,
@@ -25,7 +26,11 @@ from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 from tests.testapp.forms import FirstStepForm
 from tests.testapp.readme.ch12_task_list import GrantApplication, contact
-from tests.testapp.readme.ch15_journey import GrantApplicationViewSet
+from tests.testapp.readme.ch15_journey import (
+    ApplicationStartViewSet,
+    GrantApplication as Application,
+    GrantApplicationViewSet,
+)
 from tests.testapp.views import GuestsViewSet, ScenarioViewSet
 
 FIRST = Wizard().step(FirstStepForm, name="first")
@@ -237,6 +242,60 @@ def test_a_one_per_session_journeys_store_is_the_one_the_page_reads(client):
 
     assert journey.id == page.get_journey()
     assert page.get_journey_store().data["amount"] == 10
+
+
+def test_a_journey_begins_on_a_context_with_no_request(client):
+    """`begin()` takes a request, and a management command or an agent has
+    none. An id, a record keyed by it and a URL to the page are the whole
+    of a journey, and not one of the three is HTTP — so the door that
+    insisted on a request was asking for something it never used, and the
+    driver got past it by fabricating one.
+
+    Seeded here rather than merely begun, because that is what a caller
+    with no browser is for: the fact the setup wizard exists to ask for,
+    known already and written instead. The browser picks up an application
+    whose governing-document section is already listed.
+    """
+    context = WizardContext(session=client.session)
+
+    journey = GrantApplicationViewSet.begin_for(context, "app-7")
+    journey.store.data["applying_as"] = "organisation"
+
+    assert journey.id == "app-7"
+    assert journey.url == reverse("readme-apply", kwargs={"journey": "app-7"})
+    supporting = client.get(journey.url + "supporting/")
+    assert supporting.status_code == HTTPStatus.OK
+    assert "Governing document" in supporting.content.decode()
+
+
+def test_a_journey_hides_a_section_a_request_less_caller_ruled_out(client):
+    """The other half of the same seed: written *individual*, and the
+    section is gone rather than merely begun-and-empty. Proves the page is
+    reading the record the context wrote, not defaulting to the same
+    answer by luck."""
+    context = WizardContext(session=client.session)
+
+    journey = GrantApplicationViewSet.begin_for(context, "app-8")
+    journey.store.data["applying_as"] = "individual"
+
+    supporting = client.get(journey.url + "supporting/")
+    assert "Governing document" not in supporting.content.decode()
+
+
+def test_a_journey_records_a_section_finished_with_no_request(client):
+    """`finish()` is the one thing on a journey that genuinely needs a
+    request — recording a section dispatches a Django view, and a Django
+    view takes one. It builds one the way every other driven dispatch
+    does rather than refusing a caller that got this far without one."""
+    context = WizardContext(session=client.session)
+    driver = RunDriver.begin(ApplicationStartViewSet, context=context)
+    driver.submit({"applying_as": "organisation"})
+
+    journey = Application.begin_for(context, "app-9")
+    journey.finish("setup", driver.run)
+
+    assert journey.store.has_stash("setup")
+    assert journey.store.data["applying_as"] == "organisation"
 
 
 # --- pages that cannot reverse themselves -------------------------------------------

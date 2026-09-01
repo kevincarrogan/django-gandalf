@@ -510,10 +510,11 @@ journey.url          # where to send them to check it over
 ### `JourneyDriver.begin(task_list_viewset, *, context=None, actor=None, session=None, journey=None, may_submit=None, **url_kwargs)`
 
 A driver over a fresh journey. `TaskListViewSet.begin()` takes a request and
-this takes a context — `context.http_request()` carries the session and the
-actor without a browser being impersonated, which is what
-[chapter 15](../learn/15-journeys.md) means when it says a management command
-or an agent begins a journey the same way as anything else.
+this takes a context, which is the whole difference: it goes through
+`TaskListViewSet.begin_for()`, so nothing on the way to a journey
+impersonates a browser. That is what [chapter 15](../learn/15-journeys.md)
+means when it says a management command or an agent begins a journey the
+same way as anything else.
 
 `journey` names one instead of having one made up, for a page mounted under
 a `<journey>` segment. A page without one keeps a single journey per session

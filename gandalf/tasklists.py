@@ -471,6 +471,12 @@ class TaskList:
         """
         return cls.mounted().begin(request, journey, **url_kwargs)
 
+    @classmethod
+    def begin_for(cls, context: WizardContext, journey: str | None = None) -> Journey:
+        """Begin a journey on this list with no request — see
+        `TaskListViewSet.begin_for()`."""
+        return cls.mounted().begin_for(context, journey)
+
 
 # --- what the page renders ---------------------------------------------------
 
@@ -1049,11 +1055,34 @@ class TaskListViewSet(JourneyScoped, TemplateView):
                 journey.finish("setup", run)
                 return redirect(journey.url)
 
-        Nothing about it needs a wizard: an "apply again" link, a command
-        or an agent begins one the same way. `journey` is made up when not
-        given; `url_kwargs` are the page's mount-prefix kwargs, if any.
+        Nothing about it needs a wizard. A plain view that already knows
+        the journey's first fact writes it instead of asking:
+
+            def start_application(request):
+                journey = GrantApplication.begin(request)
+                journey.store.data["applying_as"] = request.user.applying_as
+                return redirect(journey.url)
+
+        `journey` is made up when not given; `url_kwargs` are the page's
+        mount-prefix kwargs, if any. `begin_for()` is this without a
+        request.
         """
-        return Journey(cls, request, journey or uuid.uuid4().hex, url_kwargs)
+        return cls.begin_for(WizardContext.from_request(request, **url_kwargs), journey)
+
+    @classmethod
+    def begin_for(cls, context: WizardContext, journey: str | None = None) -> Journey:
+        """`begin()` for a caller with no request — a management command,
+        an agent, anything that is not a browser.
+
+        Beginning a journey is minting an id and naming a store, and
+        neither is HTTP; the request the other door asks for was never
+        used for either. So a caller holding a context — an actor for a
+        durable storage to scope by, a session to share with a browser —
+        comes through here rather than fabricating a request to get the
+        request-shaped door open. `context.url_kwargs` are the page's
+        mount-prefix kwargs, as they are everywhere else.
+        """
+        return Journey(cls, context, journey or uuid.uuid4().hex)
 
     # --- this page's place on the journey -------------------------------------
 
@@ -1425,18 +1454,21 @@ class Journey:
     finishing it from the page would — stashed under the section's key and
     label, its `run_done()` run — so it arrives complete and re-openable
     like any other row.
+
+    Built on a `WizardContext` rather than a request, because of what a
+    journey turns out to be: an id, a record keyed by it, and a URL. None
+    of those is HTTP. Only `finish()` needs a request — it dispatches a
+    Django view — and that is the one seam `context.http_request()` is for.
     """
 
     def __init__(
         self,
         task_list_viewset: type[TaskListViewSet],
-        request: HttpRequest,
+        context: WizardContext,
         id: str,
-        url_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self.task_list_viewset = task_list_viewset
-        self.request = request
-        self.url_kwargs = dict(url_kwargs or {})
+        self.context = context
         self._proposed_id = id
 
     @property
@@ -1444,12 +1476,13 @@ class Journey:
         """The kwargs the page is reversed with: the mount prefix and, when
         the page is mounted under a journey segment, this journey."""
         viewset = self.task_list_viewset
-        kwargs = {**self.url_kwargs, viewset.journey_url_kwarg: self._proposed_id}
+        prefix = self.context.url_kwargs
+        kwargs = {**prefix, viewset.journey_url_kwarg: self._proposed_id}
         try:
             reverse(cast(str, viewset.url_name), kwargs=kwargs)
         except NoReverseMatch:
             # One journey per session: no segment to put the id in.
-            return self.url_kwargs
+            return dict(prefix)
         return kwargs
 
     @property
@@ -1481,13 +1514,19 @@ class Journey:
     def store(self) -> JourneyStore:
         return cast(
             JourneyStore,
-            self.task_list_viewset.journey_store_class(
-                WizardContext.from_request(self.request), self.id
-            ),
+            self.task_list_viewset.journey_store_class(self.context, self.id),
         )
 
     def finish(self, section: str, run: Run) -> None:
-        """Record `run`'s finished run as `section`."""
+        """Record `run`'s finished run as `section`.
+
+        The browser's own request where there is one, a fabricated one
+        where there is not: recording a section means dispatching a Django
+        view, and a Django view takes a request. The same seam, and the
+        same reasoning, as `WizardViewSet.for_context()`.
+        """
         view = self.task_list_viewset.viewset_for(section)()
-        view.setup(self.request, **self.page_kwargs)
+        view.setup(
+            self.context.request or self.context.http_request(), **self.page_kwargs
+        )
         view.done(run)

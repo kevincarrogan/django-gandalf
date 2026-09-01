@@ -407,6 +407,19 @@ def test_a_list_begins_a_journey_through_the_page_that_mounts_it(rf):
     assert journey.url == "/readme/apply/app-1/"
 
 
+def test_a_list_begins_a_journey_with_no_request_at_all():
+    """The list's half of `begin_for()`. Everything a journey is — an id, a
+    record under it, a URL — is reachable from a context, so a caller with
+    no browser goes through the same page as one with."""
+    solo = _list(contact=Section(CONTACT))
+    _view(solo, url_name="readme-apply")
+
+    journey = solo.begin_for(WizardContext(session=_session()), journey="app-1")
+
+    assert journey.url == "/readme/apply/app-1/"
+    assert journey.store.keys() == []
+
+
 def test_an_unmounted_list_cannot_begin_a_journey(rf):
     class _Loose(TaskList):
         only = Section(CONTACT)

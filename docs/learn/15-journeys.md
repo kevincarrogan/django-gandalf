@@ -30,9 +30,53 @@ declares, `journey = "default"` — one per session, which is what chapters
 
 ### Somewhere to begin
 
-The library does not decide when a journey begins; the first wizard does.
-It asks the questions everything else turns on, before there is a list to
-come back to:
+A journey is an id, a record kept under it, and a page to show it on. So
+beginning one is minting the id, and the whole of it is a plain view
+mounted at `apply/new/`, before the journey segment:
+
+```python
+def start_application(request):
+    return redirect(GrantApplication.begin(request).url)
+```
+
+`begin()` is asked of the *list* — a value — and hands back the journey:
+its id, its store, its page. The application arrives with every row *Not
+started*, which is a real state rather than a missing one.
+
+Nothing about beginning needs a browser either. An id and a record are not
+HTTP, so a management command or an agent says the same thing to a
+[context](../reference/run.md#wizardcontext) instead of a request:
+
+```python
+journey = GrantApplication.begin_for(WizardContext(actor=applicant))
+```
+
+And a list mounted without a `<journey>` segment has nowhere to put an id
+at all — it reads the fixed `journey = "default"` above — so there is
+nothing to begin. Link straight at the page.
+
+### Asking for the first answer
+
+Some journeys turn on a fact before there is a list to come back to. This
+one does: whether the applicant is an individual or an organisation
+decides whether a whole section exists. There are two ways to have that
+answer, and only one of them is a wizard.
+
+If the application already knows — off the account, off last year's
+application, off the link they followed — it writes the answer rather than
+asking for it. `store.data` is the journey's memory, the next section's
+subject, and a seed written here is read by every `hidden()` and
+`blocked()` on the first render:
+
+```python
+def start_application(request):
+    journey = GrantApplication.begin(request)
+    journey.store.data["applying_as"] = request.user.applying_as
+    return redirect(journey.url)
+```
+
+If it has to be *asked* for, that is a wizard — and the point of the setup
+wizard is the asking, not the beginning:
 
 ```python
 def record_applying_as(store, run):
@@ -73,11 +117,11 @@ class ApplicationStartViewSet(WizardViewSet):
         return redirect(journey.url)
 ```
 
-`begin()` is asked of the *list* — a value — and hands back the journey:
-its id, its store, its page. `finish()` records the run exactly as
-finishing the section from the page would — stashed, its `run_done()` run
-— so the same wizard is then the journey's first section, complete on
-arrival and re-openable from the page like any other:
+`finish()` is the extra line the wizard needs and the plain view does not.
+It records the run exactly as finishing the section from the page would —
+stashed, its `run_done()` run — so the same wizard is then the journey's
+first section, complete on arrival and re-openable from the page like any
+other:
 
 ```python
 class SetupSection(SectionViewSet):
@@ -87,9 +131,6 @@ class SetupSection(SectionViewSet):
         record_applying_as(self.get_journey_store(), run)
         return super().run_done(run)
 ```
-
-Nothing about `begin()` needs a wizard. An "apply again" link, a
-management command or an agent begins a journey the same way.
 
 ### A memory
 

@@ -1007,11 +1007,11 @@ class JourneyDriver:
         """A driver over a fresh journey on `task_list_viewset`.
 
         `TaskListViewSet.begin()` takes a request and this takes a context,
-        which is the whole difference: `context.http_request()` carries the
-        session and the actor without a browser being impersonated. Chapter
-        15 already said a management command or an agent begins a journey
-        the same way as anything else; this is what makes that true rather
-        than aspirational.
+        which is the whole difference. It used to be a bigger one: this
+        fabricated a request to get through a request-shaped door, and the
+        mount kwargs had to be handed over twice — once to the context and
+        again to `begin()` — because the door read them from somewhere the
+        context could not reach. `begin_for()` takes the context whole.
 
         `journey` names one instead of having one made up, for a page
         mounted under a `<journey>` segment. A page without one keeps a
@@ -1019,7 +1019,7 @@ class JourneyDriver:
         """
         environment = _context(context, actor, session, url_kwargs)
         return cls(
-            task_list_viewset.begin(environment.http_request(), journey, **url_kwargs),
+            task_list_viewset.begin_for(environment, journey),
             environment,
             may_submit=may_submit,
         )
@@ -1046,12 +1046,7 @@ class JourneyDriver:
         """
         environment = _context(context, actor, session, url_kwargs)
         return cls(
-            Journey(
-                task_list_viewset,
-                environment.http_request(),
-                journey_id,
-                url_kwargs,
-            ),
+            Journey(task_list_viewset, environment, journey_id),
             environment,
             may_submit=may_submit,
         )
