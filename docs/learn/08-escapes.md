@@ -29,7 +29,7 @@ def with_contact_and_review(wizard):
         wizard.step(EmailLookupForm, name="contact", label="Email")
         .step(WebsiteStepView, name="website", label="Website")
         .step(AddressForm, name="address", label="Address")
-        .step(AddressReviewStepView, name="review")
+        .step(ReviewStepView, name="review")
     )
 ```
 

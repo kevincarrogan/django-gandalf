@@ -16,7 +16,7 @@ from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 from ..models import Application
-from .ch12_task_list import ReviewStepView
+from .ch07_review import ReviewStepView
 from .ch14_gated import MATCH_FUNDING_THRESHOLD, record_amount
 from .forms import (
     ApplicantForm,

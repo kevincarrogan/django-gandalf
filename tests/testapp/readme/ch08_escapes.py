@@ -7,7 +7,7 @@ from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
 from .ch06_step_views import WebsiteStepView
-from .ch07_review import AddressReviewStepView
+from .ch07_review import ReviewStepView
 from .forms import AddressForm, EmailLookupForm
 
 
@@ -18,7 +18,7 @@ def with_contact_and_review(wizard):
         wizard.step(EmailLookupForm, name="contact", label="Email")
         .step(WebsiteStepView, name="website", label="Website")
         .step(AddressForm, name="address", label="Address")
-        .step(AddressReviewStepView, name="review")
+        .step(ReviewStepView, name="review")
     )
 
 

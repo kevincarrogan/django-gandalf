@@ -4,7 +4,7 @@ the same three questions asked of every answer."""
 from django.http import HttpResponse
 
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide, SummaryMixin
+from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData
 
@@ -12,18 +12,13 @@ from . import ch02_branching as ch02, ch04_expand as ch04
 from .forms import AddressForm, ConfirmForm, EmailForm
 
 
-class AddressReviewStepView(SummaryMixin, StepFormView):
-    """Check your answers, for a wizard with an address in it: four fields on
-    one line, and the lookup token on none."""
+class ReviewStepView(SummaryMixin, StepFormView):
+    """Check your answers. It names no steps and shapes nothing: the address
+    reads as one line because `AddressForm` says so, so the same review view
+    serves every wizard from here on."""
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_overrides = {
-        "address": [
-            Group("line_1", "line_2", "town", "postcode"),
-            Hide("lookup_token"),
-        ],
-    }
 
 
 def with_contact_and_review(wizard):
@@ -32,7 +27,7 @@ def with_contact_and_review(wizard):
     return (
         wizard.step(EmailForm, name="contact", label="Email")
         .step(AddressForm, name="address", label="Address")
-        .step(AddressReviewStepView, name="review")
+        .step(ReviewStepView, name="review")
     )
 
 

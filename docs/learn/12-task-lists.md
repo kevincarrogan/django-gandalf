@@ -10,12 +10,7 @@ its status and one URL that does the right thing whichever state it is in.
 ```python
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 
-
-class ReviewStepView(SummaryMixin, StepFormView):
-    """A section with no address in it needs no specs at all."""
-
-    form_class = ConfirmForm
-    template_name = "testapp/summary_wizard.html"
+from .ch07_review import ReviewStepView
 
 
 contact = (
@@ -30,7 +25,7 @@ contact = (
 address = (
     Wizard()
     .step(AddressForm, name="address", label="Address")
-    .step(AddressReviewStepView, name="review")
+    .step(ReviewStepView, name="review")
 )
 
 
@@ -46,13 +41,14 @@ class GrantApplicationViewSet(TaskListViewSet):
     task_list = GrantApplication
 ```
 
-Two sections, two shapes, two review views. `AddressReviewStepView` is
-[chapter 7's](07-the-summary.md#the-summary-page), specs and all, because the
-address section is the wizard those specs were written for; the contact
-section has no address step, so its review view carries no specs — naming one
-there would raise `ImproperlyConfigured`. Neither inherits from the other.
-A review view is configured for one wizard's shape, and sections do not share
-a shape.
+Two sections, two shapes, **one review view** — [chapter
+7's](07-the-summary.md#the-summary-page), reused unchanged. It knows nothing
+about either section, and that is what makes it reusable: the address reads
+as one line because `AddressForm` says so, and a section with no address in
+it needs nothing said about it at all. Shaping that lived on the review view
+would have to be written once per section, and a spec naming a step the
+section does not have raises `ImproperlyConfigured` — so a page carrying
+specs is a page tied to one wizard's shape.
 
 A wizard chains because it is a sequence. A task list is a *set* — the
 applicant does its sections in whatever order they like — so it is a class

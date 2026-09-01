@@ -2,6 +2,8 @@
 them. Plain ``django.forms.Form`` classes: Gandalf adds nothing to a form."""
 
 from django import forms
+
+from gandalf.summary import Group, Hide
 from django.urls import reverse
 
 from gandalf.escapes import Park
@@ -89,13 +91,22 @@ class PortfolioForm(forms.Form):
 
 class AddressForm(forms.Form):
     """An address: several answers that belong on one line of a summary,
-    plus the lookup token that found them, which belongs on none."""
+    plus the lookup token that found them, which belongs on none.
+
+    `summary_fields` is the form saying so, once. An address reads as an
+    address wherever it is asked, so no review page has to know.
+    """
 
     line_1 = forms.CharField(label="Address line 1")
     line_2 = forms.CharField(label="Address line 2", required=False)
     town = forms.CharField(label="Town or city")
     postcode = forms.CharField(label="Postcode")
     lookup_token = forms.CharField(label="Lookup token", required=False)
+
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode"),
+        Hide("lookup_token"),
+    ]
 
 
 # --- Chapter 6: a step with a view of its own --------------------------------

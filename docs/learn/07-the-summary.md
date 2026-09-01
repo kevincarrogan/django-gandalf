@@ -37,22 +37,16 @@ template gets a `summary` list, one row per answered step:
 
 ```python
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide, SummaryMixin
+from gandalf.summary import SummaryMixin
 
 
 class ConfirmForm(forms.Form):
     """No fields at all. The button *is* the confirmation."""
 
 
-class AddressReviewStepView(SummaryMixin, StepFormView):
+class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_overrides = {
-        "address": [
-            Group("line_1", "line_2", "town", "postcode"),
-            Hide("lookup_token"),
-        ],
-    }
 
 
 def with_contact_and_review(wizard):
@@ -60,7 +54,7 @@ def with_contact_and_review(wizard):
     return (
         wizard.step(EmailForm, name="contact", label="Email")
         .step(AddressForm, name="address", label="Address")
-        .step(AddressReviewStepView, name="review")
+        .step(ReviewStepView, name="review")
     )
 
 
@@ -106,23 +100,46 @@ given to `.step()` is kept on the step, and the
 lists which ones mean something. Values are display text, not stored data: a choice shows its
 label, a boolean shows Yes/No, an upload shows its filename.
 
-One field per answer suits most steps and not all of them: an address is five
-answers and one line. Specs say so — `Group` shows several fields as one
-answer, `Hide` shows none of them, and `Render` gives the whole step to one
-template. `summary_overrides`, keyed by step name, is this page saying it; a
-key naming a step the wizard does not declare raises `ImproperlyConfigured`,
-because a review view is configured for the wizard it sits in, which is what
-the name `AddressReviewStepView` is saying. A wizard without an address wants
-its own review view, carrying its own specs or none — plain `SummaryMixin,
-StepFormView` siblings, not a hierarchy. [Chapter 12](12-task-lists.md) puts
-two of them side by side.
+### An address is an address
 
-The same specs can be declared on the step instead — `summary_fields` on the
-address step's view, or on the address *form* — and then any review page
-shows the address correctly without naming it, because an address is an
-address wherever it is asked. The
-[reference](../reference/summary.md#where-shaping-is-declared) has the three
-places and which wins.
+One field per answer suits most steps and not all of them: an address is five
+answers and one line, and the token that looked it up is an answer the
+applicant never gave.
+
+The step is what knows that, so the step is where it is said. `AddressForm`
+carries `summary_fields`:
+
+```python
+from gandalf.summary import Group, Hide
+
+
+class AddressForm(forms.Form):
+    line_1 = forms.CharField(label="Address line 1")
+    line_2 = forms.CharField(label="Address line 2", required=False)
+    town = forms.CharField(label="Town or city")
+    postcode = forms.CharField(label="Postcode")
+    lookup_token = forms.CharField(label="Lookup token", required=False)
+
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode"),
+        Hide("lookup_token"),
+    ]
+```
+
+`Group` shows several fields as one answer, `Hide` shows none of them, and
+`Render` gives the whole step to one template. Note where they are *not*:
+`ReviewStepView` above says nothing about the address, and never will. An
+address reads as an address wherever it is asked, so every review page in
+this application gets it right without knowing a thing about it —
+[chapter 12](12-task-lists.md) reuses this very view for a section that has
+no address in it at all.
+
+A step with a view of its own puts the same list on the view instead. And a
+page that wants one step read differently — a step from someone else's
+library, say — says so in its own `summary_overrides`, keyed by step name,
+which wins. The
+[reference](../reference/summary.md#where-shaping-is-declared) has all three
+places and the order they resolve in.
 
 A group can bring its own markup too: `Group("line_1", "line_2", "town",
 "postcode", template_name="grants/summary/address.html")` names the template
