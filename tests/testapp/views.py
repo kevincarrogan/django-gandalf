@@ -41,7 +41,7 @@ from gandalf.storage import (
     SessionStorage,
     StashNotFound,
 )
-from gandalf.summary import Group, Hide, SummaryMixin
+from gandalf.summary import Group, Hide, Render, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
@@ -2561,6 +2561,36 @@ class TemplatedSummaryWizardViewSet(WizardViewSet):
         .step(FirstStepForm, name="who", label="Who you are")
         .step(GeocodedAddressForm, name="address", label="Address")
         .step(TemplatedSummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
+class RenderedSummaryStepView(SummaryMixin, StepFormView):
+    """A check-your-answers step whose formset row reads as a list: `Render`
+    hands the whole step to one template, so the page says how seven rows
+    read without naming a field of them."""
+
+    form_class = ConfirmForm
+    template_name = "testapp/summary_include.html"
+    summary_fields = {
+        "opening-hours": [Render("testapp/summary/hours.html", label="Opening hours")],
+    }
+
+
+class RenderedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary whose formset step renders through one template: a Render "
+        "names no fields and reaches the rows through the form."
+    )
+    url_name = "rendered-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+        .step(RenderedSummaryStepView, name="summary")
     )
 
     def done(self, run):

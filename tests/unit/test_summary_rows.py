@@ -16,6 +16,7 @@ from gandalf.form_views import StepFormView
 from gandalf.summary import (
     Group,
     Hide,
+    Render,
     SummaryField,
     SummaryMixin,
     SummaryRow,
@@ -828,3 +829,90 @@ def test_a_plain_field_carries_its_own_form(address_rows):
     rows = address_rows(_SummaryView)
 
     assert rows[0].fields[0].form.cleaned_data["name"] == "Ada"
+
+
+class _RenderedView(_SummaryView):
+    summary_fields = {
+        "address": [
+            Render("testapp/summary/address.html", label="Address"),
+            Hide("lookup_token"),
+        ],
+    }
+
+
+def test_a_render_takes_the_whole_step_without_naming_a_field(address_rows):
+    rows = address_rows(_RenderedView)
+
+    assert len(rows[1].fields) == 1
+    assert rows[1].fields[0].template_name == "testapp/summary/address.html"
+    assert rows[1].fields[0].label == "Address"
+
+
+def test_a_render_still_carries_the_librarys_formatting(address_rows):
+    """Rendering from `cleaned_data` gives up `format_value`, so the field
+    carries the formatted answers too — a template chooses."""
+    rows = address_rows(_RenderedView)
+
+    assert rows[1].fields[0].parts == ("12 High Street", "Ely", "CB7 4AA")
+    assert rows[1].fields[0].value == "12 High Street, Ely, CB7 4AA"
+
+
+def test_a_render_carries_the_form(address_rows):
+    rows = address_rows(_RenderedView)
+
+    assert rows[1].fields[0].form.cleaned_data["town"] == "Ely"
+
+
+def test_a_render_leaves_out_what_a_hide_names(address_rows):
+    rows = address_rows(_RenderedView)
+
+    assert "tok" not in rows[1].fields[0].value
+
+
+def test_a_render_consults_include_summary_field(address_rows):
+    class _View(_RenderedView):
+        def include_summary_field(self, step, bound_field):
+            return bound_field.name != "town"
+
+    rows = address_rows(_View)
+
+    assert rows[1].fields[0].parts == ("12 High Street", "CB7 4AA")
+
+
+def test_a_render_names_itself_after_the_first_answer_it_shows(address_rows):
+    rows = address_rows(_RenderedView)
+
+    assert rows[1].fields[0].name == "line_1"
+
+
+def test_a_render_beside_a_group_is_refused(address_rows):
+    """A group inside a whole-step render shapes nothing, and configuration
+    that does nothing is a mistake being made quietly."""
+
+    class _View(_SummaryView):
+        summary_fields = {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Group("town", "postcode"),
+            ],
+        }
+
+    with pytest.raises(ImproperlyConfigured) as excinfo:
+        address_rows(_View)
+
+    assert "Render" in str(excinfo.value)
+
+
+def test_two_renders_for_one_step_are_refused(address_rows):
+    class _View(_SummaryView):
+        summary_fields = {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Render("testapp/summary/answer.html"),
+            ],
+        }
+
+    with pytest.raises(ImproperlyConfigured) as excinfo:
+        address_rows(_View)
+
+    assert "one Render" in str(excinfo.value)

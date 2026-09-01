@@ -18,7 +18,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.summary import Group, Hide
+from gandalf.summary import Group, Hide, Render
 from tests.testapp import views
 from tests.testapp.counting import counting_walks
 
@@ -467,3 +467,108 @@ def test_an_answer_that_names_no_template_renders_the_default(templated_run):
     assertTemplateUsed(response, "gandalf/summary/field.html")
     assertContains(response, "Ada")
     assertNotContains(response, "tok_123")
+
+
+def test_a_render_shows_a_formset_step_as_its_rows(wizard_driver):
+    """The reference used to teach a whole `build_summary_row()` override
+    for this. A `Render` names no fields, and the formset's rows are in the
+    form it is handed."""
+    run = wizard_driver("rendered-summary-wizard").start()
+    run.post_steps(
+        [
+            ("who", {"name": "Ada"}),
+            (
+                "opening-hours",
+                {
+                    "form-TOTAL_FORMS": "2",
+                    "form-INITIAL_FORMS": "0",
+                    "form-MIN_NUM_FORMS": "0",
+                    "form-MAX_NUM_FORMS": "7",
+                    "form-0-day": "Monday",
+                    "form-0-opens": "09:00",
+                    "form-1-day": "Tuesday",
+                    "form-1-opens": "10:00",
+                },
+            ),
+        ]
+    )
+
+    response = run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/hours.html")
+    assertContains(response, "<li>Monday from 09:00</li>", html=True)
+    assertContains(response, "<li>Tuesday from 10:00</li>", html=True)
+    rows = response.context["summary"]
+    assert len(rows[1].fields) == 1
+
+
+def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_run):
+    """A `Render` takes the whole step; a `Hide` beside it still hides."""
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {
+            "address": [
+                Render("testapp/summary/address.html", label="Address"),
+                Hide("lookup_token"),
+            ]
+        },
+    )
+
+    response = templated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/address.html")
+    assertContains(response, "<li>12 High Street</li>", html=True)
+    assertNotContains(response, "tok_123")
+
+
+def test_a_render_asks_whether_to_include_each_answer(monkeypatch, templated_run):
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {"address": [Render("testapp/summary/address.html")]},
+    )
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "include_summary_field",
+        lambda self, step, bound_field: bound_field.name != "town",
+    )
+
+    response = templated_run.get_step("summary")
+
+    assertNotContains(response, "<li>Ely</li>", html=True)
+    assertContains(response, "<li>CB7 4AA</li>", html=True)
+
+
+def test_a_group_beside_a_render_is_refused(monkeypatch, templated_run):
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Group("town", "postcode"),
+            ]
+        },
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="shapes nothing"):
+        templated_run.get_step("summary")
+
+
+def test_two_renders_for_one_step_are_refused_over_http(monkeypatch, templated_run):
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Render("testapp/summary/answer.html"),
+            ]
+        },
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="one Render"):
+        templated_run.get_step("summary")

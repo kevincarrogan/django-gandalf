@@ -108,7 +108,8 @@ label, a boolean shows Yes/No, an upload shows its filename.
 
 One field per answer suits most steps and not all of them: an address is five
 answers and one line. `summary_fields`, keyed by step name, says so — `Group`
-shows several fields as one answer, `Hide` shows none of them. A key naming a
+shows several fields as one answer, `Hide` shows none of them, and `Render`
+gives the whole step to one template. A key naming a
 step the wizard does not declare raises `ImproperlyConfigured`: a review view
 is configured for the wizard it sits in, which is what the name
 `AddressReviewStepView` is saying. A wizard without an address wants its own
@@ -123,6 +124,9 @@ answer names rather than learning the name of every step whose answers do not
 read as one line. The partial is handed `field`, so it can render the pieces
 as lines (`field.parts`) or reach past them to the whole validated form
 (`field.form.cleaned_data`) for a value the form derived rather than asked.
+When *every* field of a step reads as one answer, `Render("…")` says it
+without the list — it names a template and no fields, which is how a
+formset step says what its rows read like.
 
 Every decision — which steps get a row, how a row is labelled, how a value
 reads — is a hook on the mixin. They are listed in the

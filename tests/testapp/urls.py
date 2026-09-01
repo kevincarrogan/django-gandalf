@@ -305,6 +305,10 @@ urlpatterns = [
         include(views.TemplatedSummaryWizardViewSet.urls()),
     ),
     path(
+        "rendered-summary-wizard/",
+        include(views.RenderedSummaryWizardViewSet.urls()),
+    ),
+    path(
         "expanded-summary-wizard/",
         include(views.ExpandedSummaryWizardViewSet.urls()),
     ),

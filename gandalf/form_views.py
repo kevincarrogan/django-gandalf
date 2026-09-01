@@ -217,7 +217,8 @@ class FormSetStepView(StepFormView):
         listing them would be listing the wrong objects. Flattening the rows
         is plain rather than pretty, and deliberately so: what three
         organisers should read like on a check-your-answers page is the
-        page's decision, made with `SummaryMixin.build_summary_row()`. What
+        page's decision, made with `summary.Render` or, past what a
+        template can say, `SummaryMixin.build_summary_row()`. What
         it must not do is show nothing, because then the answers cannot be
         checked and nobody can see that they are missing.
         """

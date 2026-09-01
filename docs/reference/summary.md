@@ -9,6 +9,7 @@ from gandalf.summary import (
     FieldSpec,
     Group,
     Hide,
+    Render,
     SummaryField,
     SummaryMixin,
     SummaryRow,
@@ -43,7 +44,7 @@ summarising.
 | --- | --- | --- |
 | `summary_context_name` | `"summary"` | the template context variable the rows go in |
 | `summary_label_context_key` | `"label"` | the step-context key a row's heading is read from |
-| `summary_fields` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — how each step's fields are shown, keyed by step name. A step this mapping does not mention is left as one line per field. |
+| `summary_fields` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — how each step's answers are shown, keyed by step name. A step this mapping does not mention is left as one line per field. |
 | `summary_field_template_name` | `FIELD_TEMPLATE_NAME` | the template an answer renders through when its `Group` names none, and the one every plain field renders through |
 
 **Hooks** — override on the view, deferring to `super()` for the cases you
@@ -58,6 +59,8 @@ do not special-case:
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
 | `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in: a `Group` takes the place of its first field and swallows the rest, a `Hide` yields nothing |
 | `get_field_specs(step)` | `Sequence[FieldSpec]` | `summary_fields.get(step.name, ())`; override to decide per run |
+| `get_render_spec(step, specs)` | `Render \| None` | the step's `Render`, if it has one; raises `ImproperlyConfigured` for a second one or for a `Group` beside one |
+| `build_render_field(step, form, spec, by_field)` | `SummaryField` | the whole step's answer on one template (see `Render`) |
 | `build_summary_field(step, form, bound_field)` | `SummaryField` | one answer on a line of its own |
 | `build_group_field(step, form, spec)` | `SummaryField` | several answers on one line (see `Group`) |
 | `include_summary_field(step, bound_field)` | `bool` | `True`; return `False` to drop a field. Consulted for plain fields and for each member of a group. |
@@ -95,7 +98,22 @@ expected (see [Step views](step-views.md)).
 
 That default is plain rather than pretty on purpose. How three organisers
 should read on a check-your-answers page is this page's decision, and
-`build_summary_row(step)` is where to make it:
+[`Render`](#rendertemplate_name-labelnone-separator) is the short way to
+make it — one template for the whole step, reaching its rows through
+`field.form.cleaned_data`:
+
+```python
+from gandalf.summary import Render, SummaryMixin
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    summary_fields = {
+        "opening-hours": [Render("grants/summary/hours.html")],
+    }
+```
+
+`build_summary_row(step)` is the longer way, for what a template cannot
+say: several `SummaryField`s for one step, or a label computed per row.
 
 ```python
 from gandalf.summary import SummaryField, SummaryMixin, SummaryRow
@@ -115,9 +133,9 @@ class ReviewStepView(SummaryMixin, StepFormView):
         )
 ```
 
-`summary_fields` specs address a step's *own* declared fields, and a
-formset step declares none at step level, so `Group` and `Hide` do not
-reach into its rows — `build_summary_row()` does.
+`Group` and `Hide` address a step's *own* declared fields, and a formset
+step declares none at step level, so neither reaches into its rows.
+`Render` names no fields, so it does not need to.
 
 ### `summary_fields` validation
 
@@ -180,9 +198,49 @@ Frozen.
 Fields the summary does not show — an address lookup token, a hidden
 nonce. **Attributes** — `fields` (a tuple). Frozen.
 
+### `Render(template_name, label=None, separator=", ")`
+
+The whole step's answer, rendered through one template. Names no fields:
+listing every field of a step so that one template can ignore the list is
+ceremony, and a value no field holds cannot be named in a field list at all.
+
+**Parameters**
+
+- `template_name` — the template this step's answer renders through. Lands
+  on `SummaryField.template_name`, like a `Group`'s.
+- `label` — the `SummaryField.label`. Optional; `None` leaves the row's
+  heading to name it.
+- `separator` — what the formatted answers are joined with in `value`.
+  Default `", "`.
+
+**Attributes** — `template_name`, `label`, `separator`, and `fields`, which
+is always `()`. Frozen.
+
+**Caveats**
+
+- It swallows the step's fields whole, so the row has exactly one
+  `SummaryField` and nothing renders twice.
+- The formatted answers are still built: `parts` is one per non-empty
+  answer in form order and `value` is them joined, so a template that wants
+  the library's display text has it. Rendering from `cleaned_data` gives up
+  `format_value` — a choice is its key rather than its label, a boolean is
+  `True` rather than `Yes`, a date is not in the active locale, and a
+  field's own `format_value()` never runs.
+- A `Hide` beside a `Render` still hides, and `include_summary_field()` is
+  still consulted; both drop the answer from `parts` and `value` without
+  hiding it from `form`.
+- A `Group` beside a `Render` shapes nothing and raises
+  `ImproperlyConfigured`, as does a second `Render`.
+- `SummaryField.name` is the first answer shown, or the step's name when
+  the step shows none — a `Render` renders whatever the step holds, an
+  empty answer included.
+- For a formset step, `field.form` is the formset, so
+  `field.form.cleaned_data` is the list of row dicts.
+
 ### `FieldSpec`
 
-Type alias: `Group | Hide`. What a `summary_fields` value is a sequence of.
+Type alias: `Group | Hide | Render`. What a `summary_fields` value is a
+sequence of.
 
 ### `SummaryRow`
 
@@ -400,6 +458,41 @@ every page by shadowing `gandalf/summary/field.html` in your own templates
 directory.
 
 A `Hide` takes no template: it renders nothing at all.
+
+### Rendering a whole step through one template
+
+`Group` names the fields that read as one answer. When *every* field of a
+step reads as one answer — or when what should be rendered is not a field at
+all — `Render` says so without the list:
+
+```python
+from gandalf.form_views import StepFormView
+from gandalf.summary import Render, SummaryMixin
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "grants/review.html"
+    summary_fields = {
+        "opening_hours": [Render("grants/summary/hours.html")],
+    }
+```
+
+```django
+{# grants/summary/hours.html — a formset step, as its rows #}
+<ul>
+  {% for entry in field.form.cleaned_data %}
+    <li>{{ entry.day }} from {{ entry.opens }}</li>
+  {% endfor %}
+</ul>
+```
+
+The row gets one `SummaryField` for the step, so nothing renders twice, and
+`field.parts` still holds the formatted answers for a template that wants
+them. This is the declarative form of the
+[`build_summary_row()` override](#a-step-whose-answer-is-not-one-forms-worth):
+reach for that one only when what a row needs cannot be said in a template —
+several `SummaryField`s per step, or a label computed per row.
 
 ### Formatting a domain value
 

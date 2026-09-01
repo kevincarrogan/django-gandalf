@@ -1,0 +1,7 @@
+{# A formset step on its own terms: one line per row, read straight off the
+   formset's cleaned data, which is what `field.form` holds here. #}
+<ul class="hours">
+    {% for entry in field.form.cleaned_data %}
+        <li>{{ entry.day }} from {{ entry.opens }}</li>
+    {% endfor %}
+</ul>
