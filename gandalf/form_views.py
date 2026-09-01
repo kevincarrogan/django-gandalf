@@ -140,6 +140,28 @@ class StepFormView(_StepFormViewBase):
     #: the rest.
     summary_fields: Sequence[FieldSpec] = ()
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Check a step view's own specs when its class body runs.
+
+        The two things a list of specs can say wrong knowing nothing but
+        itself — a field claimed twice, two specs naming no fields — need no
+        run, no request and no form to decide, so waiting for someone to
+        open the summary page to say so is waiting for no reason. What is
+        decided per request is checked per request, in the summary page.
+        """
+        super().__init_subclass__(**kwargs)
+        if not cls.summary_fields:
+            # Nothing to contradict, and nothing to import: this runs for
+            # every step view in a project, `FormSetStepView` included —
+            # which is defined while `gandalf.summary` is still importing
+            # this module, so reaching for it here would be circular.
+            return
+        # Imported inside the guard for that reason: `gandalf.summary` is
+        # built on this module, so the dependency runs one way at runtime.
+        from gandalf.summary import check_field_specs
+
+        check_field_specs(cls.summary_fields, f"{cls.__name__}.summary_fields")
+
     def get_summary_fields(self) -> Sequence[FieldSpec]:
         """How this step's answers read, for a summary page to start from.
 

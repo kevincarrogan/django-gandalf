@@ -1092,3 +1092,54 @@ def test_a_step_shaping_a_field_it_has_not_got_is_refused(
 
     assert "lookup_taken" in str(excinfo.value)
     assert "own summary_fields" in str(excinfo.value)
+
+
+def test_a_step_view_declaring_a_field_twice_is_refused_at_import():
+    """The class body is where it is said, so the class body is where it
+    fails: no run, no request and no summary page needed to know."""
+    with pytest.raises(ImproperlyConfigured, match="more than once"):
+
+        class _View(StepFormView):
+            form_class = AddressForm
+            template_name = "testapp/linear_wizard.html"
+            summary_fields = [Group("town"), Hide("town")]
+
+
+def test_a_step_view_naming_no_fields_twice_is_refused_at_import():
+    with pytest.raises(ImproperlyConfigured, match="names no fields"):
+
+        class _View(StepFormView):
+            form_class = AddressForm
+            template_name = "testapp/linear_wizard.html"
+            summary_fields = [
+                Render("testapp/summary/address.html"),
+                Render("testapp/summary/answer.html"),
+            ]
+
+
+def test_a_step_view_saying_nothing_is_not_checked():
+    """The guard the whole thing rests on: every step view in a project runs
+    this, `FormSetStepView` included, which is defined while `gandalf.summary`
+    is still importing `gandalf.form_views`."""
+
+    class _View(StepFormView):
+        form_class = AddressForm
+        template_name = "testapp/linear_wizard.html"
+
+    assert _View().get_summary_fields() == ()
+
+
+def test_specs_decided_per_run_are_still_checked_when_the_page_builds(
+    address_rows,
+):
+    """Import time cannot see a list `get_field_specs()` invents per run, so
+    the build checks too."""
+
+    class _View(_SummaryView):
+        def get_field_specs(self, step):
+            if step.name == "address":
+                return [Group("town"), Hide("town")]
+            return super().get_field_specs(step)
+
+    with pytest.raises(ImproperlyConfigured, match="more than once"):
+        address_rows(_View)

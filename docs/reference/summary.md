@@ -146,6 +146,7 @@ do not special-case:
 | `check_summary_field_names()` | `None` | raises for a spec of this page's naming a field its step has not got |
 | `check_step_field_names(step, fields)` | `None` | the same, for a step's *own* specs. Called per step during the build rather than in a pass of its own: asking a step sets its view up, and a second pass would build every step's view twice |
 | `check_field_names(step_name, specs, fields, source)` | `None` | the check both of those defer to; `source` is what named the fields, so the message says where the fix is |
+| `field_specs_source(step)` | `str` | what declared the specs a step is shown with — this page's `summary_overrides`, or the step's own `summary_fields`. Names the place a refusal should be fixed |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
 | `build_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
@@ -242,13 +243,21 @@ The checks run before and during the build and raise
 | a `summary_overrides` key names a step the wizard does not declare | `<View>.summary_overrides shapes steps this wizard does not declare: <keys>. Declared steps: <names>.` |
 | a spec of this page's names a field its step does not declare | `<View>.summary_overrides shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
 | a spec of the *step's own* names a field it has not got | `step '<step>'s own summary_fields shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
-| a field name appears in two specs for the same step | `<View> names '<field>' more than once for step '<step>'; a field belongs to one spec.` |
-| two specs for one step name no fields | `<View> gives step '<step>' more than one spec that names no fields, and what no other spec named cannot go to both.` |
+| a field name appears in two specs for one step | `<source> names '<field>' more than once; a field belongs to one spec.` |
+| two specs for one step name no fields | `<source> has more than one spec that names no fields, and what no other spec named cannot go to both.` |
 
-A step's own specs are checked wherever they were declared — the step view
-or the form — so shaping that travels with a step is checked as strictly as
-shaping a page asks for. The message names the source, because that is
-where the fix is.
+A step's own specs are checked as strictly as a page's, and the message
+names the source — `AddressStepView.summary_fields`,
+`ReviewStepView.summary_overrides['address']` — because that is where the
+fix is.
+
+**The last two are checked at import.** They need nothing but the spec list
+to decide, so `StepFormView.__init_subclass__` runs
+[`check_field_specs()`](#check_field_specsspecs-source) when a step view's
+class body executes: a step view saying something impossible fails at
+startup rather than when someone opens the summary page. The build checks
+again, because a list `get_field_specs()` invents per run, or a page's
+`summary_overrides`, is one nothing saw at import.
 
 The name checks read the *declaration*, not what this run walked, so a
 `summary_overrides` key naming a step on the arm not taken is fine. They are
@@ -341,6 +350,19 @@ Frozen.
   only field its row has, so `row.label` names it.
 - For a formset step, `field.form` is the formset, so
   `field.form.cleaned_data` is the list of row dicts.
+
+### `check_field_specs(specs, source)`
+
+Module-level. Refuses a list of specs that contradicts itself — a field
+claimed by two specs, or two specs naming no fields. `source` is what
+declared them, and appears in the message.
+
+Both rules are decidable from the list alone, which is why
+`StepFormView.__init_subclass__` calls this at import. It is called again
+when a page builds its rows, for the lists import time could not see.
+
+Whether a spec names a field its step has not got is *not* here: that needs
+the step, so it stays with the page — `check_field_names()`.
 
 ### `FieldSpec`
 

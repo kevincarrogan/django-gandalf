@@ -66,6 +66,7 @@ FIELD_TEMPLATE_NAME = "gandalf/summary/field.html"
 
 __all__ = [
     "FIELD_TEMPLATE_NAME",
+    "check_field_specs",
     "FieldSpec",
     "Group",
     "Hide",
@@ -303,6 +304,38 @@ class SummaryRow:
     def form(self) -> BaseForm:
         """The bound, validated form behind this row."""
         return self.step.form
+
+
+def check_field_specs(specs: Sequence[FieldSpec], source: str) -> None:
+    """Refuse a list of specs that contradicts itself.
+
+    The two things a list can say wrong knowing nothing but itself: a field
+    claimed by two specs, and two specs naming no fields. Both are decidable
+    from the declaration, which is why `StepFormView.__init_subclass__` asks
+    at import — a step view saying something impossible should not wait for
+    someone to open the summary page to find out.
+
+    The third refusal is not here. Whether a spec names a field its step has
+    not got needs the step, so it stays with the page that knows which step
+    it is holding.
+
+    `source` is what declared them, because the fix is there.
+    """
+    seen: set[str] = set()
+    for spec in specs:
+        for field_name in spec.fields:
+            if field_name in seen:
+                raise ImproperlyConfigured(
+                    f"{source} names {field_name!r} more than once; "
+                    f"a field belongs to one spec."
+                )
+            seen.add(field_name)
+    whole = [spec for spec in specs if not spec.fields]
+    if len(whole) > 1:
+        raise ImproperlyConfigured(
+            f"{source} has more than one spec that names no fields, and what "
+            f"no other spec named cannot go to both."
+        )
 
 
 def _flatten_choices(choices: Any) -> Iterator[tuple[Any, Any]]:
@@ -629,20 +662,14 @@ class SummaryMixin(_SummaryMixinBase):
         """The spec that speaks for what no other spec named, if the step
         has one: the spec naming no fields.
 
-        Two of them is the one shape refused. What is left over cannot go
-        to both, and a page rendering half its answers through one template
-        and half through another, silently, is a mistake being made quietly
-        — the same reason a misspelt `Hide` is refused rather than skipped.
+        Two of them is refused by `check_field_specs()`, which the walk has
+        already run — what is left over cannot go to both, and a page
+        rendering half its answers through one template and half through
+        another, silently, is a mistake being made quietly.
         """
         whole = [spec for spec in specs if not spec.fields]
         if not whole:
             return None
-        if len(whole) > 1:
-            raise ImproperlyConfigured(
-                f"{self.__class__.__name__} gives step "
-                f"{step.name!r} more than one spec that names no fields, and "
-                f"what no other spec named cannot go to both."
-            )
         return whole[0]
 
     def get_field_specs(self, step: RuntimeStep) -> Sequence[FieldSpec]:
@@ -668,18 +695,27 @@ class SummaryMixin(_SummaryMixinBase):
         self, step: RuntimeStep, specs: Sequence[FieldSpec]
     ) -> dict[str, tuple[int, FieldSpec]]:
         """Each named field's spec, by field name, with the spec's position
-        — which is what tells two identically written groups apart."""
+        — which is what tells two identically written groups apart.
+
+        The list is checked first. A step view's own specs were checked at
+        import; these may not have been — `get_field_specs()` can decide per
+        run, and a page's `summary_overrides` is a mapping nothing walks
+        until now.
+        """
+        check_field_specs(specs, self.field_specs_source(step))
         by_field: dict[str, tuple[int, FieldSpec]] = {}
         for index, spec in enumerate(specs):
             for field_name in spec.fields:
-                if field_name in by_field:
-                    raise ImproperlyConfigured(
-                        f"{self.__class__.__name__}.summary_fields names "
-                        f"{field_name!r} more than once for step "
-                        f"{step.name!r}; a field belongs to one spec."
-                    )
                 by_field[field_name] = (index, spec)
         return by_field
+
+    def field_specs_source(self, step: RuntimeStep) -> str:
+        """What declared the specs a step is being shown with — this page,
+        or the step. Names the place a refusal should be fixed."""
+        name = cast(str, step.name)
+        if name in self.summary_overrides:
+            return f"{self.__class__.__name__}.summary_overrides[{name!r}]"
+        return f"step {name!r}'s own summary_fields"
 
     def build_summary_field(
         self, step: RuntimeStep, form: BaseForm, bound_field: BoundField

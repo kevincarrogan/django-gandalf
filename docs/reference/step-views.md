@@ -128,6 +128,13 @@ belongs; a review page then names no steps at all. Not to be confused with
 different about a step it names — a review page is itself a step view, so
 the two cannot share a name.
 
+A step view's `summary_fields` is checked when its class body executes: a
+field claimed by two specs, or two specs naming no fields, raises
+`ImproperlyConfigured` at import rather than when someone opens the summary
+page. Both are decidable from the list alone; the third refusal — a spec
+naming a field the step has not got — needs the wizard, so it stays with the
+[summary page](summary.md#spec-validation).
+
 **`get_summary_fields()`** — those specs, for a summary page to start from.
 The default returns `summary_fields`. Override to decide per request; the
 summary page has the last word either way.
