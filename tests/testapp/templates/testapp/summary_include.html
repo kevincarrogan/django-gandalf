@@ -9,9 +9,14 @@
             {% for row in summary %}
                 <dt>{{ row.label }}</dt>
                 <dd>
-                    {# No step names here: each answer names its own template. #}
+                    {# No step names here: each answer names its own
+                       template, or none and reads as its value. #}
                     {% for field in row.fields %}
-                        {% include field.template_name %}
+                        {% if field.template_name %}
+                            {% include field.template_name %}
+                        {% else %}
+                            <span>{{ field.value }}</span>
+                        {% endif %}
                     {% endfor %}
                     <a href="{{ row.url }}">Change {{ row.label }}</a>
                 </dd>

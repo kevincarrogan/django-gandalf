@@ -463,11 +463,14 @@ def test_a_partial_can_read_an_answer_the_form_derived(templated_run):
     assertContains(response, "Outcode: CB7")
 
 
-def test_an_answer_that_names_no_template_renders_the_default(templated_run):
+def test_an_answer_that_names_no_template_reads_as_its_value(templated_run):
+    """Gandalf ships no templates, so an answer naming none has nothing to
+    render through and the page reads its value instead."""
     response = templated_run.get_step("summary")
 
-    assertTemplateUsed(response, "gandalf/summary/field.html")
-    assertContains(response, "Ada")
+    rows = response.context["summary"]
+    assert rows[0].fields[0].template_name is None
+    assertContains(response, "<span>Ada</span>", html=True)
     assertNotContains(response, "tok_123")
 
 

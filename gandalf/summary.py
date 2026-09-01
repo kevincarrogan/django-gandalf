@@ -56,16 +56,7 @@ else:
     _SummaryMixinBase = object
 
 
-#: The template one answer renders through when nothing names another. It
-#: renders `{{ field.value }}` and nothing else, so the markup around an
-#: answer stays the page's. A project changes it for every page by shadowing
-#: the path in its own template directory, or for one page with
-#: `SummaryMixin.summary_field_template_name`.
-FIELD_TEMPLATE_NAME = "gandalf/summary/field.html"
-
-
 __all__ = [
-    "FIELD_TEMPLATE_NAME",
     "Question",
     "check_field_specs",
     "FieldSpec",
@@ -292,11 +283,17 @@ class SummaryField:
     as a comma run-on.
 
     `template_name` is the template this answer renders through — the
-    group's own if it named one, otherwise the page's default. A summary
-    template includes it rather than branching on which answer it is
-    holding:
+    group's own if it named one, otherwise the page's
+    `summary_field_template_name`, and `None` when neither named one, since
+    Gandalf ships no templates to fall back on. A page that names a default
+    includes it without branching:
 
         {% for field in row.fields %}{% include field.template_name %}{% endfor %}
+
+    and one that does not says so:
+
+        {% if field.template_name %}{% include field.template_name %}
+        {% else %}{{ field.value }}{% endif %}
 
     `form` is the bound, validated form the answer came from, so a template
     rendering this field can read the whole answer rather than the pieces
@@ -314,7 +311,7 @@ class SummaryField:
     label: StrOrPromise | None
     value: str
     parts: tuple[str, ...] = ()
-    template_name: str = FIELD_TEMPLATE_NAME
+    template_name: str | None = None
     form: BaseForm | None = dataclass_field(default=None, repr=False, compare=False)
     bound_field: BoundField | None = dataclass_field(
         default=None, repr=False, compare=False
@@ -524,9 +521,10 @@ class SummaryMixin(_SummaryMixinBase):
     summary_label_context_key = "label"
 
     #: The template an answer renders through when its `Group` names none —
-    #: and the one every plain field renders through. Set it to give one
-    #: page its own house style for an answer.
-    summary_field_template_name = FIELD_TEMPLATE_NAME
+    #: and the one every plain field renders through. `None` because Gandalf
+    #: ships no templates: set it to give a page, or a whole design system,
+    #: its own house style for an answer.
+    summary_field_template_name: str | None = None
 
     #: What this page wants said differently, keyed by step name. A step
     #: this mapping does not mention reads as *it* says it reads — its own

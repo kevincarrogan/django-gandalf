@@ -159,7 +159,7 @@ summarising.
 | `summary_context_name` | `"summary"` | the template context variable the rows go in |
 | `summary_label_context_key` | `"label"` | the step-context key a row's heading is read from |
 | `summary_overrides` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — what this page wants said differently, keyed by step name. A step it does not mention reads as the step itself says, and failing that as one line per field. A key with an empty sequence overrides the step back to plain |
-| `summary_field_template_name` | `FIELD_TEMPLATE_NAME` | the template an answer renders through when its `Group` names none, and the one every plain field renders through |
+| `summary_field_template_name` | `None` | the template an answer renders through when its `Group` names none, and the one every plain field renders through. `None` because Gandalf ships no templates — set it to give a page, or a design system, its house style for an answer |
 
 **Hooks** — override on the view, deferring to `super()` for the cases you
 do not special-case:
@@ -544,7 +544,7 @@ One answer as display text. Frozen dataclass.
 | `label` | `str \| None` | the bound field's `label`; a group's `label`, which may be `None` |
 | `value` | `str` | the display text; `""` for an unanswered field |
 | `parts` | `tuple[str, ...]` | what `value` was joined from: one per non-empty answer for a group, `(value,)` for an answered plain field, `()` for an empty one. Default `()` |
-| `template_name` | `str` | the template this answer renders through: the `Group`'s if it named one, otherwise the page's `summary_field_template_name`. Default `FIELD_TEMPLATE_NAME` |
+| `template_name` | `str \| None` | the template this answer renders through: the `Group`'s if it named one, otherwise the page's `summary_field_template_name`, and `None` when neither named one |
 | `form` | `BaseForm \| None` | the bound, validated form the answer came from — `form.cleaned_data` included, which is where a value derived in `clean()` lives. For a plain field it is the bound field's own form, which differs from the step's for a repeated step. Excluded from `repr` and equality. |
 | `bound_field` | `BoundField \| None` | the Django `BoundField` the value came from — the widget, help text, field attributes. `None` for a group. Excluded from `repr` and equality. |
 
@@ -746,13 +746,18 @@ one it stitched together from several answers. Pass the context explicitly
 (`{% include field.template_name with field=field only %}`) if you would
 rather the partial not inherit.
 
-**The default.** `FIELD_TEMPLATE_NAME` is `"gandalf/summary/field.html"`,
-which renders `{{ field.value }}` and nothing else — the markup around an
-answer is the page's. It is the only template Gandalf ships, and reaching it
-needs `"gandalf"` in `INSTALLED_APPS` with the app-directories template
-loader. Change it for one page with `summary_field_template_name`, or for
-every page by shadowing `gandalf/summary/field.html` in your own templates
-directory.
+**The default is nothing.** Gandalf ships no templates, so an answer whose
+`Group` named none and whose page named none has `template_name` of `None`.
+A page that sets `summary_field_template_name` — which is what a design
+system built on Gandalf does, once, on its own review mixin — never sees
+that; one that does not says so in the loop:
+
+```django
+{% for field in row.fields %}
+  {% if field.template_name %}{% include field.template_name %}
+  {% else %}{{ field.value }}{% endif %}
+{% endfor %}
+```
 
 A `Hide` takes no template: it renders nothing at all.
 

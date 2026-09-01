@@ -788,16 +788,17 @@ def test_a_group_can_name_the_template_that_renders_it(address_rows):
     assert rows[1].fields[0].template_name == "testapp/summary/address.html"
 
 
-def test_a_group_that_names_no_template_takes_the_default(address_rows):
+def test_a_group_that_names_no_template_names_none(address_rows):
+    """Gandalf ships no templates, so there is nothing to fall back to."""
     rows = address_rows(_GroupedView)
 
-    assert rows[1].fields[0].template_name == "gandalf/summary/field.html"
+    assert rows[1].fields[0].template_name is None
 
 
-def test_a_plain_field_takes_the_default_template(address_rows):
+def test_a_plain_field_names_no_template(address_rows):
     rows = address_rows(_SummaryView)
 
-    assert rows[0].fields[0].template_name == "gandalf/summary/field.html"
+    assert rows[0].fields[0].template_name is None
 
 
 def test_a_page_can_change_the_default_template(address_rows):
@@ -907,7 +908,7 @@ def test_a_group_beside_a_render_takes_its_own_fields(address_rows):
 
     assert [(field.label, field.template_name) for field in rows[1].fields] == [
         (None, "testapp/summary/address.html"),
-        ("Where", "gandalf/summary/field.html"),
+        ("Where", None),
     ]
     assert rows[1].fields[0].parts == ("12 High Street", "tok-9")
     assert rows[1].fields[1].value == "Ely, CB7 4AA"

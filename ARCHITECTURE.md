@@ -366,15 +366,19 @@ awkward step is carrying knowledge it did not generate, and it will be wrong
 the moment a step is renamed, reused or shared. `SummaryMixin` with no
 attributes at all is the ordinary review page.
 
-**Gandalf ships templates for values, never for page structure.**
-`gandalf/summary/field.html` renders `{{ field.value }}` and is the only
-HTML in the library. A shipped template for a *row*, a section or a page
-would put the library on the far side of a line that django-crispy-forms
-sits on: once a library renders a region, every piece of furniture in that
+**Gandalf ships no templates.** Not one — the library is data and hooks,
+and every template on the page belongs to the application or to a design
+system built over it. The rule is absolute rather than a judgment about
+which templates would be acceptable, because the judgment is the thing that
+erodes: once a library renders a region, every piece of furniture in that
 region — a warning between two rows, a heading, a link — has to enter
-through its API, and the API grows an object per kind of furniture. Gandalf
-never owns a page render, so a warning between rows 2 and 3 goes in the
-template, where it can be seen.
+through its API, and the API grows an object per kind of furniture, which is
+the shape django-crispy-forms has. Gandalf never owns a page render, so a
+warning between rows 2 and 3 goes in the template, where it can be seen.
+
+The consequence to hold onto: a `template_name` the library reports is
+always one the *caller* named, never one it supplies. `SummaryField.
+template_name` is `None` until a `Group` or a page says otherwise.
 
 **A declaration is checked where it is written.** A step view's specs are
 checked when its class body runs; a `.step()` declaration's when the wizard
