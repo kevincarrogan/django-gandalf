@@ -29,7 +29,7 @@ intact — you reach for a lower one only for what the ones above cannot say.
 | --- | --- | --- |
 | **Nothing** | mix in [`SummaryMixin`](#summarymixin) and loop `summary` in a template | every answered step, one row each, one line per answer, values as display text |
 | **Declare** | `.step(Form, name="address", label="Address")` | the row's heading |
-| | [`summary_fields`](#where-shaping-is-declared) on the step's view: `Group`, `Hide` | answers joined or dropped, said once, next to the step |
+| | [`summary_fields`](#where-shaping-is-declared) on the step's view, or at its declaration: `Group`, `Hide` | answers joined or dropped, said once, next to the step |
 | **Render** | [`Group(template_name=…)`](#rendering-an-answer-through-its-own-template) | that answer's markup |
 | | [`Render("…")`](#rendering-a-whole-step-through-one-template) | the whole step's markup, with `field.form.cleaned_data` in reach |
 | | `summary_field_template_name` | the page's default markup for every answer |
@@ -59,19 +59,28 @@ worse than the spec that replaced it.
 
 ### Where shaping is declared
 
-The same specs can be declared in two places, and the page wins:
+The same specs can be declared in three places. The page wins over the
+step, and the step says it once — on its view, or at its declaration, but
+not both:
 
 | Where | What it says | Reach for it when |
 | --- | --- | --- |
 | `SummaryMixin.summary_overrides` on the review page | this step, on this page, reads like this | one page disagrees, or the step is not yours to change |
-| `summary_fields` on the step's view | this step's answers read like this, wherever it is asked | anywhere else — this is the ordinary place |
+| `summary_fields` on the step's view | this step's answers read like this, wherever it is asked | the step has a view of its own — the ordinary place |
+| `summary_fields` at the declaration | the same, for a step with no view to say it on | `.step(AddressForm, name="address", ...)` |
 
-Not on the form. A `forms.Form` is a Django object shared with everything
+**Not on the form.** A `forms.Form` is a Django object shared with everything
 else that asks it, and a Gandalf attribute on it is this library squatting in
 a namespace it does not own — as well as a form knowing about a page it never
-renders. A step declared as a bare `forms.Form` gains a step view to say it
-on, which is three lines and travels between wizards exactly as the form
-does.
+renders. A form still carrying `summary_fields` from 0.25 is refused by
+`.step()` rather than ignored, because a declaration nothing reads is worse
+than one that fails.
+
+**Said once.** A step whose view declares specs *and* whose declaration
+names them is a step answering one question twice, and `.step()` refuses
+that too. Which of the two to use is a question about the step, not about
+the summary: a step with view-level behaviour already has a class to put
+them on, and a step that is a bare form does not.
 
 ```python
 from gandalf.form_views import StepFormView
@@ -85,6 +94,21 @@ class AddressStepView(StepFormView):
         Group("line_1", "line_2", "town", "postcode", label="Address"),
         Hide("lookup_token"),
     ]
+```
+
+Or, for a step that is a bare form, beside the `name` and `label` it already
+declares there:
+
+```python
+Wizard().step(
+    AddressForm,
+    name="address",
+    label="Address",
+    summary_fields=[
+        Group("line_1", "line_2", "town", "postcode", label="Address"),
+        Hide("lookup_token"),
+    ],
+)
 ```
 
 The review page then names no steps at all:

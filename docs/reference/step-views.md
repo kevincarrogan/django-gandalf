@@ -128,6 +128,11 @@ belongs; a review page then names no steps at all. Not to be confused with
 different about a step it names — a review page is itself a step view, so
 the two cannot share a name.
 
+A step declared as a bare `forms.Form` has no view to put this on and says
+it at the declaration instead —
+`.step(AddressForm, name="address", summary_fields=[...])`. Saying it in both
+places is refused by [`.step()`](wizard.md#wizardstepform_class_or_form_view_class--context).
+
 A step view's `summary_fields` is checked when its class body executes: a
 field claimed by two specs, or two specs naming no fields, raises
 `ImproperlyConfigured` at import rather than when someone opens the summary

@@ -200,6 +200,49 @@ def check_selectors(wizard: Wizard | ConfiguredWizard) -> None:
             selector.check(wizard)
 
 
+def check_step_summary_fields(
+    declaration: StepDeclaration, context: dict[str, Any]
+) -> None:
+    """Refuse a step that says how its answers read in two places, or in a
+    place nothing reads.
+
+    A step view says it on the view; a step declared as a bare `forms.Form`
+    has no view to say it on, so it says it at the declaration —
+    `.step(AddressForm, name="address", summary_fields=[...])`. Saying it
+    twice is a step saying two things at once, and a form still carrying the
+    attribute from 0.25 is saying it where nothing looks any more.
+
+    Checked here so the list is checked where it is written, the way a step
+    view's is checked when its class body runs.
+    """
+    # Imported here rather than at module scope: `gandalf.summary` is built
+    # on this module, so the dependency runs one way at runtime.
+    from gandalf.summary import check_field_specs
+
+    name = context.get("name")
+    written = getattr(declaration, "__name__", repr(declaration))
+    where = f".step({written}, name={name!r})" if name else f".step({written})"
+    declared = getattr(declaration, "summary_fields", None)
+    is_form = isinstance(declaration, type) and issubclass(declaration, forms.BaseForm)
+    if declared and is_form:
+        raise ImproperlyConfigured(
+            f"{written}.summary_fields is a form saying how a summary page "
+            f"reads it, which nothing reads: a form is shared with "
+            f"everything else that asks it. Say it on the step's view, or "
+            f"at the declaration — {where[:-1]}, summary_fields=[...])."
+        )
+    specs = context.get("summary_fields")
+    if specs is None:
+        return
+    if declared:
+        raise ImproperlyConfigured(
+            f"{where} gives summary_fields to a step whose view "
+            f"{written} declares its own; a step says how its answers read "
+            f"in one place. Drop one."
+        )
+    check_field_specs(specs, f"summary_fields on {where}")
+
+
 def declared_step_fields(
     wizard: Wizard | ConfiguredWizard,
 ) -> dict[str, dict[str, Any] | None] | None:
@@ -343,6 +386,7 @@ class Wizard:
                 "nothing. Spell the keys out instead — "
                 ".step(Form, name='email')."
             )
+        check_step_summary_fields(form_class_or_form_view_class, context)
         declarations = list(self.tree) if self.tree is not None else []
         declarations.append(
             tree.Step(

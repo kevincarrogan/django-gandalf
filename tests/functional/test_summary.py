@@ -19,6 +19,8 @@ from pytest_django.asserts import (
 )
 
 from gandalf.summary import Group, Hide, Render
+from gandalf.wizard import Wizard
+from tests.testapp.forms import AddressForm
 from tests.testapp import views
 from tests.testapp.counting import counting_walks
 
@@ -651,3 +653,36 @@ def test_a_step_shaping_a_field_it_has_not_got_is_refused_over_http(
 
     with pytest.raises(ImproperlyConfigured, match="own summary_fields"):
         colocated_run.get_step("summary")
+
+
+def test_a_bare_form_step_shapes_its_row_from_the_declaration(wizard_driver):
+    """`DeclaredSummaryWizardViewSet`'s address is a bare `forms.Form` with
+    no view of its own, and still reads as one line."""
+    run = wizard_driver("declared-summary-wizard").start()
+    run.post_steps([("who", {"name": "Ada"}), ("address", ADDRESS)])
+
+    response = run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    rows = response.context["summary"]
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+    assertNotContains(response, "tok-9")
+
+
+def test_a_step_saying_how_it_reads_in_two_places_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="in one place"):
+        Wizard().step(
+            views.SelfShapingAddressStepView,
+            name="address",
+            summary_fields=[Group("town", "postcode")],
+        )
+
+
+def test_a_form_carrying_summary_fields_is_refused():
+    class _LeftoverForm(AddressForm):
+        summary_fields = [Group("town", "postcode")]
+
+    with pytest.raises(ImproperlyConfigured, match="which nothing reads"):
+        Wizard().step(_LeftoverForm, name="address")

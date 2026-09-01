@@ -1143,3 +1143,64 @@ def test_specs_decided_per_run_are_still_checked_when_the_page_builds(
 
     with pytest.raises(ImproperlyConfigured, match="more than once"):
         address_rows(_View)
+
+
+def test_a_bare_form_step_can_say_it_at_the_declaration(
+    summary_view_for, address_state
+):
+    """A step with no view of its own says it where it is declared, beside
+    the name and the label it already says there."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(
+            AddressForm,
+            name="address",
+            label="Address",
+            summary_fields=[
+                Group("line_1", "line_2", "town", "postcode", label="Address"),
+                Hide("lookup_token"),
+            ],
+        )
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, address_state, _SummaryView)
+    rows = view.get_context_data()["summary"]
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+
+
+def test_a_declaration_that_contradicts_itself_is_refused_where_it_is_written():
+    """Checked at `.step()`, the way a step view's list is checked when its
+    class body runs."""
+    with pytest.raises(ImproperlyConfigured, match="more than once"):
+        Wizard().step(
+            AddressForm,
+            name="address",
+            summary_fields=[Group("town"), Hide("town")],
+        )
+
+
+def test_a_step_saying_it_twice_is_refused():
+    """The view says it and the declaration says it: two answers to one
+    question."""
+    with pytest.raises(ImproperlyConfigured, match="in one place"):
+        Wizard().step(
+            SelfShapingAddressStepView,
+            name="address",
+            summary_fields=[Group("town", "postcode")],
+        )
+
+
+def test_a_form_still_carrying_summary_fields_is_refused():
+    """It was read in 0.25 and is read nowhere now, so leaving it there is a
+    silence rather than a declaration."""
+
+    class _LeftoverForm(AddressForm):
+        summary_fields = [Group("town", "postcode")]
+
+    with pytest.raises(ImproperlyConfigured, match="which nothing reads"):
+        Wizard().step(_LeftoverForm, name="address")

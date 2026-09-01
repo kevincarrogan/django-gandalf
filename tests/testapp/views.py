@@ -2627,3 +2627,29 @@ class ColocatedSummaryWizardViewSet(WizardViewSet):
 
     def done(self, run):
         return HttpResponse(f"completed {run.run_id}")
+
+
+class DeclaredSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary shaped at the declaration: a bare form step says how its "
+        "answers read beside the name and label it already says there."
+    )
+    url_name = "declared-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(
+            AddressForm,
+            name="address",
+            label="Address",
+            summary_fields=[
+                Group("line_1", "line_2", "town", "postcode", label="Address"),
+                Hide("lookup_token"),
+            ],
+        )
+        .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")

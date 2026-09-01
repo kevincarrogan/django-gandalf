@@ -313,6 +313,10 @@ urlpatterns = [
         include(views.ColocatedSummaryWizardViewSet.urls()),
     ),
     path(
+        "declared-summary-wizard/",
+        include(views.DeclaredSummaryWizardViewSet.urls()),
+    ),
+    path(
         "expanded-summary-wizard/",
         include(views.ExpandedSummaryWizardViewSet.urls()),
     ),

@@ -67,12 +67,17 @@ Append a step.
   time, or a `FormView` subclass (normally a
   [`StepFormView`](step-views.md)) that brings its own view and template.
 - `**context` — the step's context. Every keyword becomes a key; there is no
-  fixed schema. Two keys are read by the library:
+  fixed schema. Three keys are read by the library:
 
   | Key | Read by |
   | --- | --- |
   | `name` | [`StepNameRouter`](#stepnamerouter) (the URL segment), `RuntimeStep.name`, `path.find_step(name=...)`, `on_field`, `outline()` |
   | `label` | the summary mixin's `summary_label_context_key` (see [Summary](summary.md)) |
+  | `summary_fields` | `RuntimeStep.summary_fields`, for a step with no view of its own to declare them on (see [Summary](summary.md#where-shaping-is-declared)) |
+
+  `summary_fields` is checked where it is written: a list contradicting
+  itself, a step whose view declares its own as well, or a `forms.Form` still
+  carrying the attribute, each raise `ImproperlyConfigured` from `.step()`.
 
   Any other key is stored as declared and is matched by
   `find_step(**context)` / `filter_steps(**context)` and reported by

@@ -365,6 +365,11 @@ GROUPS = (
             Example("summary-display-wizard"),
             Example("grouped-summary-wizard"),
             Example(
+                "declared-summary-wizard",
+                note="A bare form step with no view of its own, saying how "
+                "its answers read at the declaration.",
+            ),
+            Example(
                 "colocated-summary-wizard",
                 note="The review page names no steps: the address step "
                 "carries its own shaping, and the page inherits it.",
