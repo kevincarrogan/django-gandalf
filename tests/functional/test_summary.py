@@ -542,7 +542,11 @@ def test_a_render_asks_whether_to_include_each_answer(monkeypatch, templated_run
     assertContains(response, "<li>CB7 4AA</li>", html=True)
 
 
-def test_a_group_beside_a_render_is_refused(monkeypatch, templated_run):
+def test_a_group_beside_a_render_takes_its_own_fields_over_http(
+    monkeypatch, templated_run
+):
+    """The rest of the address renders through the template; the two fields
+    the group names keep a line of their own."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_fields",
@@ -550,15 +554,21 @@ def test_a_group_beside_a_render_is_refused(monkeypatch, templated_run):
             "address": [
                 Render("testapp/summary/address.html"),
                 Group("town", "postcode"),
+                Hide("lookup_token"),
             ]
         },
     )
 
-    with pytest.raises(ImproperlyConfigured, match="shapes nothing"):
-        templated_run.get_step("summary")
+    response = templated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/address.html")
+    assertContains(response, "<li>12 High Street</li>", html=True)
+    assertNotContains(response, "<li>Ely</li>", html=True)
+    assertContains(response, "Ely, CB7 4AA")
 
 
-def test_two_renders_for_one_step_are_refused_over_http(monkeypatch, templated_run):
+def test_two_specs_naming_no_fields_are_refused_over_http(monkeypatch, templated_run):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_fields",
@@ -570,5 +580,40 @@ def test_two_renders_for_one_step_are_refused_over_http(monkeypatch, templated_r
         },
     )
 
-    with pytest.raises(ImproperlyConfigured, match="one Render"):
+    with pytest.raises(ImproperlyConfigured, match="names no fields"):
         templated_run.get_step("summary")
+
+
+def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
+    """Its template is the point, not the values it was handed — an empty
+    formset says "none given" the same way."""
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Group("line_1", "line_2", "town", "postcode", "lookup_token"),
+            ]
+        },
+    )
+
+    response = templated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/address.html")
+    assert response.context["summary"][1].fields[-1].parts == ()
+
+
+def test_a_group_naming_no_fields_takes_the_rest_over_http(monkeypatch, templated_run):
+    monkeypatch.setattr(
+        views.TemplatedSummaryStepView,
+        "summary_fields",
+        {"address": [Group(label="Address"), Hide("lookup_token")]},
+    )
+
+    response = templated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, "12 High Street, Ely, CB7 4AA")
+    assertNotContains(response, "tok-9")

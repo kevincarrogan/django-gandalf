@@ -59,9 +59,10 @@ do not special-case:
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
 | `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
 | `get_field_specs(step)` | `Sequence[FieldSpec]` | `summary_fields.get(step.name, ())`; override to decide per run |
-| `get_render_spec(step, specs)` | `Render \| None` | the spec that speaks for the whole step — one naming no fields; raises `ImproperlyConfigured` for a second one or for a `Group` beside one |
-| `build_render_field(step, form, spec)` | `SummaryField` | the whole step's answer on one template (see `Render`) |
-| `hidden_field_names(step)` | `set[str]` | every name a `Hide` keeps off the row. The walk never needs it — a hidden field's spec yields nothing when reached — but `build_render_field()` does |
+| `get_whole_step_spec(step, specs)` | `FieldSpec \| None` | the spec naming no fields, which speaks for what no other spec named; raises `ImproperlyConfigured` for a second one |
+| `build_render_field(step, form, spec)` | `SummaryField` | what a `Render` speaks for, on its template |
+| `grouped_field_names(step, spec)` | `Sequence[str]` | the fields a group joins: the ones it names, or — naming none — what no other spec named, in form order |
+| `claimed_field_names(step)` | `set[str]` | every field name some spec of this step names. What is left is what a spec naming none speaks for |
 | `build_summary_field(step, form, bound_field)` | `SummaryField` | one answer on a line of its own |
 | `build_group_field(step, form, spec)` | `SummaryField` | several answers on one line (see `Group`) |
 | `include_summary_field(step, bound_field)` | `bool` | `True`; return `False` to drop a field. Consulted for plain fields and for each member of a group. |
@@ -113,8 +114,10 @@ class ReviewStepView(SummaryMixin, StepFormView):
     }
 ```
 
-`build_summary_row(step)` is the longer way, for what a template cannot
-say: several `SummaryField`s for one step, or a label computed per row.
+For several `SummaryField`s for one step — one per row, each with its own
+label — write a spec of your own: see [Writing a spec](#writing-a-spec).
+`build_summary_row(step)` is the longest way, and the only one that can
+also decide the row's own label.
 
 ```python
 from gandalf.summary import SummaryField, SummaryMixin, SummaryRow
@@ -218,8 +221,8 @@ Frozen.
 
 **Caveats**
 
-- It swallows the step's fields whole, so the row has exactly one
-  `SummaryField` and nothing renders twice.
+- It speaks for every field no other spec named — usually all of them, so
+  usually the row has exactly one `SummaryField`.
 - The formatted answers are still built: `parts` is one per non-empty
   answer in form order and `value` is them joined with `", "`, so a template
   that wants the library's display text has it — and one wanting another
@@ -230,8 +233,10 @@ Frozen.
 - A `Hide` beside a `Render` still hides, and `include_summary_field()` is
   still consulted; both drop the answer from `parts` and `value` without
   hiding it from `form`.
-- A `Group` beside a `Render` shapes nothing and raises
-  `ImproperlyConfigured`, as does a second `Render`.
+- A `Group` beside a `Render` takes its own fields and leaves the rest —
+  they compose rather than conflict. Two specs naming no fields is refused.
+- A `Render` left with nothing still speaks, so a step with no answers at
+  all renders its template.
 - `SummaryField.name` is the first answer shown, or the step's name when
   the step shows none — a `Render` renders whatever the step holds, an
   empty answer included. `SummaryField.label` is `None`: a `Render` is the
@@ -241,14 +246,74 @@ Frozen.
 
 ### `FieldSpec`
 
-Type alias: `Group | Hide | Render`. What a `summary_fields` value is a
-sequence of.
+A `Protocol`. `Group`, `Hide` and `Render` are the specs Gandalf ships;
+anything answering these two questions is one.
 
-Each spec carries `fields`, the field names it speaks for, and answers
-`build_fields(view, step, form)` with the `SummaryField`s it stands for —
-`Hide` none, `Group` and `Render` one each. `get_summary_fields()` asks;
-it does not decide. A spec speaks once, at the first of its fields the page
-shows, and a spec naming no fields speaks for the whole step instead.
+| Member | Type | What it says |
+| --- | --- | --- |
+| `fields` | `tuple[str, ...]` | the field names this spec speaks for. Empty means the rest |
+| `build_fields(view, step, form)` | `Iterator[SummaryField]` | the answers it stands for — none, one, or several |
+
+One rule holds them together, and it is the whole of the arrangement:
+
+> A spec speaks for the fields it names. A spec naming none speaks for
+> every field no other spec named.
+
+Everything else follows from it. `Hide("token")` claims the token and
+yields nothing, which is what hiding is. `Render("hours.html")` names none,
+so it claims what is left — usually the lot. A `Group` beside a `Render` is
+not a conflict but a sentence that parses: these fields on one line, the
+rest through that template. And `Group()` naming nothing means *the rest of
+this step, on one line*.
+
+A spec speaks once, at the first of its fields the page shows. One naming
+no fields speaks at the first field nothing else claimed — or last, and for
+nothing, when the step had nothing left to give it: an empty formset still
+renders its template, because the template is the point rather than the
+values. Two specs naming no fields is the one shape refused, because what
+is left over cannot go to both.
+
+`get_summary_fields()` asks; it does not decide. It knows none of the three
+by type, which is what makes a spec of your own an ordinary one.
+
+#### Writing a spec
+
+`build_fields()` may yield several answers, which no spec Gandalf ships
+does — one row of a repeated step per answer, say:
+
+```python
+from gandalf.summary import SummaryField
+
+
+class Repeat:
+    """Each row of a repeated step as its own answer."""
+
+    def __init__(self, label_field, value_field):
+        self.label_field = label_field
+        self.value_field = value_field
+
+    @property
+    def fields(self):
+        return ()
+
+    def build_fields(self, view, step, form):
+        for index, row in enumerate(step.answer):
+            yield SummaryField(
+                name=f"row-{index}",
+                label=row[self.label_field],
+                value=row[self.value_field],
+                form=form,
+            )
+```
+
+```python
+summary_fields = {"opening-hours": [Repeat("day", "opens")]}
+```
+
+`view` is the summary page, so defer to it rather than deciding for it:
+`view.format_value()` renders a value, `view.include_summary_field()` says
+whether an answer is shown at all, and `view.claimed_field_names()` is what
+a spec naming no fields subtracts to find its own.
 
 ### `SummaryRow`
 
@@ -560,6 +625,12 @@ partial version of what another shows.
 
 A field belongs to one spec. Two `Group`s (or a `Group` and a `Hide`) for the
 same step both name it; remove it from one.
+
+### `ImproperlyConfigured: … more than one spec that names no fields`
+
+A spec naming no fields speaks for what no other spec named, and two of
+them cannot both have it — two `Render`s for one step, or a `Render` beside
+a `Group()`. Name the fields on one of them, or drop it.
 
 ### The summary offers to change itself
 

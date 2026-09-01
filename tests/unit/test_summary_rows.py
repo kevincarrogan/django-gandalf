@@ -886,25 +886,31 @@ def test_a_render_names_itself_after_the_first_answer_it_shows(address_rows):
     assert rows[1].fields[0].name == "line_1"
 
 
-def test_a_render_beside_a_group_is_refused(address_rows):
-    """A group inside a whole-step render shapes nothing, and configuration
-    that does nothing is a mistake being made quietly."""
+def test_a_group_beside_a_render_takes_its_own_fields(address_rows):
+    """Not a conflict but a sentence that parses: these two on one line, the
+    rest through that template."""
 
     class _View(_SummaryView):
         summary_fields = {
             "address": [
                 Render("testapp/summary/address.html"),
-                Group("town", "postcode"),
+                Group("town", "postcode", label="Where"),
             ],
         }
 
-    with pytest.raises(ImproperlyConfigured) as excinfo:
-        address_rows(_View)
+    rows = address_rows(_View)
 
-    assert "Render" in str(excinfo.value)
+    assert [(field.label, field.template_name) for field in rows[1].fields] == [
+        (None, "testapp/summary/address.html"),
+        ("Where", "gandalf/summary/field.html"),
+    ]
+    assert rows[1].fields[0].parts == ("12 High Street", "tok-9")
+    assert rows[1].fields[1].value == "Ely, CB7 4AA"
 
 
-def test_two_renders_for_one_step_are_refused(address_rows):
+def test_two_specs_naming_no_fields_are_refused(address_rows):
+    """What is left over cannot go to both."""
+
     class _View(_SummaryView):
         summary_fields = {
             "address": [
@@ -916,4 +922,84 @@ def test_two_renders_for_one_step_are_refused(address_rows):
     with pytest.raises(ImproperlyConfigured) as excinfo:
         address_rows(_View)
 
-    assert "one Render" in str(excinfo.value)
+    assert "names no fields" in str(excinfo.value)
+
+
+def test_a_render_left_with_nothing_still_speaks(address_rows):
+    """Its template is the point, not the values it was handed."""
+
+    class _View(_SummaryView):
+        summary_fields = {
+            "address": [
+                Render("testapp/summary/address.html"),
+                Group("line_1", "line_2", "town", "postcode", "lookup_token"),
+            ],
+        }
+
+    rows = address_rows(_View)
+
+    rendered = rows[1].fields[-1]
+    assert rendered.template_name == "testapp/summary/address.html"
+    assert rendered.parts == ()
+    assert rendered.name == "address"
+
+
+def test_a_group_naming_no_fields_takes_the_rest(address_rows):
+    """The same rule read the other way round: the rest of this step, on one
+    line."""
+
+    class _View(_SummaryView):
+        summary_fields = {
+            "address": [Group(label="Address"), Hide("lookup_token")],
+        }
+
+    rows = address_rows(_View)
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+
+
+class _Repeat:
+    """A spec of nobody's but the page's: each row of a repeated step as its
+    own answer, which no spec Gandalf ships can do."""
+
+    def __init__(self, label_field, value_field):
+        self.label_field = label_field
+        self.value_field = value_field
+
+    @property
+    def fields(self):
+        return ()
+
+    def build_fields(self, view, step, form):
+        for index, row in enumerate(step.answer):
+            yield SummaryField(
+                name=f"row-{index}",
+                label=row[self.label_field],
+                value=row[self.value_field],
+                form=form,
+            )
+
+
+def test_a_page_can_bring_a_spec_of_its_own(summary_view_for):
+    """The protocol is the whole contract: name your fields, build your
+    answers. This one names none and builds several."""
+
+    class _View(_SummaryView):
+        summary_fields = {"opening-hours": [_Repeat("day", "opens")]}
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
+    rows = view.get_context_data()["summary"]
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Monday", "09:00"),
+        ("Tuesday", "10:00"),
+    ]
