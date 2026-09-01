@@ -66,6 +66,7 @@ FIELD_TEMPLATE_NAME = "gandalf/summary/field.html"
 
 __all__ = [
     "FIELD_TEMPLATE_NAME",
+    "Question",
     "check_field_specs",
     "FieldSpec",
     "Group",
@@ -197,6 +198,47 @@ class Render:
         yield view.build_render_field(step, form, self)
 
 
+@dataclass(frozen=True, init=False)
+class Question:
+    """One of several questions a step asked, and so one of several rows.
+
+    A summary row is one thing the user can change, and most steps ask one
+    thing. A step that asked three — an address, a postcode and a date on
+    one page — reads as three rows, all linking back to the page that asked
+    them:
+
+        summary_fields = [
+            Question("Address", Group("line_1", "line_2", "town")),
+            Question("Postcode", Group("postcode")),
+            Hide("lookup_token"),
+        ]
+
+    `label` is the row's heading, taking the place of the step's own. The
+    specs shape the answers inside it exactly as they would in a row of
+    their own.
+
+    Its rules are stricter than a plain list's, because a row that quietly
+    holds nothing is a question the user is never asked to check. Every
+    field the step shows must be named by one `Question` or a `Hide`; a spec
+    naming no fields cannot go inside one, *the rest* having no meaning once
+    there is more than one row to be the rest of; and nothing but `Question`
+    and `Hide` may sit beside them, a bare `Group` having no row to belong
+    to.
+    """
+
+    label: StrOrPromise
+    specs: tuple[Any, ...]
+
+    def __init__(self, label: StrOrPromise, *specs: Any) -> None:
+        object.__setattr__(self, "label", label)
+        object.__setattr__(self, "specs", specs)
+
+    @property
+    def fields(self) -> tuple[str, ...]:
+        """Every field this question's specs name."""
+        return tuple(name for spec in self.specs for name in spec.fields)
+
+
 class FieldSpec(Protocol):
     """One instruction about a step's answers, as `summary_fields` carries
     them. `Group`, `Hide` and `Render` are the ones Gandalf ships; anything
@@ -309,18 +351,47 @@ class SummaryRow:
 def check_field_specs(specs: Sequence[FieldSpec], source: str) -> None:
     """Refuse a list of specs that contradicts itself.
 
-    The two things a list can say wrong knowing nothing but itself: a field
-    claimed by two specs, and two specs naming no fields. Both are decidable
-    from the declaration, which is why `StepFormView.__init_subclass__` asks
-    at import — a step view saying something impossible should not wait for
-    someone to open the summary page to find out.
+        The two things a list can say wrong knowing nothing but itself: a field
+        claimed by two specs, and two specs naming no fields. Both are decidable
+        from the declaration, which is why `StepFormView.__init_subclass__` asks
+        at import — a step view saying something impossible should not wait for
+        someone to open the summary page to find out.
 
-    The third refusal is not here. Whether a spec names a field its step has
-    not got needs the step, so it stays with the page that knows which step
-    it is holding.
+    A `Question` brings three more, all decidable the same way: nothing
+        but a `Question` or a `Hide` may sit beside one, an empty `Question` is a
+        row with nothing to check, and a spec naming no fields inside one has no
+        *rest* to speak for.
 
-    `source` is what declared them, because the fix is there.
+        The refusals not here need the step. Whether a spec names a field its
+        step has not got, and whether every field a step shows ended up in some
+        question, both wait for the page that knows which step it is holding.
+
+        `source` is what declared them, because the fix is there.
     """
+    questions = [spec for spec in specs if isinstance(spec, Question)]
+    if questions:
+        for spec in specs:
+            if isinstance(spec, (Question, Hide)):
+                continue
+            raise ImproperlyConfigured(
+                f"{source} puts a spec beside a Question with no row to "
+                f"belong to. Once a step reads as several rows, every answer "
+                f"is in one of them: move it into a Question, or Hide it."
+            )
+        for question in questions:
+            if not question.specs:
+                raise ImproperlyConfigured(
+                    f"{source} has a Question ({question.label!r}) with "
+                    f"nothing in it, which is a row the user is asked to "
+                    f"check and shown nothing to check."
+                )
+            if any(not spec.fields for spec in question.specs):
+                raise ImproperlyConfigured(
+                    f"{source} has a spec inside a Question "
+                    f"({question.label!r}) that names no fields. A spec "
+                    f"naming none speaks for the rest, and there is no rest "
+                    f"of one row among several — name its fields."
+                )
     seen: set[str] = set()
     for spec in specs:
         for field_name in spec.fields:
@@ -485,7 +556,7 @@ class SummaryMixin(_SummaryMixinBase):
         self.check_summary_overrides()
         self.check_summary_field_names()
         fields = declared_step_fields(self.request.run.wizard)
-        rows = []
+        rows: list[SummaryRow] = []
         for step in self.get_summary_steps():
             # Checked here rather than beside the others because it is the
             # only check that has to ask the step itself, and asking sets
@@ -493,8 +564,62 @@ class SummaryMixin(_SummaryMixinBase):
             # step's view twice, and a summary page is already the most
             # expensive page a run has.
             self.check_step_field_names(step, fields)
-            rows.append(self.build_summary_row(step))
+            rows.extend(self.build_summary_rows(step))
         return rows
+
+    def build_summary_rows(self, step: RuntimeStep) -> Iterator[SummaryRow]:
+        """The rows one step makes: one, unless it says otherwise.
+
+        A step is a page, and most pages ask one thing. A page that asked
+        three says so with `Question`, and reads as three rows sharing one
+        change link — which is what the user sees: three things to check,
+        one place to go and fix any of them.
+        """
+        specs = self.get_field_specs(step)
+        # A page's `summary_overrides` reaches no other check until the walk
+        # asks a spec to speak, and a walk that reads as rows never gets
+        # there — so the list is checked here, whoever wrote it.
+        check_field_specs(specs, self.field_specs_source(step))
+        questions = [spec for spec in specs if isinstance(spec, Question)]
+        if not questions:
+            yield self.build_summary_row(step)
+            return
+        self.check_every_answer_is_asked(step, questions)
+        form = step.form
+        for question in questions:
+            yield SummaryRow(
+                step=step,
+                label=question.label,
+                fields=tuple(self.build_question_fields(step, form, question)),
+            )
+
+    def check_every_answer_is_asked(
+        self, step: RuntimeStep, questions: Sequence[Question]
+    ) -> None:
+        """Refuse a step whose questions leave one of its answers out.
+
+        A plain row shows every field the step has, so a new one appears on
+        the summary the moment it is added. Questions name their fields, so a
+        new one belongs to none of them and would vanish silently — an answer
+        the user gave and is never shown back. The fix is to say where it
+        goes, which is what this asks for.
+        """
+        claimed = self.claimed_field_names(step)
+        missing = sorted(
+            bound_field.name
+            for bound_field in step.answer_fields
+            if bound_field.name not in claimed
+            and self.include_summary_field(step, bound_field)
+        )
+        if not missing:
+            return
+        labels = ", ".join(repr(question.label) for question in questions)
+        raise ImproperlyConfigured(
+            f"Step {step.name!r} reads as several rows ({labels}), and these "
+            f"answers are in none of them: {', '.join(missing)}. Every answer "
+            f"a step shows belongs to one Question or to a Hide, or it is "
+            f"never shown back to the person who gave it."
+        )
 
     def check_step_field_names(
         self,
@@ -609,6 +734,24 @@ class SummaryMixin(_SummaryMixinBase):
             fields=tuple(self.build_summary_fields(step, form)),
         )
 
+    def build_question_fields(
+        self, step: RuntimeStep, form: BaseForm, question: Question
+    ) -> Iterator[SummaryField]:
+        """One question's answers, in form order.
+
+        The step's own fields, narrowed to the ones this question names, run
+        through the same walk a whole row's are. A question names its fields
+        — `check_field_specs()` refuses a spec inside one that does not — so
+        there is no remainder here to account for.
+        """
+        named = set(question.fields)
+        shown = [
+            bound_field
+            for bound_field in step.answer_fields
+            if bound_field.name in named
+        ]
+        yield from self.build_fields_from(step, form, question.specs, shown)
+
     def build_summary_fields(
         self, step: RuntimeStep, form: BaseForm
     ) -> Iterator[SummaryField]:
@@ -625,7 +768,19 @@ class SummaryMixin(_SummaryMixinBase):
         no field brings the walk to it — it speaks for the whole step, and
         the walk never starts.
         """
-        specs = self.get_field_specs(step)
+        yield from self.build_fields_from(
+            step, form, self.get_field_specs(step), list(step.answer_fields)
+        )
+
+    def build_fields_from(
+        self,
+        step: RuntimeStep,
+        form: BaseForm,
+        specs: Sequence[Any],
+        bound_fields: Sequence[BoundField],
+    ) -> Iterator[SummaryField]:
+        """`specs` folded over `bound_fields`: the walk itself, shared by a
+        whole row and by one `Question` of several."""
         by_field = self._specs_by_field(step, specs)
         whole = self.get_whole_step_spec(step, specs)
         if whole is not None:
@@ -633,10 +788,10 @@ class SummaryMixin(_SummaryMixinBase):
             # behind each of them and the walk reaches it like any other.
             # `len(specs)` is a slot of its own: `_specs_by_field` indexes
             # 0 to len(specs) - 1.
-            for bound_field in step.answer_fields:
+            for bound_field in bound_fields:
                 by_field.setdefault(bound_field.name, (len(specs), whole))
         spoken: set[int] = set()
-        for bound_field in step.answer_fields:
+        for bound_field in bound_fields:
             if not self.include_summary_field(step, bound_field):
                 continue
             found = by_field.get(bound_field.name)

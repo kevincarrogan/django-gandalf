@@ -16,6 +16,7 @@ from gandalf.form_views import StepFormView
 from gandalf.summary import (
     Group,
     Hide,
+    Question,
     Render,
     SummaryField,
     SummaryMixin,
@@ -1204,3 +1205,72 @@ def test_a_form_still_carrying_summary_fields_is_refused():
 
     with pytest.raises(ImproperlyConfigured, match="which nothing reads"):
         Wizard().step(_LeftoverForm, name="address")
+
+
+class _QuestionedView(_SummaryView):
+    summary_overrides = {
+        "address": [
+            Question("Address", Group("line_1", "line_2", "town")),
+            Question("Postcode", Group("postcode")),
+            Hide("lookup_token"),
+        ],
+    }
+
+
+def test_a_step_that_asked_twice_reads_as_two_rows(address_rows):
+    rows = address_rows(_QuestionedView)
+
+    assert [(row.label, row.fields[0].value) for row in rows] == [
+        ("Who you are", "Ada"),
+        ("Address", "12 High Street, Ely"),
+        ("Postcode", "CB7 4AA"),
+    ]
+
+
+def test_both_rows_change_the_step_that_asked_them(address_rows):
+    """One page asked both, so both send the user back to it."""
+    rows = address_rows(_QuestionedView)
+
+    assert rows[1].url == rows[2].url
+    assert rows[1].name == rows[2].name == "address"
+
+
+def test_a_spec_beside_a_question_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="no row to belong to"):
+        Wizard().step(
+            AddressForm,
+            name="address",
+            summary_fields=[
+                Question("Address", Group("line_1", "town")),
+                Group("postcode"),
+            ],
+        )
+
+
+def test_an_empty_question_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="nothing in it"):
+        Wizard().step(AddressForm, name="address", summary_fields=[Question("Address")])
+
+
+def test_a_spec_naming_no_fields_inside_a_question_is_refused():
+    with pytest.raises(ImproperlyConfigured, match="no rest"):
+        Wizard().step(
+            AddressForm,
+            name="address",
+            summary_fields=[
+                Question("Address", Render("testapp/summary/address.html"))
+            ],
+        )
+
+
+def test_an_answer_no_question_asks_is_refused(address_rows):
+    """A field added to the form belongs to no question, and would vanish
+    from the page rather than appear on it."""
+
+    class _View(_SummaryView):
+        summary_overrides = {
+            "address": [Question("Address", Group("line_1", "line_2", "town"))],
+        }
+
+    with pytest.raises(ImproperlyConfigured, match="in none of them"):
+        address_rows(_View)

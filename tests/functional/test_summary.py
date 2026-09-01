@@ -18,7 +18,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.summary import Group, Hide, Render
+from gandalf.summary import Group, Hide, Question, Render
 from gandalf.wizard import Wizard
 from tests.testapp.forms import AddressForm
 from tests.testapp import views
@@ -686,3 +686,89 @@ def test_a_form_carrying_summary_fields_is_refused():
 
     with pytest.raises(ImproperlyConfigured, match="which nothing reads"):
         Wizard().step(_LeftoverForm, name="address")
+
+
+@pytest.fixture
+def questioned_run(wizard_driver):
+    """A run whose address step asked two things and says so."""
+    run = wizard_driver("questioned-summary-wizard").start()
+    run.post_steps([("who", {"name": "Ada"}), ("address", ADDRESS)])
+    return run
+
+
+def test_one_step_reads_as_the_questions_it_asked(questioned_run):
+    response = questioned_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    rows = response.context["summary"]
+    assert [(row.label, row.fields[0].value) for row in rows] == [
+        ("Who you are", "Ada"),
+        ("Address", "12 High Street, Ely"),
+        ("Postcode", "CB7 4AA"),
+    ]
+    assertContains(response, "<dt>Postcode</dt>", html=True)
+    assertNotContains(response, "tok-9")
+
+
+def test_every_row_of_a_step_changes_that_step(questioned_run):
+    """Three things to check, one place to go and fix any of them."""
+    response = questioned_run.get_step("summary")
+
+    rows = response.context["summary"]
+    assert rows[1].url == rows[2].url == questioned_run.step_url("address")
+
+
+def test_an_answer_no_question_asks_is_refused_over_http(monkeypatch, questioned_run):
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {"address": [Question("Address", Group("line_1", "line_2", "town"))]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="in none of them"):
+        questioned_run.get_step("summary")
+
+
+def test_a_spec_beside_a_question_is_refused_over_http(monkeypatch, questioned_run):
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {
+            "address": [
+                Question("Address", Group("line_1", "line_2", "town")),
+                Group("postcode"),
+            ]
+        },
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="no row to belong to"):
+        questioned_run.get_step("summary")
+
+
+def test_an_empty_question_is_refused_over_http(monkeypatch, questioned_run):
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {"address": [Question("Address"), Hide("lookup_token")]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="nothing in it"):
+        questioned_run.get_step("summary")
+
+
+def test_a_spec_naming_no_fields_inside_a_question_is_refused_over_http(
+    monkeypatch, questioned_run
+):
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {
+            "address": [
+                Question("Address", Render("testapp/summary/address.html")),
+                Hide("lookup_token"),
+            ]
+        },
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="no rest"):
+        questioned_run.get_step("summary")

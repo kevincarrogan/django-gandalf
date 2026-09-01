@@ -365,6 +365,11 @@ GROUPS = (
             Example("summary-display-wizard"),
             Example("grouped-summary-wizard"),
             Example(
+                "questioned-summary-wizard",
+                note="One step, three rows: a page that asked three things "
+                "reads as three answers, all changed in the same place.",
+            ),
+            Example(
                 "declared-summary-wizard",
                 note="A bare form step with no view of its own, saying how "
                 "its answers read at the declaration.",

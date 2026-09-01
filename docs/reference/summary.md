@@ -9,6 +9,7 @@ from gandalf.summary import (
     FieldSpec,
     Group,
     Hide,
+    Question,
     Render,
     SummaryField,
     SummaryMixin,
@@ -40,7 +41,8 @@ intact — you reach for a lower one only for what the ones above cannot say.
 | | [`get_field_specs(step)`](#choosing-specs-per-run) | which specs a step gets, decided per run |
 | **Build** | `build_summary_field` / `build_group_field` / `build_render_field` | how one answer is built |
 | | [`build_summary_row(step)`](#a-step-whose-answer-is-not-one-forms-worth) | a step's whole row, its label included |
-| **Replace** | `get_summary_rows()` | the rows themselves: one step across several rows, or a different order |
+| | [`Question(label, *specs)`](#questionlabel-specs) | one step reading as several rows, one per thing it asked |
+| **Replace** | `get_summary_rows()` | the rows themselves: a different order, or rows from somewhere other than the steps |
 | | `get_summary_steps()` | which steps get a row at all |
 
 Two boundaries in that table are worth knowing.
@@ -172,7 +174,11 @@ do not special-case:
 | `check_field_names(step_name, specs, fields, source)` | `None` | the check both of those defer to; `source` is what named the fields, so the message says where the fix is |
 | `field_specs_source(step)` | `str` | what declared the specs a step is shown with — this page's `summary_overrides`, or the step's own `summary_fields`. Names the place a refusal should be fixed |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
+| `build_summary_rows(step)` | `Iterator[SummaryRow]` | the rows one step makes: `build_summary_row()` unless the step declares `Question`s, then one row each |
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
+| `build_question_fields(step, form, question)` | `Iterator[SummaryField]` | one question's answers, its own fields run through the same walk a whole row's are |
+| `build_fields_from(step, form, specs, bound_fields)` | `Iterator[SummaryField]` | the walk itself, shared by a whole row and by one `Question` of several |
+| `check_every_answer_is_asked(step, questions)` | `None` | raises for a field the step shows that no `Question` names |
 | `build_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
 | `get_field_specs(step)` | `Sequence[FieldSpec]` | this page's `summary_overrides` by step name, and failing that the step's own `summary_fields`; override to decide per run |
 | `get_whole_step_spec(step, specs)` | `FieldSpec \| None` | the spec naming no fields, which speaks for what no other spec named; raises `ImproperlyConfigured` for a second one |
@@ -267,6 +273,10 @@ The checks run before and during the build and raise
 | a `summary_overrides` key names a step the wizard does not declare | `<View>.summary_overrides shapes steps this wizard does not declare: <keys>. Declared steps: <names>.` |
 | a spec of this page's names a field its step does not declare | `<View>.summary_overrides shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
 | a spec of the *step's own* names a field it has not got | `step '<step>'s own summary_fields shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
+| a spec sits beside a `Question` and is neither a `Question` nor a `Hide` | `<source> puts a spec beside a Question with no row to belong to. …` |
+| a `Question` has nothing in it | `<source> has a Question ('<label>') with nothing in it, …` |
+| a spec inside a `Question` names no fields | `<source> has a spec inside a Question ('<label>') that names no fields. …` |
+| a field the step shows is in no `Question` | `Step '<step>' reads as several rows (…), and these answers are in none of them: <fields>. …` |
 | a field name appears in two specs for one step | `<source> names '<field>' more than once; a field belongs to one spec.` |
 | two specs for one step name no fields | `<source> has more than one spec that names no fields, and what no other spec named cannot go to both.` |
 
@@ -327,6 +337,58 @@ Frozen.
   the form offers never speaks for the row at all.
 - Members the view's `include_summary_field()` rejects are left out of the
   join.
+
+### `Question(label, *specs)`
+
+One of several questions a step asked, and so one of several rows. A summary
+row is one thing the user can change, and most steps ask one thing; a step
+that asked three reads as three rows sharing one change link.
+
+```python
+class AddressStepView(StepFormView):
+    form_class = AddressForm
+    summary_fields = [
+        Question("Address", Group("line_1", "line_2", "town")),
+        Question("Postcode", Group("postcode")),
+        Hide("lookup_token"),
+    ]
+```
+
+```
+Address    12 High Street, Ely    Change
+Postcode   CB7 4AA                Change
+```
+
+**Parameters**
+
+- `label` — the row's heading, taking the place of the step's own.
+- `*specs` — the specs shaping the answers inside it, exactly as they would
+  shape a row of their own.
+
+**Attributes** — `label`, `specs` (a tuple), and `fields`, every field its
+specs name. Frozen.
+
+**Caveats**
+
+- Every row a step makes carries the same `step`, so `row.url` is the same
+  page for all of them. That is the point: three things to check, one place
+  to go and fix any of them.
+- A step declaring no `Question` makes one row, labelled as it always was.
+  Nothing changes for a step that asked one thing.
+- Its rules are stricter than a plain list's, and all four are refusals:
+
+  | Condition | Why |
+  | --- | --- |
+  | a spec beside a `Question` that is not a `Question` or a `Hide` | it has no row to belong to |
+  | a `Question` with no specs | a row the user is asked to check, showing nothing to check |
+  | a spec inside a `Question` naming no fields | *the rest* has no meaning once there is more than one row to be the rest of |
+  | a field the step shows that no `Question` names and no `Hide` hides | it would vanish from the page rather than appear on it |
+
+  The last is the one worth knowing about. A plain row shows every field a
+  step has, so a field added to the form appears on the summary by itself.
+  Questions name their fields, so a new field belongs to none of them —
+  `check_every_answer_is_asked()` refuses that rather than letting an answer
+  the user gave go unshown.
 
 ### `Hide(*fields)`
 

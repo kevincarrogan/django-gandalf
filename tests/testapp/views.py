@@ -41,7 +41,7 @@ from gandalf.storage import (
     SessionStorage,
     StashNotFound,
 )
-from gandalf.summary import Group, Hide, Render, SummaryMixin
+from gandalf.summary import Group, Hide, Question, Render, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
@@ -2645,6 +2645,33 @@ class DeclaredSummaryWizardViewSet(WizardViewSet):
             label="Address",
             summary_fields=[
                 Group("line_1", "line_2", "town", "postcode", label="Address"),
+                Hide("lookup_token"),
+            ],
+        )
+        .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
+class QuestionedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "One step, three rows: an address page that asked three things reads "
+        "as three answers to check, all changed in the same place."
+    )
+    url_name = "questioned-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(
+            AddressForm,
+            name="address",
+            label="Address",
+            summary_fields=[
+                Question("Address", Group("line_1", "line_2", "town")),
+                Question("Postcode", Group("postcode")),
                 Hide("lookup_token"),
             ],
         )

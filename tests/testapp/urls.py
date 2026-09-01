@@ -317,6 +317,10 @@ urlpatterns = [
         include(views.DeclaredSummaryWizardViewSet.urls()),
     ),
     path(
+        "questioned-summary-wizard/",
+        include(views.QuestionedSummaryWizardViewSet.urls()),
+    ),
+    path(
         "expanded-summary-wizard/",
         include(views.ExpandedSummaryWizardViewSet.urls()),
     ),
