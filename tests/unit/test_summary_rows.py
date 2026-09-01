@@ -29,7 +29,6 @@ from tests.testapp.forms import (
     BusinessDetailsForm,
     FirstStepForm,
     SummaryFieldsForm,
-    SelfShapingAddressForm,
 )
 from tests.testapp.views import (
     FirstStepFromFormView,
@@ -1070,36 +1069,19 @@ def test_a_page_can_silence_a_step_that_shapes_itself(self_shaping_rows):
     ]
 
 
-def test_a_bare_form_can_say_how_its_own_answers_read(summary_view_for, address_state):
-    """A step with no view of its own still has somewhere to say it."""
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="who", label="Who you are")
-        .step(SelfShapingAddressForm, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
-    )
-
-    view = summary_view_for(wizard, address_state, _SummaryView)
-    rows = view.get_context_data()["summary"]
-
-    assert [(field.label, field.value) for field in rows[1].fields] == [
-        ("Address", "12 High Street, Ely, CB7 4AA"),
-    ]
-
-
 def test_a_step_shaping_a_field_it_has_not_got_is_refused(
     summary_view_for, address_state
 ):
     """The same check the page's own specs get: a misspelt `Hide` on a step
     hides nothing, and renders the answer it was meant to keep off."""
 
-    class _TypoForm(AddressForm):
+    class _TypoStepView(SelfShapingAddressStepView):
         summary_fields = [Hide("lookup_taken")]
 
     wizard = (
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(_TypoForm, name="address", label="Address")
+        .step(_TypoStepView, name="address", label="Address")
         .configure(template_name="testapp/linear_wizard.html")
     )
 

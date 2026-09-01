@@ -29,7 +29,7 @@ intact — you reach for a lower one only for what the ones above cannot say.
 | --- | --- | --- |
 | **Nothing** | mix in [`SummaryMixin`](#summarymixin) and loop `summary` in a template | every answered step, one row each, one line per answer, values as display text |
 | **Declare** | `.step(Form, name="address", label="Address")` | the row's heading |
-| | [`summary_fields`](#where-shaping-is-declared) on the step's view or form: `Group`, `Hide` | answers joined or dropped, said once, next to the step |
+| | [`summary_fields`](#where-shaping-is-declared) on the step's view: `Group`, `Hide` | answers joined or dropped, said once, next to the step |
 | **Render** | [`Group(template_name=…)`](#rendering-an-answer-through-its-own-template) | that answer's markup |
 | | [`Render("…")`](#rendering-a-whole-step-through-one-template) | the whole step's markup, with `field.form.cleaned_data` in reach |
 | | `summary_field_template_name` | the page's default markup for every answer |
@@ -59,14 +59,19 @@ worse than the spec that replaced it.
 
 ### Where shaping is declared
 
-The same specs can be declared in three places, and the first one that has
-an opinion wins:
+The same specs can be declared in two places, and the page wins:
 
 | Where | What it says | Reach for it when |
 | --- | --- | --- |
 | `SummaryMixin.summary_overrides` on the review page | this step, on this page, reads like this | one page disagrees, or the step is not yours to change |
-| `summary_fields` on the step's view | this step's answers read like this | the step has a view of its own |
-| `summary_fields` on the step's form | these answers read like this wherever they are asked | the step is a bare `forms.Form`, or one form is asked by several wizards |
+| `summary_fields` on the step's view | this step's answers read like this, wherever it is asked | anywhere else — this is the ordinary place |
+
+Not on the form. A `forms.Form` is a Django object shared with everything
+else that asks it, and a Gandalf attribute on it is this library squatting in
+a namespace it does not own — as well as a form knowing about a page it never
+renders. A step declared as a bare `forms.Form` gains a step view to say it
+on, which is three lines and travels between wizards exactly as the form
+does.
 
 ```python
 from gandalf.form_views import StepFormView

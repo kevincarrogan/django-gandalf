@@ -147,15 +147,18 @@ class StepFormView(_StepFormViewBase):
         review page listing every awkward step by name is a page carrying
         knowledge it did not generate.
 
-        A step declared as a bare `forms.Form` has no view of its own to say
-        it on, so the form is asked instead — which is also where it belongs
-        when one form is asked by several wizards. Override to decide per
-        request; the summary page has the last word either way.
+        The view rather than the form, deliberately. A `forms.Form` is a
+        Django object shared with everything else that asks it — the admin,
+        a serializer, another app's view — and a Gandalf attribute on it is
+        this library squatting in a namespace it does not own. It is also a
+        form knowing about a page it never renders. A step view is the seam
+        every other reading already comes through, and one shared between
+        wizards travels exactly as well as a shared form would.
+
+        Override to decide per request; the summary page has the last word
+        either way.
         """
-        if self.summary_fields:
-            return self.summary_fields
-        form_class = self.get_form_class()
-        return cast("Sequence[FieldSpec]", getattr(form_class, "summary_fields", ()))
+        return self.summary_fields
 
     def get_answer_schema(self, form: Any) -> dict[str, Any]:
         """This step as a JSON Schema — what an agent is told it asks.

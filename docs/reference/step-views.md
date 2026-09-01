@@ -129,11 +129,15 @@ different about a step it names — a review page is itself a step view, so
 the two cannot share a name.
 
 **`get_summary_fields()`** — those specs, for a summary page to start from.
-The default returns `summary_fields`, and failing that reads the same
-attribute off `get_form_class()`, so a step declared as a bare
-`forms.Form` — with no view of its own to say it on — can still say it.
-Override to decide per request; the summary page has the last word either
-way.
+The default returns `summary_fields`. Override to decide per request; the
+summary page has the last word either way.
+
+The view rather than the form, deliberately: a `forms.Form` is a Django
+object shared with everything else that asks it, so a Gandalf attribute on
+it is this library squatting in a namespace it does not own, and a form
+knowing about a check-your-answers page is a form knowing about a page it
+never renders. A step declared as a bare `forms.Form` gains a step view to
+say it on.
 
 ### `FormSetStepView`
 

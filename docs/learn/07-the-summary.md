@@ -53,7 +53,7 @@ def with_contact_and_review(wizard):
     """The tail every chapter from here shares."""
     return (
         wizard.step(EmailForm, name="contact", label="Email")
-        .step(AddressForm, name="address", label="Address")
+        .step(AddressStepView, name="address", label="Address")
         .step(ReviewStepView, name="review")
     )
 
@@ -106,39 +106,39 @@ One field per answer suits most steps and not all of them: an address is five
 answers and one line, and the token that looked it up is an answer the
 applicant never gave.
 
-The step is what knows that, so the step is where it is said. `AddressForm`
-carries `summary_fields`:
+The step is what knows that, so the step is where it is said — on its view,
+the same seam chapter 6 used for everything else a step decides:
 
 ```python
+from gandalf.form_views import StepFormView
 from gandalf.summary import Group, Hide
 
 
-class AddressForm(forms.Form):
-    line_1 = forms.CharField(label="Address line 1")
-    line_2 = forms.CharField(label="Address line 2", required=False)
-    town = forms.CharField(label="Town or city")
-    postcode = forms.CharField(label="Postcode")
-    lookup_token = forms.CharField(label="Lookup token", required=False)
-
+class AddressStepView(StepFormView):
+    form_class = AddressForm
+    template_name = "testapp/linear_wizard.html"
     summary_fields = [
         Group("line_1", "line_2", "town", "postcode"),
         Hide("lookup_token"),
     ]
 ```
 
+Not on `AddressForm` itself, tempting as that looks. A form is a Django
+object shared with everything else that asks it, and a form does not render
+the page it would be describing.
+
 `Group` shows several fields as one answer, `Hide` shows none of them, and
 `Render` gives the whole step to one template. Note where they are *not*:
-`ReviewStepView` above says nothing about the address, and never will. An
-address reads as an address wherever it is asked, so every review page in
-this application gets it right without knowing a thing about it —
-[chapter 12](12-task-lists.md) reuses this very view for a section that has
-no address in it at all.
+`ReviewStepView` says nothing about the address, and never will. An address
+reads as an address wherever it is asked, so every review page in this
+application gets it right without knowing a thing about it —
+[chapter 12](12-task-lists.md) reuses that very view for a section with no
+address in it at all.
 
-A step with a view of its own puts the same list on the view instead. And a
-page that wants one step read differently — a step from someone else's
+A page that wants one step read differently — a step from someone else's
 library, say — says so in its own `summary_overrides`, keyed by step name,
-which wins. The
-[reference](../reference/summary.md#where-shaping-is-declared) has all three
+and wins. The
+[reference](../reference/summary.md#where-shaping-is-declared) has both
 places and the order they resolve in.
 
 A group can bring its own markup too: `Group("line_1", "line_2", "town",

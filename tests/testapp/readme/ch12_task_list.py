@@ -4,8 +4,8 @@ applicant can do in any order."""
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 from gandalf.wizard import Wizard
 
-from .ch07_review import ReviewStepView
-from .forms import AddressForm, ApplicantForm, EmailForm
+from .ch07_review import AddressStepView, ReviewStepView
+from .forms import ApplicantForm, EmailForm
 
 
 # One review view for both sections. The address section needs nothing said
@@ -22,7 +22,7 @@ contact = (
 
 address = (
     Wizard()
-    .step(AddressForm, name="address", label="Address")
+    .step(AddressStepView, name="address", label="Address")
     .step(ReviewStepView, name="review")
 )
 

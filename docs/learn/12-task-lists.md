@@ -10,7 +10,7 @@ its status and one URL that does the right thing whichever state it is in.
 ```python
 from gandalf.tasklists import Section, TaskList, TaskListViewSet
 
-from .ch07_review import ReviewStepView
+from .ch07_review import AddressStepView, ReviewStepView
 
 
 contact = (
@@ -24,7 +24,7 @@ contact = (
 
 address = (
     Wizard()
-    .step(AddressForm, name="address", label="Address")
+    .step(AddressStepView, name="address", label="Address")
     .step(ReviewStepView, name="review")
 )
 
@@ -44,8 +44,8 @@ class GrantApplicationViewSet(TaskListViewSet):
 Two sections, two shapes, **one review view** — [chapter
 7's](07-the-summary.md#the-summary-page), reused unchanged. It knows nothing
 about either section, and that is what makes it reusable: the address reads
-as one line because `AddressForm` says so, and a section with no address in
-it needs nothing said about it at all. Shaping that lived on the review view
+as one line because `AddressStepView` says so, and a section with no address
+in it needs nothing said about it at all. Shaping that lived on the review view
 would have to be written once per section, and a spec naming a step the
 section does not have raises `ImproperlyConfigured` — so a page carrying
 specs is a page tied to one wizard's shape.
