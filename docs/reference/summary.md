@@ -98,7 +98,7 @@ expected (see [Step views](step-views.md)).
 
 That default is plain rather than pretty on purpose. How three organisers
 should read on a check-your-answers page is this page's decision, and
-[`Render`](#rendertemplate_name-labelnone-separator) is the short way to
+[`Render`](#rendertemplate_name) is the short way to
 make it — one template for the whole step, reaching its rows through
 `field.form.cleaned_data`:
 
@@ -198,7 +198,7 @@ Frozen.
 Fields the summary does not show — an address lookup token, a hidden
 nonce. **Attributes** — `fields` (a tuple). Frozen.
 
-### `Render(template_name, label=None, separator=", ")`
+### `Render(template_name)`
 
 The whole step's answer, rendered through one template. Names no fields:
 listing every field of a step so that one template can ignore the list is
@@ -207,22 +207,22 @@ ceremony, and a value no field holds cannot be named in a field list at all.
 **Parameters**
 
 - `template_name` — the template this step's answer renders through. Lands
-  on `SummaryField.template_name`, like a `Group`'s.
-- `label` — the `SummaryField.label`. Optional; `None` leaves the row's
-  heading to name it.
-- `separator` — what the formatted answers are joined with in `value`.
-  Default `", "`.
+  on `SummaryField.template_name`, like a `Group`'s. The only parameter:
+  past `Render` the markup is the caller's, so a `label` and a `separator`
+  would be the library shaping output it is not producing. `Group` carries
+  both because a group with no template is still rendered by the library.
 
-**Attributes** — `template_name`, `label`, `separator`, and `fields`, which
-is always `()`. Frozen.
+**Attributes** — `template_name`, and `fields`, which is always `()`.
+Frozen.
 
 **Caveats**
 
 - It swallows the step's fields whole, so the row has exactly one
   `SummaryField` and nothing renders twice.
 - The formatted answers are still built: `parts` is one per non-empty
-  answer in form order and `value` is them joined, so a template that wants
-  the library's display text has it. Rendering from `cleaned_data` gives up
+  answer in form order and `value` is them joined with `", "`, so a template
+  that wants the library's display text has it — and one wanting another
+  join has `parts` and Django's `join` filter. Rendering from `cleaned_data` gives up
   `format_value` — a choice is its key rather than its label, a boolean is
   `True` rather than `Yes`, a date is not in the active locale, and a
   field's own `format_value()` never runs.
@@ -233,7 +233,8 @@ is always `()`. Frozen.
   `ImproperlyConfigured`, as does a second `Render`.
 - `SummaryField.name` is the first answer shown, or the step's name when
   the step shows none — a `Render` renders whatever the step holds, an
-  empty answer included.
+  empty answer included. `SummaryField.label` is `None`: a `Render` is the
+  only field its row has, so `row.label` names it.
 - For a formset step, `field.form` is the formset, so
   `field.form.cleaned_data` is the list of row dicts.
 

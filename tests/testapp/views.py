@@ -2575,7 +2575,7 @@ class RenderedSummaryStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_include.html"
     summary_fields = {
-        "opening-hours": [Render("testapp/summary/hours.html", label="Opening hours")],
+        "opening-hours": [Render("testapp/summary/hours.html")],
     }
 
 

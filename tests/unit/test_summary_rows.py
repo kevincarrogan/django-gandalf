@@ -834,7 +834,7 @@ def test_a_plain_field_carries_its_own_form(address_rows):
 class _RenderedView(_SummaryView):
     summary_fields = {
         "address": [
-            Render("testapp/summary/address.html", label="Address"),
+            Render("testapp/summary/address.html"),
             Hide("lookup_token"),
         ],
     }
@@ -845,7 +845,8 @@ def test_a_render_takes_the_whole_step_without_naming_a_field(address_rows):
 
     assert len(rows[1].fields) == 1
     assert rows[1].fields[0].template_name == "testapp/summary/address.html"
-    assert rows[1].fields[0].label == "Address"
+    # The row's heading names it: a `Render` is the only field its row has.
+    assert rows[1].fields[0].label is None
 
 
 def test_a_render_still_carries_the_librarys_formatting(address_rows):

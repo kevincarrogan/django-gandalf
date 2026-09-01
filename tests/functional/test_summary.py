@@ -510,7 +510,7 @@ def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_
         "summary_fields",
         {
             "address": [
-                Render("testapp/summary/address.html", label="Address"),
+                Render("testapp/summary/address.html"),
                 Hide("lookup_token"),
             ]
         },

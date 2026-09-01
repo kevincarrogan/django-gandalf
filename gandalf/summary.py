@@ -140,30 +140,36 @@ class Hide:
 class Render:
     """The whole step's answer, rendered through one template.
 
-    `Group` says which fields read as one answer; `Render` says the step
-    does, and needs no field list to say it — listing every field of a step
-    so that one template can ignore the list is ceremony. It swallows the
-    step's fields whole, so nothing renders twice, and it is the only spec
-    that is not about particular fields.
+        `Group` says which fields read as one answer; `Render` says the step
+        does, and needs no field list to say it — listing every field of a step
+        so that one template can ignore the list is ceremony. It swallows the
+        step's fields whole, so nothing renders twice, and it is the only spec
+        that is not about particular fields.
 
-    The template is handed the `SummaryField`, and through it the form:
-    `field.form.cleaned_data` is where a value the form derived in `clean()`
-    lives, and where a formset's rows are. That is the reach `Group` cannot
-    offer, because a value no field holds cannot be named in a field list.
+        The template is handed the `SummaryField`, and through it the form:
+        `field.form.cleaned_data` is where a value the form derived in `clean()`
+        lives, and where a formset's rows are. That is the reach `Group` cannot
+        offer, because a value no field holds cannot be named in a field list.
 
-    Rendering from `cleaned_data` gives up `format_value` — a choice is its
-    key rather than its label, a boolean is `True` rather than Yes, a date
-    is not in the active locale — so the field still carries the formatted
-    answers in `parts` and `value`. A template takes whichever it wants.
+        Rendering from `cleaned_data` gives up `format_value` — a choice is its
+        key rather than its label, a boolean is `True` rather than Yes, a date
+        is not in the active locale — so the field still carries the formatted
+        answers in `parts` and `value`. A template takes whichever it wants.
 
-    `label` and `separator` mean what they mean on `Group`. A `Hide` beside
-    a `Render` still hides; a `Group` beside one shapes nothing and is
-    refused rather than ignored.
+    It takes the template and nothing else. A group carries a `label` and
+        a `separator` because a group without a template is still rendered by
+        the library — the join and the sub-heading are the only say the page
+        has. Past `Render` the markup is the caller's, and the two would be the
+        library shaping output it is not producing. A group is also one answer
+        among a row's several, where a `Render` is the only field its row has:
+        `row.label` always names it, and a template written for one step can
+        write any sub-heading it likes.
+
+        A `Hide` beside a `Render` still hides; a `Group` beside one shapes
+        nothing and is refused rather than ignored.
     """
 
     template_name: str
-    label: StrOrPromise | None = None
-    separator: str = ", "
 
     @property
     def fields(self) -> tuple[str, ...]:
@@ -622,6 +628,12 @@ class SummaryMixin(_SummaryMixinBase):
         own when there is none to take: a `Render` renders whatever the
         step holds, an empty answer included, because the template is the
         point rather than the values.
+
+        `value` is the answers joined plainly, for a template that wants
+        the one-line reading. A template wanting another join has `parts`
+        and Django's `join` filter, which is why the spec takes no
+        separator; `label` is None for the same kind of reason, the row's
+        heading being the only name a one-field row needs.
         """
         shown: list[tuple[str, str]] = []
         for bound_field in step.answer_fields:
@@ -637,8 +649,8 @@ class SummaryMixin(_SummaryMixinBase):
         parts = tuple(value for _, value in shown if value)
         return SummaryField(
             name=shown[0][0] if shown else (step.name or ""),
-            label=spec.label,
-            value=spec.separator.join(parts),
+            label=None,
+            value=", ".join(parts),
             parts=parts,
             template_name=spec.template_name,
             form=form,
