@@ -2138,7 +2138,9 @@ class OpeningHoursWizardViewSet(WizardViewSet):
 class DynamicSummaryStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_fields = {"address": [Group("line_1", "town", "postcode", separator=", ")]}
+    summary_overrides = {
+        "address": [Group("line_1", "town", "postcode", separator=", ")]
+    }
 
 
 class DynamicSummaryWizardViewSet(WizardViewSet):
@@ -2165,7 +2167,7 @@ class GroupedSummaryStepView(SummaryMixin, StepFormView):
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group("line_1", "line_2", "town", "postcode", separator=", "),
             Hide("lookup_token"),
@@ -2534,7 +2536,7 @@ class TemplatedSummaryStepView(SummaryMixin, StepFormView):
 
     form_class = ConfirmForm
     template_name = "testapp/summary_include.html"
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group(
                 "line_1",
@@ -2574,7 +2576,7 @@ class RenderedSummaryStepView(SummaryMixin, StepFormView):
 
     form_class = ConfirmForm
     template_name = "testapp/summary_include.html"
-    summary_fields = {
+    summary_overrides = {
         "opening-hours": [Render("testapp/summary/hours.html")],
     }
 
@@ -2591,6 +2593,36 @@ class RenderedSummaryWizardViewSet(WizardViewSet):
         .step(FirstStepForm, name="who", label="Who you are")
         .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
         .step(RenderedSummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
+class SelfShapingAddressStepView(StepFormView):
+    """A step that says how its own answers read, so a review page listing
+    every awkward step by name does not have to."""
+
+    form_class = AddressForm
+    template_name = "testapp/linear_wizard.html"
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode", label="Address"),
+        Hide("lookup_token"),
+    ]
+
+
+class ColocatedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary that names no steps at all: the address step says how its "
+        "own answers read, and the review page inherits it."
+    )
+    url_name = "colocated-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(SelfShapingAddressStepView, name="address", label="Address")
+        .step(SummaryStepView, name="summary")
     )
 
     def done(self, run):

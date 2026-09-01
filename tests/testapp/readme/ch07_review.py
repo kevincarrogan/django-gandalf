@@ -18,7 +18,7 @@ class AddressReviewStepView(SummaryMixin, StepFormView):
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group("line_1", "line_2", "town", "postcode"),
             Hide("lookup_token"),

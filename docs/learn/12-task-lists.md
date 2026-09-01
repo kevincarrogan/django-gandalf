@@ -12,7 +12,7 @@ from gandalf.tasklists import Section, TaskList, TaskListViewSet
 
 
 class ReviewStepView(SummaryMixin, StepFormView):
-    """A section with no address in it needs no `summary_fields` at all."""
+    """A section with no address in it needs no specs at all."""
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"

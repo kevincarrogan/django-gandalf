@@ -490,6 +490,21 @@ class RuntimeStep:
         return cast("Iterable[Any]", reader(self.form))
 
     @property
+    def summary_fields(self) -> Iterable[Any]:
+        """How this step says its own answers read on a summary page.
+
+        Asked of `step_view` for the reason `answer_fields` is: the step is
+        what knows an address is an address, and a page listing every
+        awkward step by name is carrying knowledge it did not generate. A
+        step declared with a plain Django `FormView` has nothing to say and
+        says nothing.
+        """
+        reader = getattr(self.step_view, "get_summary_fields", None)
+        if reader is None:
+            return ()
+        return cast("Iterable[Any]", reader())
+
+    @property
     def errors(self) -> dict[str, list[dict[str, Any]]]:
         """What this step refused, by field name, empty when it is settled.
 

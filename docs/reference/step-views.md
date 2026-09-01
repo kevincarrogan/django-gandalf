@@ -103,6 +103,38 @@ A step declared with a bare Django `FormView` rather than a `StepFormView`
 carries none of these and gets the `BaseForm` readings, so nothing has to
 change to keep working.
 
+**`summary_fields`** — how this step's answers read on a
+[check-your-answers page](summary.md): a sequence of `Group` / `Hide` /
+`Render` specs about *this* step's fields, so there is no step name to key
+them by. Default `()`.
+
+```python
+from gandalf.form_views import StepFormView
+from gandalf.summary import Group, Hide
+
+
+class AddressStepView(StepFormView):
+    form_class = AddressForm
+    template_name = "grants/address.html"
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode", label="Address"),
+        Hide("lookup_token"),
+    ]
+```
+
+An address is an address wherever it is asked, so the step is where that
+belongs; a review page then names no steps at all. Not to be confused with
+`SummaryMixin.summary_overrides`, which is a *page* saying something
+different about a step it names — a review page is itself a step view, so
+the two cannot share a name.
+
+**`get_summary_fields()`** — those specs, for a summary page to start from.
+The default returns `summary_fields`, and failing that reads the same
+attribute off `get_form_class()`, so a step declared as a bare
+`forms.Form` — with no view of its own to say it on — can still say it.
+Override to decide per request; the summary page has the last word either
+way.
+
 ### `FormSetStepView`
 
 A step whose `get_form()` returns a formset rather than a form.

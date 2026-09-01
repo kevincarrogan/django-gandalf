@@ -13,7 +13,7 @@ from .forms import AddressForm, ApplicantForm, ConfirmForm, EmailForm
 class ReviewStepView(SummaryMixin, StepFormView):
     """Check your answers, for a wizard with nothing in it that needs
     shaping. A review view is configured for the wizard it sits in, so a
-    section without an address carries no `summary_fields` at all."""
+    section without an address carries no specs at all."""
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"

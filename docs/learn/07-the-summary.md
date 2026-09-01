@@ -47,7 +47,7 @@ class ConfirmForm(forms.Form):
 class AddressReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group("line_1", "line_2", "town", "postcode"),
             Hide("lookup_token"),
@@ -107,15 +107,22 @@ lists which ones mean something. Values are display text, not stored data: a cho
 label, a boolean shows Yes/No, an upload shows its filename.
 
 One field per answer suits most steps and not all of them: an address is five
-answers and one line. `summary_fields`, keyed by step name, says so — `Group`
-shows several fields as one answer, `Hide` shows none of them, and `Render`
-gives the whole step to one template. A key naming a
-step the wizard does not declare raises `ImproperlyConfigured`: a review view
-is configured for the wizard it sits in, which is what the name
-`AddressReviewStepView` is saying. A wizard without an address wants its own
-review view, carrying its own specs or none — plain `SummaryMixin,
+answers and one line. Specs say so — `Group` shows several fields as one
+answer, `Hide` shows none of them, and `Render` gives the whole step to one
+template. `summary_overrides`, keyed by step name, is this page saying it; a
+key naming a step the wizard does not declare raises `ImproperlyConfigured`,
+because a review view is configured for the wizard it sits in, which is what
+the name `AddressReviewStepView` is saying. A wizard without an address wants
+its own review view, carrying its own specs or none — plain `SummaryMixin,
 StepFormView` siblings, not a hierarchy. [Chapter 12](12-task-lists.md) puts
 two of them side by side.
+
+The same specs can be declared on the step instead — `summary_fields` on the
+address step's view, or on the address *form* — and then any review page
+shows the address correctly without naming it, because an address is an
+address wherever it is asked. The
+[reference](../reference/summary.md#where-shaping-is-declared) has the three
+places and which wins.
 
 A group can bring its own markup too: `Group("line_1", "line_2", "town",
 "postcode", template_name="grants/summary/address.html")` names the template

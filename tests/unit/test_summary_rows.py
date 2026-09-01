@@ -29,8 +29,13 @@ from tests.testapp.forms import (
     BusinessDetailsForm,
     FirstStepForm,
     SummaryFieldsForm,
+    SelfShapingAddressForm,
 )
-from tests.testapp.views import FirstStepFromFormView, OpeningHoursStepView
+from tests.testapp.views import (
+    FirstStepFromFormView,
+    OpeningHoursStepView,
+    SelfShapingAddressStepView,
+)
 
 
 def _bound_field(form, name):
@@ -359,7 +364,7 @@ def address_rows(summary_view_for, address_wizard, address_state):
 
 
 class _GroupedView(_SummaryView):
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group("line_1", "line_2", "town", "postcode", label="Address"),
         ],
@@ -414,7 +419,7 @@ def test_a_plain_field_keeps_its_own_text_as_its_only_part(address_rows):
 
 def test_an_unanswered_plain_field_keeps_no_parts(address_rows):
     class _View(_SummaryView):
-        summary_fields = {"address": [Group("town", "postcode")]}
+        summary_overrides = {"address": [Group("town", "postcode")]}
 
     rows = address_rows(_View)
 
@@ -426,7 +431,7 @@ def test_a_group_can_carry_no_label_of_its_own(address_rows):
     so the group repeating it would say the same thing twice."""
 
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [
                 Group("line_1", "line_2", "town", "postcode"),
                 Hide("lookup_token"),
@@ -441,7 +446,7 @@ def test_a_group_can_carry_no_label_of_its_own(address_rows):
 
 def test_a_group_joins_with_the_separator_it_was_given(address_rows):
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [Group("town", "postcode", separator=" — ")],
         }
 
@@ -460,7 +465,7 @@ def test_a_group_carries_no_bound_field(address_rows):
 
 def test_hidden_fields_are_left_off_the_row(address_rows):
     class _View(_SummaryView):
-        summary_fields = {"address": [Hide("lookup_token")]}
+        summary_overrides = {"address": [Hide("lookup_token")]}
 
     rows = address_rows(_View)
 
@@ -502,7 +507,7 @@ def test_a_group_skips_a_field_the_step_does_not_ask(summary_view_for, address_s
             return AddressForm
 
     class _View(_SummaryView):
-        summary_fields = {"address": [Group("town", "county", "postcode")]}
+        summary_overrides = {"address": [Group("town", "county", "postcode")]}
 
     wizard = (
         Wizard()
@@ -523,7 +528,7 @@ def test_a_group_naming_fields_a_declared_step_has_not_got_is_refused(
     have is a typo, and a group built on one could never speak for it."""
 
     class _View(_SummaryView):
-        summary_fields = {"who": [Group("line_1", "town")]}
+        summary_overrides = {"who": [Group("line_1", "town")]}
 
     wizard = (
         Wizard()
@@ -543,7 +548,7 @@ def test_a_formset_step_elsewhere_does_not_stop_the_check(
     — rather than stopping the page shaping every other step."""
 
     class _View(_SummaryView):
-        summary_fields = {"address": [Group("town", "postcode")]}
+        summary_overrides = {"address": [Group("town", "postcode")]}
 
     wizard = (
         Wizard()
@@ -663,7 +668,7 @@ def test_a_key_that_names_no_step_is_refused(address_rows):
     production, silently."""
 
     class _View(_SummaryView):
-        summary_fields = {"postal_address": [Group("town", "postcode")]}
+        summary_overrides = {"postal_address": [Group("town", "postcode")]}
 
     with pytest.raises(ImproperlyConfigured) as error:
         address_rows(_View)
@@ -676,7 +681,7 @@ def test_a_key_naming_a_step_on_a_dormant_arm_is_kept(summary_view_for):
     walked — the arm not taken is still a step the page may shape."""
 
     class _View(_SummaryView):
-        summary_fields = {"address": [Group("town", "postcode")]}
+        summary_overrides = {"address": [Group("town", "postcode")]}
 
     wizard = (
         Wizard()
@@ -705,7 +710,7 @@ def test_names_are_not_checked_when_the_wizard_grows_mid_walk(summary_view_for):
     the declaration is not the whole set of names to check against."""
 
     class _View(_SummaryView):
-        summary_fields = {"address": [Group("town", "postcode")]}
+        summary_overrides = {"address": [Group("town", "postcode")]}
 
     wizard = (
         Wizard()
@@ -722,7 +727,7 @@ def test_names_are_not_checked_when_the_wizard_grows_mid_walk(summary_view_for):
 
 def test_a_field_named_by_two_specs_is_refused(address_rows):
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [
                 Group("line_1", "town"),
                 Group("town", "postcode"),
@@ -761,7 +766,7 @@ def test_an_unanswered_field_is_still_empty_however_it_reads():
 
 
 class _TemplatedView(_SummaryView):
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Group(
                 "line_1",
@@ -832,7 +837,7 @@ def test_a_plain_field_carries_its_own_form(address_rows):
 
 
 class _RenderedView(_SummaryView):
-    summary_fields = {
+    summary_overrides = {
         "address": [
             Render("testapp/summary/address.html"),
             Hide("lookup_token"),
@@ -891,7 +896,7 @@ def test_a_group_beside_a_render_takes_its_own_fields(address_rows):
     rest through that template."""
 
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [
                 Render("testapp/summary/address.html"),
                 Group("town", "postcode", label="Where"),
@@ -912,7 +917,7 @@ def test_two_specs_naming_no_fields_are_refused(address_rows):
     """What is left over cannot go to both."""
 
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [
                 Render("testapp/summary/address.html"),
                 Render("testapp/summary/answer.html"),
@@ -929,7 +934,7 @@ def test_a_render_left_with_nothing_still_speaks(address_rows):
     """Its template is the point, not the values it was handed."""
 
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [
                 Render("testapp/summary/address.html"),
                 Group("line_1", "line_2", "town", "postcode", "lookup_token"),
@@ -949,7 +954,7 @@ def test_a_group_naming_no_fields_takes_the_rest(address_rows):
     line."""
 
     class _View(_SummaryView):
-        summary_fields = {
+        summary_overrides = {
             "address": [Group(label="Address"), Hide("lookup_token")],
         }
 
@@ -987,7 +992,7 @@ def test_a_page_can_bring_a_spec_of_its_own(summary_view_for):
     answers. This one names none and builds several."""
 
     class _View(_SummaryView):
-        summary_fields = {"opening-hours": [_Repeat("day", "opens")]}
+        summary_overrides = {"opening-hours": [_Repeat("day", "opens")]}
 
     wizard = (
         Wizard()
@@ -1003,3 +1008,105 @@ def test_a_page_can_bring_a_spec_of_its_own(summary_view_for):
         ("Monday", "09:00"),
         ("Tuesday", "10:00"),
     ]
+
+
+@pytest.fixture
+def self_shaping_rows(summary_view_for, address_state):
+    """The rows for a wizard whose address step shapes itself."""
+
+    def build(view_class):
+        wizard = (
+            Wizard()
+            .step(FirstStepForm, name="who", label="Who you are")
+            .step(SelfShapingAddressStepView, name="address", label="Address")
+            .configure(template_name="testapp/linear_wizard.html")
+        )
+        view = summary_view_for(wizard, address_state, view_class)
+        return view.get_context_data()["summary"]
+
+    return build
+
+
+def test_a_step_can_say_how_its_own_answers_read(self_shaping_rows):
+    """The review page names no steps at all, and the address still reads as
+    an address."""
+    rows = self_shaping_rows(_SummaryView)
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+
+
+def test_the_page_has_the_last_word(self_shaping_rows):
+    """A review page that disagrees with the step wins for that step."""
+
+    class _View(_SummaryView):
+        summary_overrides = {"address": [Group("town", "postcode", label="Where")]}
+
+    rows = self_shaping_rows(_View)
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address line 1", "12 High Street"),
+        ("Address line 2", ""),
+        ("Where", "Ely, CB7 4AA"),
+        ("Lookup token", "tok-9"),
+    ]
+
+
+def test_a_page_can_silence_a_step_that_shapes_itself(self_shaping_rows):
+    """An empty sequence is an opinion; only a missing key defers."""
+
+    class _View(_SummaryView):
+        summary_overrides = {"address": []}
+
+    rows = self_shaping_rows(_View)
+
+    assert [field.label for field in rows[1].fields] == [
+        "Address line 1",
+        "Address line 2",
+        "Town or city",
+        "Postcode",
+        "Lookup token",
+    ]
+
+
+def test_a_bare_form_can_say_how_its_own_answers_read(summary_view_for, address_state):
+    """A step with no view of its own still has somewhere to say it."""
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(SelfShapingAddressForm, name="address", label="Address")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, address_state, _SummaryView)
+    rows = view.get_context_data()["summary"]
+
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+
+
+def test_a_step_shaping_a_field_it_has_not_got_is_refused(
+    summary_view_for, address_state
+):
+    """The same check the page's own specs get: a misspelt `Hide` on a step
+    hides nothing, and renders the answer it was meant to keep off."""
+
+    class _TypoForm(AddressForm):
+        summary_fields = [Hide("lookup_taken")]
+
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(_TypoForm, name="address", label="Address")
+        .configure(template_name="testapp/linear_wizard.html")
+    )
+
+    view = summary_view_for(wizard, address_state, _SummaryView)
+
+    with pytest.raises(ImproperlyConfigured) as excinfo:
+        view.get_context_data()
+
+    assert "lookup_taken" in str(excinfo.value)
+    assert "own summary_fields" in str(excinfo.value)

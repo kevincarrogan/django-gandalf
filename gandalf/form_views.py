@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from django import forms
@@ -10,6 +10,10 @@ from gandalf.types import Answer, Submission, WizardRequest
 
 
 if TYPE_CHECKING:
+    # Imported for the annotation only: `gandalf.summary` is built on this
+    # module, so the dependency runs one way at runtime.
+    from gandalf.summary import FieldSpec
+
     # `FormView` is generic to type checkers but not at runtime — it carries
     # no `__class_getitem__` in any supported Django — so the parameter is
     # supplied only where it is read. `BaseForm` rather than `Form` so that
@@ -128,6 +132,30 @@ class StepFormView(_StepFormViewBase):
         bound field at all.
         """
         return list(form)
+
+    #: How this step's answers read on a check-your-answers page: a
+    #: sequence of `gandalf.summary` specs about *this* step's fields, so
+    #: there is no step name to key them by. A review page overrides what it
+    #: wants said differently, in its own `summary_overrides`, and inherits
+    #: the rest.
+    summary_fields: Sequence[FieldSpec] = ()
+
+    def get_summary_fields(self) -> Sequence[FieldSpec]:
+        """How this step's answers read, for a summary page to start from.
+
+        The step is the thing that knows an address is an address, and a
+        review page listing every awkward step by name is a page carrying
+        knowledge it did not generate.
+
+        A step declared as a bare `forms.Form` has no view of its own to say
+        it on, so the form is asked instead — which is also where it belongs
+        when one form is asked by several wizards. Override to decide per
+        request; the summary page has the last word either way.
+        """
+        if self.summary_fields:
+            return self.summary_fields
+        form_class = self.get_form_class()
+        return cast("Sequence[FieldSpec]", getattr(form_class, "summary_fields", ()))
 
     def get_answer_schema(self, form: Any) -> dict[str, Any]:
         """This step as a JSON Schema — what an agent is told it asks.

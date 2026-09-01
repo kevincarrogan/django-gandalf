@@ -2,6 +2,7 @@ from django import forms
 from django.urls import reverse
 
 from gandalf.escapes import Advance, Escape, Park
+from gandalf.summary import Group, Hide
 
 
 class FirstStepForm(forms.Form):
@@ -285,3 +286,17 @@ class GeocodedAddressForm(AddressForm):
         postcode = cleaned_data.get("postcode") or ""
         cleaned_data["outcode"] = postcode.split(" ")[0]
         return cleaned_data
+
+
+class SelfShapingAddressForm(AddressForm):
+    """A form that says how its own answers read.
+
+    A step declared as a bare `forms.Form` has no view of its own to say it
+    on, and a form asked by several wizards would otherwise have every
+    review page say the same thing about it.
+    """
+
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode", label="Address"),
+        Hide("lookup_token"),
+    ]

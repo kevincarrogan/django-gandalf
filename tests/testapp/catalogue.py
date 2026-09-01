@@ -365,6 +365,11 @@ GROUPS = (
             Example("summary-display-wizard"),
             Example("grouped-summary-wizard"),
             Example(
+                "colocated-summary-wizard",
+                note="The review page names no steps: the address step "
+                "carries its own shaping, and the page inherits it.",
+            ),
+            Example(
                 "rendered-summary-wizard",
                 note="A Render naming no fields at all: the whole step's "
                 "answer through one template, which is how a formset step "

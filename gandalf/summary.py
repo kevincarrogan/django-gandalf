@@ -424,10 +424,12 @@ class SummaryMixin(_SummaryMixinBase):
     #: page its own house style for an answer.
     summary_field_template_name = FIELD_TEMPLATE_NAME
 
-    #: How each step's fields are shown, keyed by the step's name. Fields no
-    #: spec names keep a line of their own, so a step this mapping does not
-    #: mention is left exactly as it was.
-    summary_fields: Mapping[str, Sequence[FieldSpec]] = {}
+    #: What this page wants said differently, keyed by step name. A step
+    #: this mapping does not mention reads as *it* says it reads — its own
+    #: `summary_fields` — and failing that as one line per field. A key with
+    #: an empty sequence is an opinion, not a silence: it overrides the step
+    #: back to plain.
+    summary_overrides: Mapping[str, Sequence[FieldSpec]] = {}
 
     def get_summary_steps(self) -> list[RuntimeStep]:
         """The steps to summarise: every answered step on the route, except
@@ -447,12 +449,47 @@ class SummaryMixin(_SummaryMixinBase):
         ]
 
     def get_summary_rows(self) -> list[SummaryRow]:
-        self.check_summary_fields()
+        self.check_summary_overrides()
         self.check_summary_field_names()
-        return [self.build_summary_row(step) for step in self.get_summary_steps()]
+        fields = declared_step_fields(self.request.run.wizard)
+        rows = []
+        for step in self.get_summary_steps():
+            # Checked here rather than beside the others because it is the
+            # only check that has to ask the step itself, and asking sets
+            # the step's view up: done in a second pass it would build every
+            # step's view twice, and a summary page is already the most
+            # expensive page a run has.
+            self.check_step_field_names(step, fields)
+            rows.append(self.build_summary_row(step))
+        return rows
 
-    def check_summary_fields(self) -> None:
-        """Refuse a `summary_fields` key that names no step of this wizard.
+    def check_step_field_names(
+        self,
+        step: RuntimeStep,
+        fields: Mapping[str, Mapping[str, Any] | None] | None,
+    ) -> None:
+        """Refuse a step's *own* specs naming a field it has not got.
+
+        The same rule the page's specs answer to, and for the same reason: a
+        misspelt `Hide` hides nothing and renders the answer it was meant to
+        keep off the page. A step this page overrides is checked as the
+        page's, once, in `check_summary_field_names()`.
+        """
+        if fields is None:
+            return
+        name = cast(str, step.name)
+        if name in self.summary_overrides:
+            return
+        self.check_field_names(
+            name,
+            self.get_field_specs(step),
+            fields,
+            f"step {name!r}'s own summary_fields",
+        )
+
+    def check_summary_overrides(self) -> None:
+        """Refuse a `summary_overrides` key that names no step of this
+        wizard.
 
         A renamed step would otherwise take its shaping with it and go
         quietly back to one line per field — the kind of regression a page
@@ -460,23 +497,24 @@ class SummaryMixin(_SummaryMixinBase):
         *declares* rather than what this run walked, so a key naming a step
         on the arm not taken is fine.
         """
-        if not self.summary_fields:
+        if not self.summary_overrides:
             return
         declared = self.get_declared_step_names()
         if declared is None:
             return
-        unknown = sorted(set(self.summary_fields) - declared)
+        unknown = sorted(set(self.summary_overrides) - declared)
         if not unknown:
             return
         name = self.__class__.__name__
         raise ImproperlyConfigured(
-            f"{name}.summary_fields shapes steps this wizard does not "
+            f"{name}.summary_overrides shapes steps this wizard does not "
             f"declare: {', '.join(unknown)}. Declared steps: "
             f"{', '.join(sorted(declared))}."
         )
 
     def check_summary_field_names(self) -> None:
-        """Refuse a `Group` or `Hide` naming a field its step does not have.
+        """Refuse a spec naming a field its step does not have, whether this
+        page named it or the step did.
 
         At render a field a step does not offer is skipped, deliberately —
         a dynamic `get_form_class()` may ask for less and a group has to
@@ -486,29 +524,41 @@ class SummaryMixin(_SummaryMixinBase):
         declaration knows the fields: a step whose view picks its form per
         request is taken on trust.
         """
-        if not self.summary_fields:
+        if not self.summary_overrides:
             return
         fields = declared_step_fields(self.request.run.wizard)
         if fields is None:
             return
-        for step_name, specs in self.summary_fields.items():
-            declared = fields.get(step_name)
-            if declared is None:
-                continue
-            named = {
-                field
-                for spec in specs
-                for field in spec.fields
-                if field not in declared
-            }
-            if not named:
-                continue
-            name = self.__class__.__name__
-            raise ImproperlyConfigured(
-                f"{name}.summary_fields shapes fields step {step_name!r} does "
-                f"not declare: {', '.join(sorted(named))}. Its fields: "
-                f"{', '.join(sorted(declared))}."
-            )
+        page = f"{self.__class__.__name__}.summary_overrides"
+        for step_name, specs in self.summary_overrides.items():
+            self.check_field_names(step_name, specs, fields, page)
+
+    def check_field_names(
+        self,
+        step_name: str,
+        specs: Sequence[FieldSpec],
+        fields: Mapping[str, Mapping[str, Any] | None],
+        source: str,
+    ) -> None:
+        """Refuse `specs` naming a field step `step_name` does not declare.
+
+        `source` is what said so — this page, or the step itself — because
+        the fix is in one place or the other and the message should say
+        which.
+        """
+        declared = fields.get(step_name)
+        if declared is None or not specs:
+            return
+        named = {
+            field for spec in specs for field in spec.fields if field not in declared
+        }
+        if not named:
+            return
+        raise ImproperlyConfigured(
+            f"{source} shapes fields step {step_name!r} does not "
+            f"declare: {', '.join(sorted(named))}. Its fields: "
+            f"{', '.join(sorted(declared))}."
+        )
 
     def get_declared_step_names(self) -> set[str] | None:
         """Every step name the wizard declares, or None when the declaration
@@ -523,10 +573,10 @@ class SummaryMixin(_SummaryMixinBase):
         return SummaryRow(
             step=step,
             label=self.get_summary_label(step),
-            fields=tuple(self.get_summary_fields(step, form)),
+            fields=tuple(self.build_summary_fields(step, form)),
         )
 
-    def get_summary_fields(
+    def build_summary_fields(
         self, step: RuntimeStep, form: BaseForm
     ) -> Iterator[SummaryField]:
         """The step's answers as display text, in form order, with its specs
@@ -589,20 +639,30 @@ class SummaryMixin(_SummaryMixinBase):
             return None
         if len(whole) > 1:
             raise ImproperlyConfigured(
-                f"{self.__class__.__name__}.summary_fields gives step "
+                f"{self.__class__.__name__} gives step "
                 f"{step.name!r} more than one spec that names no fields, and "
                 f"what no other spec named cannot go to both."
             )
         return whole[0]
 
     def get_field_specs(self, step: RuntimeStep) -> Sequence[FieldSpec]:
-        """How one step's fields are shown. The default reads
-        `summary_fields` by step name; override to decide per run."""
+        """How one step's fields are shown.
+
+        This page's `summary_overrides` by step name, and failing that
+        what the step says about itself — a step view's or form's own
+        `summary_fields`. The page has the last word, and says nothing about
+        the steps it has no opinion on: an address that reads as an address
+        wherever it is asked says so once, next to the address.
+
+        Override to decide per run.
+        """
         # A summary page is a step of a wizard served over HTTP, and the
         # viewset refuses a wizard whose steps have no name — so every step
         # a row is built from has one to look up.
         name = cast(str, step.name)
-        return self.summary_fields.get(name, ())
+        if name in self.summary_overrides:
+            return self.summary_overrides[name]
+        return cast("Sequence[FieldSpec]", list(step.summary_fields))
 
     def _specs_by_field(
         self, step: RuntimeStep, specs: Sequence[FieldSpec]

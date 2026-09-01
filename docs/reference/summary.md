@@ -19,6 +19,89 @@ from gandalf.summary import (
 
 ---
 
+## Levels of customisation
+
+A summary page is meant to work before you configure anything, and to keep
+working as you take it apart. Each level below leaves the ones above it
+intact — you reach for a lower one only for what the ones above cannot say.
+
+| | You write | You get |
+| --- | --- | --- |
+| **Nothing** | mix in [`SummaryMixin`](#summarymixin) and loop `summary` in a template | every answered step, one row each, one line per answer, values as display text |
+| **Declare** | `.step(Form, name="address", label="Address")` | the row's heading |
+| | [`summary_fields`](#where-shaping-is-declared) on the step's view or form: `Group`, `Hide` | answers joined or dropped, said once, next to the step |
+| **Render** | [`Group(template_name=…)`](#rendering-an-answer-through-its-own-template) | that answer's markup |
+| | [`Render("…")`](#rendering-a-whole-step-through-one-template) | the whole step's markup, with `field.form.cleaned_data` in reach |
+| | `summary_field_template_name` | the page's default markup for every answer |
+| **Override** | `summary_overrides` on the review page | this page saying something different from the step |
+| | `format_value(bound_field, value)` | how a value reads, everywhere on the page |
+| | `include_summary_field(step, bound_field)` | which answers appear at all |
+| **Extend** | [a spec of your own](#writing-a-spec) | several answers from one step, or anything else a spec can build |
+| | [`get_field_specs(step)`](#choosing-specs-per-run) | which specs a step gets, decided per run |
+| **Build** | `build_summary_field` / `build_group_field` / `build_render_field` | how one answer is built |
+| | [`build_summary_row(step)`](#a-step-whose-answer-is-not-one-forms-worth) | a step's whole row, its label included |
+| **Replace** | `get_summary_rows()` | the rows themselves: one step across several rows, or a different order |
+| | `get_summary_steps()` | which steps get a row at all |
+
+Two boundaries in that table are worth knowing.
+
+**Between *Declare* and *Render*** is where the library stops deciding how
+an answer reads and starts handing you the answer to render. Above it you
+are describing the answer; below it you are writing markup, and everything
+the library knows about the answer comes with it — `field.parts` for the
+formatted pieces, `field.form` for the whole validated form.
+
+**Between *Extend* and *Build*** is where a declaration stops being enough.
+A spec is a thing a page can hold in a list, check, and reuse; a `build_*`
+override is a method with a step in it. Prefer the spec: three of the four
+worked examples further down were `build_*` overrides once, and each read
+worse than the spec that replaced it.
+
+### Where shaping is declared
+
+The same specs can be declared in three places, and the first one that has
+an opinion wins:
+
+| Where | What it says | Reach for it when |
+| --- | --- | --- |
+| `SummaryMixin.summary_overrides` on the review page | this step, on this page, reads like this | one page disagrees, or the step is not yours to change |
+| `summary_fields` on the step's view | this step's answers read like this | the step has a view of its own |
+| `summary_fields` on the step's form | these answers read like this wherever they are asked | the step is a bare `forms.Form`, or one form is asked by several wizards |
+
+```python
+from gandalf.form_views import StepFormView
+from gandalf.summary import Group, Hide
+
+
+class AddressStepView(StepFormView):
+    form_class = AddressForm
+    template_name = "grants/address.html"
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode", label="Address"),
+        Hide("lookup_token"),
+    ]
+```
+
+The review page then names no steps at all:
+
+```python
+class ReviewStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "grants/review.html"
+```
+
+An address is an address wherever it is asked, so the step is where that
+belongs — and a page listing every awkward step by name is a page carrying
+knowledge it did not generate. A page that *does* disagree says so in
+`summary_overrides`, and wins for that step. A key there with an empty
+sequence is an opinion rather than a silence: it overrides the step back to
+one line per field.
+
+A step's own specs are checked exactly as a page's are, against the fields
+the step declares — see [Spec validation](#spec-validation).
+
+---
+
 ## Reference
 
 ### `SummaryMixin`
@@ -44,7 +127,7 @@ summarising.
 | --- | --- | --- |
 | `summary_context_name` | `"summary"` | the template context variable the rows go in |
 | `summary_label_context_key` | `"label"` | the step-context key a row's heading is read from |
-| `summary_fields` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — how each step's answers are shown, keyed by step name. A step this mapping does not mention is left as one line per field. |
+| `summary_overrides` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — what this page wants said differently, keyed by step name. A step it does not mention reads as the step itself says, and failing that as one line per field. A key with an empty sequence overrides the step back to plain |
 | `summary_field_template_name` | `FIELD_TEMPLATE_NAME` | the template an answer renders through when its `Group` names none, and the one every plain field renders through |
 
 **Hooks** — override on the view, deferring to `super()` for the cases you
@@ -53,12 +136,15 @@ do not special-case:
 | Hook | Returns | Default |
 | --- | --- | --- |
 | `get_summary_steps()` | `list[RuntimeStep]` | every step in `request.run.path` whose declaration is not `request.run.rendering` — the step being rendered |
-| `get_summary_rows()` | `list[SummaryRow]` | runs `check_summary_fields()`, then `build_summary_row()` per summarised step |
-| `check_summary_fields()` | `None` | raises `ImproperlyConfigured` for a `summary_fields` key naming no declared step (see below) |
+| `get_summary_rows()` | `list[SummaryRow]` | runs the checks, then `build_summary_row()` per summarised step |
+| `check_summary_overrides()` | `None` | raises `ImproperlyConfigured` for a `summary_overrides` key naming no declared step (see below) |
+| `check_summary_field_names()` | `None` | raises for a spec of this page's naming a field its step has not got |
+| `check_step_field_names(step, fields)` | `None` | the same, for a step's *own* specs. Called per step during the build rather than in a pass of its own: asking a step sets its view up, and a second pass would build every step's view twice |
+| `check_field_names(step_name, specs, fields, source)` | `None` | the check both of those defer to; `source` is what named the fields, so the message says where the fix is |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
-| `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
-| `get_field_specs(step)` | `Sequence[FieldSpec]` | `summary_fields.get(step.name, ())`; override to decide per run |
+| `build_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
+| `get_field_specs(step)` | `Sequence[FieldSpec]` | this page's `summary_overrides` by step name, and failing that the step's own `summary_fields`; override to decide per run |
 | `get_whole_step_spec(step, specs)` | `FieldSpec \| None` | the spec naming no fields, which speaks for what no other spec named; raises `ImproperlyConfigured` for a second one |
 | `build_render_field(step, form, spec)` | `SummaryField` | what a `Render` speaks for, on its template |
 | `grouped_field_names(step, spec)` | `Sequence[str]` | the fields a group joins: the ones it names, or — naming none — what no other spec named, in form order |
@@ -109,7 +195,7 @@ from gandalf.summary import Render, SummaryMixin
 
 
 class ReviewStepView(SummaryMixin, StepFormView):
-    summary_fields = {
+    summary_overrides = {
         "opening-hours": [Render("grants/summary/hours.html")],
     }
 ```
@@ -141,23 +227,30 @@ class ReviewStepView(SummaryMixin, StepFormView):
 step declares none at step level, so neither reaches into its rows.
 `Render` names no fields, so it does not need to.
 
-### `summary_fields` validation
+### Spec validation
 
-`check_summary_fields()` runs before rows are built and raises
+The checks run before and during the build and raise
 `django.core.exceptions.ImproperlyConfigured` when:
 
 | Condition | Message |
 | --- | --- |
-| a key names a step the wizard does not declare | `<View>.summary_fields shapes steps this wizard does not declare: <keys>. Declared steps: <names>.` |
-| a spec names a field its step does not declare | `<View>.summary_fields shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
-| a field name appears in two specs for the same step | `<View>.summary_fields names '<field>' more than once for step '<step>'; a field belongs to one spec.` |
+| a `summary_overrides` key names a step the wizard does not declare | `<View>.summary_overrides shapes steps this wizard does not declare: <keys>. Declared steps: <names>.` |
+| a spec of this page's names a field its step does not declare | `<View>.summary_overrides shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
+| a spec of the *step's own* names a field it has not got | `step '<step>'s own summary_fields shapes fields step '<step>' does not declare: <fields>. Its fields: <names>.` |
+| a field name appears in two specs for the same step | `<View> names '<field>' more than once for step '<step>'; a field belongs to one spec.` |
+| two specs for one step name no fields | `<View> gives step '<step>' more than one spec that names no fields, and what no other spec named cannot go to both.` |
 
-Both name checks read the *declaration*, not what this run walked, so a key
-naming a step on the arm not taken is fine. Both are skipped entirely for a
-wizard containing an `.expand()`, because a name that looks unknown may
-simply not have been grown yet, and the field check is skipped for a step
-whose view chooses its form class per request — what such a step asks
-cannot be read off the declaration.
+A step's own specs are checked wherever they were declared — the step view
+or the form — so shaping that travels with a step is checked as strictly as
+shaping a page asks for. The message names the source, because that is
+where the fix is.
+
+The name checks read the *declaration*, not what this run walked, so a
+`summary_overrides` key naming a step on the arm not taken is fine. They are
+skipped entirely for a wizard containing an `.expand()`, because a name that
+looks unknown may simply not have been grown yet, and the field check is
+skipped for a step whose view chooses its form class per request — what such
+a step asks cannot be read off the declaration.
 
 That last exemption is the point of the check. At render, a field a spec
 names but the step does not offer is skipped rather than refused, so a
@@ -273,7 +366,7 @@ renders its template, because the template is the point rather than the
 values. Two specs naming no fields is the one shape refused, because what
 is left over cannot go to both.
 
-`get_summary_fields()` asks; it does not decide. It knows none of the three
+`build_summary_fields()` asks; it does not decide. It knows none of the three
 by type, which is what makes a spec of your own an ordinary one.
 
 #### Writing a spec
@@ -307,7 +400,7 @@ class Repeat:
 ```
 
 ```python
-summary_fields = {"opening-hours": [Repeat("day", "opens")]}
+summary_overrides = {"opening-hours": [Repeat("day", "opens")]}
 ```
 
 `view` is the summary page, so defer to it rather than deciding for it:
@@ -449,15 +542,33 @@ satisfies the step on POST.
 
 ### Shaping an address into one line
 
+Declared on the step, which is what knows an address is an address:
+
 ```python
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide, SummaryMixin
+from gandalf.summary import Group, Hide
+
+
+class OrganisationAddressStepView(StepFormView):
+    form_class = OrganisationAddressForm
+    template_name = "grants/address.html"
+    summary_fields = [
+        Group("line_1", "line_2", "town", "postcode"),
+        Hide("lookup_token"),
+    ]
+```
+
+Or on the review page, for a step it wants to read differently — or one
+that is not yours to change:
+
+```python
+from gandalf.summary import SummaryMixin
 
 
 class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "grants/review.html"
-    summary_fields = {
+    summary_overrides = {
         "organisation_address": [
             Group("line_1", "line_2", "town", "postcode"),
             Hide("lookup_token"),
@@ -487,7 +598,7 @@ from gandalf.summary import Group, SummaryMixin
 class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "grants/review.html"
-    summary_fields = {
+    summary_overrides = {
         "organisation_address": [
             Group(
                 "line_1",
@@ -546,7 +657,7 @@ from gandalf.summary import Render, SummaryMixin
 class ReviewStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "grants/review.html"
-    summary_fields = {
+    summary_overrides = {
         "opening_hours": [Render("grants/summary/hours.html")],
     }
 ```
@@ -611,15 +722,14 @@ read costs nothing extra.
 
 ## Troubleshooting
 
-### `ImproperlyConfigured: ReviewStepView.summary_fields shapes steps this wizard does not declare: …`
+### `ImproperlyConfigured: ReviewStepView.summary_overrides shapes steps this wizard does not declare: …`
 
-A key in `summary_fields` names no step of the wizard the view is mounted
-in — usually a step renamed since the spec was written, or a review view
-shared between wizards of which only some have that step. Rename the key,
-or give each wizard its own review view, so each carries only the specs its
-own steps need. Two review views are two siblings mixing `SummaryMixin` into
-`StepFormView`, not a base and an override: what one wizard shows is not a
-partial version of what another shows.
+A key in `summary_overrides` names no step of the wizard the view is mounted
+in — usually a step renamed since the override was written, or one review
+view shared between wizards of which only some have that step. Rename the
+key, or move the shaping onto the step itself, where a page that never
+mentions the step can still show it correctly and one review view serves
+both wizards.
 
 ### `ImproperlyConfigured: … names 'town' more than once for step 'address'`
 

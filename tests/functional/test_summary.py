@@ -326,7 +326,7 @@ def test_a_key_that_names_no_step_is_refused(monkeypatch, address_run):
     back to one line per field, in production."""
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {"postal_address": [Group("town", "postcode")]},
     )
 
@@ -337,7 +337,7 @@ def test_a_key_that_names_no_step_is_refused(monkeypatch, address_run):
 def test_a_field_named_by_two_specs_is_refused(monkeypatch, address_run):
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {"address": [Group("line_1", "town"), Group("town", "postcode")]},
     )
 
@@ -364,7 +364,7 @@ def test_a_group_naming_a_field_a_declared_step_has_not_got_is_refused(
     is a typo — and a typo in a Hide leaves the answer on the page."""
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {"address": [Hide("lookup_taken")]},
     )
 
@@ -507,7 +507,7 @@ def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_
     """A `Render` takes the whole step; a `Hide` beside it still hides."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {
             "address": [
                 Render("testapp/summary/address.html"),
@@ -527,7 +527,7 @@ def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_
 def test_a_render_asks_whether_to_include_each_answer(monkeypatch, templated_run):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {"address": [Render("testapp/summary/address.html")]},
     )
     monkeypatch.setattr(
@@ -549,7 +549,7 @@ def test_a_group_beside_a_render_takes_its_own_fields_over_http(
     the group names keep a line of their own."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {
             "address": [
                 Render("testapp/summary/address.html"),
@@ -571,7 +571,7 @@ def test_a_group_beside_a_render_takes_its_own_fields_over_http(
 def test_two_specs_naming_no_fields_are_refused_over_http(monkeypatch, templated_run):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {
             "address": [
                 Render("testapp/summary/address.html"),
@@ -589,7 +589,7 @@ def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
     formset says "none given" the same way."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {
             "address": [
                 Render("testapp/summary/address.html"),
@@ -608,7 +608,7 @@ def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
 def test_a_group_naming_no_fields_takes_the_rest_over_http(monkeypatch, templated_run):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
-        "summary_fields",
+        "summary_overrides",
         {"address": [Group(label="Address"), Hide("lookup_token")]},
     )
 
@@ -617,3 +617,37 @@ def test_a_group_naming_no_fields_takes_the_rest_over_http(monkeypatch, template
     assert response.status_code == HTTPStatus.OK
     assertContains(response, "12 High Street, Ely, CB7 4AA")
     assertNotContains(response, "tok-9")
+
+
+@pytest.fixture
+def colocated_run(wizard_driver):
+    """A run whose address step says how its own answers read."""
+    run = wizard_driver("colocated-summary-wizard").start()
+    run.post_steps([("who", {"name": "Ada"}), ("address", ADDRESS)])
+    return run
+
+
+def test_a_step_shapes_its_own_row_without_the_page_naming_it(colocated_run):
+    """`ColocatedSummaryWizardViewSet`'s review view declares nothing at
+    all, and the address still reads as an address."""
+    response = colocated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    rows = response.context["summary"]
+    assert [(field.label, field.value) for field in rows[1].fields] == [
+        ("Address", "12 High Street, Ely, CB7 4AA"),
+    ]
+    assertNotContains(response, "tok-9")
+
+
+def test_a_step_shaping_a_field_it_has_not_got_is_refused_over_http(
+    monkeypatch, colocated_run
+):
+    monkeypatch.setattr(
+        views.SelfShapingAddressStepView,
+        "summary_fields",
+        [Hide("lookup_taken")],
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="own summary_fields"):
+        colocated_run.get_step("summary")
