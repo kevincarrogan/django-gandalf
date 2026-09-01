@@ -57,10 +57,11 @@ do not special-case:
 | `check_summary_fields()` | `None` | raises `ImproperlyConfigured` for a `summary_fields` key naming no declared step (see below) |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
 | `build_summary_row(step)` | `SummaryRow` | reads `step.form` once and builds the row from it |
-| `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in: a `Group` takes the place of its first field and swallows the rest, a `Hide` yields nothing |
+| `get_summary_fields(step, form)` | `Iterator[SummaryField]` | the step's fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`FieldSpec.build_fields()`), not a branch here: it speaks once, at the first of its fields the page shows |
 | `get_field_specs(step)` | `Sequence[FieldSpec]` | `summary_fields.get(step.name, ())`; override to decide per run |
-| `get_render_spec(step, specs)` | `Render \| None` | the step's `Render`, if it has one; raises `ImproperlyConfigured` for a second one or for a `Group` beside one |
-| `build_render_field(step, form, spec, by_field)` | `SummaryField` | the whole step's answer on one template (see `Render`) |
+| `get_render_spec(step, specs)` | `Render \| None` | the spec that speaks for the whole step — one naming no fields; raises `ImproperlyConfigured` for a second one or for a `Group` beside one |
+| `build_render_field(step, form, spec)` | `SummaryField` | the whole step's answer on one template (see `Render`) |
+| `hidden_field_names(step)` | `set[str]` | every name a `Hide` keeps off the row. The walk never needs it — a hidden field's spec yields nothing when reached — but `build_render_field()` does |
 | `build_summary_field(step, form, bound_field)` | `SummaryField` | one answer on a line of its own |
 | `build_group_field(step, form, spec)` | `SummaryField` | several answers on one line (see `Group`) |
 | `include_summary_field(step, bound_field)` | `bool` | `True`; return `False` to drop a field. Consulted for plain fields and for each member of a group. |
@@ -242,6 +243,12 @@ Frozen.
 
 Type alias: `Group | Hide | Render`. What a `summary_fields` value is a
 sequence of.
+
+Each spec carries `fields`, the field names it speaks for, and answers
+`build_fields(view, step, form)` with the `SummaryField`s it stands for —
+`Hide` none, `Group` and `Render` one each. `get_summary_fields()` asks;
+it does not decide. A spec speaks once, at the first of its fields the page
+shows, and a spec naming no fields speaks for the whole step instead.
 
 ### `SummaryRow`
 

@@ -120,6 +120,12 @@ class Group:
         object.__setattr__(self, "separator", separator)
         object.__setattr__(self, "template_name", template_name)
 
+    def build_fields(
+        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
+    ) -> Iterator[SummaryField]:
+        """One answer, from the fields this group names."""
+        yield view.build_group_field(step, form, self)
+
 
 @dataclass(frozen=True, init=False)
 class Hide:
@@ -134,6 +140,12 @@ class Hide:
 
     def __init__(self, *fields: str) -> None:
         object.__setattr__(self, "fields", fields)
+
+    def build_fields(
+        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
+    ) -> Iterator[SummaryField]:
+        """Nothing: that is what hiding is."""
+        return iter(())
 
 
 @dataclass(frozen=True)
@@ -176,8 +188,17 @@ class Render:
         """No fields: a `Render` names none, and takes them all."""
         return ()
 
+    def build_fields(
+        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
+    ) -> Iterator[SummaryField]:
+        """One answer, from the whole step."""
+        yield view.build_render_field(step, form, self)
+
 
 #: One instruction about a step's fields, as `summary_fields` carries them.
+#: Each answers `build_fields(view, step, form)` with the `SummaryField`s it
+#: stands for — none, one, or several — and names the fields it speaks for
+#: in `fields`. Naming none means speaking for the whole step.
 FieldSpec: TypeAlias = "Group | Hide | Render"
 
 
@@ -475,14 +496,23 @@ class SummaryMixin(_SummaryMixinBase):
         """The step's answers as display text, in form order, with its specs
         folded in: a group replaces the first of its fields and swallows the
         rest, a hidden field yields nothing, and everything else keeps a line
-        of its own."""
+        of its own.
+
+        Which of those a spec does is the spec's own answer, not a branch
+        here: the walk reaches a field, finds the spec that named it, and
+        asks it to speak. A spec speaks once, at the first of its fields the
+        page shows, and accounts for the rest of them by saying nothing when
+        they come round. Only a spec naming no fields is different, because
+        no field brings the walk to it — it speaks for the whole step, and
+        the walk never starts.
+        """
         specs = self.get_field_specs(step)
         by_field = self._specs_by_field(step, specs)
         rendering = self.get_render_spec(step, specs)
         if rendering is not None:
-            yield self.build_render_field(step, form, rendering, by_field)
+            yield from rendering.build_fields(self, step, form)
             return
-        grouped: set[int] = set()
+        spoken: set[int] = set()
         for bound_field in step.answer_fields:
             if not self.include_summary_field(step, bound_field):
                 continue
@@ -491,17 +521,20 @@ class SummaryMixin(_SummaryMixinBase):
                 yield self.build_summary_field(step, form, bound_field)
                 continue
             index, spec = found
-            if not isinstance(spec, Group) or index in grouped:
-                # A `Hide` yields nothing, and a group speaks once. A
-                # `Render` names no fields, so it is never in here at all.
+            if index in spoken:
+                # A spec speaks once, at the first of its fields the page
+                # shows; the rest of them are its to account for.
                 continue
-            grouped.add(index)
-            yield self.build_group_field(step, form, spec)
+            spoken.add(index)
+            yield from spec.build_fields(self, step, form)
 
     def get_render_spec(
         self, step: RuntimeStep, specs: Sequence[FieldSpec]
     ) -> Render | None:
-        """The step's `Render`, if it has one.
+        """The spec that speaks for the whole step, if the step has one.
+
+        A spec names the fields it speaks for, and one naming none speaks
+        for all of them — `Render` is the only one that does.
 
         Refuses the two shapes that say two things at once: a second
         `Render`, and a `Group` beside one. A group inside a whole-step
@@ -610,12 +643,25 @@ class SummaryMixin(_SummaryMixinBase):
             form=form,
         )
 
+    def hidden_field_names(self, step: RuntimeStep) -> set[str]:
+        """Every field name a `Hide` keeps off this step's row.
+
+        `get_summary_fields()` never has to ask: a hidden field's spec
+        yields nothing when the walk reaches it. A `Render` does, because it
+        speaks for fields it never iterates past.
+        """
+        return {
+            name
+            for spec in self.get_field_specs(step)
+            if isinstance(spec, Hide)
+            for name in spec.fields
+        }
+
     def build_render_field(
         self,
         step: RuntimeStep,
         form: BaseForm,
         spec: Render,
-        by_field: dict[str, tuple[int, FieldSpec]],
     ) -> SummaryField:
         """The whole step's answer, on one template.
 
@@ -635,10 +681,10 @@ class SummaryMixin(_SummaryMixinBase):
         separator; `label` is None for the same kind of reason, the row's
         heading being the only name a one-field row needs.
         """
+        hidden = self.hidden_field_names(step)
         shown: list[tuple[str, str]] = []
         for bound_field in step.answer_fields:
-            found = by_field.get(bound_field.name)
-            if found is not None and isinstance(found[1], Hide):
+            if bound_field.name in hidden:
                 continue
             if not self.include_summary_field(step, bound_field):
                 continue
