@@ -44,6 +44,7 @@ summarising.
 | `summary_context_name` | `"summary"` | the template context variable the rows go in |
 | `summary_label_context_key` | `"label"` | the step-context key a row's heading is read from |
 | `summary_fields` | `{}` | `Mapping[str, Sequence[FieldSpec]]` — how each step's fields are shown, keyed by step name. A step this mapping does not mention is left as one line per field. |
+| `summary_field_template_name` | `FIELD_TEMPLATE_NAME` | the template an answer renders through when its `Group` names none, and the one every plain field renders through |
 
 **Hooks** — override on the view, deferring to `super()` for the cases you
 do not special-case:
@@ -142,7 +143,7 @@ group survives a dynamic form asking for less. Where the fields *are*
 declared, the same silence would swallow a typo: a misspelt `Hide` hides
 nothing and renders the answer it was meant to keep off the page.
 
-### `Group(*fields, label=None, separator=", ")`
+### `Group(*fields, label=None, separator=", ", template_name=None)`
 
 Several of a step's fields, shown as one answer.
 
@@ -154,8 +155,13 @@ Several of a step's fields, shown as one answer.
 - `label` — the `SummaryField.label`. Optional; `None` leaves the row's
   heading to name it.
 - `separator` — what the non-empty pieces are joined with. Default `", "`.
+- `template_name` — the template this answer renders through, reached as
+  `SummaryField.template_name`. `None` takes the page's
+  `summary_field_template_name`. See
+  [Rendering an answer through its own template](#rendering-an-answer-through-its-own-template).
 
-**Attributes** — `fields` (a tuple), `label`, `separator`. Frozen.
+**Attributes** — `fields` (a tuple), `label`, `separator`, `template_name`.
+Frozen.
 
 **Caveats**
 
@@ -201,6 +207,8 @@ One answer as display text. Frozen dataclass.
 | `label` | `str \| None` | the bound field's `label`; a group's `label`, which may be `None` |
 | `value` | `str` | the display text; `""` for an unanswered field |
 | `parts` | `tuple[str, ...]` | what `value` was joined from: one per non-empty answer for a group, `(value,)` for an answered plain field, `()` for an empty one. Default `()` |
+| `template_name` | `str` | the template this answer renders through: the `Group`'s if it named one, otherwise the page's `summary_field_template_name`. Default `FIELD_TEMPLATE_NAME` |
+| `form` | `BaseForm \| None` | the bound, validated form the answer came from — `form.cleaned_data` included, which is where a value derived in `clean()` lives. For a plain field it is the bound field's own form, which differs from the step's for a repeated step. Excluded from `repr` and equality. |
 | `bound_field` | `BoundField \| None` | the Django `BoundField` the value came from — the widget, help text, field attributes. `None` for a group. Excluded from `repr` and equality. |
 
 ### `format_value(bound_field, value)`
@@ -332,6 +340,66 @@ class ReviewStepView(SummaryMixin, StepFormView):
 
 `field.parts` renders the address as lines; `field.value` is the same
 pieces joined with `", "`.
+
+### Rendering an answer through its own template
+
+A review template that branches on which step it is holding
+(`{% if field.name == "line_1" %}`) accumulates knowledge of every step in
+the wizard. A `Group` names the template that renders it instead, and the
+review template includes whatever each answer names:
+
+```python
+from gandalf.form_views import StepFormView
+from gandalf.summary import Group, SummaryMixin
+
+
+class ReviewStepView(SummaryMixin, StepFormView):
+    form_class = ConfirmForm
+    template_name = "grants/review.html"
+    summary_fields = {
+        "organisation_address": [
+            Group(
+                "line_1",
+                "line_2",
+                "town",
+                "postcode",
+                template_name="grants/summary/address.html",
+            ),
+        ],
+    }
+```
+
+```django
+{# grants/review.html — knows no step names #}
+{% for field in row.fields %}{% include field.template_name %}{% endfor %}
+```
+
+```django
+{# grants/summary/address.html #}
+<ul>{% for part in field.parts %}<li>{{ part }}</li>{% endfor %}</ul>
+<p>{{ field.form.cleaned_data.what3words }}</p>
+```
+
+**The context.** `{% include %}` inherits the including template's context,
+so the partial sees whatever the review template has — including `row`, if
+that is what the loop calls it. What it can rely on without that is `field`,
+which carries everything the answer knows: `field.value`, `field.parts`,
+`field.label`, `field.bound_field` for a plain field, and `field.form` for
+the whole validated form. Reach for `field.form.cleaned_data` when the thing
+to render is not a field at all — a value the form derived in `clean()`, or
+one it stitched together from several answers. Pass the context explicitly
+(`{% include field.template_name with field=field only %}`) if you would
+rather the partial not inherit.
+
+**The default.** `FIELD_TEMPLATE_NAME` is `"gandalf/summary/field.html"`,
+which renders `{{ field.value }}` and nothing else — the markup around an
+answer is the page's. It is the only template Gandalf ships, and reaching it
+needs `"gandalf"` in `INSTALLED_APPS` with the app-directories template
+loader. Change it for one page with `summary_field_template_name`, or for
+every page by shadowing `gandalf/summary/field.html` in your own templates
+directory.
+
+A `Hide` takes no template: it renders nothing at all.
 
 ### Formatting a domain value
 

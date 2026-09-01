@@ -365,6 +365,12 @@ GROUPS = (
             Example("summary-display-wizard"),
             Example("grouped-summary-wizard"),
             Example(
+                "templated-summary-wizard",
+                note="A group naming its own template: the review page "
+                "includes it, so the markup for an address lives with the "
+                "address rather than as an if in the summary template.",
+            ),
+            Example(
                 "dynamic-summary-wizard",
                 note="A group naming more than a per-request form asks: the "
                 "declaration cannot check it, so it survives asking for less.",

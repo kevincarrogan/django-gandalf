@@ -1,0 +1,6 @@
+{# An address, on its own terms: lines rather than a comma run-on, and the
+   outcode its form derived, which no field of it asked for. #}
+<ul class="address">
+    {% for part in field.parts %}<li>{{ part }}</li>{% endfor %}
+</ul>
+<p class="outcode">Outcode: {{ field.form.cleaned_data.outcode }}</p>

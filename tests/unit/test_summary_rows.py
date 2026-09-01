@@ -757,3 +757,74 @@ def test_an_unanswered_field_is_still_empty_however_it_reads():
     form.fields["colour"] = ColourField(label="Colour")
 
     assert format_value(form["colour"], None) == ""
+
+
+class _TemplatedView(_SummaryView):
+    summary_fields = {
+        "address": [
+            Group(
+                "line_1",
+                "line_2",
+                "town",
+                "postcode",
+                label="Address",
+                template_name="testapp/summary/address.html",
+            ),
+        ],
+    }
+
+
+def test_a_group_can_name_the_template_that_renders_it(address_rows):
+    """The shaping of an address belongs to the address, not to an
+    `{% if %}` in the review template."""
+    rows = address_rows(_TemplatedView)
+
+    assert rows[1].fields[0].template_name == "testapp/summary/address.html"
+
+
+def test_a_group_that_names_no_template_takes_the_default(address_rows):
+    rows = address_rows(_GroupedView)
+
+    assert rows[1].fields[0].template_name == "gandalf/summary/field.html"
+
+
+def test_a_plain_field_takes_the_default_template(address_rows):
+    rows = address_rows(_SummaryView)
+
+    assert rows[0].fields[0].template_name == "gandalf/summary/field.html"
+
+
+def test_a_page_can_change_the_default_template(address_rows):
+    """One template for every answer this page shows, without naming it on
+    every group."""
+
+    class _View(_GroupedView):
+        summary_field_template_name = "testapp/summary/answer.html"
+
+    rows = address_rows(_View)
+
+    assert rows[0].fields[0].template_name == "testapp/summary/answer.html"
+    assert rows[1].fields[0].template_name == "testapp/summary/answer.html"
+
+
+def test_a_group_beats_the_pages_default(address_rows):
+    class _View(_TemplatedView):
+        summary_field_template_name = "testapp/summary/answer.html"
+
+    rows = address_rows(_View)
+
+    assert rows[1].fields[0].template_name == "testapp/summary/address.html"
+
+
+def test_a_group_carries_the_form_its_answer_came_from(address_rows):
+    """A group has no `BoundField` to reach the form through, so it carries
+    the form itself — which is where a derived answer lives."""
+    rows = address_rows(_GroupedView)
+
+    assert rows[1].fields[0].form.cleaned_data["town"] == "Ely"
+
+
+def test_a_plain_field_carries_its_own_form(address_rows):
+    rows = address_rows(_SummaryView)
+
+    assert rows[0].fields[0].form.cleaned_data["name"] == "Ada"

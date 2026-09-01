@@ -116,6 +116,14 @@ review view, carrying its own specs or none — plain `SummaryMixin,
 StepFormView` siblings, not a hierarchy. [Chapter 12](12-task-lists.md) puts
 two of them side by side.
 
+A group can bring its own markup too: `Group("line_1", "line_2", "town",
+"postcode", template_name="grants/summary/address.html")` names the template
+that answer renders through, and the review template includes whatever each
+answer names rather than learning the name of every step whose answers do not
+read as one line. The partial is handed `field`, so it can render the pieces
+as lines (`field.parts`) or reach past them to the whole validated form
+(`field.form.cleaned_data`) for a value the form derived rather than asked.
+
 Every decision — which steps get a row, how a row is labelled, how a value
 reads — is a hook on the mixin. They are listed in the
 [Summary reference](../reference/summary.md).

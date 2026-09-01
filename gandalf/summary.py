@@ -53,7 +53,16 @@ else:
     _SummaryMixinBase = object
 
 
+#: The template one answer renders through when nothing names another. It
+#: renders `{{ field.value }}` and nothing else, so the markup around an
+#: answer stays the page's. A project changes it for every page by shadowing
+#: the path in its own template directory, or for one page with
+#: `SummaryMixin.summary_field_template_name`.
+FIELD_TEMPLATE_NAME = "gandalf/summary/field.html"
+
+
 __all__ = [
+    "FIELD_TEMPLATE_NAME",
     "FieldSpec",
     "Group",
     "Hide",
@@ -80,6 +89,13 @@ class Group:
     thing twice. A group without one leaves the row's heading to speak, and
     its `SummaryField.label` is None.
 
+    `template_name` is the group's own markup: the template the summary
+    page renders this answer through, reached as `SummaryField.template_name`
+    and included by the page. An address that reads as lines rather than as a
+    comma run-on says so once, here, next to the fields it is about — rather
+    than as an `{% if %}` in the review template, which would otherwise have
+    to know the name of every step whose answers do not read as one line.
+
     A field the step's form does not offer is skipped rather than refused: a
     dynamic `get_form_class()` may vary what a step asks, and a group has to
     survive asking for less.
@@ -88,16 +104,19 @@ class Group:
     fields: tuple[str, ...]
     label: StrOrPromise | None = None
     separator: str = ", "
+    template_name: str | None = None
 
     def __init__(
         self,
         *fields: str,
         label: StrOrPromise | None = None,
         separator: str = ", ",
+        template_name: str | None = None,
     ) -> None:
         object.__setattr__(self, "fields", fields)
         object.__setattr__(self, "label", label)
         object.__setattr__(self, "separator", separator)
+        object.__setattr__(self, "template_name", template_name)
 
 
 @dataclass(frozen=True, init=False)
@@ -129,6 +148,19 @@ class SummaryField:
     a plain field, so a template can render an address as lines rather than
     as a comma run-on.
 
+    `template_name` is the template this answer renders through — the
+    group's own if it named one, otherwise the page's default. A summary
+    template includes it rather than branching on which answer it is
+    holding:
+
+        {% for field in row.fields %}{% include field.template_name %}{% endfor %}
+
+    `form` is the bound, validated form the answer came from, so a template
+    rendering this field can read the whole answer rather than the pieces
+    named here — `field.form.cleaned_data` included, which is where a form
+    that derives something in `clean()` puts it. A group has no single
+    `BoundField` to reach it through, and this is how it gets there anyway.
+
     `bound_field` is the escape hatch: the Django `BoundField` the value came
     from, for templates that need the widget, the help text, or the field's
     own attributes. It is None for a group, which no single `BoundField` can
@@ -139,6 +171,8 @@ class SummaryField:
     label: StrOrPromise | None
     value: str
     parts: tuple[str, ...] = ()
+    template_name: str = FIELD_TEMPLATE_NAME
+    form: BaseForm | None = dataclass_field(default=None, repr=False, compare=False)
     bound_field: BoundField | None = dataclass_field(
         default=None, repr=False, compare=False
     )
@@ -276,6 +310,11 @@ class SummaryMixin(_SummaryMixinBase):
 
     summary_context_name = "summary"
     summary_label_context_key = "label"
+
+    #: The template an answer renders through when its `Group` names none —
+    #: and the one every plain field renders through. Set it to give one
+    #: page its own house style for an answer.
+    summary_field_template_name = FIELD_TEMPLATE_NAME
 
     #: How each step's fields are shown, keyed by the step's name. Fields no
     #: spec names keep a line of their own, so a step this mapping does not
@@ -445,6 +484,8 @@ class SummaryMixin(_SummaryMixinBase):
             label=bound_field.label,
             value=value,
             parts=(value,) if value else (),
+            template_name=self.summary_field_template_name,
+            form=bound_field.form,
             bound_field=bound_field,
         )
 
@@ -479,6 +520,8 @@ class SummaryMixin(_SummaryMixinBase):
             label=spec.label,
             value=spec.separator.join(parts),
             parts=parts,
+            template_name=spec.template_name or self.summary_field_template_name,
+            form=form,
         )
 
     def include_summary_field(self, step: RuntimeStep, bound_field: BoundField) -> bool:

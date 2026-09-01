@@ -271,3 +271,17 @@ class OpeningHoursForm(forms.Form):
 OpeningHoursFormSet = forms.formset_factory(
     OpeningHoursForm, extra=1, max_num=7, validate_max=True
 )
+
+
+class GeocodedAddressForm(AddressForm):
+    """An address whose `clean()` derives an answer no field asked for.
+
+    A summary that renders a step by listing its fields cannot show this:
+    it is in `cleaned_data` and nowhere else.
+    """
+
+    def clean(self):
+        cleaned_data = super().clean()
+        postcode = cleaned_data.get("postcode") or ""
+        cleaned_data["outcode"] = postcode.split(" ")[0]
+        return cleaned_data

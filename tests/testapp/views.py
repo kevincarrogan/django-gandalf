@@ -59,6 +59,7 @@ from .forms import (
     EmailLookupForm,
     EscapingPhotoForm,
     FirstStepForm,
+    GeocodedAddressForm,
     ItemCountForm,
     ItemForm,
     NewsletterForm,
@@ -2524,3 +2525,43 @@ def staff_sign_in(request):
 def staff_sign_out(request):
     logout(request)
     return redirect("readme-paper")
+
+
+class TemplatedSummaryStepView(SummaryMixin, StepFormView):
+    """A check-your-answers step whose address renders through its own
+    template: the group names it, so the review template never has to ask
+    which step it is holding."""
+
+    form_class = ConfirmForm
+    template_name = "testapp/summary_include.html"
+    summary_fields = {
+        "address": [
+            Group(
+                "line_1",
+                "line_2",
+                "town",
+                "postcode",
+                label="Address",
+                template_name="testapp/summary/address.html",
+            ),
+            Hide("lookup_token"),
+        ],
+    }
+
+
+class TemplatedSummaryWizardViewSet(WizardViewSet):
+    description = (
+        "Summary whose address brings its own template: the group names it, "
+        "and the partial reads the form's derived answer."
+    )
+    url_name = "templated-summary-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(GeocodedAddressForm, name="address", label="Address")
+        .step(TemplatedSummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")

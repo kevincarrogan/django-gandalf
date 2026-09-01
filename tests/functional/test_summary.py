@@ -415,3 +415,55 @@ def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
         "Tuesday",
         "10:00",
     ]
+
+
+@pytest.fixture
+def templated_run(wizard_driver):
+    """A run parked on a summary whose address names its own template."""
+    run = wizard_driver("templated-summary-wizard").start()
+    run.post_steps(
+        [
+            ("who", {"name": "Ada"}),
+            (
+                "address",
+                {
+                    "line_1": "12 High Street",
+                    "line_2": "",
+                    "town": "Ely",
+                    "postcode": "CB7 4AA",
+                    "lookup_token": "tok_123",
+                },
+            ),
+        ]
+    )
+    return run
+
+
+def test_a_group_renders_through_the_template_it_names(templated_run):
+    """The review template includes `field.template_name` and knows no step
+    names; the address's own partial decides how an address reads."""
+    response = templated_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/address.html")
+    assertContains(
+        response,
+        '<ul class="address"><li>12 High Street</li><li>Ely</li><li>CB7 4AA</li></ul>',
+        html=True,
+    )
+
+
+def test_a_partial_can_read_an_answer_the_form_derived(templated_run):
+    """`outcode` is in `cleaned_data` and in no field, so only the form can
+    say it — `field.form` is how the partial gets there."""
+    response = templated_run.get_step("summary")
+
+    assertContains(response, "Outcode: CB7")
+
+
+def test_an_answer_that_names_no_template_renders_the_default(templated_run):
+    response = templated_run.get_step("summary")
+
+    assertTemplateUsed(response, "gandalf/summary/field.html")
+    assertContains(response, "Ada")
+    assertNotContains(response, "tok_123")

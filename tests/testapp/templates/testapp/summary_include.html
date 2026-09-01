@@ -1,0 +1,25 @@
+{% extends "testapp/base.html" %}
+
+{% block template_name %}testapp/summary_include.html{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <h2>Check your answers</h2>
+        <dl class="summary">
+            {% for row in summary %}
+                <dt>{{ row.label }}</dt>
+                <dd>
+                    {# No step names here: each answer names its own template. #}
+                    {% for field in row.fields %}
+                        {% include field.template_name %}
+                    {% endfor %}
+                    <a href="{{ row.url }}">Change {{ row.label }}</a>
+                </dd>
+            {% endfor %}
+        </dl>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit">Confirm and continue</button>
+        </form>
+    </div>
+{% endblock %}
