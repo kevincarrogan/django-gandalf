@@ -346,6 +346,49 @@ The sentinel matters: "no walk in progress" is `_NO_WALK`, not `None`, because `
 
 ---
 
+## What owns what on a summary page
+
+Three rules, written down because the summary took six releases to find them
+and re-litigated the middle one in four of those. Everything about a
+check-your-answers page that has ever been ambiguous is a question about
+ownership, not behaviour.
+
+**A step owns how its answers read. A page owns how they are arranged.**
+An address reads as one line wherever it is asked, so `summary_fields` lives
+with the step — on its view, or at its declaration for a step with no view
+of its own. Which steps get a row, in what order, and what the page says
+around them is the page's. A page that wants one step read differently says
+so in `summary_overrides` and wins, because a page can see what the step
+cannot: the other answers beside it.
+
+The corollary is the useful half: a review page carrying a list of every
+awkward step is carrying knowledge it did not generate, and it will be wrong
+the moment a step is renamed, reused or shared. `SummaryMixin` with no
+attributes at all is the ordinary review page.
+
+**Gandalf ships templates for values, never for page structure.**
+`gandalf/summary/field.html` renders `{{ field.value }}` and is the only
+HTML in the library. A shipped template for a *row*, a section or a page
+would put the library on the far side of a line that django-crispy-forms
+sits on: once a library renders a region, every piece of furniture in that
+region — a warning between two rows, a heading, a link — has to enter
+through its API, and the API grows an object per kind of furniture. Gandalf
+never owns a page render, so a warning between rows 2 and 3 goes in the
+template, where it can be seen.
+
+**A declaration is checked where it is written.** A step view's specs are
+checked when its class body runs; a `.step()` declaration's when the wizard
+is built; a page's `summary_overrides` when the page builds its rows,
+because that is the first moment it exists. The rules live in one function
+(`check_field_specs`) called from three places rather than three functions
+saying similar things, so what is refused does not depend on which of the
+three places wrote it.
+
+What follows from these, and is worth checking a new feature against: a
+summary row is *one thing the user can change*, not one step — which is why
+a step can read as several `Question`s sharing a change link, and why the
+rows are a page's business while their contents are a step's.
+
 ## One form builder, four readers
 
 `RuntimeStep.form` does not construct a form. It drives the step's own
