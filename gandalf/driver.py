@@ -1188,7 +1188,16 @@ class JourneyDriver:
         refuses here exactly as it does at the page's own door.
         """
         page = self.page
-        return self._entry_driver(page, page.get_entry(key), may_finish)
+        entry = page.get_entry(key)
+        if entry.viewset is None:
+            # A link: listed as a row, so not unknown, and not a section,
+            # so nothing here to drive. Say where it goes, which is the
+            # one useful thing about a row a driver cannot fill.
+            raise EntryNotFound(
+                f"{key!r} is a link to somewhere else, "
+                f"{page.get_entry_url(entry)}, not a part this journey fills."
+            )
+        return self._entry_driver(page, entry, may_finish)
 
     def _entry_driver(
         self, page: TaskListViewSet, entry: Entry, may_finish: bool | None

@@ -203,11 +203,15 @@ there is none that concludes a run.
 Every tool returns the page — `journey_id`, `url`, `rows`, `complete` —
 and the ones about one part add it under `part`, keyed rather than splatted:
 both have a `complete`, and *this part is answered* is not *every part is*.
+A row carries its `key`, `title`, `status`, `status_label` and `url`.
 
 A part a driver may not open comes back as a `ModelRetry` saying what would
 have to change (a part is waiting on another, is not part of this
 application, or the application has been submitted), so the model works
-around it rather than trying the same thing again.
+around it rather than trying the same thing again. A [`Link`](tasklists.md)
+is a row the agent cannot fill and the person can follow: naming one in
+`get_part`, `check_part` or `fill_part` is a retry that says where it goes,
+which is what the row's `url` is for.
 
 **Filling a part is not finishing it.** `fill_part` answers a part; ending
 it fires that section's own `done()`, and there is no tool that does. A part

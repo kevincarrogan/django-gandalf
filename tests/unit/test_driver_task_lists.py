@@ -139,6 +139,29 @@ def test_a_link_describes_no_steps_because_they_are_not_here():
     assert "steps" not in link and "entries" not in link
 
 
+def test_a_link_cannot_be_driven_because_it_goes_elsewhere():
+    """A link is a row, so the page lists it; it is not a section, so there
+    is nothing here to drive. `section()` says where the row goes rather
+    than failing on the viewset the entry has not got."""
+
+    class _Elsewhere(TaskList):
+        contact = Section(CONTACT)
+        elsewhere = Link(_elsewhere("readme-task-list", COMPLETE))
+
+    class _Page(TaskListViewSet):
+        url_name = "readme-task-list"
+        template_name = "testapp/task_list.html"
+        section_template_name = "testapp/linear_wizard.html"
+        task_list = _Elsewhere
+
+    journey = JourneyDriver.begin(_Page, context=WizardContext(session=SessionStore()))
+
+    with pytest.raises(EntryNotFound, match="somewhere else") as caught:
+        journey.section("elsewhere")
+
+    assert "/readme/task-list/" in str(caught.value)
+
+
 def test_a_journey_outlines_the_page_it_is_on(journey):
     """`outline()` is `outline_for()` for the journey in hand — the same
     answer, without naming the viewset again."""

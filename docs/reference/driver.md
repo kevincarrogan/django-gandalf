@@ -571,10 +571,12 @@ rather than knowing which viewset a `Section` generated and which kwargs it
 takes. A run this starts is recorded against the journey, so the page shows
 it as *Incomplete* and the next caller resumes it.
 
-**Raises** `EntryNotFound` for a key the page does not list, and
-`DoorRefused` for one it will not open — the section's `check_door()`, so a
-blocked or hidden section, or a submitted journey, refuses here exactly as
-at the page's own door.
+**Raises** `EntryNotFound` for a key the page does not list, and for a
+[`Link`](tasklists.md) — listed as a row, but going somewhere this journey
+does not run, so there is nothing to drive; the message says where it goes.
+`DoorRefused` for a section the page will not open — the section's
+`check_door()`, so a blocked or hidden section, or a submitted journey,
+refuses here exactly as at the page's own door.
 
 ### `items(key)` / `add(key, *, may_finish=None)` / `remove(key, item_id)`
 

@@ -1217,3 +1217,70 @@ def _viewset_of(tools):
     from tests.testapp.views import ColocatedSummaryWizardViewSet
 
     return ColocatedSummaryWizardViewSet
+
+
+# --- a row that goes elsewhere ------------------------------------------
+
+
+def _linked():
+    from django.contrib.sessions.backends.cache import SessionStore
+
+    from gandalf.context import WizardContext
+    from gandalf.tasklists import (
+        COMPLETE,
+        Destination,
+        Link,
+        Section,
+        TaskList,
+        TaskListViewSet,
+    )
+    from tests.testapp.readme.ch12_task_list import contact as CONTACT
+
+    class _Payment(Destination):
+        url_name = "readme-task-list"
+
+        @classmethod
+        def status(cls, store):
+            return COMPLETE
+
+    class _Linked(TaskList):
+        contact = Section(CONTACT)
+        payment = Link(_Payment, title="Pay the fee")
+
+    class _Page(TaskListViewSet):
+        url_name = "readme-task-list"
+        template_name = "testapp/task_list.html"
+        section_template_name = "testapp/linear_wizard.html"
+        task_list = _Linked
+
+    tools = _journey_tools(_Page)
+    ctx = _ctx(context=WizardContext(session=SessionStore()))
+    tools["start_application"](ctx)
+    return tools, ctx
+
+
+def test_every_row_says_where_it_goes():
+    """A link is a row the agent cannot fill and the person can follow, so
+    the one useful thing to say about it is where it goes."""
+    tools, ctx = _linked()
+
+    rows = {
+        row["key"]: row for row in tools["get_application"](ctx).return_value["rows"]
+    }
+
+    assert rows["payment"]["url"] == "/readme/task-list/"
+    assert rows["contact"]["url"].startswith("/readme/task-list/")
+
+
+def test_a_part_that_links_elsewhere_is_a_retry_saying_where():
+    """A link is listed, so it is not an unknown part; it is not a section,
+    so there is nothing here to fill. The retry says so and says where it
+    goes, rather than failing on the viewset the row has not got."""
+    tools, ctx = _linked()
+
+    with pytest.raises(ModelRetry, match="somewhere else") as caught:
+        tools["fill_part"](ctx, "payment", {})
+
+    assert "/readme/task-list/" in str(caught.value)
+    with pytest.raises(ModelRetry, match="somewhere else"):
+        tools["get_part"](ctx, "payment")

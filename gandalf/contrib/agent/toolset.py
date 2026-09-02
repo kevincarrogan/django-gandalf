@@ -452,13 +452,19 @@ def build_agent(
 
 
 def _rows(journey: JourneyDriver) -> list[dict[str, Any]]:
-    """The page as data: one row per listed entry, as a person sees it."""
+    """The page as data: one row per listed entry, as a person sees it.
+
+    `url` is where the row goes, which for a link — a payment page, a page
+    in another app — is the one useful thing to say about it: a link is a
+    row the agent cannot fill and the person can follow.
+    """
     return [
         {
             "key": row.key,
             "title": str(row.title),
             "status": str(row.status),
             "status_label": str(row.status_label),
+            "url": row.url,
         }
         for row in journey.rows()
     ]
@@ -526,8 +532,13 @@ def build_journey_toolset(
     def _section(ctx: RunContext[WizardDeps], key: str) -> RunDriver:
         try:
             return _journey(ctx).section(key)
-        except EntryNotFound:
-            known = ", ".join(row["key"] for row in _rows(_journey(ctx)))
+        except EntryNotFound as error:
+            rows = _rows(_journey(ctx))
+            if any(row["key"] == key for row in rows):
+                # Listed, so not unknown: a link, which goes somewhere
+                # else. The driver's message says where.
+                raise ModelRetry(str(error)) from None
+            known = ", ".join(row["key"] for row in rows)
             raise ModelRetry(
                 f"There is no part of this called {key!r}. The parts are: {known}."
             ) from None
