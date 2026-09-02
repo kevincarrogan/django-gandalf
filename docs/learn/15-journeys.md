@@ -7,6 +7,11 @@ section of it gets the first two; the root task list — the one no list
 lists — owns the third. And because a task list is an entry like any
 other, a task list can hold a task list.
 
+The blocks below are [`ch15_journey.py`](../../tests/testapp/readme/ch15_journey.py)
+with the test app's plumbing left out — its descriptions, its templates,
+and the observer chapter 16 adds — except where a block says it is an
+alternative the example does not take.
+
 ### A scope
 
 One session can hold two applications in two tabs, and they must never see
@@ -31,12 +36,15 @@ declares, `journey = "default"` — one per session, which is what chapters
 ### Somewhere to begin
 
 A journey is an id, a record kept under it, and a page to show it on. So
-beginning one is minting the id, and the whole of it is a plain view
-mounted at `apply/new/`, before the journey segment:
+beginning one is minting the id, and the whole of it is a plain Django
+view mounted at `apply/new/`, before the journey segment. The example does
+not take this route — it asks a question first, below — but the simplest
+beginning is this:
 
 ```python
-def start_application(request):
-    return redirect(GrantApplication.begin(request).url)
+class StartApplication(RedirectView):
+    def get_redirect_url(self, *args, **kwargs):
+        return GrantApplication.begin(self.request).url
 ```
 
 `begin()` is asked of the *list* — a value — and hands back the journey:
@@ -66,19 +74,26 @@ If the application already knows — off the account, off last year's
 application, off the link they followed — it writes the answer rather than
 asking for it. `store.metadata` is the journey's memory, the next section's
 subject, and a seed written here is read by every `hidden()` and
-`blocked()` on the first render:
+`blocked()` on the first render. Again not the example's route, which has
+to ask:
 
 ```python
-def start_application(request):
-    journey = GrantApplication.begin(request)
-    journey.store.metadata["applying_as"] = request.user.applying_as
-    return redirect(journey.url)
+class StartApplication(RedirectView):
+    def get_redirect_url(self, *args, **kwargs):
+        journey = GrantApplication.begin(self.request)
+        journey.store.metadata["applying_as"] = self.request.user.applying_as
+        return journey.url
 ```
 
 If it has to be *asked* for, that is a wizard — and the point of the setup
-wizard is the asking, not the beginning:
+wizard is the asking, not the beginning. One step, and beside it the
+helper that reads that step's answer off a finished run and writes it
+where the rest of the journey can read it:
 
 ```python
+setup = Wizard().step(ApplyingAsForm, name="applying-as", label="Applying as")
+
+
 def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
@@ -86,25 +101,12 @@ def record_applying_as(store, run):
     store.metadata["applying_as"] = step.answer["applying_as"]
 ```
 
-```python
-setup = Wizard().step(ApplyingAsForm, name="applying-as", label="Applying as")
-```
-
 Its `done()` is three lines, each saying what it does: begin a journey,
-record this run as the list's `setup` section, go there. The observer
-beside it is chapter 16's.
+record this run as the list's `setup` section, go there.
 
 ```python
 class ApplicationStartViewSet(WizardViewSet):
-    """The first wizard, before there is a journey to be a section of:
-    begin one, record this run as its `setup` section, go there."""
-
-    description = (
-        "Chapter 15 as a task list: the setup wizard that mints an application."
-    )
     url_name = "readme-apply-start"
-    template_name = "testapp/linear_wizard.html"
-    observer_class = CountRejections
     wizard = setup
 
     def done(self, run):
@@ -122,16 +124,14 @@ other:
 ```python
 class SetupSection(SectionViewSet):
     wizard = setup
-    observer_class = CountRejections
 
     def done(self, run):
         record_applying_as(self.get_journey_store(), run)
         return super().done(run)
 ```
 
-The same `Wizard`, mounted twice, watched by the same observer both times
-— said on each viewset, because a wizard is a value and an observer is a
-view's concern.
+The same `Wizard`, mounted twice — it is a value, so it can be. What a
+view carries, each viewset says for itself.
 
 ### A memory
 
@@ -182,10 +182,7 @@ class GrantApplicationViewSet(TaskListViewSet):
     the page, the doors, each section beneath it — reads the same journey,
     and two applications are two URLs."""
 
-    description = "Chapter 15: the application's task list, with a submit."
     url_name = "readme-apply"
-    template_name = "testapp/journey_task_list.html"
-    section_template_name = "testapp/linear_wizard.html"
     task_list = GrantApplication
 
     def journey_done(self, page, store):
