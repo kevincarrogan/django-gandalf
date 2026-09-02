@@ -2848,6 +2848,27 @@ def _formset_run(request_with_session_factory):
     return run
 
 
+def test_run_answers_is_the_merged_fold(request_with_session_factory, linear_wizard):
+    """What a `done()` wants first, without importing a reducer: the same
+    dict `MergeCleanedData` folds, read off the run."""
+    request = request_with_session_factory(
+        session={
+            "gandalf_runs": {
+                "existing-run": {
+                    "state": [
+                        {"step": {"name": "Ada"}},
+                        {"step": {"email": "ada@example.com"}},
+                    ],
+                },
+            },
+        },
+    )
+    run = _make_run(linear_wizard, request)
+    run.retrieve("existing-run")
+
+    assert run.answers == {"name": "Ada", "email": "ada@example.com"}
+
+
 def test_merge_cleaned_data_folds_a_formset_under_its_step_name(
     request_with_session_factory,
 ):

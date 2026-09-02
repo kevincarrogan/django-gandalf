@@ -88,7 +88,7 @@ class LicenceCheckViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        details = run.path.find_step(name="details").form.cleaned_data
+        details = run.path.find_step(name="details").answer
         log_event(
             "licence",
             run=run.run_id,

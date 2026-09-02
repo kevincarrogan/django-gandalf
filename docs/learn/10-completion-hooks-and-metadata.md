@@ -16,7 +16,7 @@ class RecordedApplicationViewSet(WizardViewSet):
 
     def done(self, run):
         application = Application.objects.get(pk=run.metadata["application_id"])
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         application.submit(answers["email"])
         return redirect("readme-received", pk=application.pk)
 

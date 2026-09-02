@@ -7,7 +7,7 @@ chained `.step(...)` calls, and a `condition_dict` becomes
 `.branch(condition(predicate, subflow))`. The predicates are the same idea —
 a callable that decides — but a Gandalf predicate is handed a `WizardContext`
 and runs behind a fully-validated prefix, so it reads prior answers with
-`path.find_step(...).form.cleaned_data` unconditionally.
+`path.find_step(...).answer` unconditionally.
 
 The template changes too: there is no `{{ wizard.management_form }}`. A
 formtools wizard carries its position in the POST body; Gandalf keeps the
@@ -45,7 +45,7 @@ class ApplicationWizard(SessionWizardView):
 # gandalf — the condition lives next to the step it guards
 def is_organisation(context):
     applying_as = context.run.path.find_step(name="applying-as")
-    return applying_as.form.cleaned_data["applying_as"] == "organisation"
+    return applying_as.answer["applying_as"] == "organisation"
 
 application = (
     Wizard()
@@ -112,7 +112,7 @@ form needs the first step's answers, and `get_form_kwargs()` runs before
 there is a validated answer to read, so it indexes the raw session:
 `self.storage.data['step_data']['0']['0-quota_scope'][0]` — position, prefix
 and a list-of-one, all load-bearing. A step view is dispatched behind a
-validated prefix, so it is `find_step(name=...).form.cleaned_data`.
+validated prefix, so it is `find_step(name=...).answer`.
 
 **A check that consumes what it checks needs a
 [proof](../reference/proofs.md).** Re-proving every answer on every request
@@ -125,7 +125,7 @@ Two rough edges the ports met, both worth knowing:
 - **Formsets need nothing special.** `.step()` takes a `FormView`, and
   `FormView` builds a formset the way it builds a form, so Django Girls'
   organisers step needed no handling of its own. Its answer is a list rather
-  than a mapping, so `MergeCleanedData` folds it under the step's name —
+  than a mapping, so `run.answers` folds it under the step's name —
   `answers["organisers"]` is the rows. Which of `.expand()`, `AddAnother`
   and a formset step you want is
   [Chapter 13](13-add-another.md#three-ways-to-say-many).

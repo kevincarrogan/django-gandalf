@@ -4,7 +4,7 @@ happens once when both are answered."""
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard
+from gandalf.wizard import Wizard
 
 from .forms import ApplicantForm, EmailForm
 
@@ -18,7 +18,7 @@ class FirstApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(
             f"Application received from {answers['full_name']} <{answers['email']}>"
         )

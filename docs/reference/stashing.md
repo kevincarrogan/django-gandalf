@@ -245,7 +245,7 @@ def edit_budget(request, pk):
 ```python
 wizard = BudgetViewSet.reopen(request, payload, expected_label="budget")
 total = sum(
-    step.form.cleaned_data["amount"] for step in wizard.path.filter_steps(name="line")
+    step.answer["amount"] for step in wizard.path.filter_steps(name="line")
 )
 return redirect(wizard.entry_url("review"))
 ```

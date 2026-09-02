@@ -124,7 +124,7 @@ Append a fork whose arms are guarded by predicates.
   raises `AttributeError` — only `default` accepts `None`.
 - A predicate runs **behind a fully-validated prefix** — every step before
   the branch has already been proved on this walk — so it may dereference
-  `context.run.path.find_step(...).form.cleaned_data` without guarding for
+  `context.run.path.find_step(...).answer` without guarding for
   a missing answer.
 - An arm's answers are stored under the arm's declaration-order index
   (`"0"`, `"1"`, …) or under `"default"`, as `{"branch": {"<arm>": [...]}}`.
@@ -363,12 +363,14 @@ a step declaration back into a segment. The default `step_router_class`.
 
 ### `MergeCleanedData`
 
-A `gandalf.tree.Reducer` that folds every completed step's `cleaned_data`
-into one dict, last write wins on key collisions.
+A `gandalf.tree.Reducer` that folds every completed step's `answer` into
+one dict, last write wins on key collisions. What [`run.answers`](run.md)
+is; instantiate it yourself only to fold something other than `run.path`,
+or to subclass it.
 
-- `MergeCleanedData().reduce(run.path)` — the usual call.
+- `MergeCleanedData().reduce(run.path)` — what `run.answers` does.
   `reduce()` also accepts `run.runtime_tree`.
-- Per node: `visit_step()` returns `step.form.cleaned_data`; `visit_branch()`
+- Per node: `visit_step()` returns `step.answer`; `visit_branch()`
   and `visit_expand()` return their sub-fold; `initial()` is `{}` and
   `combine()` is `{**accumulator, **value}`. Override any of them for a
   different merge policy.
@@ -400,9 +402,9 @@ class MergeUnderOneKey(MergeCleanedData):
     """Every repeated step's rows under one `rows` key, wherever they came from."""
 
     def visit_step(self, runtime_step):
-        cleaned_data = runtime_step.form.cleaned_data
-        if isinstance(cleaned_data, list):
-            return {"rows": cleaned_data}
+        answer = runtime_step.answer
+        if isinstance(answer, list):
+            return {"rows": answer}
         return super().visit_step(runtime_step)
 ```
 
@@ -411,10 +413,10 @@ answer in whatever shape its step gave it:
 
 ```python
 def done(self, run):
-    answers = {step.name: step.form.cleaned_data for step in run.path.filter_steps()}
+    answers = {step.name: step.answer for step in run.path.filter_steps()}
 ```
 
-**Caveats** — reading `cleaned_data` builds and validates each step's form
+**Caveats** — reading an answer builds and validates each step's form
 again; see [Walk costs](walk-costs.md).
 
 ### `Reducer`
@@ -436,7 +438,7 @@ reducer — you instantiate your own class where you would have instantiated
 | --- | --- | --- |
 | `initial()` | the empty accumulator | `[]` on `Reducer`, `{}` on `MergeCleanedData` |
 | `combine(accumulator, value)` | how one contribution folds in | append; `{**accumulator, **value}` on `MergeCleanedData` |
-| `visit_step(runtime_step)` | what one step contributes | required; `step.form.cleaned_data` on `MergeCleanedData` |
+| `visit_step(runtime_step)` | what one step contributes | required; `step.answer` on `MergeCleanedData` |
 | `visit_branch(runtime_branch, sub_result)` | what a branch contributes | required; the sub-fold, which lands the arm's answers inline |
 | `visit_expand(runtime_expand, sub_result)` | what an expansion contributes | the sub-fold, as for a branch |
 
@@ -496,7 +498,7 @@ class AnswersByStep(tree.Reducer):
         return {**accumulator, **value}
 
     def visit_step(self, runtime_step):
-        return {runtime_step.name: runtime_step.form.cleaned_data}
+        return {runtime_step.name: runtime_step.answer}
 
     def visit_branch(self, runtime_branch, sub_result):
         return sub_result
@@ -572,7 +574,7 @@ from gandalf.wizard import Wizard, condition
 
 def is_organisation(context):
     applying_as = context.run.path.find_step(name="applying-as")
-    return applying_as.form.cleaned_data["applying_as"] == "organisation"
+    return applying_as.answer["applying_as"] == "organisation"
 
 
 individual_details = Wizard().step(AboutYouForm, name="about-you")
@@ -617,7 +619,7 @@ from gandalf.wizard import Wizard
 
 
 def build_trustee_steps(context):
-    count = context.run.path.find_step(name="trustees").form.cleaned_data["trustees"]
+    count = context.run.path.find_step(name="trustees").answer["trustees"]
     steps = Wizard()
     for index in range(count):
         steps = steps.step(TrusteeForm, name=f"trustee-{index}")

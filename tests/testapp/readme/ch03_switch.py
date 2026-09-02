@@ -3,7 +3,7 @@
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard
+from gandalf.wizard import Wizard
 
 from . import ch02_branching as ch02
 from .forms import CharityNumberForm, CompanyNumberForm, EmailForm, OrganisationTypeForm
@@ -14,7 +14,7 @@ def organisation_kind(context):
     the case name — the same as `on_field("organisation-type",
     "organisation_type")`, written out."""
     step = context.run.path.find_step(name="organisation-type")
-    return step.form.cleaned_data["organisation_type"]
+    return step.answer["organisation_type"]
 
 
 #: Chapter 2's organisation arm, grown. `ch02.organisation_details` is
@@ -41,7 +41,7 @@ class SwitchingApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         number = answers.get("charity_number") or answers.get("company_number")
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(

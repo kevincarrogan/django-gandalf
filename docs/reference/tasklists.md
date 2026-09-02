@@ -616,7 +616,7 @@ its own name) and `grant-contact-run` / `grant-contact-step` (the runs).
 ```python
 def record_amount(store, run):
     project = run.path.find_step(name="project")
-    store.data["amount"] = int(project.form.cleaned_data["amount"])
+    store.data["amount"] = int(project.answer["amount"])
 
 
 class ProjectSection(SectionViewSet):

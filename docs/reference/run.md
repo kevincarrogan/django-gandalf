@@ -41,6 +41,7 @@ use.
 | `run_id` | `str` | The storage-minted id of this run. Opaque; need not be a UUID. |
 | `wizard` | `ConfiguredWizard` | The resolved declaration — `wizard.tree` is the full declared structure, dormant arms included. |
 | `context` | `WizardContext` | The environment the run is walked in. `context.run is run`. |
+| `answers` | `dict[str, Any]` | Every answer on the route in one dict — `MergeCleanedData().reduce(path)`, so last write wins on a shared field name and a formset's rows land under its step's name. Walks the run; read it once. |
 | `path` | `Path` | The resolved route: the answered steps in walk order. See [`Path`](#path). |
 | `metadata` | `RunMetadata` | The run's write-through bag. See [Run metadata](run-metadata.md). |
 | `is_complete` | `bool` | `True` once the run has finished and been tombstoned. |
@@ -289,10 +290,10 @@ given, as `find_step` would judge it.
 
 ### `MergeCleanedData`
 
-A reducer that folds every step's `form.cleaned_data` on a path into one
-dict, last write wins: `MergeCleanedData().reduce(run.path)`.
-Subclass and override `combine`, `visit_step`, `visit_branch` or
-`visit_expand` for another policy. Costs one validation per answered step.
+The reducer behind `run.answers`: folds every step's `answer` on a path
+into one dict, last write wins. Subclass and override `combine`,
+`visit_step`, `visit_branch` or `visit_expand` for another policy, and
+call `reduce(run.path)` yourself. Costs one validation per answered step.
 A step answering with something other than a mapping — a formset answers
 with one entry per form — folds under its own name rather than spreading
 across the dict; see [`MergeCleanedData`](wizard.md#mergecleaneddata).
@@ -409,7 +410,7 @@ class BudgetLinesStepView(StepFormView):
         organisation = self.request.run.path.find_step(name="organisation")
         if organisation is None:   # not on this route
             return super().get_initial()
-        return {"currency": organisation.form.cleaned_data["currency"]}
+        return {"currency": organisation.answer["currency"]}
 ```
 
 ### Reading a prior answer from a predicate
@@ -420,15 +421,14 @@ from gandalf.context import WizardContext
 
 def is_organisation(context: WizardContext) -> bool:
     step = context.run.path.find_step(name="applying-as")
-    return step is not None and step.form.cleaned_data["applying_as"] == "organisation"
+    return step is not None and step.answer["applying_as"] == "organisation"
 ```
 
-### Folding every answer in `done()`
+### Every answer in `done()`
 
 ```python
 from django.shortcuts import redirect
 
-from gandalf.runtime import MergeCleanedData
 from gandalf.viewsets import WizardViewSet
 
 
@@ -437,7 +437,7 @@ class GrantApplicationViewSet(WizardViewSet):
     wizard = application
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         application = Application.objects.create(**answers)
         return redirect("grant-received", pk=application.pk)
 ```
@@ -448,7 +448,7 @@ class GrantApplicationViewSet(WizardViewSet):
 def done(self, run):
     steps = list(run.path)          # walk once, hold the nodes
     rows = [
-        (step.name, step.form.cleaned_data, step.url)
+        (step.name, step.answer, step.url)
         for step in steps
     ]
     ...

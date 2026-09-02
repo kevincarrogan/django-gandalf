@@ -95,7 +95,7 @@ therefore cost the same whether its uploads are a kilobyte or a hundred
 megabytes.
 
 `RuntimeStep.form` does the same reopening, so a summary page or `done()`
-reading `step.form.cleaned_data["document"]` gets a `StoredUpload` it can
+reading `step.answer["document"]` gets a `StoredUpload` it can
 read. `render_step()` (a GET of an answered step) passes the reopened
 files as the form's `initial` instead.
 
@@ -201,7 +201,7 @@ class OrganisationViewSet(WizardViewSet):
         organisation = Organisation.objects.get(pk=run.metadata["organisation_id"])
         organisation.governing_document.save(
             step.files["document"]["name"],
-            step.form.cleaned_data["document"],
+            step.answer["document"],
         )
         return redirect("organisation-detail", pk=organisation.pk)
 ```

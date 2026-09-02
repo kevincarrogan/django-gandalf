@@ -241,7 +241,7 @@ class JourneyData(MetadataBag):
     to know. `blocked()` and `hidden()` read it back for free.
 
         # in a section's done()
-        store.data["employment_status"] = step.form.cleaned_data["status"]
+        store.data["employment_status"] = step.answer["status"]
 
         # in another section's blocked()
         return store.data.get("employment_status") != "employed"

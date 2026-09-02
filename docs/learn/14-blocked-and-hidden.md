@@ -59,7 +59,7 @@ def record_amount(store, run):
     readable and a walk has already been paid — and written to the journey's
     data, where every other section reads it without a walk."""
     project = run.path.find_step(name="project")
-    store.data["amount"] = int(project.form.cleaned_data["amount"])
+    store.data["amount"] = int(project.answer["amount"])
 
 
 class ProjectSection(SectionViewSet):

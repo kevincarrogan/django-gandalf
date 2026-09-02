@@ -22,7 +22,7 @@ from gandalf.contrib.agent import AgentProfile
 from gandalf.form_views import StepFormView
 from gandalf.summary import SummaryMixin
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard, condition, on_field
+from gandalf.wizard import Wizard, condition, on_field
 
 
 class CompanyForm(forms.Form):
@@ -135,19 +135,19 @@ class ReviewStepView(SummaryMixin, StepFormView):
 def vehicle_cover_was_chosen(context):
     """The cover step includes "vehicles", so the fleet has to be listed."""
     step = context.run.path.find_step(name="coverage")
-    return "vehicles" in step.form.cleaned_data["cover_types"]
+    return "vehicles" in step.answer["cover_types"]
 
 
 def claims_were_declared(context):
     """The claims step answered "yes", so the claim needs describing."""
     step = context.run.path.find_step(name="claims")
-    return step.form.cleaned_data["had_claims"] == "yes"
+    return step.answer["had_claims"] == "yes"
 
 
 def build_partner_steps(context):
     count_step = context.run.path.find_step(name="partners")
     steps = Wizard()
-    for index in range(int(count_step.form.cleaned_data["partner_count"])):
+    for index in range(int(count_step.answer["partner_count"])):
         steps = steps.step(
             PartnerForm,
             name=f"partner-{index}",
@@ -230,7 +230,7 @@ def quote_for(run, *, vehicle_values=None):
     at their own page, so the values come from where that collection saved
     them — the same place any application would read its own records.
     """
-    answers = MergeCleanedData().reduce(run.path)
+    answers = run.answers
     premium = 250
     premium += answers["employees"] * 10
     premium += 150 * len(answers["cover_types"])
@@ -274,7 +274,7 @@ def save_vehicle(request, item_id, run):
     """What an application does when an item finishes: keep the answers
     somewhere of its own. A demo has no database, so the session stands in
     for one."""
-    answers = MergeCleanedData().reduce(run.path)
+    answers = run.answers
     saved = request.session.setdefault(VEHICLES_SESSION_KEY, {})
     saved[str(item_id)] = {
         "registration": answers["registration"],

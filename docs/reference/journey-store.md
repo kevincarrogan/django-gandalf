@@ -234,7 +234,7 @@ class ContactSection(SectionViewSet):
 
     def done(self, run):
         email = run.path.find_step(name="email")
-        self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
+        self.get_journey_store().data["email"] = email.answer["email"]
         return super().done(run)
 
 

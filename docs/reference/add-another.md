@@ -491,7 +491,7 @@ class BudgetLineItem(ItemViewSet):
     wizard = budget_line
 
     def done(self, run):
-        line = run.path.find_step(name="line").form.cleaned_data
+        line = run.path.find_step(name="line").answer
         BudgetLine.objects.update_or_create(
             item_id=self.get_item_id(),
             defaults={"item": line["item"], "cost": line["cost"]},
@@ -532,7 +532,7 @@ def trustee_name(run):
     step = run.path.find_step(name="name")
     if step is None:
         return ""
-    data = step.form.cleaned_data
+    data = step.answer
     return f"{data['first_name']} {data['last_name']}"
 
 

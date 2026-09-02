@@ -4,7 +4,6 @@ from django.http import HttpResponse
 
 from gandalf.form_views import StepFormView
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
 from .forms import EmailForm, WebsiteForm
@@ -18,7 +17,7 @@ class WebsiteStepView(StepFormView):
         initial = super().get_initial()  # the stored answer, on a revisit
         contact = self.request.run.path.find_step(name="contact")
         if contact is not None and "website" not in initial:
-            domain = contact.form.cleaned_data["email"].partition("@")[2]
+            domain = contact.answer["email"].partition("@")[2]
             initial["website"] = f"https://{domain}"
         return initial
 
@@ -36,7 +35,7 @@ class WebsiteApplicationViewSet(WizardViewSet):
     wizard = with_contact(ch02.applicant(organisation=ch04.organisation_details))
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(
             f"Application from {answers['email']} ({answers['website']})"
         )

@@ -1148,6 +1148,22 @@ class Run:
         """
         return Path(PathFlattener().transform(self.runtime_tree))
 
+    @property
+    def answers(self) -> dict[str, Any]:
+        """Every answer on the route, folded into one dict — what `done()`
+        usually wants first.
+
+        `MergeCleanedData().reduce(self.path)`, with that reducer's rules:
+        last write wins on a field two steps share, and a step answering
+        with something other than a mapping — a formset, with a row per
+        entry — lands whole under its own name. Reach for the reducer, or
+        `path` itself, when the answers should keep another shape.
+
+        Walks the run and validates every answered step, like `path`; read
+        it once and hold the dict.
+        """
+        return cast("dict[str, Any]", MergeCleanedData().reduce(self.path))
+
     @contextmanager
     def walking(self, partial_runtime_head: RuntimeNode | None) -> Iterator[None]:
         """Expose `partial_runtime_head` as the runtime tree for the duration
@@ -1791,11 +1807,11 @@ class MergeCleanedData(tree.Reducer):
     """Reducer that folds completed step cleaned_data into a single dict
     using last-write-wins on key collisions.
 
-    Intended for `run.path` but also works on
+    What `run.answers` is. Intended for `run.path` but also works on
     `run.runtime_tree`; for each `RuntimeStep` it contributes
-    `step.form.cleaned_data`, and any branch sub-fold is merged into the
-    accumulator. Subclass and override `combine`, `visit_step`, or
-    `visit_branch` for a different merge policy.
+    `step.answer`, and any branch sub-fold is merged into the accumulator.
+    Subclass and override `combine`, `visit_step`, or `visit_branch` for a
+    different merge policy.
 
     A step whose answer is not a mapping — a formset answers with one entry
     per form — has no fields to spread across the dict, so it contributes
@@ -1814,16 +1830,13 @@ class MergeCleanedData(tree.Reducer):
         return {**accumulator, **value}
 
     def visit_step(self, runtime_step: RuntimeStep) -> dict[str, Any]:
-        # `RuntimeStep.form` is annotated `BaseForm`, which a formset step's
-        # form is not, so the mapping that annotation implies is not a
-        # narrowing to trust here.
-        cleaned_data: Any = runtime_step.form.cleaned_data
-        if isinstance(cleaned_data, dict):
-            return cleaned_data
+        answer = runtime_step.answer
+        if isinstance(answer, dict):
+            return answer
         # A step answering with anything else has no fields to spread, so it
         # folds under its own name. Named, because a step served over HTTP
         # has to be: the viewset refuses a wizard with an unnamed step.
-        return {cast(str, runtime_step.name): cleaned_data}
+        return {cast(str, runtime_step.name): answer}
 
     def visit_branch(
         self, runtime_branch: RuntimeBranch, sub_result: dict[str, Any]

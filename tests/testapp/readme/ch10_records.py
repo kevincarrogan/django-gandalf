@@ -5,7 +5,6 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 from ..models import Application
 from . import ch02_branching as ch02
@@ -27,7 +26,7 @@ class RecordedApplicationViewSet(WizardViewSet):
 
     def done(self, run):
         application = Application.objects.get(pk=run.metadata["application_id"])
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         application.submit(answers["email"])
         return redirect("readme-received", pk=application.pk)
 

@@ -135,9 +135,8 @@ budget line earns its own page because it has a review step behind it.
 Opening hours do not: seven compact rows nobody wants seven pages for is a
 formset, and a formset step needs nothing special because `.step()` takes a
 `FormView` and `FormView` builds a formset exactly as it builds a form. Its
-answer is a list, one entry per row, which is why
-[`MergeCleanedData`](../reference/wizard.md#mergecleaneddata) folds it under
-the step's name instead of spreading it across the merged dict.
+answer is a list, one entry per row, which is why `run.answers` folds it
+under the step's name instead of spreading it across the merged dict.
 
 The three URLs the page publishes, the exact order a removal takes, how to
 give an item behaviour of its own, how to mount a page on its own, and

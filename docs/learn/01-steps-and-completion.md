@@ -14,7 +14,7 @@ from django import forms
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard
+from gandalf.wizard import Wizard
 
 
 class ApplicantForm(forms.Form):
@@ -35,7 +35,7 @@ class FirstApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(
             f"Application received from {answers['full_name']} <{answers['email']}>"
         )
@@ -93,10 +93,11 @@ earlier answer (chapter 7) and completion all fall out of that single walk,
 so stale state is impossible. (What a walk costs is in
 [Walk costs](../reference/walk-costs.md).)
 
-**`done()` receives the run, not a list of forms.** `run.path` is
-what the walk found — the answered steps in order, each exposing its
-`form.cleaned_data`; `MergeCleanedData().reduce(path)` folds them into one
-dict; `path.find_step(name=...)` looks one up. The full surface is in the
+**`done()` receives the run, not a list of forms.** `run.answers` is
+every answer folded into one dict, which is what a completion usually
+wants first. Behind it is `run.path` — what the walk found: the answered
+steps in order, each with its `answer`, and `path.find_step(name=...)` to
+look one up. The full surface is in the
 [Run reference](../reference/run.md).
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/first/ &nbsp;·&nbsp; **Source:** [`ch01_first_wizard.py`](../../tests/testapp/readme/ch01_first_wizard.py)

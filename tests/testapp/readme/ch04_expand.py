@@ -11,7 +11,7 @@ from .forms import EmailForm, TrusteeCountForm, TrusteeForm
 
 
 def build_trustee_steps(context):
-    count = context.run.path.find_step(name="trustees").form.cleaned_data["trustees"]
+    count = context.run.path.find_step(name="trustees").answer["trustees"]
     steps = Wizard()
     for index in range(count):
         steps = steps.step(TrusteeForm, name=f"trustee-{index}")
@@ -33,7 +33,7 @@ class ExpandingApplicationViewSet(WizardViewSet):
 
     def done(self, run):
         trustees = [
-            step.form.cleaned_data["name"]
+            step.answer["name"]
             for step in run.path
             if step.name and step.name.startswith("trustee-")
         ]

@@ -160,7 +160,7 @@ class Expand:
     `builder(context)` returns a `Wizard` whose steps are spliced in here.
     It is called mid-walk, behind a fully-validated prefix — the same
     contract a branch predicate has — so it can read prior answers
-    (`context.run.path.find_step(...).form.cleaned_data`) and produce however
+    (`context.run.path.find_step(...).answer`) and produce however
     many steps they imply. The declared node carries only the builder; the
     subtree does not exist until the walk reaches it, which is why an
     expansion's steps are validated when built rather than at resolve time.

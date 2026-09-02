@@ -4,14 +4,14 @@ which questions come next."""
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard, condition
+from gandalf.wizard import Wizard, condition
 
 from .forms import AboutYouForm, ApplyingAsForm, EmailForm, OrganisationForm
 
 
 def is_organisation(context):
     applying_as = context.run.path.find_step(name="applying-as")
-    return applying_as.form.cleaned_data["applying_as"] == "organisation"
+    return applying_as.answer["applying_as"] == "organisation"
 
 
 #: The two arms, as wizards in their own right. Later chapters grow the
@@ -36,6 +36,6 @@ class BranchingApplicationViewSet(WizardViewSet):
     wizard = applicant().step(EmailForm, name="contact")
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} <{answers['email']}>")

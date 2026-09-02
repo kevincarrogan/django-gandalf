@@ -53,14 +53,14 @@ def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
     step = run.path.find_step(name="applying-as")
-    store.data["applying_as"] = step.form.cleaned_data["applying_as"]
+    store.data["applying_as"] = step.answer["applying_as"]
 
 
 def record_email(store, run):
     """What submitting needs, written once here rather than read out of the
     stash's positional state at journey_done()."""
     step = run.path.find_step(name="email")
-    store.data["email"] = step.form.cleaned_data["email"]
+    store.data["email"] = step.answer["email"]
 
 
 # --- the wizards ---------------------------------------------------------------

@@ -23,7 +23,7 @@ class OrganisationTypeForm(forms.Form):
 
 def organisation_kind(context):
     step = context.run.path.find_step(name="organisation-type")
-    return step.form.cleaned_data["organisation_type"]
+    return step.answer["organisation_type"]
 
 
 organisation_details = (

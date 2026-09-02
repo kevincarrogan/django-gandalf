@@ -180,10 +180,9 @@ Called once, when a walk finds every step satisfied. **Must be overridden**:
 the default raises `NotImplementedError` — *"WizardViewSet subclasses must
 define done()."*
 
-**Parameters** — `run`: the completed run. `run.path` is
-the answered steps in order; `MergeCleanedData().reduce(run.path)`
-folds their `cleaned_data` into one dict; `run.metadata` is the
-run's bag. See [`Run`](run.md).
+**Parameters** — `run`: the completed run. `run.answers` is every
+answer folded into one dict; `run.path` is the answered steps in order;
+`run.metadata` is the run's bag. See [`Run`](run.md).
 
 **Returns** the `HttpResponseBase` to send. A redirect, an `HttpResponse`, or
 a `TemplateResponse` — the last is rendered later by Django's middleware, and
@@ -427,7 +426,7 @@ from django.http import HttpResponse
 from django.urls import include, path
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData, Wizard
+from gandalf.wizard import Wizard
 
 
 class ApplicantForm(forms.Form):
@@ -448,7 +447,7 @@ class GrantApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(f"Application received from {answers['full_name']}")
 
 
@@ -500,7 +499,6 @@ from django.http import Http404
 from django.shortcuts import redirect
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 
 class RecordedApplicationViewSet(WizardViewSet):
@@ -514,7 +512,7 @@ class RecordedApplicationViewSet(WizardViewSet):
 
     def done(self, run):
         application = Application.objects.get(pk=run.metadata["application_id"])
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         application.submit(answers["email"])
         return redirect("application-received", pk=application.pk)
 

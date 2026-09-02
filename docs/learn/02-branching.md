@@ -24,7 +24,7 @@ class OrganisationForm(forms.Form):
 
 def is_organisation(context):
     applying_as = context.run.path.find_step(name="applying-as")
-    return applying_as.form.cleaned_data["applying_as"] == "organisation"
+    return applying_as.answer["applying_as"] == "organisation"
 
 
 individual_details = Wizard().step(AboutYouForm, name="about-you")
@@ -46,7 +46,7 @@ class BranchingApplicationViewSet(WizardViewSet):
     wizard = applicant().step(EmailForm, name="contact")
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} <{answers['email']}>")
 ```
@@ -64,7 +64,7 @@ answer.
 
 A predicate always runs behind a fully-validated prefix — every step before
 the branch has already validated on this same walk — so it can dereference
-`path.find_step(...).form.cleaned_data` without guarding for missing answers.
+`path.find_step(...).answer` without guarding for a missing step.
 
 ### Why `applicant()` is a function
 

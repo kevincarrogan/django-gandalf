@@ -330,9 +330,11 @@ dispatch runs inside the walk's `walking()` handoff, so reading
   ambiguity. Guard the lookup unless the step you want is unconditionally
   upstream.
 - `path.filter_steps(**context)` — every matching prior step, in walk order.
-- `step.form.cleaned_data` — a prior step's validated answer. `form` is
-  built once per step per `path` access; hold the steps you iterate rather
-  than re-reading `wizard.path` per field.
+- `step.answer` — a prior step's validated answer: `cleaned_data` for a
+  form, a list of one mapping per row for a formset. `step.form` is the
+  bound form behind it, for a value `clean()` derived. Either is built once
+  per step per `path` access; hold the steps you iterate rather than
+  re-reading `run.path` per field.
 - `request.run.metadata` — the run's metadata bag. A write from a step
   view runs on every walk, so it must be idempotent; see
   [Run metadata](run-metadata.md).
@@ -389,7 +391,7 @@ class WebsiteStepView(StepFormView):
         initial = super().get_initial()   # keeps the stored answer on revisit
         contact = self.request.run.path.find_step(name="contact")
         if contact is not None and "website" not in initial:
-            domain = contact.form.cleaned_data["email"].partition("@")[2]
+            domain = contact.answer["email"].partition("@")[2]
             initial["website"] = f"https://{domain}"
         return initial
 

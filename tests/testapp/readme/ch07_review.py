@@ -6,7 +6,6 @@ from django.http import HttpResponse
 from gandalf.form_views import StepFormView
 from gandalf.summary import Answer, Hide, SummaryMixin
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
 from .forms import AddressForm, ConfirmForm, EmailForm
@@ -55,6 +54,6 @@ class ReviewedApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         who = answers.get("organisation_name") or answers["occupation"]
         return HttpResponse(f"Application from {who} confirmed")

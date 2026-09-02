@@ -3,7 +3,6 @@
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
 from .ch06_step_views import WebsiteStepView
@@ -31,7 +30,7 @@ class EscapingApplicationViewSet(WizardViewSet):
     )
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(
             f"Application from {answers['email']} ({answers['website']})"
         )

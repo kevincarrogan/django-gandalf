@@ -4,7 +4,6 @@ at the front door — who is signed in, which URL — not on an answer."""
 from django.http import HttpResponse
 
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import MergeCleanedData
 
 from . import ch02_branching as ch02, ch04_expand as ch04
 from .forms import EmailForm, PortfolioForm, ReceivedOnForm
@@ -22,7 +21,7 @@ class PaperApplicationViewSet(WizardViewSet):
         return wizard.step(EmailForm, name="contact")
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         received = answers.get("received_on")
         return HttpResponse(
             f"Application from {answers['email']}"
@@ -42,7 +41,7 @@ class FundApplicationViewSet(WizardViewSet):
         return wizard.step(EmailForm, name="contact")
 
     def done(self, run):
-        answers = MergeCleanedData().reduce(run.path)
+        answers = run.answers
         return HttpResponse(
             f"Application to the {self.kwargs['fund']} fund from {answers['email']}"
         )
