@@ -74,12 +74,12 @@ for an id the storage does not hold.
 ### `stash(label=None)`
 
 A caller-owned, JSON-safe payload of this run's answers, ready for
-`resurrect()`.
+`reopen()`.
 
 **Parameters**
 
 - `label` — an opt-in guard. State aligns with the wizard tree
-  positionally, so a resurrection should be refused when the payload came
+  positionally, so a re-opening should be refused when the payload came
   from a differently-shaped wizard. Written into the payload only when
   given.
 
@@ -87,13 +87,13 @@ A caller-owned, JSON-safe payload of this run's answers, ready for
 metadata bag is non-empty and `"label"` when one was given. File refs are
 stripped at every depth — active and dormant arms, expansions — because
 the bytes are deleted at completion; the step data itself is kept, so a
-required file field parks the resurrected cursor there. Any CSRF token an
+required file field parks the re-opened cursor there. Any CSRF token an
 earlier version stored is dropped. The stored state is not mutated.
 
 **Caveats** — callable inside `done()`: completion tears the run down only
 after `done()` returns. See [Stashing](stashing.md).
 
-### `resurrect(payload, expected_label=None)`
+### `reopen(payload, expected_label=None)`
 
 Seed a fresh run from a stash payload.
 
@@ -107,7 +107,7 @@ Seed a fresh run from a stash payload.
 **Raises** `InvalidStash` — before any run is created — when the payload is
 not a dict with a `state` list, when its `version` is not `1`, or when the
 label does not match. The state and metadata are deep-copied in, so
-resurrecting one payload twice yields two independent runs. Every answer
+re-opening one payload twice yields two independent runs. Every answer
 is still re-proved by the walk; the payload is trusted no further than a
 session's own state. `run_started()` does not fire.
 
@@ -145,7 +145,7 @@ without a URL reverser.
 
 ### `entry_url(step=None)`
 
-The link *into* a run from outside it: a task list row, a resurrected stash, a
+The link *into* a run from outside it: a task list row, a re-opened stash, a
 link in an email. Never the bare run URL, because on a run whose answers
 all validate that URL redirects straight to completion and fires `done()`.
 
@@ -349,7 +349,7 @@ receives — that is a `WizardContext`.
 | Exception | Base | Imported from | Raised when |
 | --- | --- | --- | --- |
 | `StepNotFound` | `LookupError` | `gandalf.runtime` | `render_step()` / `RunDriver.submit()` target a step the run cannot reach or that has no stored answer. |
-| `InvalidStash` | `ValueError` | `gandalf.runtime` | `resurrect()` is given a non-envelope, an unsupported `version`, or a mismatched label. Task lists route it to `stash_unusable()`. |
+| `InvalidStash` | `ValueError` | `gandalf.runtime` | `reopen()` is given a non-envelope, an unsupported `version`, or a mismatched label. Task lists route it to `stash_unusable()`. |
 | `RunNotFound` | `LookupError` | `gandalf.storage` | `retrieve_run()` / `get_run_data()` are asked for an id this storage does not hold — never started, obliterated, or lost with the session. The viewset answers it with `run_unavailable(..., "unknown")`. |
 | `MultipleStepsReturned` | `ValueError` | `gandalf.tree` | `find_step()` matches more than one step. |
 
@@ -454,7 +454,7 @@ def done(self, run):
     ...
 ```
 
-### Stashing inside `done()` and resurrecting later
+### Stashing inside `done()` and re-opening later
 
 ```python
 from gandalf.runtime import InvalidStash
@@ -467,7 +467,7 @@ def done(self, run):
 
 # elsewhere, on a fresh Run:
 try:
-    run_id = run.resurrect(draft.payload, expected_label="grant-v2")
+    run_id = run.reopen(draft.payload, expected_label="grant-v2")
 except InvalidStash:
     ...
 ```

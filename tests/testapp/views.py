@@ -1788,9 +1788,9 @@ def _iter_path(run):
 class StashingWizardViewSet(WizardViewSet):
     description = (
         "Linear wizard whose done() stashes the finished answers in the "
-        "session, so the resurrect view can re-open them in a fresh run "
+        "session, so the re-open view can re-open them in a fresh run "
         "for editing. Its second step's photo is optional — the stash "
-        "drops uploads, so a resurrected run sails past it."
+        "drops uploads, so a re-opened run sails past it."
     )
     template_name = "testapp/file_upload_wizard.html"
     wizard = (
@@ -1816,7 +1816,7 @@ class StashingWizardViewSet(WizardViewSet):
 class RequiredPhotoStashingWizardViewSet(WizardViewSet):
     description = (
         "Stashing wizard whose second step requires a file. The stash drops "
-        "uploads, so resurrecting parks the run on the photo step, where the "
+        "uploads, so re-opening parks the run on the photo step, where the "
         "user re-uploads."
     )
     template_name = "testapp/file_upload_wizard.html"
@@ -1841,7 +1841,7 @@ class RequiredPhotoStashingWizardViewSet(WizardViewSet):
         return HttpResponse(b"stashed with photo")
 
 
-def _resurrect_stash(request, viewset_class, key):
+def _reopen_stash(request, viewset_class, key):
     """Send the user into a fresh run seeded from the stash under `key`.
 
     The stash is read, not popped: re-opening it for another edit keeps
@@ -1850,27 +1850,25 @@ def _resurrect_stash(request, viewset_class, key):
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get(key)
-        url = viewset_class.resurrect(request, payload, expected_label=key)
+        url = viewset_class.reopen_url(request, payload, expected_label=key)
     except (StashNotFound, InvalidStash):
         return HttpResponse(status=HTTPStatus.GONE)
     return redirect(url)
 
 
-def resurrect_contact_stash(request):
-    return _resurrect_stash(request, StashingWizardViewSet, "contact")
+def reopen_contact_stash(request):
+    return _reopen_stash(request, StashingWizardViewSet, "contact")
 
 
-def resurrect_required_photo_stash(request):
-    return _resurrect_stash(
-        request, RequiredPhotoStashingWizardViewSet, "required-photo"
-    )
+def reopen_required_photo_stash(request):
+    return _reopen_stash(request, RequiredPhotoStashingWizardViewSet, "required-photo")
 
 
 class BranchingStashingWizardViewSet(WizardViewSet):
     description = (
         "Stashing wizard with a branch and an expansion, so its stash "
         "payload nests entries at every depth. done() stashes without a "
-        "label under the 'members' key; the resurrect view consumes the "
+        "label under the 'members' key; the re-open view consumes the "
         "stash and reopens the run at the count step."
     )
     template_name = "testapp/linear_wizard.html"
@@ -1901,12 +1899,12 @@ class BranchingStashingWizardViewSet(WizardViewSet):
         return HttpResponse(b"stashed members")
 
 
-def resurrect_members_stash(request):
+def reopen_members_stash(request):
     """Consume the members stash and reopen it at the count step."""
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.pop("members")
-        url = BranchingStashingWizardViewSet.resurrect(request, payload, step="count")
+        url = BranchingStashingWizardViewSet.reopen_url(request, payload, at="count")
     except (StashNotFound, InvalidStash):
         return HttpResponse(status=HTTPStatus.GONE)
     return redirect(url)
@@ -1923,10 +1921,12 @@ def discard_members_stash(request):
     return HttpResponse(b"discarded")
 
 
-def resurrect_empty_stash(request):
+def reopen_empty_stash(request):
     """Resurrect an empty payload into the stepless wizard: with no step to
     land on, the only URL is the bare run one, which completes on arrival."""
-    url = EmptyWizardViewSet.resurrect(request, {"version": STASH_VERSION, "state": []})
+    url = EmptyWizardViewSet.reopen_url(
+        request, {"version": STASH_VERSION, "state": []}
+    )
     return redirect(url)
 
 

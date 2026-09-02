@@ -137,7 +137,7 @@ def test_a_stash_carries_the_record_and_reopening_does_not_open_another(rf):
 
     reopened = RunMetadataWizardViewSet.reopen(request, payload)
 
-    # A resurrected run is a continuation: the record came back with the
+    # A re-opened run is a continuation: the record came back with the
     # answers, so `run_started()` must not fire and raise a second one.
     assert OPENED_RECORDS == ["record-1"]
     assert reopened.metadata["record_id"] == "record-1"

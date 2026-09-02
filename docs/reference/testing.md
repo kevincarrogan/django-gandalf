@@ -138,7 +138,7 @@ response, or `None` for an empty list.
 
 #### `run(run_id)`
 
-Bind an existing run id — one a resurrect view created, a seeded run, or an
+Bind an existing run id — one a re-open view created, a seeded run, or an
 id that was never started — without making a request.
 
 **Returns** — a `WizardRun`.
@@ -627,7 +627,7 @@ driver by hand: `WizardTestDriver(client, "readme-first")`.
 ### `RunDiscoveryError: expected the session to hold exactly one run, found 2`
 
 `only_run()` needs an unambiguous session, and completion tombstones count.
-After a resurrect or a second `start()`, use `new_run(*known)` with the runs
+After a re-open or a second `start()`, use `new_run(*known)` with the runs
 you already hold, or `run(run_id)` with an id you read from elsewhere
 (`stored_section_run(client, key)` for a section of a task list).
 

@@ -24,7 +24,7 @@ a pointer back to the [Learn](../learn/README.md) chapter that introduces it.
 - [Run metadata](run-metadata.md) — `run.metadata` and its write-through semantics
 - [Proofs](proofs.md) — `run.proof()`: holding a check that cannot be performed twice
 - [Storage](storage.md) — the `WizardStorage` contract, `SessionStorage`, a durable backend
-- [Stashing](stashing.md) — `stash()`, `resurrect()`, `SessionStashStore`
+- [Stashing](stashing.md) — `stash()`, `reopen()`, `reopen_url()`, `SessionStashStore`
 - [Walk costs](walk-costs.md) — what re-proving a run costs
 
 ## A task list of wizards

@@ -402,28 +402,28 @@ GROUPS = (
         "done() can keep a finished run's answers, so the same wizard can be "
         "re-opened later and edited. The stash drops uploads, which is why "
         "the required-photo variant parks on its photo step when it comes "
-        "back. Run the wizard to completion first — the resurrect links need "
-        "something to resurrect.",
+        "back. Run the wizard to completion first — the re-open links need "
+        "something to re-open.",
         (
             Example("stashing-wizard", note="Run this first."),
             Example(
-                "stashing-wizard-resurrect",
-                title="resurrect_contact_stash",
+                "stashing-wizard-reopen",
+                title="reopen_contact_stash",
                 description="Re-opens the stashed answers in a fresh run.",
                 note="Then this.",
             ),
             Example("required-photo-stashing-wizard", note="Run this first."),
             Example(
-                "required-photo-stashing-wizard-resurrect",
-                title="resurrect_required_photo_stash",
+                "required-photo-stashing-wizard-reopen",
+                title="reopen_required_photo_stash",
                 description="Re-opens the stash; parks on the photo step, "
                 "because the stash dropped the upload.",
                 note="Then this.",
             ),
             Example("branching-stashing-wizard", note="Run this first."),
             Example(
-                "branching-stashing-wizard-resurrect",
-                title="resurrect_members_stash",
+                "branching-stashing-wizard-reopen",
+                title="reopen_members_stash",
                 description="Consumes the members stash and re-opens it at "
                 "the count step.",
                 note="Then this — it pops the stash, so it only works once.",
@@ -439,8 +439,8 @@ GROUPS = (
                 description="Throws the members stash away.",
             ),
             Example(
-                "resurrect-empty-stash",
-                title="resurrect_empty_stash",
+                "reopen-empty-stash",
+                title="reopen_empty_stash",
                 description="Resurrects an empty payload into the stepless "
                 "wizard, which completes on arrival.",
             ),

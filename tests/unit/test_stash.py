@@ -1,8 +1,8 @@
-"""Unit coverage for stashing and resurrecting runs.
+"""Unit coverage for stashing and re-opening runs.
 
 A stash is a caller-owned, JSON-safe payload of a run's answers — the stored
 state entries wrapped in a versioned envelope with file refs stripped — taken
-inside `done()` before completion tears the run down. Resurrecting seeds a
+inside `done()` before completion tears the run down. Re-opening seeds a
 brand-new run from a payload, so the standard walk machinery replays and
 re-proves every answer.
 """
@@ -235,20 +235,20 @@ def _fresh_bound(request, wizard=None):
     return Run(context, SessionStorage(context), wizard=wizard)
 
 
-def test_resurrect_seeds_a_fresh_run_holding_the_payload_state(request_factory):
+def test_reopen_seeds_a_fresh_run_holding_the_payload_state(request_factory):
     request = request_factory()
     stashed = _bound(request, [{"step": {"name": "Ada"}}])
     payload = stashed.stash()
 
-    resurrected = _fresh_bound(request)
-    run_id = resurrected.resurrect(payload)
+    reopened = _fresh_bound(request)
+    run_id = reopened.reopen(payload)
 
     assert run_id != "run"
-    assert resurrected.run_id == run_id
-    assert resurrected.get_state() == [{"step": {"name": "Ada"}}]
+    assert reopened.run_id == run_id
+    assert reopened.get_state() == [{"step": {"name": "Ada"}}]
 
 
-def test_resurrecting_the_same_payload_twice_yields_independent_runs(
+def test_reopening_the_same_payload_twice_yields_independent_runs(
     request_factory,
 ):
     request = request_factory()
@@ -256,8 +256,8 @@ def test_resurrecting_the_same_payload_twice_yields_independent_runs(
 
     first = _fresh_bound(request)
     second = _fresh_bound(request)
-    first_run = first.resurrect(payload)
-    second_run = second.resurrect(payload)
+    first_run = first.reopen(payload)
+    second_run = second.reopen(payload)
 
     assert first_run != second_run
     first.get_state()[0]["step"]["name"] = "Grace"
@@ -276,14 +276,14 @@ def test_resurrecting_the_same_payload_twice_yields_independent_runs(
         {"state": []},
     ],
 )
-def test_resurrect_refuses_a_malformed_payload(request_factory, payload):
+def test_reopen_refuses_a_malformed_payload(request_factory, payload):
     bound = _fresh_bound(request_factory())
 
     with pytest.raises(InvalidStash):
-        bound.resurrect(payload)
+        bound.reopen(payload)
 
 
-def test_resurrect_refuses_a_label_mismatch_before_creating_a_run(
+def test_reopen_refuses_a_label_mismatch_before_creating_a_run(
     request_factory,
 ):
     request = request_factory()
@@ -291,17 +291,15 @@ def test_resurrect_refuses_a_label_mismatch_before_creating_a_run(
     payload = {"version": STASH_VERSION, "label": "contact", "state": []}
 
     with pytest.raises(InvalidStash):
-        bound.resurrect(payload, expected_label="billing")
+        bound.reopen(payload, expected_label="billing")
     with pytest.raises(InvalidStash):
-        bound.resurrect(
-            {"version": STASH_VERSION, "state": []}, expected_label="billing"
-        )
+        bound.reopen({"version": STASH_VERSION, "state": []}, expected_label="billing")
     assert request.session.get("gandalf_runs", {}) == {}
 
-    assert bound.resurrect(payload, expected_label="contact")
+    assert bound.reopen(payload, expected_label="contact")
 
 
-def test_a_resurrected_run_walks_to_completion(request_factory):
+def test_a_reopened_run_walks_to_completion(request_factory):
     request = request_factory()
     payload = {
         "version": STASH_VERSION,
@@ -312,14 +310,14 @@ def test_a_resurrected_run_walks_to_completion(request_factory):
     }
     bound = _fresh_bound(request, wizard=_linear_wizard())
 
-    bound.resurrect(payload)
+    bound.reopen(payload)
 
     assert bound.cursor().node is None
 
 
 def test_a_stripped_required_file_step_parks_the_cursor_there(request_factory):
     """The stash kept the step's data but dropped its files, so on
-    resurrection the required file field no longer validates — the walk
+    re-opening the required file field no longer validates — the walk
     parks exactly where the user has to re-upload."""
     wizard = configured(
         Wizard().step(FirstStepForm, name="first").step(ProfilePhotoForm, name="photo"),
@@ -328,7 +326,7 @@ def test_a_stripped_required_file_step_parks_the_cursor_there(request_factory):
     request = request_factory()
     bound = _fresh_bound(request, wizard=wizard)
 
-    bound.resurrect(
+    bound.reopen(
         {
             "version": STASH_VERSION,
             "state": [{"step": {"name": "Ada"}}, {"step": {}}],
@@ -347,9 +345,7 @@ def test_a_stripped_optional_file_step_still_validates(request_factory):
     request = request_factory()
     bound = _fresh_bound(request, wizard=wizard)
 
-    bound.resurrect(
-        {"version": STASH_VERSION, "state": [{"step": {"label": "Holiday"}}]}
-    )
+    bound.reopen({"version": STASH_VERSION, "state": [{"step": {"label": "Holiday"}}]})
 
     assert bound.cursor().node is None
 
@@ -360,7 +356,7 @@ def test_a_tampered_answer_parks_the_cursor_with_an_errored_render(
     request = request_factory()
     bound = _fresh_bound(request, wizard=_linear_wizard())
 
-    bound.resurrect(
+    bound.reopen(
         {
             "version": STASH_VERSION,
             "state": [
@@ -404,7 +400,7 @@ def test_stash_leaves_a_proof_behind(request_factory):
     """The metadata rides and the proofs do not, and the split is the point
     of each. A record id names something that outlives the run; a proof is a
     claim about *this* run's answers, so a consuming step re-proves itself
-    in the run that resurrects them."""
+    in the run that re-opens them."""
     bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
     bound.metadata["record_id"] = "abc"
     _proved(bound, "first", verified=True)
@@ -419,42 +415,42 @@ def test_a_stash_of_nothing_but_proofs_carries_no_metadata_key(request_factory):
     assert "meta" not in bound.stash()
 
 
-def test_resurrecting_restores_what_the_stashed_run_had_recorded(request_factory):
+def test_reopening_restores_what_the_stashed_run_had_recorded(request_factory):
     bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
     bound.metadata["record_id"] = "abc"
     payload = bound.stash()
 
     fresh = _bound(request_factory(), [])
-    fresh.resurrect(payload)
+    fresh.reopen(payload)
 
-    # Which is why `run_started()` must not fire for a resurrected run: the
+    # Which is why `run_started()` must not fire for a re-opened run: the
     # record it would open is already there.
     assert dict(fresh.metadata) == {"record_id": "abc"}
 
 
-def test_resurrecting_a_payload_that_recorded_nothing_leaves_an_empty_bag(
+def test_reopening_a_payload_that_recorded_nothing_leaves_an_empty_bag(
     request_factory,
 ):
     bound = _bound(request_factory(), [])
 
-    bound.resurrect({"version": STASH_VERSION, "state": []})
+    bound.reopen({"version": STASH_VERSION, "state": []})
 
     assert dict(bound.metadata) == {}
 
 
-def test_resurrecting_one_payload_twice_gives_two_independent_bags(request_factory):
+def test_reopening_one_payload_twice_gives_two_independent_bags(request_factory):
     bound = _bound(request_factory(), [{"step": {"first_name": "Ada"}}])
     bound.metadata["record_id"] = "abc"
     payload = bound.stash()
 
     first = _bound(request_factory(), [])
-    first.resurrect(payload)
+    first.reopen(payload)
     second = _bound(request_factory(), [])
-    second.resurrect(payload)
+    second.reopen(payload)
 
     first.metadata["record_id"] = "changed"
 
-    # The payload is deep copied on the way in, so editing one resurrected
+    # The payload is deep copied on the way in, so editing one re-opened
     # run cannot reach through it into the other.
     assert second.metadata["record_id"] == "abc"
     assert payload["meta"] == {"run": {"record_id": "abc"}}

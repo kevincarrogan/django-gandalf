@@ -1410,7 +1410,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         or a `stash_unusable()` that declined to name a destination.
 
         Resume before reopen. Reversed, a completed section under edit
-        would resurrect a second run on every click and the user's
+        would re-open a second run on every click and the user's
         in-flight edits would become unreachable.
         """
         if entry.viewset is None:

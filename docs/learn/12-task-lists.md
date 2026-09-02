@@ -94,7 +94,7 @@ own run: it would fire the section's side effects on a click. Rows link to
 the page's door, which resumes a live run, re-opens a stash, or starts a
 fresh run, and lands the user on a step URL in every case. Resuming is
 tried *before* re-opening, so a section already being edited continues
-that edit rather than resurrecting a second run beside it.
+that edit rather than re-opening a second run beside it.
 
 Because the page mounts its sections itself, it goes one further: a
 section's URL *is* its door. `readme/task-list/contact/` opens the contact

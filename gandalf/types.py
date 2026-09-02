@@ -72,7 +72,7 @@ State: TypeAlias = list[StateEntry]
 RunData: TypeAlias = dict[str, Any]
 
 #: A caller-owned, JSON-safe payload of a run's answers, from
-#: `Run.stash()` and accepted back by `resurrect()`.
+#: `Run.stash()` and accepted back by `reopen()`.
 Stash: TypeAlias = dict[str, Any]
 
 #: A step lookup: context keys matched against a step's declared context.

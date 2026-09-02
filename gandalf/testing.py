@@ -346,7 +346,7 @@ class WizardTestDriver:
         return run.post_steps(steps), run
 
     def run(self, run_id: str) -> WizardRun:
-        """Bind an existing run id — one a resurrect view created, a seeded
+        """Bind an existing run id — one a re-open view created, a seeded
         run, or an id that was never started — without making a request."""
         return WizardRun(self, run_id)
 

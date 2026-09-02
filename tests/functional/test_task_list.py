@@ -491,7 +491,7 @@ def test_confirming_a_reopened_section_without_editing_keeps_it_complete(client)
 
 
 def test_a_completed_section_already_being_edited_resumes_that_edit(client):
-    """Resume before reopen: otherwise every click would resurrect a run
+    """Resume before reopen: otherwise every click would re-open a run
     beside the in-flight edit and the user's changes would be unreachable."""
     _complete_contact(client)
     client.get(_door("contact"), follow=True)

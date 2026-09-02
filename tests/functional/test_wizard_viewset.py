@@ -2032,7 +2032,7 @@ def test_completion_tombstones_are_pruned_to_the_storage_cap(client, wizard_driv
     assert list(stored_runs(client)) == completed[1:]
 
 
-# --- Stashing and resurrecting runs ----------------------------------------
+# --- Stashing and re-opening runs ----------------------------------------
 
 
 def _complete_stashing_wizard(driver, name="Ada", label="Holiday", photo=None):
@@ -2064,13 +2064,13 @@ def test_completing_the_stashing_wizard_stores_a_files_free_payload(
     assert run.data == {"completed": True}
 
 
-def test_resurrecting_a_stash_lands_on_a_step_of_a_fresh_prefilled_run(
+def test_reopening_a_stash_lands_on_a_step_of_a_fresh_prefilled_run(
     client, wizard_driver
 ):
     driver = wizard_driver("stashing-wizard")
     old_run, _ = _complete_stashing_wizard(driver)
 
-    response = client.get(reverse("stashing-wizard-resurrect"))
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     new_run = driver.new_run(old_run)
     assertRedirects(
@@ -2088,13 +2088,13 @@ def test_resurrecting_a_stash_lands_on_a_step_of_a_fresh_prefilled_run(
     assertContains(landing, 'value="Ada"')
 
 
-def test_editing_a_resurrected_run_fires_done_again(client, wizard_driver):
+def test_editing_a_reopened_run_fires_done_again(client, wizard_driver):
     driver = wizard_driver("stashing-wizard")
     old_run, _ = _complete_stashing_wizard(driver)
 
-    client.get(reverse("stashing-wizard-resurrect"))
+    client.get(reverse("stashing-wizard-reopen"))
     new_run = driver.new_run(old_run)
-    # Every stored answer in a resurrected run validates, so one successful
+    # Every stored answer in a re-opened run validates, so one successful
     # edit walks straight through to completion and fires done() again —
     # wizards wanting an explicit confirm gate keep a review step.
     response = new_run.post_step("first", {"name": "Grace"}, follow=True)
@@ -2108,39 +2108,39 @@ def test_editing_a_resurrected_run_fires_done_again(client, wizard_driver):
     assert old_run.data == {"completed": True}
 
 
-def test_resurrecting_twice_yields_two_independent_runs(client, wizard_driver):
+def test_reopening_twice_yields_two_independent_runs(client, wizard_driver):
     driver = wizard_driver("stashing-wizard")
     old_run, _ = _complete_stashing_wizard(driver)
 
-    client.get(reverse("stashing-wizard-resurrect"))
+    client.get(reverse("stashing-wizard-reopen"))
     first_run = driver.new_run(old_run)
-    client.get(reverse("stashing-wizard-resurrect"))
+    client.get(reverse("stashing-wizard-reopen"))
     second_run = driver.new_run(old_run, first_run)
 
     assert first_run.run_id != second_run.run_id
     assert first_run.state == second_run.state
 
 
-def test_resurrecting_without_a_stash_is_gone(client):
-    response = client.get(reverse("stashing-wizard-resurrect"))
+def test_reopening_without_a_stash_is_gone(client):
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     assert response.status_code == HTTPStatus.GONE
     assert stored_runs(client) == {}
 
 
-def test_resurrecting_a_tampered_stash_version_is_gone(client, wizard_driver):
+def test_reopening_a_tampered_stash_version_is_gone(client, wizard_driver):
     _complete_stashing_wizard(wizard_driver("stashing-wizard"))
     payload = stored_stash(client, "contact")
     payload["version"] = 99
     seed_stash(client, "contact", payload)
 
-    response = client.get(reverse("stashing-wizard-resurrect"))
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     assert response.status_code == HTTPStatus.GONE
 
 
 def test_a_tampered_stash_answer_is_revalidated_not_trusted(client, wizard_driver):
-    """Resurrection replays the walk, so a mangled answer parks the run on
+    """Re-opening replays the walk, so a mangled answer parks the run on
     the offending step with its errors — it can never complete silently."""
     driver = wizard_driver("stashing-wizard")
     old_run, _ = _complete_stashing_wizard(driver)
@@ -2148,7 +2148,7 @@ def test_a_tampered_stash_answer_is_revalidated_not_trusted(client, wizard_drive
     payload["state"][0]["step"]["name"] = ""
     seed_stash(client, "contact", payload)
 
-    response = client.get(reverse("stashing-wizard-resurrect"))
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     new_run = driver.new_run(old_run)
     assertRedirects(
@@ -2161,7 +2161,7 @@ def test_a_tampered_stash_answer_is_revalidated_not_trusted(client, wizard_drive
     assertContains(landing, "This field is required.")
 
 
-def test_resurrecting_a_required_file_stash_resumes_at_the_photo_step(
+def test_reopening_a_required_file_stash_resumes_at_the_photo_step(
     client, wizard_driver, isolated_media_root
 ):
     driver = wizard_driver("required-photo-stashing-wizard")
@@ -2174,9 +2174,9 @@ def test_resurrecting_a_required_file_stash_resumes_at_the_photo_step(
     )
     assert response.content == b"stashed with photo"
 
-    response = client.get(reverse("required-photo-stashing-wizard-resurrect"))
+    response = client.get(reverse("required-photo-stashing-wizard-reopen"))
 
-    # The stash dropped the upload, so the resurrected run cannot pass the
+    # The stash dropped the upload, so the re-opened run cannot pass the
     # required photo step — it parks there for the user to re-upload.
     new_run = driver.new_run(old_run)
     assertRedirects(
@@ -2240,13 +2240,13 @@ def test_branching_stashing_wizard_strips_a_legacy_branch_entry(client, wizard_d
     assert payload["state"][1] == {"branch": [{"step": {"business_name": "Acme"}}]}
 
 
-def test_resurrecting_the_members_stash_lands_on_the_named_step_and_consumes_it(
+def test_reopening_the_members_stash_lands_on_the_named_step_and_consumes_it(
     client, wizard_driver
 ):
     driver = wizard_driver("branching-stashing-wizard")
     old_run, _ = _complete_branching_stashing_wizard(driver)
 
-    response = client.get(reverse("branching-stashing-wizard-resurrect"))
+    response = client.get(reverse("branching-stashing-wizard-reopen"))
 
     new_run = driver.new_run(old_run)
     assertRedirects(
@@ -2254,8 +2254,8 @@ def test_resurrecting_the_members_stash_lands_on_the_named_step_and_consumes_it(
         new_run.step_url("count"),
         fetch_redirect_response=False,
     )
-    # The resurrect view pops the stash, so a second reopen finds nothing.
-    assert client.get(reverse("branching-stashing-wizard-resurrect")).status_code == (
+    # The re-open view pops the stash, so a second re-open finds nothing.
+    assert client.get(reverse("branching-stashing-wizard-reopen")).status_code == (
         HTTPStatus.GONE
     )
 
@@ -2270,34 +2270,34 @@ def test_stashed_keys_lists_completions_and_discard_removes_them(client, wizard_
     assert client.get(reverse("stashed-member-keys")).content == b""
 
 
-def test_resurrecting_an_empty_stash_completes_on_arrival(client, wizard_driver):
-    """A stepless wizard has no step URL to land on, so resurrection falls
+def test_reopening_an_empty_stash_completes_on_arrival(client, wizard_driver):
+    """A stepless wizard has no step URL to land on, so re-opening falls
     back to the bare run URL — where the walk immediately completes."""
-    response = client.get(reverse("resurrect-empty-stash"), follow=True)
+    response = client.get(reverse("reopen-empty-stash"), follow=True)
 
     assert response.status_code == HTTPStatus.OK
     run = wizard_driver("empty-wizard").only_run()
     assert response.content == f"completed {run.run_id}".encode()
 
 
-def test_resurrecting_a_stash_whose_state_is_not_a_list_is_gone(client, wizard_driver):
+def test_reopening_a_stash_whose_state_is_not_a_list_is_gone(client, wizard_driver):
     _complete_stashing_wizard(wizard_driver("stashing-wizard"))
     payload = stored_stash(client, "contact")
     payload["state"] = "corrupt"
     seed_stash(client, "contact", payload)
 
-    response = client.get(reverse("stashing-wizard-resurrect"))
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     assert response.status_code == HTTPStatus.GONE
 
 
-def test_resurrecting_a_stash_with_the_wrong_label_is_gone(client, wizard_driver):
+def test_reopening_a_stash_with_the_wrong_label_is_gone(client, wizard_driver):
     _complete_stashing_wizard(wizard_driver("stashing-wizard"))
     payload = stored_stash(client, "contact")
     payload["label"] = "billing"
     seed_stash(client, "contact", payload)
 
-    response = client.get(reverse("stashing-wizard-resurrect"))
+    response = client.get(reverse("stashing-wizard-reopen"))
 
     assert response.status_code == HTTPStatus.GONE
 

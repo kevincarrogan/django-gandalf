@@ -1,6 +1,6 @@
 # Stashing
 
-`Run.stash()` and `WizardViewSet.resurrect()` — take a run's
+`Run.stash()` and `WizardViewSet.reopen_url()` — take a run's
 answers out as a payload, and seed a fresh run from one later.
 
 ```python
@@ -25,7 +25,7 @@ the final state is still readable there.
 
 - `label` — an opt-in guard, stamped into the payload when given. State
   aligns with the wizard tree positionally, so a payload should be refused
-  when it was stashed by a differently-shaped wizard; `resurrect()` checks
+  when it was stashed by a differently-shaped wizard; `reopen()` checks
   it against `expected_label`.
 
 **Returns** a `Stash` (a plain dict):
@@ -50,17 +50,17 @@ arms, the legacy bare-list branch shape, and expansion sub-lists:
 - [Proofs](proofs.md) stay behind. The metadata rides because a record id
   outlives the run that opened it; a proof is a claim about *this* run's
   answers, so a step whose check cannot be performed twice re-proves itself
-  in the run that resurrects them.
+  in the run that re-opens them.
 
 The stored state is never mutated; the payload is built from new
 structures.
 
-### `Run.resurrect(payload, expected_label=None)`
+### `Run.reopen(payload, expected_label=None)`
 
 Seed a fresh run from a payload and return the new run id. Storage-only:
 the wizard need not be resolved yet. The payload is vetted before any run
 is created, so a refusal leaves nothing behind. `state` and `meta` are
-deep-copied in, so resurrecting one payload twice gives two fully
+deep-copied in, so re-opening one payload twice gives two fully
 independent runs and leaves the payload untouched. Nothing is walked here.
 
 **Raises** `InvalidStash` when:
@@ -85,17 +85,17 @@ continuation, and its metadata bag comes back with it.
 
 **Raises** `InvalidStash` before any run is created.
 
-### `WizardViewSet.resurrect(request, payload, step=None, expected_label=None, **url_kwargs)`
+### `WizardViewSet.reopen_url(request, payload, at=None, expected_label=None, **url_kwargs)`
 
 `reopen()` followed by `entry_url(step)`: seed the run and return the URL
 to send the user to.
 
 **Parameters**
 
-- `step` — the URL segment of the step to land on; walks nothing. Without
-  it the new run is walked once and the URL is the cursor's step, or — for
-  a payload whose every answer validates — the first step on the active
-  route.
+- `at` — the URL segment of the step to land on, as `reopen_at` names it
+  on a task list's entry; walks nothing. Without it the new run is walked
+  once and the URL is the cursor's step, or — for a payload whose every
+  answer validates — the first step on the active route.
 - `expected_label`, `url_kwargs` — as `reopen()`.
 
 **Returns** a step URL, never the bare run URL. `None` only when the
@@ -104,7 +104,7 @@ Falls back to the bare run URL for a wizard with no steps at all.
 
 ### `InvalidStash`
 
-`ValueError` raised by `resurrect()` and `reopen()` for a payload that
+`ValueError` raised by `reopen()` and `reopen_url()` for a payload that
 cannot seed a run: not a stash envelope, an unsupported version, or a label
 that does not match. A task list turns it into `stash_unusable()`; by hand,
 catch it alongside `StashNotFound` and start fresh.
@@ -144,7 +144,7 @@ Every write calls `context.session_changed()`.
 `LookupError` raised by `get()` and `pop()` when a key names no stored
 payload — never stashed, already popped, or lost with an expired session.
 
-### What resurrection guarantees
+### What re-opening guarantees
 
 - **A fresh, ordinary run.** Standard URLs, editing, escapes. The original
   run's tombstone is untouched, so the once-per-run `done()` guarantee
@@ -163,11 +163,11 @@ payload — never stashed, already popped, or lost with an expired session.
 - **The next submission re-fires `done()`.** Every answer already validates,
   so the next successful submission — including an edit to the first step —
   walks to the end. A review step does not gate that; it gives the user
-  somewhere to land (`step="review"`), and `SummaryMixin` drops the step
+  somewhere to land (`at="review"`), and `SummaryMixin` drops the step
   doing the summarising from its own rows.
 - **Same-shaped wizard only.** Stored answers align with the tree
   positionally. Stamp a `label` at stash time, pass `expected_label` at
-  resurrect time, and bump the label when a deploy reshapes the wizard.
+  re-open time, and bump the label when a deploy reshapes the wizard.
 
 ---
 
@@ -206,7 +206,7 @@ def reopen_contact_details(request):
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get("contact")
-        url = ContactDetailsViewSet.resurrect(request, payload, expected_label="contact-v1")
+        url = ContactDetailsViewSet.reopen_url(request, payload, expected_label="contact-v1")
     except (StashNotFound, InvalidStash):
         return redirect("contact")  # nothing usable — start fresh
     return redirect(url)
@@ -231,8 +231,8 @@ class BudgetViewSet(WizardViewSet):
 
 def edit_budget(request, pk):
     application = get_object_or_404(Application, pk=pk, applicant=request.user)
-    url = BudgetViewSet.resurrect(
-        request, application.budget_stash, step="review", expected_label="budget"
+    url = BudgetViewSet.reopen_url(
+        request, application.budget_stash, at="review", expected_label="budget"
     )
     return redirect(url)
 ```
@@ -265,7 +265,7 @@ if the change was additive.
 
 ### `InvalidStash: A stash payload is a dict with a state list`
 
-`resurrect()` was handed something other than a `stash()` payload — a
+`reopen()` was handed something other than a `stash()` payload — a
 model field that was never written, or the `state` list on its own. Store
 and pass the whole payload.
 
@@ -273,13 +273,13 @@ and pass the whole payload.
 
 The user was sent to the bare run URL. Every answer in a stash validates,
 so the cursor is at the end and a GET there completes. Always send them to
-what `resurrect()` returns, or to `entry_url(step)`.
+what `reopen_url()` returns, or to `entry_url(step)`.
 
 ### The user edited one field and the run completed
 
-That is edit-and-re-save: after a resurrection every step is satisfied, so
+That is edit-and-re-save: after a re-opening every step is satisfied, so
 any successful submission walks to the end. Land them on a review step
-(`step="review"`) so they can look before re-submitting.
+(`at="review"`) so they can look before re-submitting.
 
 ### The re-opened run asks for a file again
 

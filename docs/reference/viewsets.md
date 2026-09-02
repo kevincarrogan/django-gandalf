@@ -159,7 +159,7 @@ remember it.
 
 | Fires from | Does not fire from |
 | --- | --- |
-| the start URL, `begin()`, `begin_for()` (and `RunDriver.begin()`, which uses them) | `inspect()`, `inspect_for()`, `reopen()`, `resurrect()`, `resolve()`, any GET or POST of an existing run |
+| the start URL, `begin()`, `begin_for()` (and `RunDriver.begin()`, which uses them) | `inspect()`, `inspect_for()`, `reopen()`, `reopen_url()`, `resolve()`, any GET or POST of an existing run |
 
 **Caveats**
 
@@ -319,7 +319,7 @@ hold. A tombstoned run is *found* — it stays addressable — so check
 
 ### `reopen(request, payload, expected_label=None, **url_kwargs)` *(classmethod)*
 
-A fresh run seeded from a stash payload — the run behind `resurrect()`.
+A fresh run seeded from a stash payload — the run behind `reopen_url()`.
 Seeds *then* resolves, unlike `inspect()`: the state a dynamic
 `get_wizard()` reads is the state the payload just supplied. Does not fire
 `run_started()`.
@@ -333,16 +333,16 @@ Seeds *then* resolves, unlike `inspect()`: the state a dynamic
 when the payload is malformed, of an unsupported version, or its label does
 not match. See [Stashing](stashing.md).
 
-### `resurrect(request, payload, step=None, expected_label=None, **url_kwargs)` *(classmethod)*
+### `reopen_url(request, payload, at=None, expected_label=None, **url_kwargs)` *(classmethod)*
 
 `reopen()` plus `entry_url(step)`: seed a run and return the URL to send the
 user to.
 
-**Parameters** — `step`: the URL segment to land on. Without it, the cursor's
-step, or — for a stash whose every answer validates — the first step on the
-active route.
+**Parameters** — `at`: the URL segment to land on, as `reopen_at` names it
+on a task list's entry. Without it, the cursor's step, or — for a stash
+whose every answer validates — the first step on the active route.
 
-**Returns** a step URL (`str`), never the bare run URL: a resurrected run's
+**Returns** a step URL (`str`), never the bare run URL: a re-opened run's
 answers all validate, so a GET there would walk straight to completion and
 fire `done()` before the user edited anything. Only a wizard with no steps at
 all falls back to the run URL. `None` when no URL reverser is available.
@@ -591,8 +591,8 @@ A GET of the run URL walks the stored answers, and if every step is
 satisfied the run completes — a GET is as good as a POST for that. This is by
 design, and it bites in two places: a link *into* a run that points at the
 bare run URL rather than a step (use `run.entry_url()`, which never
-returns the run URL for a wizard with steps), and a resurrected stash whose
-answers all validate (`resurrect()` returns a step URL for exactly this
+returns the run URL for a wizard with steps), and a re-opened stash whose
+answers all validate (`reopen_url()` returns a step URL for exactly this
 reason). A step URL is always safe: it renders rather than completes.
 
 ### A completed run redirects to the start URL

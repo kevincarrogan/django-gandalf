@@ -86,7 +86,7 @@ assignment writes through, `update()` for several keys in one write.
 | a branch ahead of it takes a different arm | **void** | same reason: the prefix is different |
 | the step's own answer changes | stands | a proof is about what came *before* its step; the new submission is a new claim, and the form checks it |
 | an earlier answer changes and changes back | stands | the digest describes the answers, not how many times they moved |
-| the run is stashed and resurrected | **not carried** | a stash carries answers to a different run; see [Stashing](stashing.md) |
+| the run is stashed and re-opened | **not carried** | a stash carries answers to a different run; see [Stashing](stashing.md) |
 | the run completes | **discarded** | completion throws away the answers a proof is a claim about; see below |
 
 The first row is the whole point, and it is why this is not a convention
@@ -292,7 +292,7 @@ walk that follows. Both halves have to be there. Reading the proof without
 writing it, or writing it without reading it back, leaves the check running
 every time.
 
-### A resurrected run asks for the token again
+### A re-opened run asks for the token again
 
 Working as intended. A stash carries answers to a *different* run, and
 carrying the proof would assert that a consuming check made in the old run

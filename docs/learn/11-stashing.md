@@ -29,7 +29,7 @@ def reopen_contact_details(request):
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get("contact")
-        url = ContactDetailsViewSet.resurrect(request, payload, expected_label="contact")
+        url = ContactDetailsViewSet.reopen_url(request, payload, expected_label="contact")
     except (StashNotFound, InvalidStash):
         return redirect("readme-stash")  # nothing stashed — start fresh
     return redirect(url)
@@ -38,7 +38,7 @@ def reopen_contact_details(request):
 Inside `done()`, `run.stash()` returns a small JSON-safe payload of
 the run's answers. The payload is yours — a model field, the session,
 wherever your bigger flow keeps its pieces; `SessionStashStore` is the helper
-for the common case. To re-open it, `resurrect(request, payload)` seeds a
+for the common case. To re-open it, `reopen_url(request, payload)` seeds a
 brand-new run from the payload and returns the URL to send the user to; they
 land in the ordinary wizard UI with every answer pre-filled, edit whatever
 they need, and `done()` fires again for the new run when they finish.
@@ -53,7 +53,7 @@ Three things are worth holding onto:
   that; what it gives you is somewhere to *land*.
 - **Same-shaped wizard only.** Stored answers align with the tree
   positionally. The `label` is the guard rail: stamp it at stash time, pass
-  `expected_label` at resurrect time, and bump it when a deploy reshapes the
+  `expected_label` at re-open time, and bump it when a deploy reshapes the
   wizard.
 
 What rides in the payload (metadata) and what does not (uploaded files), and

@@ -484,7 +484,7 @@ def test_a_section_holding_a_stash_is_complete(page):
 
 def test_a_completed_sections_stash_outranks_its_tombstoned_run(page):
     """The recorded run may be stale — tombstoned, pruned, or replaced by a
-    resurrection — and status never consults it once a stash exists."""
+    re-opening — and status never consults it once a stash exists."""
     view = page(
         {
             "runs": {"contact": "run-1"},
@@ -949,7 +949,7 @@ def test_entering_an_incomplete_section_resumes_its_own_run(page):
 
 
 def test_entering_a_completed_section_reopens_its_stash_at_the_first_step(page):
-    """Never the bare run URL: every answer in a resurrected run validates,
+    """Never the bare run URL: every answer in a re-opened run validates,
     so a GET there would fire `done()` before the user edited anything."""
     view = page(
         {
@@ -983,7 +983,7 @@ def test_reopening_a_section_leaves_its_stash_in_place(page):
 
 def test_a_completed_section_already_being_edited_resumes_that_edit(page):
     """Resume before reopen, so at most one live run per section exists —
-    otherwise every click would resurrect a run beside the in-flight edit
+    otherwise every click would re-open a run beside the in-flight edit
     and the user's changes would become unreachable."""
     view = page(
         {

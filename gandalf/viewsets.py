@@ -284,7 +284,7 @@ class WizardViewSet(View):
         **url_kwargs: Any,
     ) -> Run:
         """A fresh run seeded from a stash payload, returned rather than
-        redirected to — the run behind `resurrect()`.
+        redirected to — the run behind `reopen_url()`.
 
         Resolution happens *after* seeding, unlike `inspect()`: the state a
         dynamic `get_wizard()` would read is the state the payload just
@@ -292,37 +292,38 @@ class WizardViewSet(View):
         the payload is malformed or its label does not match.
         """
         view, run = cls.for_context(WizardContext.from_request(request, **url_kwargs))
-        run.resurrect(payload, expected_label=expected_label)
+        run.reopen(payload, expected_label=expected_label)
         view._resolve_wizard(run)
         return run
 
     @classmethod
-    def resurrect(
+    def reopen_url(
         cls,
         request: HttpRequest,
         payload: Stash,
-        step: str | None = None,
+        at: str | None = None,
         expected_label: str | None = None,
         **url_kwargs: Any,
     ) -> str | None:
         """Seed a fresh run from a stash payload and return the URL to send
         the user to.
 
-        `step` names the step (URL segment) to land on; without it, the
-        run's cursor step — or, for a fully-valid stash, the first step on
-        the active route. Never the bare run URL: a resurrected run's
-        answers all validate, so a GET there would walk straight to
-        completion and fire `done()` before the user edited anything.
-        `url_kwargs` are mount-prefix context (e.g. a tenant slug),
-        forwarded into URL reversing via `get_url_kwargs()`. Raises
-        `InvalidStash` — before any run is created — when the payload is
-        malformed or its label does not match `expected_label`.
+        `at` names the step (URL segment) to land on, as `reopen_at` does
+        on a task list's entry; without it, the run's cursor step — or,
+        for a fully-valid stash, the first step on the active route. Never
+        the bare run URL: a re-opened run's answers all validate, so a GET
+        there would walk straight to completion and fire `done()` before
+        the user edited anything. `url_kwargs` are mount-prefix context
+        (e.g. a tenant slug), forwarded into URL reversing via
+        `get_url_kwargs()`. Raises `InvalidStash` — before any run is
+        created — when the payload is malformed or its label does not
+        match `expected_label`.
 
         Shorthand for `reopen()` plus `entry_url()`; reach for those when
         the new run itself is wanted and not only the URL.
         """
         run = cls.reopen(request, payload, expected_label=expected_label, **url_kwargs)
-        return run.entry_url(step)
+        return run.entry_url(at)
 
     @classmethod
     def resolve(cls, request: HttpRequest, **url_kwargs: Any) -> Run:

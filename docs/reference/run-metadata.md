@@ -105,7 +105,7 @@ normal case and a cache would let one go stale mid-request.
 | Re-answering a step | Kept — state is rewritten wholesale; the bag is not touched. |
 | An `Obliterate` / `obliterate()` | **Gone** with the run. |
 | Completion | Kept — `complete_run` discards the answers and keeps the bag, so `run_unavailable(..., "completed")` and a completion page can still name what was created. |
-| `stash()` / `resurrect()` | Kept — the bag rides in the payload's `"meta"` (omitted when empty), unlike file refs. A ref names bytes that completion deletes; a record id names something that outlives the run. Resurrecting one payload twice gives two independent bags. |
+| `stash()` / `reopen()` | Kept — the bag rides in the payload's `"meta"` (omitted when empty), unlike file refs. A ref names bytes that completion deletes; a record id names something that outlives the run. Re-opening one payload twice gives two independent bags. |
 
 ### When to write it
 
@@ -118,7 +118,7 @@ every time.
 That is why the thing you only want to do once belongs in
 [`run_started()`](viewsets.md), the one hook that fires exactly once per
 run — a run is minted once — and is handed a run that already has an id and
-a resolved wizard. `reopen()`, `resurrect()` and `inspect()` do not fire it:
+a resolved wizard. `reopen()`, `reopen_url()` and `inspect()` do not fire it:
 a run seeded from a stash is a continuation, and its bag comes back with its
 answers. If the start URL's drive-by visit makes `run_started()` too
 speculative, do the work on first answer from the first step's
@@ -222,7 +222,7 @@ it on the bag, or move it to `run_started()`.
 ### `KeyError` in `run_unavailable()` for a completed run
 
 The key was never written — usually because the run was started through a
-door that does not fire `run_started()` (`reopen_at`, `resurrect`, `inspect`),
+door that does not fire `run_started()` (`reopen()`, `reopen_url()`, `inspect()`),
 or because `run_started()` raised before the write. Use `.get()` when the
 key is not guaranteed.
 

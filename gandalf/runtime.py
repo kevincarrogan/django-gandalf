@@ -109,7 +109,7 @@ class StepNotFound(LookupError):
     active runtime path or has no stored submission."""
 
 
-# Version stamp written into every stash envelope, checked on resurrection so
+# Version stamp written into every stash envelope, checked on re-opening so
 # a payload from a future incompatible format is refused rather than walked.
 STASH_VERSION = 1
 
@@ -138,7 +138,7 @@ def _stripped_for_stash(entries):
 
     A stash outlives the run, but the uploaded bytes do not — completion
     deletes them — so a payload must not carry refs to files that no longer
-    exist. The step data itself is kept: on resurrection the walk re-proves
+    exist. The step data itself is kept: on re-opening the walk re-proves
     it without files, so a required file field parks the cursor at that step
     (the correct resume point) while its other answers survive. Recurses
     through branch arms — active and dormant alike, plus the legacy bare-list
@@ -221,7 +221,7 @@ class RunMetadata(MetadataBag):
     So this is stored beside the state, through its own storage seam, and
     every write goes to storage immediately. It survives a walk that never
     persists, a `Park`, completion (`complete_run` keeps it and discards
-    the answers), and a `stash()`/`resurrect()` round trip.
+    the answers), and a `stash()`/`reopen()` round trip.
 
     Read and write it as a dict, from anywhere holding the run — a step
     view, `done()`, a driver::
@@ -694,7 +694,7 @@ def first_route_step(state: RuntimeNode | None) -> RuntimeStep | None:
     """The first `RuntimeStep` on the active route of a walked tree, or None.
 
     On a complete walk this is where an edit naturally begins — the earliest
-    step a URL can render — which is what lets a resurrected run land on a
+    step a URL can render — which is what lets a re-opened run land on a
     step instead of the bare run URL (where a fully-valid run would finish
     immediately).
     """
@@ -1014,9 +1014,9 @@ class Run:
         Callable inside `done()` — completion tears the run down only after
         `done()` returns, so the final state is still readable there. File
         refs are stripped (the bytes are deleted at completion); everything
-        else rides verbatim, ready to seed a fresh run via `resurrect()`.
+        else rides verbatim, ready to seed a fresh run via `reopen()`.
         `label` is an opt-in guard: state aligns with the wizard tree
-        positionally, so resurrection should be refused when the payload was
+        positionally, so re-opening should be refused when the payload was
         stashed by a differently-shaped wizard.
         """
         payload = {
@@ -1029,7 +1029,7 @@ class Run:
         # forgotten it would raise a second invoice on the way back in. The
         # proofs are the exception in the other direction: they are claims
         # about the answers of *this* run, so they stay behind and a
-        # consuming step re-proves itself in the run that resurrects them.
+        # consuming step re-proves itself in the run that re-opens them.
         metadata = _without_proofs(self.storage.get_run_metadata(self.run_id))
         if metadata:
             payload["meta"] = metadata
@@ -1037,16 +1037,16 @@ class Run:
             payload["label"] = label
         return payload
 
-    def resurrect(self, payload: Stash, expected_label: str | None = None) -> str:
+    def reopen(self, payload: Stash, expected_label: str | None = None) -> str:
         """Seed a fresh run from a stash payload; return the new run id.
 
         Storage-only — the wizard need not be resolved yet, matching how a
         run always exists before its wizard is bound. The state is deep
-        copied so repeated resurrections of one payload yield fully
+        copied so repeated re-openings of one payload yield fully
         independent runs, and the payload is vetted first, so a refusal
         leaves no run behind. The metadata bag comes back with the answers,
         so a run resumed this way still knows what the last one created. Every answer is still re-proved by the walk on
-        every request; resurrecting trusts the payload no further than a
+        every request; re-opening trusts the payload no further than a
         live session's own stored state.
         """
         if not isinstance(payload, dict) or not isinstance(payload.get("state"), list):
@@ -1258,7 +1258,7 @@ class Run:
         """A step URL for this run — never the bare run URL.
 
         The link *into* a run from outside it: a task list row resuming a section,
-        a resurrected stash, a link in an email. The bare run URL redirects
+        a re-opened stash, a link in an email. The bare run URL redirects
         to wherever the cursor is, and when every stored answer validates
         that is completion, so a GET there fires `done()` before the user has
         touched anything. Naming a step instead makes that impossible.

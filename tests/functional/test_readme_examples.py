@@ -539,7 +539,7 @@ def test_chapter_11_completes_reopens_and_recompletes_with_an_edit(
     )
     assert response.content == b"Contact details saved."
 
-    # Reopening resurrects the stash into a fresh run, landing on a step
+    # Reopening re-opens the stash into a fresh run, landing on a step
     # with the saved answer pre-filled.
     response = client.get(reverse("readme-stash-reopen"), follow=True)
 

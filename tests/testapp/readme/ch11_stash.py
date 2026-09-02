@@ -29,7 +29,7 @@ def reopen_contact_details(request):
     stashes = SessionStashStore(WizardContext.from_request(request))
     try:
         payload = stashes.get("contact")
-        url = ContactDetailsViewSet.resurrect(
+        url = ContactDetailsViewSet.reopen_url(
             request, payload, expected_label="contact"
         )
     except (StashNotFound, InvalidStash):

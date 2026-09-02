@@ -246,9 +246,9 @@ urlpatterns = [
         include(views.BranchingStashingWizardViewSet.urls()),
     ),
     path(
-        "branching-stashing-wizard-resurrect/",
-        views.resurrect_members_stash,
-        name="branching-stashing-wizard-resurrect",
+        "branching-stashing-wizard-reopen/",
+        views.reopen_members_stash,
+        name="branching-stashing-wizard-reopen",
     ),
     path(
         "stashed-member-keys/",
@@ -261,23 +261,23 @@ urlpatterns = [
         name="discard-members-stash",
     ),
     path(
-        "resurrect-empty-stash/",
-        views.resurrect_empty_stash,
-        name="resurrect-empty-stash",
+        "reopen-empty-stash/",
+        views.reopen_empty_stash,
+        name="reopen-empty-stash",
     ),
     path(
-        "stashing-wizard-resurrect/",
-        views.resurrect_contact_stash,
-        name="stashing-wizard-resurrect",
+        "stashing-wizard-reopen/",
+        views.reopen_contact_stash,
+        name="stashing-wizard-reopen",
     ),
     path(
         "required-photo-stashing-wizard/",
         include(views.RequiredPhotoStashingWizardViewSet.urls()),
     ),
     path(
-        "required-photo-stashing-wizard-resurrect/",
-        views.resurrect_required_photo_stash,
-        name="required-photo-stashing-wizard-resurrect",
+        "required-photo-stashing-wizard-reopen/",
+        views.reopen_required_photo_stash,
+        name="required-photo-stashing-wizard-reopen",
     ),
     path("summary-wizard/", include(views.SummaryWizardViewSet.urls())),
     path(
