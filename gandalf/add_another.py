@@ -55,7 +55,7 @@ from django.utils.text import capfirst
 from django.utils.translation import gettext, gettext_lazy as _
 
 from gandalf import tree
-from gandalf.wizard import ConfiguredWizard, Wizard, declared_step_fields
+from gandalf.wizard import Wizard, declared_step_fields
 from gandalf.runtime import Run
 from gandalf.storage import RunNotFound
 from gandalf.tasklists import (
@@ -142,14 +142,14 @@ class AddAnotherPage(TaskListPage):
 # --- the item wizard, as declared --------------------------------------------
 
 
-def item_wizard(entry: AddAnother) -> Wizard | ConfiguredWizard | None:
+def item_wizard(entry: AddAnother) -> Wizard | None:
     """The entry's item wizard as a declaration, or None when there is none
     to read: an `ItemViewSet` subclass in the slot that builds its wizard
     per request."""
     wizard: Any = entry.wizard
     if isinstance(wizard, type):
         wizard = getattr(wizard, "wizard", None)
-    return cast("Wizard | ConfiguredWizard | None", wizard)
+    return cast("Wizard | None", wizard)
 
 
 def first_step_label(entry: AddAnother) -> StrOrPromise | None:
@@ -169,7 +169,7 @@ class ItemViewSet(SectionViewSet):
     """The viewset an add-another page runs one item with. Built by
     `AddAnotherViewSet` from the entry and mounted under `<uuid:item>/`
     beneath the page, so one class serves every row. A `Section`-style
-    subclass in the entry's slot carries an item's behaviour — `run_done()`
+    subclass in the entry's slot carries an item's behaviour — `done()`
     for saving it, `item_removed()` for undoing that."""
 
     list_key: str | None = None

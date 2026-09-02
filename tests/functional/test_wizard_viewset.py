@@ -890,7 +890,7 @@ def test_linear_wizard_submissions_survive_recreated_declaration(wizard_driver):
 def test_wizard_viewset_rejects_invalid_wizard_type(client):
     with pytest.raises(
         TypeError,
-        match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
+        match="WizardViewSet.wizard must be a Wizard",
     ):
         client.get(reverse("invalid-wizard"))
 
@@ -918,31 +918,6 @@ def test_wizard_viewset_raises_when_form_step_has_no_template_name(client):
         match="template_name",
     ):
         client.get(reverse("missing-template-wizard"))
-
-
-def test_wizard_viewset_accepts_pre_configured_wizard(client, wizard_driver):
-    driver = wizard_driver("pre-configured-wizard")
-    response = client.get(driver.start_url)
-    run = driver.only_run()
-
-    assertRedirects(response, run.url, fetch_redirect_response=False)
-
-    response = run.get(follow=True)
-    assert response.status_code == HTTPStatus.OK
-    assertTemplateUsed(response, "testapp/single_step_wizard.html")
-    assert isinstance(response.context["form"], FirstStepForm)
-
-    response = run.post_step("first", {"name": "Ada"}, follow=True)
-    assert response.status_code == HTTPStatus.OK
-    assert response.content == f"completed {run.run_id}".encode()
-
-
-def test_wizard_viewset_rejects_reconfiguring_configured_wizard(client):
-    with pytest.raises(
-        ImproperlyConfigured,
-        match="ConfiguredWizard instances cannot be configured.",
-    ):
-        client.get(reverse("double-configured-wizard"))
 
 
 def test_dynamic_wizard_generates_step_per_chosen_count(wizard_driver):
@@ -2055,13 +2030,6 @@ def test_completion_tombstones_are_pruned_to_the_storage_cap(client, wizard_driv
 
     # Storage keeps two tombstones, so the oldest completed run is dropped.
     assert list(stored_runs(client)) == completed[1:]
-
-
-def test_wizard_configured_storage_class_raises_improperly_configured(client):
-    from django.core.exceptions import ImproperlyConfigured
-
-    with pytest.raises(ImproperlyConfigured, match="WizardViewSet.storage_class"):
-        client.get(reverse("wizard-configured-storage"))
 
 
 # --- Stashing and resurrecting runs ----------------------------------------

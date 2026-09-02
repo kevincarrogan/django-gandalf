@@ -28,9 +28,9 @@ class ProjectSection(SectionViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def run_done(self, run):
+    def done(self, run):
         record_amount(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
 
 class MatchFundingSection(SectionViewSet):

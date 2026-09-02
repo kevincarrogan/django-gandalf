@@ -5,13 +5,12 @@ machine-independent and reproducible, so they answer "how many times does a
 request re-validate a completed step?" as a fact rather than an estimate.
 Wall time answers a different question and belongs in a separate pass.
 
-Both wrappers are installed through `configure()`, so nothing in `gandalf`
-knows they exist:
+Both wrappers are installed as the viewset's seams, so nothing in
+`gandalf` knows they exist:
 
-    wizard.configure(
-        step_dispatcher_class=CountingStepDispatcher,
-        cursor_walker_class=CountingCursorWalker,
-    )
+    class BenchmarkWizardViewSet(WizardViewSet):
+        step_dispatcher_class = CountingStepDispatcher
+        cursor_walker_class = CountingCursorWalker
 """
 
 import sys

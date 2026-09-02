@@ -6,10 +6,10 @@ address, does the branch that asks for company details lose people. None of
 that is answerable from the outside — a run is a session key and a redirect
 — and all of it is one line of bookkeeping from the inside.
 
-An observer is that line. Declare one with
-`.configure(observer_class=MyObserver)` and it is told what happened, as it
-happens, for every run of that wizard: over HTTP, from a script, or from a
-test. The default does nothing at all.
+An observer is that line. Declare one with `observer_class = MyObserver`
+on the viewset and it is told what happened, as it happens, for every run
+of that wizard: over HTTP, from a script, or from a test. The default does
+nothing at all.
 
 **Observers see what happened, never what was said.** A step's answers are
 somebody's name, date of birth and address, and a library that handed those
@@ -57,10 +57,10 @@ class WizardObserver:
                         ],
                     )
 
-        wizard = Wizard().step(EmailForm, name="email").configure(
-            template_name="signup/step.html",
-            observer_class=CountErrors,
-        )
+        class SignupViewSet(WizardViewSet):
+            wizard = Wizard().step(EmailForm, name="email")
+            template_name = "signup/step.html"
+            observer_class = CountErrors
 
     An observer is built once per run, on first use, and knows which run
     it is watching — so no event has to repeat it. It must not raise: it is

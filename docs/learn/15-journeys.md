@@ -87,18 +87,12 @@ def record_applying_as(store, run):
 ```
 
 ```python
-setup = (
-    Wizard()
-    .step(ApplyingAsForm, name="applying-as", label="Applying as")
-    .configure(
-        template_name="testapp/linear_wizard.html",
-        observer_class=CountRejections,
-    )
-)
+setup = Wizard().step(ApplyingAsForm, name="applying-as", label="Applying as")
 ```
 
 Its `done()` is three lines, each saying what it does: begin a journey,
-record this run as the list's `setup` section, go there.
+record this run as the list's `setup` section, go there. The observer
+beside it is chapter 16's.
 
 ```python
 class ApplicationStartViewSet(WizardViewSet):
@@ -109,6 +103,8 @@ class ApplicationStartViewSet(WizardViewSet):
         "Chapter 15 as a task list: the setup wizard that mints an application."
     )
     url_name = "readme-apply-start"
+    template_name = "testapp/linear_wizard.html"
+    observer_class = CountRejections
     wizard = setup
 
     def done(self, run):
@@ -119,18 +115,23 @@ class ApplicationStartViewSet(WizardViewSet):
 
 `finish()` is the extra line the wizard needs and the plain view does not.
 It records the run exactly as finishing the section from the page would —
-stashed, its `run_done()` run — so the same wizard is then the journey's
+stashed, its `done()` run — so the same wizard is then the journey's
 first section, complete on arrival and re-openable from the page like any
 other:
 
 ```python
 class SetupSection(SectionViewSet):
     wizard = setup
+    observer_class = CountRejections
 
-    def run_done(self, run):
+    def done(self, run):
         record_applying_as(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 ```
+
+The same `Wizard`, mounted twice, watched by the same observer both times
+— said on each viewset, because a wizard is a value and an observer is a
+view's concern.
 
 ### A memory
 

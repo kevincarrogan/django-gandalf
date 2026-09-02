@@ -249,13 +249,12 @@ Generate the `StepFormView` subclass behind a step declared with a bare
 
 **Caveats**
 
-- Called by `Wizard.configure()` for each step whose declaration is a
-  `Form`. `template_name` is the one `configure(template_name=...)` received,
-  which `WizardViewSet` supplies from its own `template_name` attribute —
-  that is the whole route by which a viewset's template reaches a step, and
-  why it never reaches a view you wrote yourself.
-- Replaceable per wizard: `Wizard.configure(form_view_factory=...)` accepts
-  any callable with the same signature returning a view class. See
+- Called by `WizardViewSet.configure_wizard()` for each step whose
+  declaration is a `Form`, with the viewset's own `template_name` — that is
+  the whole route by which a viewset's template reaches a step, and why it
+  never reaches a view you wrote yourself.
+- Replaceable per viewset: `form_view_factory` accepts any callable with
+  the same signature returning a view class. See
   [Configuration](configuration.md).
 
 ### `WizardRequest`
@@ -276,7 +275,7 @@ positional argument, of two kinds:
 
 | Declaration | What Gandalf does |
 | --- | --- |
-| a `forms.Form` subclass | `form_view_factory(form, template_name=...)` generates the view at `configure()` time; the viewset's `template_name` is required, and its absence raises `ImproperlyConfigured` ("Wizard.configure() must receive template_name when generating FormView steps from Form classes."). |
+| a `forms.Form` subclass | `form_view_factory(form, template_name=...)` generates the view when the viewset configures the wizard; the viewset's `template_name` is required, and its absence raises `ImproperlyConfigured` ("A step declared from … needs template_name to generate its view."). |
 | anything else — a `FormView` subclass | used as the step's view directly, with whatever `template_name` it declares. |
 
 The test is `issubclass(declaration, forms.Form)`, so a `ModelForm` — which
@@ -308,8 +307,7 @@ step needs, and why a `form_valid()` that returns a 200 — rendering a
 "thanks" page, say — never satisfies its step. An escape raised during the
 dispatch also satisfies the step; see [Escapes](escapes.md).
 
-The dispatcher is replaceable per wizard
-(`configure(step_dispatcher_class=...)`); see
+The dispatcher is replaceable per viewset (`step_dispatcher_class`); see
 [Configuration](configuration.md).
 
 ### What a step view may read

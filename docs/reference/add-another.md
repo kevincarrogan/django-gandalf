@@ -41,9 +41,8 @@ mounts the page beneath the list, or set as `add_another` on a root
 `AddAnotherViewSet`. A frozen dataclass, so `dataclasses.replace()` makes a
 variant.
 
-- `wizard` — runs one item: a `Wizard` or `ConfiguredWizard`, or an
-  `ItemViewSet` subclass for an item with behaviour of its own
-  (`run_done()`, `item_removed()`).
+- `wizard` — runs one item: a `Wizard`, or an `ItemViewSet` subclass for
+  an item with behaviour of its own (`done()`, `item_removed()`).
 - `title` — what the row on the task list above renders.
 - `item_name` — what an unfinished item is called in a positional title
   (`Budget line 2`). `None` uses the item wizard's first step `label`,
@@ -317,9 +316,9 @@ subclass and puts that in the entry's slot:
 class VehicleItem(ItemViewSet):
     wizard = vehicle
 
-    def run_done(self, run):
+    def done(self, run):
         save_vehicle(self.request, self.get_item_id(), run)
-        return super().run_done(run)
+        return super().done(run)
 
     def item_removed(self, store):
         forget_vehicle(self.request, self.get_item_id())
@@ -337,8 +336,8 @@ attributes of the page.
 | `default_label()` | the *list's* key, not the item's, so every item stamps one label |
 | `get_item_title(run)` | `item_title`'s field from its step, or its callable; `""` when the step is not on the route taken. A step answering with something other than a mapping — a formset — offers no candidate, and is refused at configure time instead. `ImproperlyConfigured` (*"cannot name its items"*) when `item_title` is `None`. Costs one walk, once, at completion |
 | `run_recorded(run, store, key)` | caches `get_item_title()` (an empty title is stored as `None`) inside the window where the run's answers are still readable |
-| `run_done(run)` | back to the page; override to save the item first |
-| `item_removed(store)` | nothing; override to undo what `run_done()` did. Runs while the item is still listed, on a viewset set up for it, so `get_item_id()` says which |
+| `done(run)` | back to the page; override to save the item first |
+| `item_removed(store)` | nothing; override to undo what `done()` did. Runs while the item is still listed, on a viewset set up for it, so `get_item_id()` says which |
 | `get_task_list_url_kwargs()` | `get_url_kwargs()` without `item` — the page has no place for the item segment; a journey or tenant prefix is forwarded |
 | `run_unavailable(run, reason)` | redirect to the page rather than start a run for an item that may no longer exist |
 | `dispatch()` | refuses any request for an item the registry does not list, before `WizardViewSet` sees it, with `item_unavailable()` |
@@ -491,13 +490,13 @@ from gandalf.add_another import ItemViewSet
 class BudgetLineItem(ItemViewSet):
     wizard = budget_line
 
-    def run_done(self, run):
+    def done(self, run):
         line = run.path.find_step(name="line").form.cleaned_data
         BudgetLine.objects.update_or_create(
             item_id=self.get_item_id(),
             defaults={"item": line["item"], "cost": line["cost"]},
         )
-        return super().run_done(run)
+        return super().done(run)
 
     def item_removed(self, store):
         BudgetLine.objects.filter(item_id=self.get_item_id()).delete()

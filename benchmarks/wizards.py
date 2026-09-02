@@ -108,58 +108,28 @@ def _done(self, run):
     return HttpResponse("done")
 
 
-def _configuration(instrumented):
-    configuration = {"template_name": STEP_TEMPLATE_NAME}
+def _build_viewset(*, url_name, instrumented, wizard=None, get_wizard=None):
+    """A viewset on the counting classes. The seams are the viewset's, so
+    a static `wizard` and a dynamic `get_wizard()` are instrumented the
+    same way; the difference between them is whether the declaration is
+    the same object on every resolve, which is what walk-reuse turns on."""
+    attrs = {
+        "url_name": url_name,
+        "done": _done,
+        "template_name": STEP_TEMPLATE_NAME,
+    }
     if instrumented:
-        configuration["step_dispatcher_class"] = CountingStepDispatcher
-        configuration["cursor_walker_class"] = CountingCursorWalker
-    return configuration
-
-
-def _configuring(configuration):
-    """A `configure_wizard` that folds the counting classes in.
-
-    Mirrors what `WizardViewSet.configure_wizard` does for a viewset
-    declaring a plain `Wizard`: build a fresh `ConfiguredWizard` on every
-    resolve. That per-resolve rebuild is itself part of what is being
-    measured, so it must not be optimised away here.
-    """
-
-    def configure_wizard(self, wizard):
-        return wizard.configure(**configuration)
-
-    return configure_wizard
-
-
-def _build_viewset(
-    *, url_name, instrumented, wizard=None, get_wizard=None, preconfigured=True
-):
-    configuration = _configuration(instrumented)
-    attrs = {"url_name": url_name, "done": _done}
+        attrs["step_dispatcher_class"] = CountingStepDispatcher
+        attrs["cursor_walker_class"] = CountingCursorWalker
     if get_wizard is not None:
-        # A dynamic wizard is rebuilt from stored state every request by
-        # definition, so there is nothing to pre-configure.
         attrs["get_wizard"] = get_wizard
-        attrs["configure_wizard"] = _configuring(configuration)
-    elif preconfigured:
-        attrs["wizard"] = wizard.configure(**configuration)
     else:
         attrs["wizard"] = wizard
-        attrs["configure_wizard"] = _configuring(configuration)
     return type("BenchmarkWizardViewSet", (WizardViewSet,), attrs)
 
 
-def linear_wizard(
-    *, steps, fields=1, clean_seconds=0.0, instrumented=True, preconfigured=True
-):
-    """A flat run of `steps` identical steps — the baseline shape.
-
-    `preconfigured` picks which of the two static spellings is measured:
-    a `ConfiguredWizard` class attribute (`.configure()` called once at
-    import), or a plain `Wizard` that the viewset configures per request.
-    They are the same wizard and differ only in object identity across
-    resolves, which is precisely what walk-reuse turns on.
-    """
+def linear_wizard(*, steps, fields=1, clean_seconds=0.0, instrumented=True):
+    """A flat run of `steps` identical steps — the baseline shape."""
     wizard = Wizard()
     payloads = {}
     for index in range(steps):
@@ -170,15 +140,11 @@ def linear_wizard(
         wizard = wizard.step(form_class, **_naming(segment))
         payloads[segment] = _step_payload(fields)
 
-    spelling = "configured" if preconfigured else "plain Wizard"
-    label = f"linear steps={steps} fields={fields} clean={clean_seconds}s [{spelling}]"
+    label = f"linear steps={steps} fields={fields} clean={clean_seconds}s"
     return BenchmarkWizard(
         label=label,
         viewset_class=_build_viewset(
-            wizard=wizard,
-            url_name="bench",
-            instrumented=instrumented,
-            preconfigured=preconfigured,
+            wizard=wizard, url_name="bench", instrumented=instrumented
         ),
         payloads=payloads,
         path_length=steps,

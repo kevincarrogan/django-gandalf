@@ -1,7 +1,7 @@
 # Wizard
 
 `gandalf.wizard` — the builder that declares a wizard's shape, and the
-configured wizard a viewset runs.
+configured wizard a viewset builds from it and runs.
 
 ```python
 from gandalf.wizard import (
@@ -52,9 +52,12 @@ several branches without any of them changing underneath the others.
 - `Wizard` declares; it does not run. Lifecycle methods (`initialise()`,
   `walk()`, `path`, …) live on [`Run`](run.md), which the
   viewset builds per request.
-- Nothing on a `Wizard` is validated until it is configured and resolved
-  — see [`ConfiguredWizard`](#configuredwizard) and *Validation at resolve
-  time* below.
+- A `Wizard` carries no template, storage or observer: those are the
+  view's, declared on the [`WizardViewSet`](viewsets.md) that mounts it —
+  see [Configuration](configuration.md).
+- Nothing on a `Wizard` is validated until a viewset resolves it — see
+  [`ConfiguredWizard`](#configuredwizard) and *Validation at resolve time*
+  below.
 
 ### `Wizard.step(form_class_or_form_view_class, /, **context)`
 
@@ -199,21 +202,6 @@ Append a point where the tree grows during the walk.
   grown step in a *single* request, because the builder runs inside the same
   walk that placed the answer.
 
-### `Wizard.configure(**configuration)`
-
-Freeze the declaration into a [`ConfiguredWizard`](#configuredwizard).
-
-**Parameters** — see [Configuration](configuration.md) for every key. In
-brief: `template_name`, `form_view_factory`, `cursor_walker_class`,
-`step_dispatcher_class`, `state_serializer_class`, `step_router_class`,
-`file_storage_class`, `observer_class`.
-
-**Returns** — a `ConfiguredWizard`.
-
-**Raises** — `ImproperlyConfigured` if `storage_class` is passed (it belongs
-on the viewset), or if any step is a bare `Form` and no `template_name` was
-given.
-
 ### `step(form_class_or_form_view_class, /, **context)`
 
 Module-level entry point: `Wizard().step(...)`. Returns a `Wizard` with one
@@ -262,10 +250,10 @@ answer. A frozen dataclass; instances are callable.
 - Called with a `WizardContext`, it finds the step by name on
   `context.run.path` and returns `str(cleaned_data.get(field, ""))` — a
   field the form did not clean yields `""`.
-- Checked when the wizard is configured, and raises `ImproperlyConfigured`
-  for a `step` the declaration does not name (*"names no step of this
-  wizard"*) or a `field` that step's form does not declare (*"names no
-  field of step"*). A field nothing answers reads `""`, which names no
+- Checked when a viewset resolves the wizard, and raises
+  `ImproperlyConfigured` for a `step` the declaration does not name
+  (*"names no step of this wizard"*) or a `field` that step's form does not
+  declare (*"names no field of step"*). A field nothing answers reads `""`, which names no
   case, so the run would take `default` — or fall past the switch — with
   nothing going wrong out loud. Skipped for a wizard containing an
   `.expand()`, and for a step whose view chooses its form class per
@@ -291,16 +279,18 @@ say".
 
 ### `ConfiguredWizard`
 
-A declaration plus its configuration. Built by `Wizard.configure()`; not
-normally constructed directly (`ConfiguredWizard(*, tree, configuration)`).
+A declaration plus the seams a viewset runs it through: what `run.wizard`
+is. Built by [`WizardViewSet.configure_wizard()`](viewsets.md#configure_wizardwizard)
+from the viewset's own attributes, once per declaration per viewset class;
+application code never constructs one, and a viewset is never handed one.
 
-**Attributes** — each is the configured value or the class default; see
+**Attributes** — each is the viewset's value or the class default; see
 [Configuration](configuration.md) for what each is for.
 
 | Attribute | Default |
 | --- | --- |
 | `tree` | the declaration tree with a `form_view` attached to every step |
-| `configuration` | the `dict` passed to `configure()` |
+| `template_name` | `None` |
 | `form_view_factory` | `gandalf.form_views.form_view_factory` |
 | `file_storage_class` | `gandalf.file_storage.WizardFileStorage` |
 | `observer_class` | `gandalf.observers.WizardObserver` |
@@ -311,22 +301,11 @@ normally constructed directly (`ConfiguredWizard(*, tree, configuration)`).
 
 **Methods**
 
-- `configure(**configuration)` — always raises `ImproperlyConfigured`
-  *"ConfiguredWizard instances cannot be configured."* Configure once, from
-  the `Wizard`.
 - `outline()` — the declared shape as data; see below.
 - `configure_expansion(built)` — configures and vets the `Wizard` an
   `Expand` builder returned (routable names, no nested expansion). Called by
   the runtime; documented here because its `ImproperlyConfigured` errors are
   the ones a builder author sees.
-
-**Caveats**
-
-- A `ConfiguredWizard` is what a viewset takes as-is: `WizardViewSet` does
-  not re-configure one, so its `template_name` must be given here rather
-  than on the viewset. See [Configuration](configuration.md).
-- `configure()` stores every key it is given and reads only the ones it
-  knows. A misspelt key is silently ignored.
 
 ### `ConfiguredWizard.outline()`
 
@@ -375,7 +354,7 @@ a step declaration back into a segment. The default `step_router_class`.
 **Caveats**
 
 - Subclass to route on another context key (`context_key = "slug"`) or a
-  composite lookup, and pass it as `.configure(step_router_class=...)`. The
+  composite lookup, and set it as the viewset's `step_router_class`. The
   dict `resolve()` returns is matched against step context exactly as
   `find_step(**context)` is.
 - For a URL scheme the router cannot express, skip `urls()`, write the
@@ -449,7 +428,7 @@ from `gandalf.wizard`; import it from `gandalf.tree`.
 to its head, so all three are the same call.
 
 Four seams, and which you override is exactly how much of the contract you
-are replacing. Nothing is registered and no `.configure()` key selects a
+are replacing. Nothing is registered and no viewset attribute selects a
 reducer — you instantiate your own class where you would have instantiated
 `MergeCleanedData`.
 
@@ -537,20 +516,22 @@ that does not match the one expected. See [Stashing](stashing.md).
 ### Validation at resolve time
 
 A viewset resolves its wizard on every request (`get_wizard()`, then
-`configure_wizard()` for a bare `Wizard`). Resolution checks the **whole
-declared tree** — every arm of every branch, not only the route this walk
-takes — and raises `ImproperlyConfigured` for:
+`configure_wizard()`). Resolution checks the **whole declared tree** —
+every arm of every branch, not only the route this walk takes — and raises
+`ImproperlyConfigured` for:
 
 | Condition | Message |
 | --- | --- |
 | a step the router cannot reverse | *"Every wizard step needs a routable name; declare steps with .step(..., name=...). Unroutable steps: …"* |
 | two steps reversing to the same segment | *"Wizard step names must be unique; a URL segment has to name exactly one step. Duplicated: …"* |
-| a bare `Form` step with no `template_name` | *"Wizard.configure() must receive template_name when generating FormView steps from Form classes."* |
+| a bare `Form` step with no `template_name` on the viewset | *"A step declared from … needs template_name to generate its view. Set template_name on the WizardViewSet, or declare the step with a FormView of its own."* |
+| an `on_field` naming a step or field the declaration lacks | *"on_field(…) names no step of this wizard"* / *"names no field of step …"* |
 
 Expanded subtrees cannot be checked here because they do not exist yet; they
 get the routability check (but not the uniqueness check) when they are
-built. Re-resolving a static wizard hands back the same object, so the walk
-over the tree is not repeated.
+built. A static `wizard` is configured once per viewset class and the same
+object handed back on every later resolve, so the walk over the tree is not
+repeated.
 
 ---
 
@@ -653,17 +634,19 @@ organisation_details = (
 ### Reading a wizard's shape
 
 ```python
-configured = application.configure(template_name="grants/step.html")
+run = ApplicationViewSet.resolve(request)
 
-for entry in configured.outline():
+for entry in run.wizard.outline():
     if entry["kind"] == "step":
         print(entry["name"], entry["context"].get("label"))
     elif entry["kind"] == "switch":
         print("decided by", entry["decided_by"], [case["case"] for case in entry["cases"]])
 ```
 
-From a viewset, `ApplicationViewSet.resolve(request).wizard.outline()` gives
-the same for a dynamic `get_wizard()`, without starting a run.
+`resolve()` binds the wizard without starting a run, and describes a
+dynamic `get_wizard()` as it would begin. With no request to hand,
+[`RunDriver.outline_for(ApplicationViewSet)`](driver.md) answers the same
+question.
 
 ---
 
@@ -716,10 +699,13 @@ it is declared after the switch, sits on another branch arm, or was renamed.
 The builder is immutable. `wizard.step(Form, name="x")` returns a new
 `Wizard`; assign the result (`wizard = wizard.step(...)`).
 
-### `ConfiguredWizard instances cannot be configured`
+### `AttributeError: 'Wizard' object has no attribute 'configure'`
 
-`.configure()` was called twice, or on the result of a previous
-`.configure()`. Configure once, at the end of the chain, with every key.
+Up to 0.30 a wizard carried its template and runtime seams
+(`.configure(template_name=…, observer_class=…)`). They are the view's:
+set them as attributes on the `WizardViewSet` — or the `SectionViewSet` in
+a task list's slot — and hand it the bare `Wizard`. See
+[Configuration](configuration.md).
 
 ---
 

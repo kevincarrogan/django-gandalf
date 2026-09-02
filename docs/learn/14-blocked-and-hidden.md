@@ -51,7 +51,7 @@ off **Complete**, which is why a section that may never unlock is a job for
 ### The other rule reads a fact, not a stash
 
 "Only above £10,000" turns on an *answer* given in the project section. The
-project section writes it down when it finishes, in `run_done()`:
+project section writes it down when it finishes, in `done()`:
 
 ```python
 def record_amount(store, run):
@@ -71,17 +71,20 @@ class ProjectSection(SectionViewSet):
         .step(ReviewStepView, name="review")
     )
 
-    def run_done(self, run):
+    def done(self, run):
         record_amount(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 ```
 
 `store.data` is the journey's record of what its sections decided — chapter
 14 has the whole of it. **Read `store.data` and `has_stash()` in
 `blocked()` and `hidden()`, never a stash's answers.** Reading an answer out
-of a stash costs a walk, and a row must never walk. `run_done()` is where a
+of a stash costs a walk, and a row must never walk. `done()` is where a
 section pays that walk once, on a request that has already walked, and
-writes what it decided; every render after reads a string.
+writes what it decided; every render after reads a string. It is the same
+`done()` chapter 1's viewset had — a section's own bookkeeping, stashing
+the answers, happens around it rather than in it, so `super().done(run)` is
+only the redirect back to the page.
 
 ### Sections that appear
 

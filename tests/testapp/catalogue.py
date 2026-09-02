@@ -215,8 +215,6 @@ GROUPS = (
         (
             Example("other-linear-wizard"),
             Example("recreated-linear-wizard"),
-            Example("pre-configured-wizard"),
-            Example("double-configured-wizard"),
             Example("form-view-step-wizard"),
         ),
     ),
@@ -605,11 +603,6 @@ GROUPS = (
                 "misconfigured-wizard",
                 note="ImproperlyConfigured: hand-written URLs with no url_name "
                 "to reverse.",
-            ),
-            Example(
-                "wizard-configured-storage",
-                note="ImproperlyConfigured: storage_class belongs on the "
-                "viewset, not the wizard.",
             ),
             Example(
                 "bare-escape-wizard",

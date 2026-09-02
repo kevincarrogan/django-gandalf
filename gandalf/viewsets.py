@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import weakref
+from collections.abc import Callable
 from enum import Enum
 from typing import Any, cast
 
@@ -13,10 +15,22 @@ from django.views import View
 from gandalf import tree
 from gandalf.context import WizardContext
 from gandalf.escapes import Advance, Escape, Obliterate, Park
-from gandalf.runtime import Run, Cursor, RuntimeStep, Walk, submission_from_post
+from gandalf.file_storage import WizardFileStorage
+from gandalf.form_views import form_view_factory
+from gandalf.observers import WizardObserver
+from gandalf.runtime import (
+    Run,
+    Cursor,
+    CursorWalker,
+    RuntimeStep,
+    StateSerializer,
+    StepDispatcher,
+    Walk,
+    submission_from_post,
+)
 from gandalf.storage import RunNotFound, SessionStorage
 from gandalf.types import Context, FileRefs, Stash, StorageClass, Submission
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.wizard import ConfiguredWizard, StepNameRouter, Wizard
 
 
 class RunUnavailable(str, Enum):
@@ -66,11 +80,53 @@ class DoorRefused(Exception):
 
 
 class WizardViewSet(View):
+    """The Django view that publishes a wizard's URLs, runs it one request
+    at a time, and completes it once.
+
+    Everything a wizard needs that is not its shape is declared here, as
+    class attributes: the template its generated steps render with, where
+    runs and uploads are kept, what watches a run, and the runtime classes
+    the walk is built from. A `Wizard` is a value — the same rule a `Form`
+    and a `FormView` follow — so a wizard declared once can be mounted by
+    two viewsets with two templates, and a section of a task list gets its
+    seams from the `SectionViewSet` in its slot.
+    """
+
+    #: The template every step generated from a bare `Form` renders with. A
+    #: step that brings its own `FormView` keeps its own.
+    template_name: str | None = None
+    #: Where runs are kept. Instantiated once per request with the request's
+    #: `WizardContext`, before the wizard is resolved — a dynamic
+    #: `get_wizard()` reads the run's stored state to decide its shape.
     storage_class: StorageClass = SessionStorage
+    #: Where uploads go, constructed once per run with no arguments.
+    file_storage_class: type[Any] = WizardFileStorage
+    #: Told what happened to a run, as it happens, without seeing the answers.
+    observer_class: type[WizardObserver] = WizardObserver
+    #: Turns a bare `Form` into the step view the walk dispatches.
+    form_view_factory: Callable[..., Any] = staticmethod(form_view_factory)
+    #: The interpreter that replays stored answers and finds the cursor.
+    cursor_walker_class: type[CursorWalker] = CursorWalker
+    #: Builds the request a step view is dispatched with, and reads its answer.
+    step_dispatcher_class: type[StepDispatcher] = StepDispatcher
+    #: Flattens a walked tree back into the state storage keeps.
+    state_serializer_class: type[StateSerializer] = StateSerializer
+    #: Maps a URL step segment to a step and back.
+    step_router_class: type[Any] = StepNameRouter
     url_name: str | None = None
     # URL kwargs owned by the patterns `urls()` publishes; anything else the
     # request captures is mount-prefix context (e.g. a tenant slug).
     reserved_url_kwargs = frozenset({"run_id", "gandalf_step"})
+    #: One configured wizard per declaration this class has been asked to
+    #: run, keyed by the declaration object. See `_configured_wizard()`.
+    _configured: weakref.WeakKeyDictionary[Wizard, ConfiguredWizard]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Each class configures with its own attributes, so each keeps its
+        # own cache: one wizard mounted by two viewsets is two configured
+        # wizards, each rendering with its viewset's template.
+        cls._configured = weakref.WeakKeyDictionary()
 
     @classmethod
     def urls(cls) -> list[URLPattern]:
@@ -344,7 +400,7 @@ class WizardViewSet(View):
         lies about having done so.
         """
 
-    def get_wizard(self, run: Run) -> Wizard | ConfiguredWizard:
+    def get_wizard(self, run: Run) -> Wizard:
         """Per-request hook returning the Wizard to use for this dispatch.
 
         Default implementation returns the class-attribute `wizard` — the
@@ -353,7 +409,7 @@ class WizardViewSet(View):
         `retrieve()`) the run's stored state via `get_run_data()` /
         `get_state()`.
         """
-        wizard: Wizard | ConfiguredWizard | None = getattr(self, "wizard", None)
+        wizard: Wizard | None = getattr(self, "wizard", None)
         if wizard is None:
             name = self.__class__.__name__
             raise ImproperlyConfigured(
@@ -363,18 +419,24 @@ class WizardViewSet(View):
             )
         return wizard
 
-    def configure_wizard(self, wizard: Wizard | ConfiguredWizard) -> ConfiguredWizard:
-        configuration: dict[str, Any] = {}
-        if hasattr(self, "template_name"):
-            configuration["template_name"] = self.template_name
-
-        if isinstance(wizard, ConfiguredWizard):
-            return wizard
-
-        if isinstance(wizard, Wizard):
-            return wizard.configure(**configuration)
-
-        raise TypeError("WizardViewSet.wizard must be a Wizard or ConfiguredWizard")
+    def configure_wizard(self, wizard: Wizard) -> ConfiguredWizard:
+        """The declaration `get_wizard()` returned, made runnable with this
+        viewset's seams: its template for the steps it generates, its
+        observer, its walker and the rest. The one place a `ConfiguredWizard`
+        is built."""
+        if not isinstance(wizard, Wizard):
+            raise TypeError("WizardViewSet.wizard must be a Wizard")
+        return ConfiguredWizard(
+            wizard.tree,
+            template_name=self.template_name,
+            form_view_factory=self.form_view_factory,
+            file_storage_class=self.file_storage_class,
+            observer_class=self.observer_class,
+            cursor_walker_class=self.cursor_walker_class,
+            step_dispatcher_class=self.step_dispatcher_class,
+            state_serializer_class=self.state_serializer_class,
+            step_router_class=self.step_router_class,
+        )
 
     def context_for(self, request: HttpRequest) -> WizardContext:
         """The environment this request implies, carrying the mount kwargs
@@ -394,31 +456,33 @@ class WizardViewSet(View):
         run.urls = self
         return run
 
-    def _configured_wizard(
-        self, declared: Wizard | ConfiguredWizard
-    ) -> ConfiguredWizard:
-        """Configure `declared` at most once per request.
+    def _configured_wizard(self, declared: Wizard) -> ConfiguredWizard:
+        """Configure `declared` at most once per class.
 
         `configure_wizard()` builds a new `ConfiguredWizard` every time it is
         called, which re-runs the tree `Configurer` and regenerates a
-        `FormView` class per step. A POST resolves the wizard twice, and for a
-        wizard declared the usual way — a plain `Wizard` class attribute —
-        both resolutions are handed the very same declaration, so the second
-        rebuild produces an object identical to the first and differs only in
-        identity. Caching on the view instance, which Django builds per
-        request, spares that rebuild and lets the identity check above hold,
-        so the refresh walk is skipped too.
+        `FormView` class per step. A wizard declared the usual way — a plain
+        `Wizard` class attribute — is the very same object on every request,
+        so every rebuild would produce an object identical to the first and
+        differ only in identity. Keeping the first one, keyed by the
+        declaration, spares the rebuild and lets the identity check above
+        hold: a POST that re-resolves to the same object skips its refresh
+        walk.
 
-        A dynamic `get_wizard()` returns a new declaration each call and
-        correctly gets no reuse — its tree really can have changed.
+        Held weakly so a dynamic `get_wizard()`, which returns a new
+        declaration each call, leaves nothing behind once the request has
+        dropped it — and correctly gets no reuse, since its tree really can
+        have changed.
         """
-        cached: tuple[Wizard | ConfiguredWizard, ConfiguredWizard] | None = getattr(
-            self, "_configured", None
-        )
-        if cached is not None and cached[0] is declared:
-            return cached[1]
-        configured = self.configure_wizard(declared)
-        self._configured = (declared, configured)
+        try:
+            configured = self._configured.get(declared)
+        except TypeError:
+            # Not a `Wizard`, so not weak-referenceable either. Let
+            # `configure_wizard()` refuse it, in its own words.
+            return self.configure_wizard(declared)
+        if configured is None:
+            configured = self.configure_wizard(declared)
+            self._configured[declared] = configured
         return configured
 
     def _refreshed_cursor(
@@ -751,3 +815,8 @@ class WizardViewSet(View):
 
     def done(self, run: Run) -> HttpResponseBase:
         raise NotImplementedError("WizardViewSet subclasses must define done().")
+
+
+# `__init_subclass__` runs for subclasses only; the base keeps a cache of
+# its own so a bare `WizardViewSet` can be asked to run a wizard too.
+WizardViewSet._configured = weakref.WeakKeyDictionary()

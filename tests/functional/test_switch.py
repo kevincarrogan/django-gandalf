@@ -9,6 +9,7 @@ from django.urls import reverse
 from gandalf.wizard import Wizard, declared_step_fields, on_field, switch
 from tests.testapp import views
 from tests.testapp.forms import BusinessDetailsForm
+from tests.support import configured
 
 
 def test_a_switch_routes_to_the_case_its_selector_names(wizard_driver):
@@ -88,13 +89,15 @@ def test_on_field_naming_no_field_of_its_step_is_refused():
     run would take `default` with nothing going wrong out loud."""
     with pytest.raises(ImproperlyConfigured, match="names no field of step"):
         (
-            Wizard()
-            .step(views.AccountKindForm, name="account_kind")
-            .switch(
-                on_field("account_kind", "nonexistent"),
-                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(views.AccountKindForm, name="account_kind")
+                .switch(
+                    on_field("account_kind", "nonexistent"),
+                    {"business": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
@@ -103,43 +106,35 @@ def test_on_field_naming_a_repeated_step_is_refused():
     single value to switch on. The declaration says "no fields at step
     level" rather than "unknown", which is the difference between refusing
     this now and dying mid-walk on the `cleaned_data.get()` of a list."""
-    wizard = (
-        Wizard()
-        .step(views.OpeningHoursStepView, name="opening-hours")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(views.OpeningHoursStepView, name="opening-hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     assert declared_step_fields(wizard) == {"opening-hours": {}}
 
     with pytest.raises(ImproperlyConfigured, match="no fields of its own"):
         (
-            Wizard()
-            .step(views.OpeningHoursStepView, name="opening-hours")
-            .switch(
-                on_field("opening-hours", "day"),
-                {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(views.OpeningHoursStepView, name="opening-hours")
+                .switch(
+                    on_field("opening-hours", "day"),
+                    {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
 def test_an_unnamed_step_is_not_a_name_a_selector_can_be_checked_against():
     """A step with no name cannot be addressed, so it is absent from what
     the declaration offers a selector."""
-    wizard = (
-        Wizard()
-        .step(BusinessDetailsForm)
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(BusinessDetailsForm), template_name="testapp/linear_wizard.html"
     )
 
     assert declared_step_fields(wizard) == {}
-
-
-def test_configure_refuses_a_key_it_does_not_read():
-    with pytest.raises(ImproperlyConfigured, match="does not read observer_clas"):
-        Wizard().step(BusinessDetailsForm, name="business").configure(
-            template_name="testapp/linear_wizard.html", observer_clas=object
-        )
 
 
 def test_on_field_naming_an_undeclared_step_is_refused_before_any_walk(
@@ -161,8 +156,8 @@ def test_on_field_names_a_declared_step_this_run_did_not_walk(wizard_driver):
 
 
 def _outline_of(viewset_class):
-    return viewset_class.wizard.configure(
-        template_name="testapp/linear_wizard.html"
+    return configured(
+        viewset_class.wizard, template_name="testapp/linear_wizard.html"
     ).outline()
 
 

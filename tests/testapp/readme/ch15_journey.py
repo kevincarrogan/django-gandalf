@@ -66,14 +66,7 @@ def record_email(store, run):
 # --- the wizards ---------------------------------------------------------------
 
 
-setup = (
-    Wizard()
-    .step(ApplyingAsForm, name="applying-as", label="Applying as")
-    .configure(
-        template_name="testapp/linear_wizard.html",
-        observer_class=CountRejections,
-    )
-)
+setup = Wizard().step(ApplyingAsForm, name="applying-as", label="Applying as")
 
 contact = (
     Wizard()
@@ -102,38 +95,38 @@ match_funding = Wizard().step(MatchFundingForm, name="source", label="Match fund
 
 referees = Wizard().step(RefereeForm, name="referee", label="Referee")
 
-documents = (
-    Wizard()
-    .step(GoverningDocumentForm, name="document", label="Document")
-    .configure(template_name="testapp/file_upload_wizard.html")
-)
+documents = Wizard().step(GoverningDocumentForm, name="document", label="Document")
 
 
 # --- sections with something to do ---------------------------------------------
 
 
 class SetupSection(SectionViewSet):
-    wizard = setup
+    """The setup wizard as a section of the journey: watched, and recording
+    its one answer where the rest of the application reads it."""
 
-    def run_done(self, run):
+    wizard = setup
+    observer_class = CountRejections
+
+    def done(self, run):
         record_applying_as(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
 
 class ContactSection(SectionViewSet):
     wizard = contact
 
-    def run_done(self, run):
+    def done(self, run):
         record_email(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
 
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, run):
+    def done(self, run):
         record_amount(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
 
 class MatchFundingSection(SectionViewSet):
@@ -157,9 +150,11 @@ class RefereesSection(SectionViewSet):
 
 
 class DocumentsSection(SectionViewSet):
-    """Only for organisations — an answer the setup section wrote at the root."""
+    """Only for organisations — an answer the setup section wrote at the root.
+    A file step, so its own template rather than the page's."""
 
     wizard = documents
+    template_name = "testapp/file_upload_wizard.html"
 
     @classmethod
     def hidden(cls, store):
@@ -230,6 +225,8 @@ class ApplicationStartViewSet(WizardViewSet):
         "Chapter 15 as a task list: the setup wizard that begins an application."
     )
     url_name = "readme-apply-start"
+    template_name = "testapp/linear_wizard.html"
+    observer_class = CountRejections
     wizard = setup
 
     def done(self, run):

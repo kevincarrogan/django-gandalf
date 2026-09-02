@@ -190,7 +190,6 @@ class RunMetadataWizardViewSet(WizardViewSet):
         Wizard()
         .step(FirstStepForm, name="first")
         .step(RecordReadingStepView, name="second")
-        .configure(template_name="testapp/run_metadata_wizard.html")
     )
 
     url_name = "run-metadata-wizard"
@@ -287,16 +286,13 @@ class OneTimeTokenWizardViewSet(WizardViewSet):
         .step(FirstStepForm, name="first")
         .step(OneTimeTokenStepView, name="token")
         .step(SecondStepForm, name="second")
-        # Counting classes because the cost of a proof is part of its
-        # contract: it reads stored submissions, so it must not add a
-        # dispatch or rebuild a form. They are inert outside
-        # `counting_walks()`.
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
-        )
     )
+    # Counting classes because the cost of a proof is part of its
+    # contract: it reads stored submissions, so it must not add a
+    # dispatch or rebuild a form. They are inert outside
+    # `counting_walks()`.
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
 
     def done(self, run):
         # Readable here too: a proof is scoped to the answers before its
@@ -501,15 +497,12 @@ class MemberEditingWizardViewSet(WizardViewSet):
         "URLs by a `member` context entry rather than `name`."
     )
     template_name = "testapp/editing_wizard.html"
+    step_router_class = MemberRouter
     wizard = (
         Wizard()
         .step(AccountTypeForm, member="account")
         .step(PersonalDetailsForm, member="details")
         .step(ReviewForm, member="review")
-        .configure(
-            template_name="testapp/editing_wizard.html",
-            step_router_class=MemberRouter,
-        )
     )
 
     url_name = "member-editing-wizard"
@@ -727,24 +720,6 @@ class InvalidWizardViewSet(WizardViewSet):
     wizard = object()
 
 
-class WizardConfiguredStorageViewSet(WizardViewSet):
-    description = (
-        "Configures storage_class on the wizard instead of the viewset; "
-        "visiting should error rather than silently ignore it."
-    )
-    url_name = "wizard-configured-storage"
-    template_name = "testapp/single_step_wizard.html"
-
-    def get_wizard(self, run):
-        # Built per request: configuring it at class level would raise on
-        # import and take the whole test app with it.
-        return (
-            Wizard()
-            .step(FirstStepForm, name="first")
-            .configure(storage_class=TwoTombstoneStorage)
-        )
-
-
 FirstStepFormView = form_view_factory(
     FirstStepForm,
     template_name="testapp/single_step_wizard.html",
@@ -770,24 +745,6 @@ class MissingTemplateWizardViewSet(WizardViewSet):
     wizard = Wizard().step(FirstStepForm, name="first")
 
     url_name = "missing-template-wizard"
-
-
-class PreConfiguredWizardViewSet(WizardViewSet):
-    description = (
-        "Wizard whose template_name comes from Wizard.configure() rather than the view."
-    )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .configure(
-            template_name="testapp/single_step_wizard.html",
-        )
-    )
-
-    url_name = "pre-configured-wizard"
-
-    def done(self, run):
-        return HttpResponse(f"completed {run.run_id}")
 
 
 class EmptyWizardViewSet(WizardViewSet):
@@ -975,25 +932,6 @@ class MergedPayloadLinearWizardViewSet(WizardViewSet):
         return HttpResponse(
             f"completed name={payload['name']} email={payload['email']}"
         )
-
-
-class DoubleConfiguredWizardViewSet(WizardViewSet):
-    description = "Wizard configured both via get_wizard() and configure_wizard() to test layering."
-    template_name = "testapp/single_step_wizard.html"
-
-    def get_wizard(self, run):
-        return (
-            Wizard()
-            .step(FirstStepForm, name="first")
-            .configure(
-                template_name=self.template_name,
-            )
-        )
-
-    def configure_wizard(self, wizard):
-        return wizard.configure(template_name=self.template_name)
-
-    url_name = "double-configured-wizard"
 
 
 class DynamicWizardViewSet(WizardViewSet):
@@ -1611,17 +1549,15 @@ class WalkCountingWizardViewSet(WizardViewSet):
         "Four-step linear wizard wired to counting walker/dispatcher classes, "
         "so tests can assert exactly how much work one request does."
     )
+    template_name = "testapp/linear_wizard.html"
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
     wizard = (
         Wizard()
         .step(FirstStepForm, name="first")
         .step(SecondStepForm, name="second")
         .step(PersonalDetailsForm, name="third")
         .step(ReviewForm, name="fourth")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
-        )
     )
 
     url_name = "walk-counting-wizard"
@@ -1646,16 +1582,13 @@ class ExpandWizardViewSet(WizardViewSet):
         "walk, followed by a shared review step."
     )
     template_name = "testapp/linear_wizard.html"
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
     wizard = (
         Wizard()
         .step(ItemCountForm, name="count")
         .expand(build_item_steps)
         .step(ReviewForm, name="review")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
-        )
     )
 
     url_name = "expand-wizard"
@@ -2024,12 +1957,9 @@ class SummaryWizardViewSet(WizardViewSet):
         )
         .step(SummaryRowsForm, name="preferences", label="Preferences")
         .step(SummaryStepView, name="summary")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
-        )
     )
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
 
     def done(self, run):
         return HttpResponse(f"completed {run.run_id}")
@@ -2190,12 +2120,9 @@ class GroupedSummaryWizardViewSet(WizardViewSet):
         .step(FirstStepForm, name="who", label="Who you are")
         .step(AddressForm, name="address", label="Address")
         .step(GroupedSummaryStepView, name="summary")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=CountingStepDispatcher,
-            cursor_walker_class=CountingCursorWalker,
-        )
     )
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
 
     def done(self, run):
         return HttpResponse(f"completed {run.run_id}")
@@ -2278,21 +2205,22 @@ class OrgViewSet(TaskListViewSet):
     task_list = Org
 
 
-COUNTING = (
-    Wizard()
-    .step(FirstStepForm, name="first")
-    .step(SecondStepForm, name="second")
-    .configure(
-        template_name="testapp/linear_wizard.html",
-        step_dispatcher_class=CountingStepDispatcher,
-        cursor_walker_class=CountingCursorWalker,
+class CountingSection(SectionViewSet):
+    """A section on the counting classes, so a test can say what a task
+    list costs. The seams are the section's, not the wizard's, so one
+    declaration serves both rows."""
+
+    wizard = (
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
     )
-)
+    template_name = "testapp/linear_wizard.html"
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
 
 
 class Counting(TaskList):
-    counting = Section(COUNTING, title="Counting")
-    other = Section(COUNTING, title="Other")
+    counting = Section(CountingSection, title="Counting")
+    other = Section(CountingSection, title="Other")
 
 
 class CountingViewSet(TaskListViewSet):

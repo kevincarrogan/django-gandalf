@@ -151,19 +151,11 @@ urlpatterns = [
         "duplicate-context-wizard/", include(views.DuplicateContextWizardViewSet.urls())
     ),
     path("invalid-wizard/", include(views.InvalidWizardViewSet.urls())),
-    path(
-        "wizard-configured-storage/",
-        include(views.WizardConfiguredStorageViewSet.urls()),
-    ),
     path("form-view-step-wizard/", include(views.FormViewStepWizardViewSet.urls())),
     path(
         "missing-template-wizard/", include(views.MissingTemplateWizardViewSet.urls())
     ),
-    path("pre-configured-wizard/", include(views.PreConfiguredWizardViewSet.urls())),
     path("empty-wizard/", include(views.EmptyWizardViewSet.urls())),
-    path(
-        "double-configured-wizard/", include(views.DoubleConfiguredWizardViewSet.urls())
-    ),
     path(
         "merged-payload-wizard/", include(views.MergedPayloadLinearWizardViewSet.urls())
     ),

@@ -15,7 +15,7 @@ from gandalf.file_storage import WizardFileStorage
 from gandalf.form_views import StepFormView
 from gandalf.runtime import Run, StepNotFound
 from gandalf.storage import SessionStorage
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.wizard import Wizard
 from tests.testapp.forms import (
     AccountTypeForm,
     BusinessDetailsForm,
@@ -28,6 +28,7 @@ from tests.testapp.forms import (
     ToppingsForm,
 )
 from tests.testapp.views import OpeningHoursStepView
+from tests.support import configured
 
 
 def _replay(run, *args, **kwargs):
@@ -101,15 +102,15 @@ def request_with_session_factory(rf):
 
 @pytest.fixture
 def linear_wizard():
-    return (
+    return configured(
         Wizard()
         .step(
             FirstStepForm,
         )
         .step(
             SecondStepForm,
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -173,11 +174,9 @@ def test_run_find_step_returns_matching_runtime_step(
 ):
     from gandalf.runtime import RuntimeStep
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -207,11 +206,9 @@ def test_run_find_step_accepts_name_shorthand(
 ):
     from gandalf.runtime import RuntimeStep
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -238,11 +235,9 @@ def test_run_find_step_accepts_name_shorthand(
 def test_run_filter_steps_accepts_name_shorthand(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -267,7 +262,7 @@ def test_run_find_step_on_branching_wizard_finds_step_in_active_arm(
     def is_business_account(request):
         return False
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account")
         .branch(
@@ -277,8 +272,8 @@ def test_run_find_step_on_branching_wizard_finds_step_in_active_arm(
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -307,7 +302,7 @@ def test_run_find_step_returns_none_inside_unreached_branch(
     def is_business_account(request):
         return False
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account")
         .branch(
@@ -317,8 +312,8 @@ def test_run_find_step_returns_none_inside_unreached_branch(
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -338,7 +333,7 @@ def test_run_find_step_returns_none_for_step_in_inactive_arm(
     def is_business_account(request):
         return False
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account")
         .branch(
@@ -348,8 +343,8 @@ def test_run_find_step_returns_none_for_step_in_inactive_arm(
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal"),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -363,10 +358,9 @@ def test_run_find_step_returns_none_for_step_in_inactive_arm(
 def test_run_find_step_returns_none_when_no_match(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -427,11 +421,9 @@ def test_reducer_visits_runtime_chain_and_collects_per_node_values():
 def test_run_filter_steps_returns_matches_in_walk_order(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, kind="data")
-        .step(SecondStepForm, kind="data")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, kind="data").step(SecondStepForm, kind="data"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -507,21 +499,12 @@ def test_run_uses_the_storage_class_it_is_given(
             self.context = context
 
     request = request_with_session_factory()
-    wizard = Wizard().configure()
+    wizard = configured(Wizard())
 
     run = _make_run(wizard, request, storage_class=FakeStorage)
 
     assert isinstance(run.storage, FakeStorage)
     assert run.storage.context is run.context
-
-
-def test_configuring_storage_class_on_a_wizard_is_rejected():
-    class FakeStorage:
-        def __init__(self, request):
-            self.request = request
-
-    with pytest.raises(ImproperlyConfigured, match="WizardViewSet.storage_class"):
-        Wizard().configure(storage_class=FakeStorage)
 
 
 def test_configured_wizard_uses_configured_step_dispatcher_class(
@@ -546,13 +529,10 @@ def test_configured_wizard_uses_configured_step_dispatcher_class(
             return cursor
 
     request = request_with_session_factory()
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            step_dispatcher_class=FakeDispatcher,
-        )
+    wizard = configured(
+        Wizard().step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        step_dispatcher_class=FakeDispatcher,
     )
     run = _make_run(wizard, request)
 
@@ -569,7 +549,7 @@ def test_run_rejected_submission_past_a_branch_is_kept(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -579,8 +559,8 @@ def test_run_rejected_submission_past_a_branch_is_kept(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -644,13 +624,10 @@ def test_configured_wizard_uses_configured_cursor_walker_class(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            cursor_walker_class=FakeWalker,
-        )
+    wizard = configured(
+        Wizard().step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        cursor_walker_class=FakeWalker,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -668,13 +645,10 @@ def test_configured_wizard_uses_configured_form_view_factory():
     def fake_factory(form_class, *, template_name):
         return sentinel
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            form_view_factory=fake_factory,
-        )
+    wizard = configured(
+        Wizard().step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        form_view_factory=fake_factory,
     )
 
     assert wizard.tree.form_view is sentinel
@@ -690,13 +664,10 @@ def test_configured_wizard_uses_configured_state_serializer_class(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            state_serializer_class=FakeSerializer,
-        )
+    wizard = configured(
+        Wizard().step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        state_serializer_class=FakeSerializer,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -706,42 +677,20 @@ def test_configured_wizard_uses_configured_state_serializer_class(
     assert request.session["gandalf_runs"]["existing-run"]["state"] == ["fake-entry"]
 
 
-def test_wizard_configure_returns_configured_wizard():
-    wizard = Wizard()
-
-    configured_wizard = wizard.configure()
-
-    assert isinstance(configured_wizard, ConfiguredWizard)
-    assert configured_wizard.configuration == {}
-
-
-def test_configured_wizard_configure_raises_useful_error():
-    configured_wizard = Wizard().configure()
-
-    with pytest.raises(
-        ImproperlyConfigured,
-        match="ConfiguredWizard instances cannot be configured.",
-    ):
-        configured_wizard.configure(template_name="testapp/linear_wizard.html")
-
-
-def test_wizard_configure_requires_template_for_form_steps():
+def test_a_form_step_needs_a_template_to_generate_its_view():
     wizard = Wizard().step(FirstStepForm)
 
     with pytest.raises(
         ImproperlyConfigured,
-        match=(
-            "Wizard.configure\\(\\) must receive template_name when generating "
-            "FormView steps from Form classes."
-        ),
+        match="FirstStepForm needs template_name to generate its view",
     ):
-        wizard.configure()
+        configured(wizard)
 
 
 def test_wizard_configure_generates_form_views_for_form_steps():
     wizard = Wizard().step(FirstStepForm)
 
-    configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
+    configured_wizard = configured(wizard, template_name="testapp/linear_wizard.html")
 
     configured_step = configured_wizard.tree
     assert configured_step.declaration is FirstStepForm
@@ -754,7 +703,7 @@ def test_wizard_configure_generates_form_views_for_form_steps():
 def test_wizard_configure_applies_template_to_generated_form_views():
     wizard = Wizard().step(FirstStepForm)
 
-    configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
+    configured_wizard = configured(wizard, template_name="testapp/linear_wizard.html")
 
     configured_step = configured_wizard.tree
     assert configured_step.declaration is FirstStepForm
@@ -770,7 +719,7 @@ def test_wizard_configure_preserves_explicit_form_view_steps():
 
     wizard = Wizard().step(ExplicitStepView)
 
-    configured_wizard = wizard.configure(template_name="testapp/linear_wizard.html")
+    configured_wizard = configured(wizard, template_name="testapp/linear_wizard.html")
 
     assert configured_wizard.tree == tree.Step(
         declaration=ExplicitStepView,
@@ -935,7 +884,7 @@ def test_run_renders_first_step_in_matching_branch(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -945,8 +894,8 @@ def test_run_renders_first_step_in_matching_branch(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -972,7 +921,7 @@ def test_run_renders_first_step_in_default_branch(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -982,8 +931,8 @@ def test_run_renders_first_step_in_default_branch(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1009,7 +958,7 @@ def test_run_submit_inside_branch_arm_records_nested_state(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1019,8 +968,8 @@ def test_run_submit_inside_branch_arm_records_nested_state(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1051,7 +1000,7 @@ def test_run_submit_after_completed_branch_arm_appends_at_top_level(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1061,8 +1010,8 @@ def test_run_submit_after_completed_branch_arm_appends_at_top_level(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1280,11 +1229,9 @@ def test_run_render_step_returns_form_with_initial_from_stored_data(
             },
         },
     )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -1307,7 +1254,7 @@ def test_run_render_step_finds_step_inside_branch(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1317,8 +1264,8 @@ def test_run_render_step_finds_step_inside_branch(
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal_name"),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1357,10 +1304,9 @@ def test_run_render_step_raises_step_not_found_for_unknown_context(
             },
         },
     )
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -1372,11 +1318,9 @@ def test_run_render_step_raises_step_not_found_for_unknown_context(
 def test_run_edit_replaces_step_data_and_preserves_downstream(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1404,11 +1348,9 @@ def test_run_edit_replaces_step_data_and_preserves_downstream(
 def test_run_placing_an_invalid_submission_parks_on_it(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1442,11 +1384,9 @@ def test_run_placing_an_invalid_submission_parks_on_it(
 def test_run_placing_a_valid_submission_keeps_walking(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1481,7 +1421,7 @@ def test_run_edit_preserves_branch_state_when_arm_unchanged(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1491,8 +1431,8 @@ def test_run_edit_preserves_branch_state_when_arm_unchanged(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1526,7 +1466,7 @@ def test_run_edit_keeps_dormant_arm_state_when_arm_changes(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1536,8 +1476,8 @@ def test_run_edit_keeps_dormant_arm_state_when_arm_changes(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1573,7 +1513,7 @@ def test_run_edit_step_inside_branch_replaces_nested_entry(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1583,8 +1523,8 @@ def test_run_edit_step_inside_branch_replaces_nested_entry(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1616,7 +1556,7 @@ def _branching_review_wizard():
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    return (
+    return configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1626,19 +1566,17 @@ def _branching_review_wizard():
             ),
             default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
 def test_run_cursor_returns_first_unanswered_step(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1660,10 +1598,9 @@ def test_run_cursor_returns_first_unanswered_step(
 def test_run_cursor_node_is_none_when_run_is_complete(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -1785,7 +1722,7 @@ def _cross_branch_wizard():
         business_step = context.run.path.find_step(name="business_name")
         return business_step.data["business_name"] == "Acme"
 
-    return (
+    return configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -1801,8 +1738,8 @@ def _cross_branch_wizard():
                 Wizard().step(SecondStepForm, name="second"),
             ),
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -2175,11 +2112,9 @@ def test_run_edit_restoring_stale_dormant_answer_renders_errors(
 def test_run_edit_keeps_invalid_downstream_answer_for_correction(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2214,10 +2149,9 @@ def test_run_edit_raises_step_not_found_for_unknown_context(
 ):
     from gandalf.runtime import StepNotFound
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2244,7 +2178,7 @@ def test_run_rejected_submission_inside_a_branch_is_kept(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -2254,8 +2188,8 @@ def test_run_rejected_submission_inside_a_branch_is_kept(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2286,11 +2220,11 @@ def test_run_rejected_submission_inside_a_branch_is_kept(
 def test_run_find_step_raises_when_context_matches_multiple_steps(
     request_with_session_factory,
 ):
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="duplicate")
-        .step(SecondStepForm, name="duplicate")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(SecondStepForm, name="duplicate"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2322,7 +2256,7 @@ def test_run_edit_does_not_mutate_original_stored_state(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -2331,8 +2265,8 @@ def test_run_edit_does_not_mutate_original_stored_state(
                 Wizard().step(BusinessDetailsForm, name="business_name"),
             ),
             default=Wizard().step(PersonalDetailsForm),
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
     stored_state = [
         {"step": {"account_type": "business"}},
@@ -2373,11 +2307,9 @@ def test_run_replays_submissions_through_form_view_form_valid(
             self.__class__.form_valid_call_count += 1
             return super().form_valid(form)
 
-    linear_wizard = (
-        Wizard()
-        .step(TrackingFirstStepFormView)
-        .step(SecondStepForm)
-        .configure(template_name="testapp/linear_wizard.html")
+    linear_wizard = configured(
+        Wizard().step(TrackingFirstStepFormView).step(SecondStepForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2445,10 +2377,8 @@ def test_runtime_step_data_still_exposes_raw_submission(
 def test_runtime_step_form_reads_a_stored_multi_valued_answer_as_a_list(
     request_with_session_factory,
 ):
-    wizard = (
-        Wizard()
-        .step(ToppingsForm)
-        .configure(template_name="testapp/single_step_wizard.html")
+    wizard = configured(
+        Wizard().step(ToppingsForm), template_name="testapp/single_step_wizard.html"
     )
     request = request_with_session_factory(
         session={
@@ -2473,10 +2403,8 @@ def test_runtime_step_form_reflects_cleaned_values_not_raw_strings(
     class CoercingForm(forms.Form):
         count = forms.IntegerField()
 
-    wizard = (
-        Wizard()
-        .step(CoercingForm)
-        .configure(template_name="testapp/single_step_wizard.html")
+    wizard = configured(
+        Wizard().step(CoercingForm), template_name="testapp/single_step_wizard.html"
     )
     request = request_with_session_factory(
         session={
@@ -2545,7 +2473,7 @@ def test_run_path_inlines_completed_branch_arm_steps(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -2555,8 +2483,8 @@ def test_run_path_inlines_completed_branch_arm_steps(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2626,10 +2554,9 @@ def test_runtime_step_form_reconstructs_cleaned_data_for_form_view_step(
         def get_success_url(self):
             return self.request.path
 
-    wizard = (
-        Wizard()
-        .step(FirstStepFormView)
-        .configure(template_name="testapp/single_step_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepFormView),
+        template_name="testapp/single_step_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2664,10 +2591,9 @@ def test_runtime_step_form_honors_form_view_get_form_class_override(
         def get_success_url(self):
             return self.request.path
 
-    wizard = (
-        Wizard()
-        .step(FormClassPickingView)
-        .configure(template_name="testapp/single_step_wizard.html")
+    wizard = configured(
+        Wizard().step(FormClassPickingView),
+        template_name="testapp/single_step_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2709,10 +2635,9 @@ def test_runtime_step_form_honors_form_view_get_form_kwargs_override(
         def get_success_url(self):
             return self.request.path
 
-    wizard = (
-        Wizard()
-        .step(SalutationInjectingView)
-        .configure(template_name="testapp/single_step_wizard.html")
+    wizard = configured(
+        Wizard().step(SalutationInjectingView),
+        template_name="testapp/single_step_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2742,11 +2667,9 @@ def test_runtime_step_form_merges_cleaned_data_across_form_and_form_view_steps(
         def get_success_url(self):
             return self.request.path
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .step(SecondStepFormView)
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm).step(SecondStepFormView),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2776,14 +2699,14 @@ def test_run_path_drops_branch_with_unmatched_no_default_arm(
     def never(request):
         return False
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm)
         .branch(
             gandalf.wizard.condition(never, Wizard().step(SecondStepForm)),
         )
-        .step(AccountTypeForm, name="after_branch")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(AccountTypeForm, name="after_branch"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2819,7 +2742,7 @@ def test_run_path_walks_multi_step_branch_arm(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -2829,8 +2752,8 @@ def test_run_path_walks_multi_step_branch_arm(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -2893,11 +2816,11 @@ def test_merge_cleaned_data_folds_path_into_dict(
 def _formset_run(request_with_session_factory):
     """A finished run whose second step is a formset, so its answer is a
     list of one entry per form rather than a mapping."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="first")
-        .step(OpeningHoursStepView, name="opening-hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3024,7 +2947,7 @@ def test_a_reducer_subclass_can_key_answers_by_step(request_with_session_factory
         account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -3033,8 +2956,8 @@ def test_a_reducer_subclass_can_key_answers_by_step(request_with_session_factory
                 Wizard().step(BusinessDetailsForm, name="business"),
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal"),
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3066,7 +2989,7 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.form.cleaned_data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -3076,8 +2999,8 @@ def test_merge_cleaned_data_folds_runtime_tree_across_branch(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3120,11 +3043,9 @@ def test_step_view_can_read_request_wizard_path_mid_wizard(
             )
             return super().get_initial()
 
-    wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .step(CapturingSecondStepView)
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm).step(CapturingSecondStepView),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3151,14 +3072,10 @@ def test_run_submit_with_files_persists_file_refs_in_state(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm)
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm).step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3180,14 +3097,10 @@ def test_run_replay_reconstitutes_uploaded_file_for_form_validation(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm)
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm).step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3222,14 +3135,10 @@ def test_run_render_step_passes_stored_file_as_initial(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(CapturingProfileView, name="photo")
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(CapturingProfileView, name="photo").step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3249,14 +3158,10 @@ def test_run_edit_without_new_file_preserves_stored_ref(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm, name="photo")
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm, name="photo").step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3278,14 +3183,10 @@ def test_run_edit_adds_file_to_step_that_had_no_files(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, name="photo")
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(OptionalPhotoForm, name="photo").step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3311,14 +3212,10 @@ def test_run_edit_with_new_file_replaces_and_deletes_old(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm, name="photo")
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm, name="photo").step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3348,14 +3245,10 @@ def test_run_rejected_submission_keeps_its_own_upload(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, name="photo")
-        .step(FirstStepForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(OptionalPhotoForm, name="photo").step(FirstStepForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3404,14 +3297,10 @@ def test_run_edit_keeps_old_file_when_rewalk_raises(
         def post(self, request, *args, **kwargs):
             raise RuntimeError("downstream step exploded")
 
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm, name="photo")
-        .step(ExplodingStepView)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm, name="photo").step(ExplodingStepView),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -3451,13 +3340,10 @@ def test_run_edit_step_not_found_deletes_new_files(
 ):
     from gandalf.runtime import StepNotFound
 
-    wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, name="photo")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(OptionalPhotoForm, name="photo"),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -3482,13 +3368,10 @@ def test_run_submit_correction_keeps_stored_file_refs(
     request_with_session_factory,
     temp_file_storage_class,
 ):
-    wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, name="photo")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(OptionalPhotoForm, name="photo"),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -3526,10 +3409,9 @@ def test_run_edit_error_render_receives_url_kwargs(
             context["org"] = self.kwargs["org"]
             return context
 
-    wizard = (
-        Wizard()
-        .step(KwargAwareStepView, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(KwargAwareStepView, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3573,10 +3455,9 @@ def test_run_render_step_receives_url_kwargs(
             context["org"] = self.kwargs["org"]
             return context
 
-    wizard = (
-        Wizard()
-        .step(KwargAwareStepView, name="first")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(KwargAwareStepView, name="first"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_with_session_factory(
         session={
@@ -3609,7 +3490,7 @@ def test_run_edit_changing_arm_keeps_dormant_file_refs(
         account_step = context.run.path.find_step(name="account_type")
         return account_step.data["account_type"] == "business"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -3619,11 +3500,9 @@ def test_run_edit_changing_arm_keeps_dormant_file_refs(
             ),
             default=Wizard().step(PersonalDetailsForm),
         )
-        .step(ReviewForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+        .step(ReviewForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
@@ -3660,13 +3539,10 @@ def test_run_cleanup_files_wipes_run_prefix(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=temp_file_storage_class,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=temp_file_storage_class,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3703,13 +3579,10 @@ def test_configured_wizard_uses_configured_file_storage_class(
     request = request_with_session_factory(
         session={"gandalf_runs": {"existing-run": {}}},
     )
-    wizard = (
-        Wizard()
-        .step(ProfilePhotoForm)
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            file_storage_class=FakeFileStorage,
-        )
+    wizard = configured(
+        Wizard().step(ProfilePhotoForm),
+        template_name="testapp/linear_wizard.html",
+        file_storage_class=FakeFileStorage,
     )
     run = _make_run(wizard, request)
     run.retrieve("existing-run")
@@ -3730,7 +3603,7 @@ def _account_type(context):
 
 
 def _switch_wizard(selector=_account_type, **kwargs):
-    return (
+    return configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .switch(
@@ -3741,8 +3614,8 @@ def _switch_wizard(selector=_account_type, **kwargs):
             },
             **kwargs,
         )
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -3894,7 +3767,7 @@ def test_module_level_switch_entry_point():
 
 
 def _on_field_wizard():
-    return (
+    return configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .switch(
@@ -3903,8 +3776,8 @@ def _on_field_wizard():
                 "business": Wizard().step(BusinessDetailsForm, name="business"),
                 "personal": Wizard().step(PersonalDetailsForm, name="personal"),
             },
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -3929,13 +3802,15 @@ def test_on_field_names_the_answer_it_reads():
 def test_on_field_naming_an_undeclared_step_is_refused():
     with pytest.raises(ImproperlyConfigured, match="names no step of this wizard"):
         (
-            Wizard()
-            .step(AccountTypeForm, name="account_type")
-            .switch(
-                gandalf.wizard.on_field("nowhere", "account_type"),
-                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(AccountTypeForm, name="account_type")
+                .switch(
+                    gandalf.wizard.on_field("nowhere", "account_type"),
+                    {"business": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
@@ -3943,13 +3818,15 @@ def test_on_field_naming_no_field_of_its_step_is_refused():
     """The value of a field nothing asks is "", which names no case."""
     with pytest.raises(ImproperlyConfigured, match="names no field of step"):
         (
-            Wizard()
-            .step(AccountTypeForm, name="account_type")
-            .switch(
-                gandalf.wizard.on_field("account_type", "nonexistent"),
-                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(AccountTypeForm, name="account_type")
+                .switch(
+                    gandalf.wizard.on_field("account_type", "nonexistent"),
+                    {"business": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
@@ -3960,14 +3837,14 @@ def test_on_field_on_a_step_that_picks_its_form_per_request_is_trusted():
         def get_form_class(self):
             return AccountTypeForm
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(_Undecided, name="account_type")
         .switch(
             gandalf.wizard.on_field("account_type", "whatever"),
             {"business": Wizard().step(BusinessDetailsForm, name="business")},
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
     assert wizard.tree is not None
@@ -3978,11 +3855,11 @@ def test_a_formset_step_declares_no_step_level_fields():
     of the n rows it repeats — and that is a different answer from the
     `None` a step choosing its form per request gets. One is "no fields",
     which can be checked against; the other is "unknown", which cannot."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="first")
-        .step(OpeningHoursStepView, name="opening-hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     fields = gandalf.wizard.declared_step_fields(wizard)
@@ -3996,14 +3873,16 @@ def test_on_field_beside_a_formset_step_still_checks_the_step_it_names():
     is not, so a typo two steps away is still caught."""
     with pytest.raises(ImproperlyConfigured, match="names no field of step"):
         (
-            Wizard()
-            .step(AccountTypeForm, name="account_type")
-            .step(OpeningHoursStepView, name="opening-hours")
-            .switch(
-                gandalf.wizard.on_field("account_type", "nonexistent"),
-                {"business": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(AccountTypeForm, name="account_type")
+                .step(OpeningHoursStepView, name="opening-hours")
+                .switch(
+                    gandalf.wizard.on_field("account_type", "nonexistent"),
+                    {"business": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
@@ -4014,13 +3893,15 @@ def test_on_field_naming_a_formset_step_is_refused():
     `cleaned_data.get()` of a list."""
     with pytest.raises(ImproperlyConfigured, match="no fields of its own"):
         (
-            Wizard()
-            .step(OpeningHoursStepView, name="opening-hours")
-            .switch(
-                gandalf.wizard.on_field("opening-hours", "day"),
-                {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+            configured(
+                Wizard()
+                .step(OpeningHoursStepView, name="opening-hours")
+                .switch(
+                    gandalf.wizard.on_field("opening-hours", "day"),
+                    {"monday": Wizard().step(BusinessDetailsForm, name="business")},
+                ),
+                template_name="testapp/linear_wizard.html",
             )
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
 
@@ -4032,14 +3913,14 @@ def test_a_selector_of_your_own_can_route_on_a_formset_answer():
         rows = context.run.path.find_step(name="opening-hours").answer
         return "monday" if any(row["day"] == "Monday" for row in rows) else "other"
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(OpeningHoursStepView, name="opening-hours")
         .switch(
             opens_on_monday,
             {"monday": Wizard().step(BusinessDetailsForm, name="business")},
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
     assert wizard.tree is not None
@@ -4047,15 +3928,15 @@ def test_a_selector_of_your_own_can_route_on_a_formset_answer():
 
 def test_on_field_in_an_expanding_wizard_is_trusted():
     """An expansion grows names mid-walk, so none can be known now."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .expand(lambda context: Wizard())
         .switch(
             gandalf.wizard.on_field("grown_later", "whatever"),
             {"business": Wizard().step(BusinessDetailsForm, name="business")},
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
     assert wizard.tree is not None
@@ -4064,28 +3945,18 @@ def test_on_field_in_an_expanding_wizard_is_trusted():
 def test_an_unnamed_step_is_not_a_name_the_declaration_offers():
     """A step with no name cannot be addressed, so it is absent from the
     fields a selector or a summary checks itself against."""
-    wizard = (
-        Wizard()
-        .step(AccountTypeForm)
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(AccountTypeForm), template_name="testapp/linear_wizard.html"
     )
 
     assert gandalf.wizard.declared_step_fields(wizard) == {}
-
-
-def test_configure_refuses_a_key_it_does_not_read():
-    """Stored and never applied is the failure a typo would otherwise buy."""
-    with pytest.raises(ImproperlyConfigured, match="does not read observer_clas"):
-        Wizard().step(AccountTypeForm, name="account_type").configure(
-            template_name="testapp/linear_wizard.html", observer_clas=object
-        )
 
 
 def test_on_field_says_which_step_it_could_not_find(request_with_session_factory):
     """A selector naming a step the run has not answered is a declaration
     mistake, and says so rather than failing as an attribute error."""
     request = request_with_session_factory()
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -4098,8 +3969,8 @@ def test_on_field_says_which_step_it_could_not_find(request_with_session_factory
         .switch(
             gandalf.wizard.on_field("nonexistent", "business_name"),
             {"business": Wizard().step(BusinessDetailsForm, name="business")},
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
     run = _make_run(wizard, request)
     run.initialise()
@@ -4113,11 +3984,9 @@ def test_on_field_says_which_step_it_could_not_find(request_with_session_factory
 
 def test_a_wizard_describes_its_declared_shape():
     """No run, no request, no storage: a description of the declaration."""
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
 
     outline = wizard.outline()
@@ -4140,10 +4009,9 @@ def test_a_wizard_describes_every_route_a_fork_could_take():
 def test_a_wizard_carries_the_context_its_steps_were_declared_with():
     """Not just the routable name: whatever the declaration said, so a
     caller can group or label steps however it declared them."""
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first", label="Your name")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first", label="Your name"),
+        template_name="testapp/linear_wizard.html",
     )
 
     [step] = wizard.outline()
@@ -4160,7 +4028,7 @@ def test_a_wizard_describes_a_predicate_fork_in_its_own_words():
         """The customer asked for a business account."""
         return True
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type")
         .branch(
@@ -4169,8 +4037,8 @@ def test_a_wizard_describes_a_predicate_fork_in_its_own_words():
                 Wizard().step(BusinessDetailsForm, name="business"),
             ),
             default=Wizard().step(PersonalDetailsForm, name="personal"),
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
     [_, branch] = wizard.outline()
@@ -4201,12 +4069,12 @@ def test_a_wizard_marks_where_it_grows_from_an_answer():
     def build_items(request):  # pragma: no cover - never walked here
         return Wizard()
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="count")
         .expand(build_items)
-        .step(SecondStepForm, name="after")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(SecondStepForm, name="after"),
+        template_name="testapp/linear_wizard.html",
     )
 
     assert [entry["kind"] for entry in wizard.outline()] == ["step", "expand", "step"]

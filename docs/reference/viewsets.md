@@ -22,9 +22,10 @@ one step. Subclass it, set `url_name`, give it a wizard, and define `done()`.
 | Attribute | Default | What it is |
 | --- | --- | --- |
 | `url_name` | `None` | **Required.** The name of the start URL, verbatim; `-run` and `-step` are derived from it. `urls()` and the three URL hooks raise `ImproperlyConfigured` without it. |
-| `wizard` | *(undeclared)* | A `Wizard` or `ConfiguredWizard`. Read by the default `get_wizard()`; a viewset with neither raises `ImproperlyConfigured` on its first request. |
-| `template_name` | *(undeclared)* | Passed to `Wizard.configure(template_name=...)` for a plain `Wizard`. Only reaches the `FormView`s Gandalf generates from a form class — a step that brings its own view sets its own, and a `ConfiguredWizard` is taken as-is. |
-| `storage_class` | `SessionStorage` | Where runs are kept. Instantiated once per request with the request's `WizardContext`. The one configuration point on the viewset rather than `.configure()`, because storage must exist before `get_wizard()` can read state from it — see [Storage](storage.md). |
+| `wizard` | *(undeclared)* | A `Wizard`. Read by the default `get_wizard()`; a viewset with neither raises `ImproperlyConfigured` on its first request. |
+| `template_name` | `None` | The template every step generated from a bare `Form` renders with. A step that brings its own view sets its own. Required as soon as a step is a bare `Form`. |
+| `storage_class` | `SessionStorage` | Where runs are kept. Instantiated once per request with the request's `WizardContext`, before the wizard is resolved, so `get_wizard()` can read state from it — see [Storage](storage.md). |
+| `file_storage_class`, `observer_class`, `form_view_factory`, `cursor_walker_class`, `step_dispatcher_class`, `state_serializer_class`, `step_router_class` | the library's | The wizard's other seams, each with a default; see [Configuration](configuration.md). A `Wizard` is a value and carries none of them. |
 | `reserved_url_kwargs` | `frozenset({"run_id", "gandalf_step"})` | URL kwargs owned by the patterns `urls()` publishes. Everything else the request captures is mount-prefix context. |
 
 Instance attributes Django sets in `setup()` — `request`, `args`, `kwargs` —
@@ -106,8 +107,7 @@ run has been retrieved or seeded — `get_state()` / `get_run_data()` /
 `metadata`. Under `begin()` or the start URL the run is freshly minted, so
 its state is `[]`; under `resolve()` there is no run at all.
 
-**Returns** a `Wizard` or `ConfiguredWizard`. The default returns the
-`wizard` class attribute.
+**Returns** a `Wizard`. The default returns the `wizard` class attribute.
 
 **Raises** `ImproperlyConfigured` — *"… has no wizard to run. Define
 ….wizard as a Wizard declaration, or override ….get_wizard() to build one
@@ -125,14 +125,19 @@ per request."*
 
 ### `configure_wizard(wizard)`
 
-Turns the declaration `get_wizard()` returned into a `ConfiguredWizard`. A
-`Wizard` gets `.configure(template_name=self.template_name)` when the viewset
-has a `template_name`; a `ConfiguredWizard` is returned untouched. Cached per
-declaration object for the life of the view instance, so a POST does not
-rebuild the tree twice.
+Turns the declaration `get_wizard()` returned into the `ConfiguredWizard` a
+run holds as `run.wizard`, from this viewset's attributes: `template_name`
+for the steps it generates, and every other seam in
+[Configuration](configuration.md). The one place a `ConfiguredWizard` is
+built.
 
-**Raises** `TypeError` — *"WizardViewSet.wizard must be a Wizard or
-ConfiguredWizard"*.
+The result is kept by the viewset *class*, keyed on the declaration
+object, so a static `wizard` attribute is configured once and is the same
+object on every request — which is what lets a POST that re-resolves to
+the same wizard skip its refresh walk. A dynamic `get_wizard()` returns a
+new declaration each call and gets no reuse.
+
+**Raises** `TypeError` — *"WizardViewSet.wizard must be a Wizard"*.
 
 ### `context_for(request)`
 

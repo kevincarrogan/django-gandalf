@@ -25,14 +25,9 @@ class _Recorder(WizardObserver):
 
 class _WatchedViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
+    observer_class = _Recorder
     wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            observer_class=_Recorder,
-        )
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second")
     )
 
     def done(self, run):

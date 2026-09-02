@@ -320,12 +320,12 @@ class VehicleItem(ItemViewSet):
         Wizard()
         .step(VehicleForm, name="vehicle", label="Vehicle")
         .step(VehicleReviewStepView, name="review")
-        .configure(template_name="hybrid/step.html")
     )
+    template_name = "hybrid/step.html"
 
-    def run_done(self, run):
+    def done(self, run):
         save_vehicle(self.request, self.get_item_id(), run)
-        return super().run_done(run)
+        return super().done(run)
 
     def item_removed(self, store):
         forget_vehicle(self.request, self.get_item_id())

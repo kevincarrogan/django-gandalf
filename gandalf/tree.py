@@ -323,8 +323,10 @@ class Configurer(Transformer):
         if issubclass(step.declaration, forms.Form):
             if self.template_name is None:
                 raise ImproperlyConfigured(
-                    "Wizard.configure() must receive template_name when "
-                    "generating FormView steps from Form classes."
+                    f"A step declared from {step.declaration.__name__} needs "
+                    "template_name to generate its view. Set template_name on "
+                    "the WizardViewSet, or declare the step with a FormView "
+                    "of its own."
                 )
             form_view = self.form_view_factory(
                 step.declaration,

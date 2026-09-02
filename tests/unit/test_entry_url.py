@@ -14,6 +14,7 @@ from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.support import configured
 
 
 class _Session(dict):
@@ -42,11 +43,9 @@ def request_factory(rf):
 
 
 def _linear_wizard():
-    return (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    return configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -91,7 +90,7 @@ def test_entry_url_falls_back_to_the_run_url_for_a_wizard_with_no_steps(
     bound = _bound(
         request_factory(),
         [],
-        wizard=Wizard().configure(template_name="testapp/linear_wizard.html"),
+        wizard=configured(Wizard(), template_name="testapp/linear_wizard.html"),
     )
 
     assert bound.entry_url() == "/wizard/run/"

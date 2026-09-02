@@ -96,10 +96,9 @@ def print_shapes(benchmarks):
 
     `_refreshed_cursor` reuses the walk `_routed_post` already did when
     re-resolving hands back the same wizard object. That holds for a
-    `ConfiguredWizard` class attribute; a plain `Wizard` is reconfigured
-    into a new object every resolve, and a dynamic `get_wizard()` builds a
-    genuinely new tree — so both keep the fourth walk, the latter because it
-    must.
+    `wizard` class attribute, which the viewset configures once and keeps;
+    a dynamic `get_wizard()` builds a genuinely new tree, so it keeps the
+    fourth walk, because it must.
     """
     print("\nWalks per POST by wizard shape\n")
     header = f"{'shape':<50}  {'walks/POST':>10}  {'validations':>11}"
@@ -160,8 +159,7 @@ def main():
 
     print_shapes(
         [
-            linear_wizard(steps=10, preconfigured=True),
-            linear_wizard(steps=10, preconfigured=False),
+            linear_wizard(steps=10),
             dynamic_wizard(items=9),
         ]
     )

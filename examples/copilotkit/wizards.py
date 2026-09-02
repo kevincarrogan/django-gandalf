@@ -26,12 +26,8 @@ class HybridQuoteViewSet(InsuranceQuoteViewSet):
     url_name = "quote"
     storage_class = ModelStorage
     template_name = "hybrid/step.html"
-
-    def configure_wizard(self, wizard):
-        """Watch this wizard, whichever door it is driven through."""
-        return wizard.configure(
-            template_name=self.template_name, observer_class=DemoObserver
-        )
+    #: Watch this wizard, whichever door it is driven through.
+    observer_class = DemoObserver
 
     def done(self, run):
         """Fires once, from whichever side confirmed — and in this demo
@@ -129,11 +125,7 @@ class HybridLicenceViewSet(LicenceCheckViewSet):
     url_name = "licence"
     storage_class = ModelStorage
     template_name = "hybrid/licence_step.html"
-
-    def configure_wizard(self, wizard):
-        return wizard.configure(
-            template_name=self.template_name, observer_class=DemoObserver
-        )
+    observer_class = DemoObserver
 
 
 class HybridIdentityViewSet(IdentityCheckViewSet):
@@ -148,8 +140,4 @@ class HybridIdentityViewSet(IdentityCheckViewSet):
     url_name = "identity"
     storage_class = ModelStorage
     template_name = "hybrid/identity_step.html"
-
-    def configure_wizard(self, wizard):
-        return wizard.configure(
-            template_name=self.template_name, observer_class=DemoObserver
-        )
+    observer_class = DemoObserver

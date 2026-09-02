@@ -129,7 +129,7 @@ speculative, do the work on first answer from the first step's
 `gandalf.storage.JourneyData` is the same `MetadataBag`, reached as
 `store.data` on a journey store, with buckets `"journey"` and `"members"`
 and `for_section(key)` in place of `for_step(name)`. It is where a section's
-`run_done()` records what the rest of the journey needs to know, and what
+`done()` records what the rest of the journey needs to know, and what
 its `blocked()` and `hidden()` read without paying a walk. See [Journey
 store](journey-store.md).
 

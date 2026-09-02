@@ -16,6 +16,7 @@ from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.support import configured
 
 
 class _Session(dict):
@@ -151,10 +152,12 @@ def bound(rf):
         context,
         SessionStorage(context),
         wizard=(
-            Wizard()
-            .step(FirstStepForm, name="first")
-            .step(SecondStepForm, name="second")
-            .configure(template_name="testapp/linear_wizard.html")
+            configured(
+                Wizard()
+                .step(FirstStepForm, name="first")
+                .step(SecondStepForm, name="second"),
+                template_name="testapp/linear_wizard.html",
+            )
         ),
     )
     run.retrieve("run")

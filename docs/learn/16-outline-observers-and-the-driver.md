@@ -5,10 +5,10 @@ outside.
 
 ### What shape is it
 
-A configured wizard can describe itself, as data:
+A wizard can describe itself, as data, once a viewset has resolved it:
 
 ```python
-ExpandingApplicationViewSet.wizard.configure(template_name="...").outline()
+ExpandingApplicationViewSet.resolve(request).wizard.outline()
 # [{"kind": "step", "name": "applying-as", ...},
 #  {"kind": "branch", "arms": [{"steps": [..., {"kind": "switch", ...},
 #                                         ..., {"kind": "expand"}]}],
@@ -27,7 +27,7 @@ test that pins a wizard's shape.
 
 Which step do applicants get wrong most often? Declare an observer and it is
 told what happens, for every run of that wizard — over HTTP, from a script,
-or from a test. Chapter 15's setup wizard carries one:
+or from a test. Chapter 15's setup viewsets carry one:
 
 ```python
 from gandalf.observers import WizardObserver
@@ -37,7 +37,18 @@ class CountRejections(WizardObserver):
     def submission(self, step, accepted, metadata):
         if not accepted:
             rejections.append(step.context["name"])
+
+
+class ApplicationStartViewSet(WizardViewSet):
+    wizard = setup
+    observer_class = CountRejections
+    ...
 ```
+
+It is set on the viewset, not the wizard, for the same reason a template
+is: a `Wizard` is a value, and what watches a run is the view's business.
+The setup wizard is mounted twice in chapter 15 — as the start wizard and
+as a section — and each viewset names the observer for itself.
 
 **One event per placement, not per validation.** A run re-proves every stored
 answer on every request, so an observer told about validations would count

@@ -123,13 +123,11 @@ class GrantApplicationViewSet(WizardViewSet):
     storage_class = ModelStorage
 ```
 
-Defaults to `SessionStorage`. This is the one seam set on the viewset
-rather than through `Wizard.configure()`, because storage has to exist
-*before* the wizard does: `get_wizard()` is handed a `Run` that can
-already read stored state to decide its shape. Passing
-`.configure(storage_class=...)` raises `ImproperlyConfigured` with that
-explanation. The viewset instantiates it as `storage_class(context)` on
-every entry point — dispatch, `begin()`, `inspect()`, `reopen()`,
+Defaults to `SessionStorage`. Like every other seam it is the viewset's,
+and it is the one that has to exist *before* the wizard does:
+`get_wizard()` is handed a `Run` that can already read stored state to
+decide its shape. The viewset instantiates it as `storage_class(context)`
+on every entry point — dispatch, `begin()`, `inspect()`, `reopen()`,
 `resolve()` and the driver.
 
 ### A durable backend
@@ -265,12 +263,6 @@ metadata pays one storage read and no form validation.
 ---
 
 ## Troubleshooting
-
-### `ImproperlyConfigured: storage_class belongs on the WizardViewSet, not the wizard`
-
-`Wizard.configure(storage_class=...)` is refused because a dynamic
-`get_wizard()` reads stored state before any wizard exists. Set
-`storage_class` on the viewset class instead.
 
 ### Every visit to a run URL redirects to the start
 

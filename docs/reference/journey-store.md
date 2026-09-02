@@ -122,7 +122,7 @@ the journey rather than one run; the bag semantics are in
   from the root whichever bag it is called on: a section can keep its own
   notes without treading on the journey or on another section.
 
-Write here from a section's `run_done()` (the run is still readable) and
+Write here from a section's `done()` (the run is still readable) and
 read back from `blocked()` / `hidden()`, `journey_done()` and
 `submitted()`. The tombstone keeps it.
 
@@ -232,10 +232,10 @@ or a durable index into runs that have expired.
 class ContactSection(SectionViewSet):
     wizard = contact
 
-    def run_done(self, run):
+    def done(self, run):
         email = run.path.find_step(name="email")
         self.get_journey_store().data["email"] = email.form.cleaned_data["email"]
-        return super().run_done(run)
+        return super().done(run)
 
 
 class RefereesSection(SectionViewSet):
@@ -270,7 +270,7 @@ class ApplicationStartViewSet(WizardViewSet):
 ```
 
 `begin()` builds the list's store under a new id; `finish()` records the
-run as the `setup` section — stashed, its `run_done()` run — and `url` is
+run as the `setup` section — stashed, its `done()` run — and `url` is
 the page under that id. See [`Journey`](tasklists.md).
 
 ### Keeping per-section notes apart

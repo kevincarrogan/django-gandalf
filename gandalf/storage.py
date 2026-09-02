@@ -236,11 +236,11 @@ class JourneyData(MetadataBag):
     against a tree whose shape may depend on a branch predicate nobody has
     evaluated — so no task list, and no other section, can read an answer out of
     one without paying a walk. This is where the *decided* version goes:
-    `run_done()` reads its own answers, once, inside the window where
+    `done()` reads its own answers, once, inside the window where
     the run is still readable, and writes what the rest of the journey needs
     to know. `blocked()` and `hidden()` read it back for free.
 
-        # in a section's run_done()
+        # in a section's done()
         store.data["employment_status"] = step.form.cleaned_data["status"]
 
         # in another section's blocked()

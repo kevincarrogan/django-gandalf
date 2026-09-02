@@ -721,7 +721,7 @@ def test_an_item_caches_the_answer_that_names_it(rf):
         run_id="run-1",
     )
 
-    view.done(_ItemViewSet.inspect(view.request, "run-1", item="7"))
+    view.finish(_ItemViewSet.inspect(view.request, "run-1", item="7"))
 
     store = SessionItemStore(WizardContext.from_request(view.request), "default")
     assert store.get_item_title("guests", "7") == "Ada"
@@ -746,15 +746,15 @@ def test_an_item_can_be_named_by_a_callable_of_its_run(rf):
     assert view.get_item_title(run) == "ADA"
 
 
-def test_an_items_run_done_knows_which_item_it_is(rf):
+def test_an_items_done_knows_which_item_it_is(rf):
     seen = []
 
     class _Deciding(ItemViewSet):
         wizard = GUEST
 
-        def run_done(self, run):
+        def done(self, run):
             seen.append(self.get_item_id())
-            return super().run_done(run)
+            return super().done(run)
 
     class _Page(_Guests):
         add_another = GUESTS.replace(wizard=_Deciding)
@@ -774,7 +774,7 @@ def test_an_items_run_done_knows_which_item_it_is(rf):
         run_id="run-1",
     )
 
-    response = view.done(_Page.item_viewset.inspect(view.request, "run-1", item="7"))
+    response = view.finish(_Page.item_viewset.inspect(view.request, "run-1", item="7"))
 
     assert seen == ["7"]
     assert response["Location"] == PAGE

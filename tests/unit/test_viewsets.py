@@ -11,13 +11,15 @@ from django.test import override_settings
 from gandalf.file_storage import WizardFileStorage
 from gandalf.storage import SessionStorage
 from gandalf.viewsets import WizardViewSet
-from gandalf.wizard import ConfiguredWizard, Wizard
+from gandalf.observers import WizardObserver
+from gandalf.wizard import ConfiguredWizard, StepNameRouter, Wizard
 from tests.testapp.forms import (
     FirstStepForm,
     ProfilePhotoForm,
     ReviewForm,
     SecondStepForm,
 )
+from tests.support import configured
 
 
 class _Session(dict):
@@ -66,11 +68,11 @@ def test_step_name_router_clean_url_kwargs_strips_marker():
     }
 
 
-def test_wizard_configure_overrides_step_router_class():
+def test_a_configured_wizard_carries_its_step_router_class():
     class FakeRouter:
         pass
 
-    wizard = Wizard().configure(step_router_class=FakeRouter)
+    wizard = configured(Wizard(), step_router_class=FakeRouter)
 
     assert wizard.step_router_class is FakeRouter
 
@@ -86,14 +88,9 @@ def test_wizard_viewset_uses_configured_step_router_class(rf):
             return super().resolve(url_kwargs)
 
     class CustomViewSet(WizardViewSet):
-        wizard = (
-            Wizard()
-            .step(FirstStepForm, name="first")
-            .configure(
-                template_name="testapp/single_step_wizard.html",
-                step_router_class=CustomRouter,
-            )
-        )
+        wizard = Wizard().step(FirstStepForm, name="first")
+        template_name = "testapp/single_step_wizard.html"
+        step_router_class = CustomRouter
 
         def get_wizard_url(self, run_id):
             return f"/wizard/{run_id}/"
@@ -126,8 +123,8 @@ def test_wizard_viewset_configures_plain_wizard(rf):
 
     assert response.status_code == HTTPStatus.FOUND
     viewset = PlainWizardViewSet()
-    configured = viewset.configure_wizard(viewset.get_wizard(run=None))
-    assert isinstance(configured, ConfiguredWizard)
+    wizard = viewset.configure_wizard(viewset.get_wizard(run=None))
+    assert isinstance(wizard, ConfiguredWizard)
 
 
 def test_wizard_viewset_routed_post_invalid_submission_redirects_to_same_step(rf):
@@ -212,38 +209,75 @@ def test_wizard_viewset_without_done_raises_not_implemented_on_final_step(rf):
         )
 
 
-def test_wizard_viewset_uses_configured_wizard():
-    configured_wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(template_name="testapp/single_step_wizard.html")
-    )
+def test_wizard_viewset_get_wizard_returns_the_declaration():
+    declared = Wizard().step(FirstStepForm)
 
-    class ConfiguredWizardViewSet(WizardViewSet):
-        wizard = configured_wizard
+    class DeclaredViewSet(WizardViewSet):
+        wizard = declared
         template_name = "testapp/single_step_wizard.html"
 
-    wizard = ConfiguredWizardViewSet().get_wizard(run=None)
-
-    assert wizard is configured_wizard
+    assert DeclaredViewSet().get_wizard(run=None) is declared
 
 
-def test_wizard_viewset_does_not_reconfigure_configured_wizard():
-    configured_wizard = (
-        Wizard()
-        .step(FirstStepForm)
-        .configure(template_name="testapp/single_step_wizard.html")
-    )
+def test_the_viewsets_seams_reach_the_configured_wizard():
+    """A `Wizard` is a value and carries none of this; the viewset says it
+    all, and `configure_wizard()` is where it lands."""
 
-    class ConfiguredWizardViewSet(WizardViewSet):
-        wizard = configured_wizard
-        template_name = "testapp/other_wizard.html"
+    class _Observer(WizardObserver):
+        pass
 
-    viewset = ConfiguredWizardViewSet()
+    class _Router(StepNameRouter):
+        pass
+
+    class SeamedViewSet(WizardViewSet):
+        wizard = Wizard().step(FirstStepForm)
+        template_name = "testapp/single_step_wizard.html"
+        observer_class = _Observer
+        step_router_class = _Router
+        file_storage_class = WizardFileStorage
+
+    viewset = SeamedViewSet()
     wizard = viewset.configure_wizard(viewset.get_wizard(run=None))
 
-    assert wizard is configured_wizard
     assert wizard.tree.form_view.template_name == "testapp/single_step_wizard.html"
+    assert wizard.observer_class is _Observer
+    assert wizard.step_router_class is _Router
+    assert wizard.file_storage_class is WizardFileStorage
+
+
+def test_one_wizard_mounted_by_two_viewsets_renders_with_each_ones_template():
+    """The reason the template is the view's: the same declaration, two
+    pages."""
+    declared = Wizard().step(FirstStepForm)
+
+    class _First(WizardViewSet):
+        wizard = declared
+        template_name = "testapp/single_step_wizard.html"
+
+    class _Second(WizardViewSet):
+        wizard = declared
+        template_name = "testapp/other_wizard.html"
+
+    first = _First().configure_wizard(declared)
+    second = _Second().configure_wizard(declared)
+
+    assert first.tree.form_view.template_name == "testapp/single_step_wizard.html"
+    assert second.tree.form_view.template_name == "testapp/other_wizard.html"
+
+
+def test_a_static_wizard_is_configured_once_per_viewset_class():
+    """Identity across requests is what lets a POST skip its refresh walk,
+    so the configured wizard is kept by the class, not the view instance."""
+    declared = Wizard().step(FirstStepForm)
+
+    class _Static(WizardViewSet):
+        wizard = declared
+        template_name = "testapp/single_step_wizard.html"
+
+    first = _Static()._configured_wizard(declared)
+    second = _Static()._configured_wizard(declared)
+
+    assert first is second
 
 
 def test_wizard_viewset_without_wizard_raises_improperly_configured(rf):
@@ -264,17 +298,25 @@ def test_wizard_viewset_without_wizard_raises_improperly_configured(rf):
         MyWizardViewSet.as_view()(request)
 
 
-def test_wizard_viewset_rejects_invalid_wizard_type():
+def test_wizard_viewset_rejects_invalid_wizard_type(rf):
+    """Refused in `configure_wizard()`'s own words whichever way it is
+    reached — directly, or through a dispatch, where the configured-wizard
+    cache would otherwise choke on a key it cannot hold weakly."""
+
     class InvalidWizardViewSet(WizardViewSet):
+        url_name = "invalid"
         wizard = object()
 
     viewset = InvalidWizardViewSet()
 
-    with pytest.raises(
-        TypeError,
-        match="WizardViewSet.wizard must be a Wizard or ConfiguredWizard",
-    ):
+    with pytest.raises(TypeError, match="WizardViewSet.wizard must be a Wizard"):
         viewset.configure_wizard(viewset.get_wizard(run=None))
+
+    request = rf.get("/wizard/")
+    request.session = _Session()
+
+    with pytest.raises(TypeError, match="WizardViewSet.wizard must be a Wizard"):
+        InvalidWizardViewSet.as_view()(request)
 
 
 def test_wizard_viewset_configures_plain_wizard_from_get_wizard(rf):
@@ -1006,7 +1048,6 @@ def test_wizard_viewset_reuses_an_already_configured_wizard_on_refresh(rf):
             Wizard()
             .step(FirstStepForm, name="first")
             .step(SecondStepForm, name="second")
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
         def _validate_routable(self, wizard):
@@ -1253,7 +1294,7 @@ def test_wizard_viewset_resurrect_of_an_empty_wizard_falls_back_to_the_run_url(r
     (which completes immediately) is all there is."""
 
     class _EmptyViewSet(_RoutedViewSet):
-        wizard = Wizard().configure(template_name="testapp/linear_wizard.html")
+        wizard = Wizard()
 
     request = rf.get("/somewhere-else/")
     request.session = _Session()
@@ -1420,11 +1461,11 @@ def test_wizard_viewset_rejects_duplicate_step_names(rf):
 
     class _DuplicateViewSet(WizardViewSet):
         url_name = "wizard"
+        template_name = "testapp/linear_wizard.html"
         wizard = (
             Wizard()
             .step(FirstStepForm, name="duplicate")
             .step(SecondStepForm, name="duplicate")
-            .configure(template_name="testapp/linear_wizard.html")
         )
 
     request = rf.get("/wizard/existing-run/duplicate/")

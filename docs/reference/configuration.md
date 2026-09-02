@@ -1,72 +1,112 @@
 # Configuration
 
-`Wizard.configure(**configuration)` — the runtime seams of a wizard, each
-with a default, plus the two seams that live on a viewset instead and the
+The seams a wizard runs through, each with a default — all of them class
+attributes of the [`WizardViewSet`](viewsets.md) that mounts it — plus the
 Django settings a wizard needs.
 
 ```python
+from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
-wizard = (
-    Wizard()
-    .step(ApplicantForm, name="applicant")
-    .configure(template_name="grants/step.html", observer_class=CountRejections)
-)
+
+class ApplicationViewSet(WizardViewSet):
+    url_name = "grant-application"
+    template_name = "grants/step.html"
+    observer_class = CountRejections
+    wizard = Wizard().step(ApplicantForm, name="applicant")
 ```
 
 ---
 
 ## Reference
 
-### `Wizard.configure(**configuration)`
+A `Wizard` is a value: its shape, and nothing else. Everything a run of it
+needs that is not its shape — the template its generated steps render
+with, where its runs and uploads are kept, what watches it, the runtime
+classes the walk is built from — is the view's, and is declared on the
+viewset the way `template_name` is on any Django `FormView`. The same rule
+a `Form` and a `FormView` follow, and the reason one wizard can be mounted
+by two viewsets with two templates, or dropped into a task list where the
+`SectionViewSet` in its slot supplies all of this.
 
-Freeze a declaration into a [`ConfiguredWizard`](wizard.md#configuredwizard).
-Optional: a `WizardViewSet` configures a bare `Wizard` itself, passing only
-its own `template_name`. Call it when any other key is needed, and then
-give `template_name` here too — a pre-configured wizard is taken as-is.
+Every attribute below is optional and independent. A section of a task
+list declares them on its `SectionViewSet` subclass; a plain `Section(
+wizard)` gets the page's `section_template_name` and every other default.
 
-**Parameters** — every key below is optional and independent. A key not
-listed here is refused with `ImproperlyConfigured` (*"Wizard.configure()
-does not read …"*), since one that is stored and never applied is a
-misspelling that would otherwise go unnoticed. A `ConfiguredWizard`
-subclass that reads more extends `configuration_keys`.
-
-| Key | Default | Replacement must be |
+| Attribute | Default | Replacement must be |
 | --- | --- | --- |
 | `template_name` | `None` | a template path (`str`) |
+| `storage_class` | `gandalf.storage.SessionStorage` | a class satisfying `gandalf.types.WizardStorage` |
+| `file_storage_class` | `gandalf.file_storage.WizardFileStorage` | a class with `save()`, `open()`, `delete()`, `delete_run()` |
+| `observer_class` | `gandalf.observers.WizardObserver` | a `WizardObserver` subclass |
 | `form_view_factory` | `gandalf.form_views.form_view_factory` | callable `(form_class, *, template_name) -> type[FormView]` |
 | `cursor_walker_class` | `gandalf.runtime.CursorWalker` | a `CursorWalker` subclass |
 | `step_dispatcher_class` | `gandalf.runtime.StepDispatcher` | a `StepDispatcher` subclass |
 | `state_serializer_class` | `gandalf.runtime.StateSerializer` | a `StateSerializer` subclass |
 | `step_router_class` | `gandalf.wizard.StepNameRouter` | a class with `resolve()`, `reverse()`, `clean_url_kwargs()` |
-| `file_storage_class` | `gandalf.file_storage.WizardFileStorage` | a class with `save()`, `open()`, `delete()`, `delete_run()` |
-| `observer_class` | `gandalf.observers.WizardObserver` | a `WizardObserver` subclass |
 
-**Returns** — a `ConfiguredWizard`; the configured values are its
-attributes of the same names.
-
-**Raises**
-
-- `ImproperlyConfigured` — `storage_class` was passed (see
-  [`storage_class`](#storage_class) below).
-- `ImproperlyConfigured` — a step is a bare `forms.Form` and
-  `template_name` is `None`: *"Wizard.configure() must receive template_name
-  when generating FormView steps from Form classes."*
-- `ImproperlyConfigured` — called on a `ConfiguredWizard`: *"ConfiguredWizard
-  instances cannot be configured."*
+The viewset applies them in [`configure_wizard()`](viewsets.md#configure_wizardwizard),
+which turns the declaration `get_wizard()` returned into the
+`ConfiguredWizard` a run holds as `run.wizard`. That happens once per
+declaration per viewset class — a static `wizard` attribute is configured on
+the first request and kept — so the routability checks in
+[Validation at resolve time](wizard.md#validation-at-resolve-time) run then,
+not at import.
 
 ### `template_name`
 
 The template every *generated* step view renders. Default `None`.
 
 - Required when any step is declared with a bare `forms.Form`; the
-  `Configurer` hands it to `form_view_factory` for each such step.
+  `Configurer` hands it to `form_view_factory` for each such step. Its
+  absence raises `ImproperlyConfigured` on the first request: *"A step
+  declared from … needs template_name to generate its view."*
 - Not applied to a step that brings its own `FormView`: that view keeps its
   own `template_name`, and needs one.
-- `WizardViewSet.configure_wizard()` copies the viewset's `template_name`
-  attribute into this key when it configures a bare `Wizard`. It does
-  nothing to a `ConfiguredWizard`, so for one of those set `template_name`
-  in `.configure()`; a `template_name` on the viewset is then ignored.
+- On a `TaskListViewSet`, `section_template_name` is what reaches the
+  sections built from plain wizards; a `SectionViewSet` subclass in a slot
+  sets `template_name` itself.
+
+### `storage_class`
+
+Where runs are kept. Default `gandalf.storage.SessionStorage`.
+
+Instantiated as `storage_class(context)` on every entry point — dispatch,
+`begin()`, `inspect()`, `reopen()`, `resolve()` and the driver — *before*
+the wizard is resolved, which is what lets a dynamic `get_wizard()` read
+the run's stored state to decide its shape.
+
+**Contract** — the `gandalf.types.WizardStorage` protocol: constructed as
+`cls(context: WizardContext)`; `initialise_run() -> run_id`,
+`retrieve_run(run_id) -> run_id` (raising `RunNotFound`),
+`get_run_data(run_id)`, `get_state(run_id)`, `set_state(run_id, state)`,
+`get_run_metadata(run_id)`, `set_run_metadata(run_id, metadata)`,
+`delete_run(run_id)`, `complete_run(run_id)`, `is_run_complete(run_id) ->
+bool`. `SessionStorage` keeps at most `max_completed_runs = 25` tombstones.
+See [Storage](storage.md).
+
+### `file_storage_class`
+
+Where uploads go. Default `gandalf.file_storage.WizardFileStorage`, which
+wraps `django.core.files.storage.default_storage` under a `gandalf/<run_id>/`
+prefix.
+
+**Contract** — constructed once per run with no arguments (memoised on
+`Run.file_storage`); `save(run_id, uploaded_file) -> FileRef`,
+`open(ref) -> UploadedFile`, `delete(ref)`, `delete_run(run_id)`. A
+`FileRef` is `{tmp_name, name, content_type, size, charset}`. Subclassing
+`WizardFileStorage` and passing a different backend to `__init__`, or
+overriding `prefix`, covers most cases. See [File uploads](file-uploads.md).
+
+### `observer_class`
+
+Told what happened to a run, as it happens, without being shown the
+answers. Default `gandalf.observers.WizardObserver`, which does nothing.
+
+**Contract** — constructed once per run on first use as `cls(run_id)`;
+`submission(step, accepted, metadata)` fires once per placement (not per
+replay), `run_completed()` fires after `done()`. It must not raise. See
+[Observers](observers.md).
 
 ### `form_view_factory`
 
@@ -74,10 +114,10 @@ The callable that turns a bare `forms.Form` into a step view. Default
 `gandalf.form_views.form_view_factory`.
 
 **Contract** — `factory(form_class, *, template_name) -> type[FormView]`.
-Called once per `Form` step at configure time (and once per step of each
-expansion when it is built). The default returns a `StepFormView` subclass
-named `<FormName>View` in the form's module, with `form_class` and
-`template_name` set.
+Called once per `Form` step when the wizard is configured (and once per
+step of each expansion when it is built). The default returns a
+`StepFormView` subclass named `<FormName>View` in the form's module, with
+`form_class` and `template_name` set.
 
 The generated class is what the walk dispatches, so a factory is the place
 to give every generated step a mixin — extra context, a success message,
@@ -132,61 +172,12 @@ Context | None`, `reverse(step) -> str | None`, `clean_url_kwargs(url_kwargs)
 routes and every segment is unique, so a router that returns `None` for a
 step makes resolution fail with `ImproperlyConfigured`.
 
-### `file_storage_class`
-
-Where uploads go. Default `gandalf.file_storage.WizardFileStorage`, which
-wraps `django.core.files.storage.default_storage` under a `gandalf/<run_id>/`
-prefix.
-
-**Contract** — constructed once per run with no arguments (memoised on
-`Run.file_storage`); `save(run_id, uploaded_file) -> FileRef`,
-`open(ref) -> UploadedFile`, `delete(ref)`, `delete_run(run_id)`. A
-`FileRef` is `{tmp_name, name, content_type, size, charset}`. Subclassing
-`WizardFileStorage` and passing a different backend to `__init__`, or
-overriding `prefix`, covers most cases. See [File uploads](file-uploads.md).
-
-### `observer_class`
-
-Told what happened to a run, as it happens, without being shown the
-answers. Default `gandalf.observers.WizardObserver`, which does nothing.
-
-**Contract** — constructed once per run on first use as `cls(run_id)`;
-`submission(step, accepted, metadata)` fires once per placement (not per
-replay), `run_completed()` fires after `done()`. It must not raise. See
-[Observers](observers.md).
-
-### `storage_class`
-
-**Not a configure key.** Set it on the viewset:
-
-```python
-class ApplicationViewSet(WizardViewSet):
-    storage_class = DurableStorage
-```
-
-Default `gandalf.storage.SessionStorage`. Passing it to `.configure()`
-raises `ImproperlyConfigured`: *"storage_class belongs on the WizardViewSet,
-not the wizard. Storage has to exist before the wizard does — get_wizard()
-is handed a Run that can already read stored state — so the wizard
-cannot supply it."* A dynamic `get_wizard()` reads the run's stored state to
-decide its shape, and the run is created and retrieved before the wizard is
-resolved, so storage cannot be a property of the thing it precedes.
-
-**Contract** — the `gandalf.types.WizardStorage` protocol: constructed as
-`cls(context: WizardContext)`; `initialise_run() -> run_id`,
-`retrieve_run(run_id) -> run_id` (raising `RunNotFound`),
-`get_run_data(run_id)`, `get_state(run_id)`, `set_state(run_id, state)`,
-`get_run_metadata(run_id)`, `set_run_metadata(run_id, metadata)`,
-`delete_run(run_id)`, `complete_run(run_id)`, `is_run_complete(run_id) ->
-bool`. `SessionStorage` keeps at most `max_completed_runs = 25` tombstones.
-See [Storage](storage.md).
-
 ### `journey_store_class`
 
 Task lists and their sections keep journey state — which run each section
 is on, its stash, the journey's decided data — in a store separate from run
 storage. It is a class attribute of the root task list viewset, handed to
-every entry it builds, not a configure key:
+every entry it builds:
 
 ```python
 class GrantApplicationViewSet(TaskListViewSet):
@@ -206,17 +197,17 @@ and [Task lists](tasklists.md).
 
 ### `WizardViewSet.configure_wizard(wizard)`
 
-What the viewset does with what `get_wizard()` returns:
+What the viewset does with what `get_wizard()` returns: builds a
+`ConfiguredWizard` from the declaration and every attribute above. Anything
+other than a `Wizard` raises `TypeError` *"WizardViewSet.wizard must be a
+Wizard"*.
 
-| Given | Result |
-| --- | --- |
-| a `ConfiguredWizard` | returned unchanged — no key on the viewset reaches it |
-| a `Wizard` | `wizard.configure(template_name=self.template_name)` if the viewset has a `template_name`, else `wizard.configure()` |
-| anything else | `TypeError` *"WizardViewSet.wizard must be a Wizard or ConfiguredWizard"* |
-
-The result is cached on the view instance for the request, keyed on the
-identity of the declaration it came from, so a static `wizard` attribute is
-configured once per request even though a POST resolves twice.
+The result is kept by the viewset *class*, keyed on the declaration object,
+so a static `wizard` attribute is configured once and every request of
+every run hands back the same object — which is what lets a POST that
+re-resolves to the same wizard skip its refresh walk. A dynamic
+`get_wizard()` returns a new declaration each call and correctly gets no
+reuse; the cache holds its keys weakly, so it leaves nothing behind.
 
 ### Django settings
 
@@ -245,7 +236,7 @@ depends on Django alone.
 
 ## Usage
 
-### Configuring on the viewset only
+### The template alone
 
 ```python
 from gandalf.viewsets import WizardViewSet
@@ -258,10 +249,9 @@ class ApplicationViewSet(WizardViewSet):
     wizard = Wizard().step(ApplicantForm, name="applicant").step(EmailForm, name="contact")
 ```
 
-The viewset configures the bare `Wizard` with its `template_name` and every
-other default.
+Every other seam is its default.
 
-### Configuring the wizard, with the template alongside
+### Watching a wizard
 
 ```python
 from gandalf.observers import WizardObserver
@@ -277,21 +267,39 @@ class CountRejections(WizardObserver):
 
 class ApplicationViewSet(WizardViewSet):
     url_name = "grant-application"
+    template_name = "grants/step.html"
+    observer_class = CountRejections
     wizard = (
         Wizard()
         .step(ApplicantForm, name="applicant")
         .step(EmailForm, name="contact")
-        .configure(
-            template_name="grants/step.html",   # the viewset will not add it
-            observer_class=CountRejections,
-        )
     )
 ```
+
+### The same seams on a section of a task list
+
+```python
+from gandalf.tasklists import Section, SectionViewSet, TaskList
+
+
+class SetupSection(SectionViewSet):
+    wizard = setup
+    template_name = "grants/step.html"
+    observer_class = CountRejections
+
+
+class GrantApplication(TaskList):
+    setup = Section(SetupSection, title="Applying as")
+```
+
+The entry is unchanged; the section in its slot carries what a view
+carries.
 
 ### A factory that decorates every generated step
 
 ```python
 from gandalf.form_views import StepFormView
+from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 
@@ -310,16 +318,20 @@ def grant_form_view_factory(form_class, *, template_name):
     )
 
 
-wizard = (
-    Wizard()
-    .step(ApplicantForm, name="applicant")
-    .configure(template_name="grants/step.html", form_view_factory=grant_form_view_factory)
-)
+class ApplicationViewSet(WizardViewSet):
+    url_name = "grant-application"
+    template_name = "grants/step.html"
+    form_view_factory = staticmethod(grant_form_view_factory)
+    wizard = Wizard().step(ApplicantForm, name="applicant")
 ```
+
+`staticmethod` because a plain function on a class body would be bound to
+the view instance when read from it.
 
 ### Routing on a different context key
 
 ```python
+from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import StepNameRouter, Wizard
 
 
@@ -327,77 +339,49 @@ class SlugRouter(StepNameRouter):
     context_key = "slug"
 
 
-wizard = (
-    Wizard()
-    .step(ApplicantForm, name="applicant", slug="about-you")
-    .step(EmailForm, name="contact", slug="how-to-reach-you")
-    .configure(template_name="grants/step.html", step_router_class=SlugRouter)
-)
+class ApplicationViewSet(WizardViewSet):
+    url_name = "grant-application"
+    template_name = "grants/step.html"
+    step_router_class = SlugRouter
+    wizard = (
+        Wizard()
+        .step(ApplicantForm, name="applicant", slug="about-you")
+        .step(EmailForm, name="contact", slug="how-to-reach-you")
+    )
 ```
 
 Every step now needs a `slug`; `name` is still what `find_step(name=...)`
 and `on_field` read.
 
-### Uploads on a separate backend
-
-```python
-from django.core.files.storage import FileSystemStorage
-
-from gandalf.file_storage import WizardFileStorage
-from gandalf.wizard import Wizard
-
-
-class ScratchFileStorage(WizardFileStorage):
-    def __init__(self, backend=None):
-        super().__init__(backend or FileSystemStorage(location="/srv/grants/scratch"))
-
-
-wizard = (
-    Wizard()
-    .step(SupportingDocumentForm, name="documents")
-    .configure(template_name="grants/step.html", file_storage_class=ScratchFileStorage)
-)
-```
-
 ---
 
 ## Troubleshooting
 
-### `ImproperlyConfigured: Wizard.configure() must receive template_name`
+### `ImproperlyConfigured: A step declared from … needs template_name to generate its view`
 
-A step declared with a bare `forms.Form` has no template to render. Either
-set `template_name` on the viewset (for a bare `Wizard`), pass it to
-`.configure()` (for a pre-configured wizard), or declare the step with a
-`StepFormView` that carries its own.
+A step is a bare `Form` and the viewset has no `template_name`. Set one on
+the viewset — or, for a section of a task list, `section_template_name`
+on the page or `template_name` on the `SectionViewSet` in the slot — or
+declare the step with a `FormView` of its own.
 
-### I set `template_name` on the viewset but the steps render another template
+### `TypeError: WizardViewSet.wizard must be a Wizard`
 
-The viewset's `wizard` is already a `ConfiguredWizard`, and
-`configure_wizard()` returns one unchanged. Move `template_name` into the
-`.configure()` call.
+`wizard` (or what `get_wizard()` returned) is not a `Wizard`. There is
+nothing else to hand a viewset: a `ConfiguredWizard` is what the viewset
+builds, not what it is given.
 
-### `ImproperlyConfigured: storage_class belongs on the WizardViewSet`
+### A seam I set on the viewset is not applied to a section
 
-`storage_class` was passed to `.configure()`. Set it as a class attribute on
-the viewset instead; the run's storage has to exist before `get_wizard()` is
-called.
+The section has its own viewset. `TaskListViewSet` reaches its sections
+with `storage_class`, `journey_store_class` and `section_template_name`;
+any other seam goes on a `SectionViewSet` subclass in the entry's slot.
 
-### My `.configure(observer_clas=...)` had no effect
+### An attribute I misspelt was silently ignored
 
-Unknown keys are stored and ignored, not rejected. Check the spelling
-against the table above.
-
-### `TypeError: WizardViewSet.wizard must be a Wizard or ConfiguredWizard`
-
-`wizard` (or `get_wizard()`'s return) is something else — commonly a
-declaration tree or a run. Return the `Wizard` value itself.
-
-### Answers vanish between requests
-
-Sessions are not being saved: `SessionMiddleware` is missing, or the
-session backend is unavailable. The walk writes state to `request.session`
-and relies on the middleware to persist it.
+Class attributes are Django's convention and Django's failure mode:
+`observer_clas = …` is an attribute nothing reads. There is no check —
+the same is true of `template_nam` on any `TemplateView`.
 
 ---
 
-**Learn:** [Chapter 10 — Completion hooks and metadata](../learn/10-completion-hooks-and-metadata.md) · **Related:** [Wizard](wizard.md), [`WizardViewSet`](viewsets.md), [Storage](storage.md), [File uploads](file-uploads.md), [Observers](observers.md), [Journey store](journey-store.md)
+**Learn:** [Chapter 1 — Steps and completion](../learn/01-steps-and-completion.md) · **Related:** [`WizardViewSet`](viewsets.md), [`Wizard`](wizard.md), [Storage](storage.md), [File uploads](file-uploads.md), [Observers](observers.md), [Step views](step-views.md)

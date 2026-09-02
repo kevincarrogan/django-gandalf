@@ -28,6 +28,7 @@ from tests.testapp.forms import (
     PersonalDetailsForm,
     ReviewForm,
 )
+from tests.support import configured
 
 
 class _Session(dict):
@@ -55,12 +56,12 @@ def _build_items(context):
 
 
 def _expand_wizard(builder=_build_items):
-    return (
+    return configured(
         Wizard()
         .step(ItemCountForm, name="count")
         .expand(builder)
-        .step(ReviewForm, name="review")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(ReviewForm, name="review"),
+        template_name="testapp/linear_wizard.html",
     )
 
 

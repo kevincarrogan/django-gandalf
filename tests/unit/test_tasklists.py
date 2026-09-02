@@ -180,6 +180,8 @@ def _retrieved(view, run_id="run-1"):
 
     run = Run(context, SessionStorage(context))
     run.retrieve(run_id)
+    # Resolved, as `inspect()` would: finishing walks the run to pin it.
+    view._resolve_wizard(run)
     return run
 
 
@@ -1080,7 +1082,7 @@ def test_finishing_a_section_stashes_its_answers_and_clears_its_run(rf):
         },
     )
 
-    view.done(_retrieved(view))
+    view.finish(_retrieved(view))
 
     store = SessionJourneyStore(WizardContext.from_request(view.request), "default")
     assert store.get_stash("contact") == {
@@ -1092,7 +1094,7 @@ def test_finishing_a_section_stashes_its_answers_and_clears_its_run(rf):
 
 
 def test_a_finished_section_sends_the_user_back_to_its_page(rf):
-    """The default `run_done` — a task list expects a finished task to
+    """The default `done()` — a task list expects a finished task to
     deposit the user back on the list."""
     view = _contact_view(
         rf, {"gandalf_runs": {"run-1": {"state": [{"step": {"name": "Ada"}}]}}}
@@ -1104,18 +1106,18 @@ def test_a_finished_section_sends_the_user_back_to_its_page(rf):
     assert response["Location"] == "/readme/task-list/"
 
 
-def test_run_done_runs_between_the_stash_and_the_redirect(rf):
-    """A section's own `run_done()` sees the store already holding the
-    stash, and the run still readable."""
+def test_done_runs_between_the_stash_and_the_redirect(rf):
+    """A section's own `done()` sees the store already holding the stash,
+    and the run still readable."""
     events = []
 
     class _Deciding(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, run):
+        def done(self, run):
             store = self.get_journey_store()
             events.append((store.get_stash("contact")["state"], run.get_state()))
-            return super().run_done(run)
+            return super().done(run)
 
     view = _contact_view(
         rf,
@@ -1123,20 +1125,20 @@ def test_run_done_runs_between_the_stash_and_the_redirect(rf):
         cls=_view(_list(contact=Section(_Deciding))).viewset_for("contact"),
     )
 
-    response = view.done(_retrieved(view))
+    response = view.finish(_retrieved(view))
 
     assert events == [([{"step": {"name": "Ada"}}], [{"step": {"name": "Ada"}}])]
     assert response["Location"] == "/readme/task-list/"
 
 
-def test_a_run_done_that_raises_leaves_the_section_resumable(rf):
-    """Mirrors `_finish`'s own ordering — the run id is cleared only after
-    the application's work has succeeded."""
+def test_a_done_that_raises_leaves_the_section_resumable(rf):
+    """Mirrors `WizardViewSet.finish()`'s own ordering — the run id is
+    cleared only after the application's work has succeeded."""
 
     class _Failing(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, run):
+        def done(self, run):
             raise RuntimeError("nope")
 
     view = _contact_view(
@@ -1149,27 +1151,27 @@ def test_a_run_done_that_raises_leaves_the_section_resumable(rf):
     )
 
     with pytest.raises(RuntimeError):
-        view.done(_retrieved(view))
+        view.finish(_retrieved(view))
 
     store = SessionJourneyStore(WizardContext.from_request(view.request), "default")
     assert store.get_run("contact") == "run-1"
 
 
-def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_run_done(
+def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_done(
     rf,
 ):
-    """`run_recorded()` sits above `run_done()` and below the stash, so
-    it can read what was just recorded and cannot be pre-empted by an
-    application hook that obliterates, escapes or raises."""
+    """`run_recorded()` sits above `done()` and below the stash, so it can
+    read what was just recorded and cannot be pre-empted by an application
+    hook that obliterates, escapes or raises."""
     events = []
 
     class _Recording(_Page.viewset_for("contact")):
         def run_recorded(self, run, store, key):
             events.append(("recorded", key, store.get_stash(key)["state"]))
 
-        def run_done(self, run):
+        def done(self, run):
             events.append(("done", self.get_key(), None))
-            return super().run_done(run)
+            return super().done(run)
 
     view = _contact_view(
         rf,
@@ -1180,7 +1182,7 @@ def test_bookkeeping_recorded_at_completion_runs_between_the_stash_and_run_done(
         cls=_Recording,
     )
 
-    view.done(_retrieved(view))
+    view.finish(_retrieved(view))
 
     assert events == [
         ("recorded", "contact", [{"step": {"name": "Ada"}}]),
@@ -1220,7 +1222,7 @@ def test_a_sections_stash_label_can_be_bumped_independently_of_its_key(rf):
         ),
     )
 
-    view.done(_retrieved(view))
+    view.finish(_retrieved(view))
 
     store = SessionJourneyStore(WizardContext.from_request(view.request), "default")
     assert store.get_stash("contact")["label"] == "contact-v2"
@@ -1247,7 +1249,7 @@ def test_a_section_without_a_key_is_misconfigured(rf):
     view = _contact_view(rf, {"gandalf_runs": {"run-1": {"state": []}}}, cls=_Keyless)
 
     with pytest.raises(ImproperlyConfigured, match="key"):
-        view.done(_retrieved(view))
+        view.finish(_retrieved(view))
 
 
 def test_a_section_without_a_page_to_return_to_is_misconfigured(rf):
@@ -1636,10 +1638,10 @@ def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
     class _Deciding(SectionViewSet):
         wizard = CONTACT
 
-        def run_done(self, run):
+        def done(self, run):
             step = run.path.find_step(name="first")
             self.get_journey_store().data["name"] = step.form.cleaned_data["name"]
-            return super().run_done(run)
+            return super().done(run)
 
     viewset = _view(_list(contact=Section(_Deciding))).viewset_for("contact")
     view = _contact_view(
@@ -1648,7 +1650,7 @@ def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
         cls=viewset,
     )
 
-    view.done(viewset.inspect(view.request, "run-1"))
+    view.finish(viewset.inspect(view.request, "run-1"))
 
     context = WizardContext.from_request(view.request)
     assert SessionJourneyStore(context, "default").data["name"] == "Ada"

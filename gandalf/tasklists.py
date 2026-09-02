@@ -31,7 +31,7 @@ order, the way a form's fields are. An entry carries *facts* — a title,
 where a finished section re-opens — and the thing in its slot carries
 *behaviour*: a `Wizard`, which the library wraps in a `SectionViewSet`,
 or your own `SectionViewSet` subclass when the section has something to
-do when it finishes (`run_done()`) or a reason not to be open yet
+do when it finishes (`done()`) or a reason not to be open yet
 (`blocked()`, `hidden()`). Nothing about the task list changes between the
 two — the same rule a wizard has for a `Form` and a `FormView`.
 
@@ -109,7 +109,7 @@ from gandalf.storage import (
 )
 from gandalf.types import JourneyStore, State, StorageClass, StrOrPromise
 from gandalf.viewsets import DoorRefused, WizardViewSet
-from gandalf.wizard import ConfiguredWizard, Wizard, declared_step_names
+from gandalf.wizard import Wizard, declared_step_names
 
 if TYPE_CHECKING:
     from gandalf.add_another import AddAnotherViewSet
@@ -190,8 +190,8 @@ class EntryNotFound(LookupError):
 
 
 #: A section is declared by its `Wizard`, or by a `SectionViewSet` subclass
-#: when it has behaviour — `run_done()`, `blocked()`, `hidden()`.
-WizardLike = Wizard | ConfiguredWizard | type[WizardViewSet]
+#: when it has behaviour — `done()`, `blocked()`, `hidden()`.
+WizardLike = Wizard | type[WizardViewSet]
 
 
 # --- the declaration ---------------------------------------------------------
@@ -711,17 +711,20 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         class ProjectSection(SectionViewSet):
             wizard = project
 
-            def run_done(self, run):
+            def done(self, run):
                 record_amount(self.get_journey_store(), run)
-                return super().run_done(run)
+                return super().done(run)
 
             @classmethod
             def hidden(cls, store): ...
 
-    Re-opening a completed section and fixing one answer walks to the end
-    and fires `done()` again. That is the intended "edit and re-save"
-    semantics, which is why the bookkeeping here is idempotent and
-    `run_done()` is what runs once per edit.
+    `done()` is the application's hook here exactly as it is on any
+    `WizardViewSet`; the section's own bookkeeping — stashing the answers,
+    recording the run — sits in `finish()` around it. Re-opening a
+    completed section and fixing one answer walks to the end and fires
+    `done()` again. That is the intended "edit and re-save" semantics,
+    which is why the bookkeeping is idempotent and `done()` is what runs
+    once per edit.
     """
 
     task_list_viewset: type[TaskListViewSet] | None = None
@@ -748,20 +751,31 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
     def get_task_list_url_kwargs(self) -> dict[str, Any]:
         return self.get_url_kwargs()
 
-    def done(self, run: Run) -> HttpResponseBase:
-        """Record the section as finished, then hand off to `run_done()`.
+    def finish(self, run: Run) -> HttpResponseBase:
+        """Record the section as finished around the run's own completion."""
+        return self.record(run, super().finish)
+
+    def record(
+        self, run: Run, complete: Callable[[Run], HttpResponseBase]
+    ) -> HttpResponseBase:
+        """Record the section as finished around `complete(run)`.
 
         The stash is taken first because it can only be taken at all while
-        the run's state is readable — completion tears that down after
-        `done()` returns. The run id is cleared after `run_done()` returns:
-        a `run_done()` that raises leaves the section resumable rather than
-        stranded with a stash and no way back to the run that made it.
+        the run's state is readable — completing the run tears that down
+        after `done()` returns. The run id is cleared last: a `done()` that
+        raises leaves the section resumable rather than stranded with a
+        stash and no way back to the run that made it.
+
+        `complete` is `WizardViewSet.finish()` from a dispatch, which also
+        tombstones the run; from `Journey.finish()` it is this section's
+        bare `done()`, because that run belongs to another viewset, mid-way
+        through a completion of its own.
         """
         key = self.get_key()
         store = self.get_journey_store()
         store.put_stash(key, run.stash(label=self.get_label()))
         self.run_recorded(run, store, key)
-        response = self.run_done(run)
+        response = complete(run)
         store.clear_run(key)
         return response
 
@@ -770,7 +784,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         window where the run's answers are still readable. A plain section
         records nothing; an item caches its title."""
 
-    def run_done(self, run: Run) -> HttpResponseBase:
+    def done(self, run: Run) -> HttpResponseBase:
         """What this section does when it finishes, beyond being recorded.
         The run is still readable here and torn down after, so anything
         another section's `blocked()` or `hidden()` needs to know is read
@@ -1452,8 +1466,8 @@ class Journey:
     `id` is the journey's identity, `store` its record, `url` the page for
     it. `finish()` records a finished run as one of the sections exactly as
     finishing it from the page would — stashed under the section's key and
-    label, its `run_done()` run — so it arrives complete and re-openable
-    like any other row.
+    label, its `done()` run — so it arrives complete and re-openable like
+    any other row.
 
     Built on a `WizardContext` rather than a request, because of what a
     journey turns out to be: an id, a record keyed by it, and a URL. None
@@ -1529,4 +1543,6 @@ class Journey:
         view.setup(
             self.context.request or self.context.http_request(), **self.page_kwargs
         )
-        view.done(run)
+        # Recorded, not completed: the run is the caller's, and the
+        # viewset it came from is about to tombstone it itself.
+        view.record(run, view.done)

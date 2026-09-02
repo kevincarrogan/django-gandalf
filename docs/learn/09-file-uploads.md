@@ -41,7 +41,7 @@ and the run's files are cleaned up once `done()`'s response has rendered.
 
 The default storage writes under a `gandalf/<run_id>/` prefix of Django's
 default storage; point it elsewhere by subclassing `WizardFileStorage` and
-passing it to `.configure(file_storage_class=...)`.
+setting `file_storage_class` on the viewset.
 
 > ▶ **Try it live:** http://127.0.0.1:8000/readme/upload/ &nbsp;·&nbsp; **Source:** [`ch09_uploads.py`](../../tests/testapp/readme/ch09_uploads.py) &nbsp;·&nbsp; **Reference:** [File uploads](../reference/file-uploads.md)
 

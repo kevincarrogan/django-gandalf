@@ -42,13 +42,14 @@ so the step-to-file binding lives in state, not in the storage path.
 | `delete(ref)` | Delete `ref["tmp_name"]` from the backend |
 | `delete_run(run_id)` | Delete every file under `gandalf/<run_id>/`. A prefix that does not exist is not an error |
 
-Configure a subclass through the wizard:
+Configure a subclass on the viewset:
 
 ```python
-wizard = Wizard().step(...).configure(file_storage_class=TenantFileStorage)
+class ApplicationViewSet(WizardViewSet):
+    file_storage_class = TenantFileStorage
 ```
 
-`ConfiguredWizard.file_storage_class` defaults to `WizardFileStorage`.
+`WizardViewSet.file_storage_class` defaults to `WizardFileStorage`.
 `Run.file_storage` instantiates it with no arguments, once per
 run, so a subclass supplies its backend from `__init__`.
 
@@ -223,11 +224,11 @@ class TenantFileStorage(WizardFileStorage):
         super().__init__(backend=S3Storage(bucket_name="applications-in-progress"))
 
 
-wizard = (
-    Wizard()
-    .step(GoverningDocumentForm, name="governing-document")
-    .configure(file_storage_class=TenantFileStorage)
-)
+class DocumentsViewSet(WizardViewSet):
+    url_name = "documents"
+    template_name = "grants/upload_step.html"
+    file_storage_class = TenantFileStorage
+    wizard = Wizard().step(GoverningDocumentForm, name="governing-document")
 ```
 
 Keys land at `grant-applications/<run_id>/<uuid>-<name>`. The UUID

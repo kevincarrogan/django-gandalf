@@ -54,11 +54,7 @@ class ApplicationSection(SectionViewSet):
     """
 
     template_name = "hybrid/step.html"
-
-    def configure_wizard(self, wizard):
-        return wizard.configure(
-            template_name=self.template_name, observer_class=DemoObserver
-        )
+    observer_class = DemoObserver
 
 
 class IdentitySection(ApplicationSection):
@@ -66,14 +62,14 @@ class IdentitySection(ApplicationSection):
 
     wizard = HybridIdentityViewSet.wizard
 
-    def run_done(self, run):
+    def done(self, run):
         """Record the name on the journey, where every other part can read
         it without walking this one again."""
         answer = run.path.find_step(name="name").answer
         self.get_journey_store().data["applicant"] = (
             f"{answer['first_name']} {answer['surname']}"
         )
-        return super().run_done(run)
+        return super().done(run)
 
 
 class LicenceSection(ApplicationSection):
@@ -115,14 +111,14 @@ class CoverSection(ApplicationSection):
     def blocked(cls, store):
         return not store.has_stash("identity")
 
-    def run_done(self, run):
+    def done(self, run):
         """Price it here, where the run is in hand and a walk has already
         been paid for. The page's submit renders what this worked out."""
         store = self.get_journey_store()
         store.data["quote"] = quote_for(
             run, vehicle_values=lambda _: fleet_values(store)
         )
-        return super().run_done(run)
+        return super().done(run)
 
 
 class Application(TaskList):

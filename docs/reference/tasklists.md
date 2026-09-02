@@ -156,11 +156,11 @@ into a tree it no longer fits.
 
 A wizard the user finishes on its own and can come back to.
 
-- `wizard` — a `Wizard` or `ConfiguredWizard`; or a `SectionViewSet`
-  subclass, for a section with behaviour: `run_done()` when it finishes,
-  `blocked()` / `hidden()` for when it may be opened, `run_started()`, a
-  per-request `get_wizard()`. A viewset's own `template_name` and `wizard`
-  are used as declared.
+- `wizard` — a `Wizard`; or a `SectionViewSet` subclass, for a section
+  with behaviour: `done()` when it finishes, `blocked()` / `hidden()` for
+  when it may be opened, `run_started()`, a per-request `get_wizard()`, or
+  any seam of its own — an observer, a file storage, a template. A
+  viewset's own attributes are used as declared.
 - `reopen_at` — the step a completed section re-opens at, checked against
   the wizard's declared steps when the page is built (`ImproperlyConfigured`
   for a name it does not declare; a wizard with an `.expand()`, or one built
@@ -424,9 +424,9 @@ that in the slot instead:
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, run):
+    def done(self, run):
         record_amount(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
     @classmethod
     def hidden(cls, store):
@@ -453,19 +453,25 @@ attributes of its page.
   stamped into the stash (`label`, else the key).
 - `get_task_list_url_kwargs()` — the wizard's own `get_url_kwargs()`, the
   journey and any mount prefix among them.
-- `done(run)` — in order: `store.put_stash(key, run.stash(label=...))`;
-  `run_recorded(run, store, key)`; `response = run_done(run)`;
-  `store.clear_run(key)`; return the response. A `run_done()` that raises
-  leaves the run id in place, so the section stays resumable.
+- `finish(run)` — the section's bookkeeping around
+  [`WizardViewSet.finish()`](viewsets.md#finishrun): `record(run,
+  super().finish)`.
+- `record(run, complete)` — in order: `store.put_stash(key,
+  run.stash(label=...))`; `run_recorded(run, store, key)`; `response =
+  complete(run)`; `store.clear_run(key)`; return the response. From a
+  dispatch `complete` is `WizardViewSet.finish()` — `done(run)`, then the
+  tombstone; from `Journey.finish()` it is the bare `done()`, since that
+  run is another viewset's to complete. A `done()` that raises leaves the
+  run id in place, so the section stays resumable.
 - `run_recorded(run, store, key)` — library-side bookkeeping that
   must read the finished run, inside the window where the run's state is
   still readable. A plain section records nothing; an item caches its
   title.
-- `run_done(run)` — what the section does when it finishes,
-  beyond being recorded. Runs on every completion — the first and each
-  re-save — after the stash is written. Write what the rest of the journey
-  needs into `store.data` here; the run is still readable. Default
-  `redirect(get_task_list_url())`.
+- `done(run)` — what the section does when it finishes, beyond being
+  recorded: the application's hook, as on any `WizardViewSet`. Runs on
+  every completion — the first and each re-save — after the stash is
+  written. Write what the rest of the journey needs into `store.data`
+  here; the run is still readable. Default `redirect(get_task_list_url())`.
 - `dispatch()` / `submitted(store)` — a bookmarked run URL under a
   submitted journey is sent back to the page.
 
@@ -505,7 +511,7 @@ mounted under a journey segment); `page_kwargs`; `task_list_viewset`;
 
 - `finish(section, run)` — record a finished run as `section`,
   exactly as finishing it from the page would: stashed under the section's
-  key and label, its `run_done()` run, its run cleared. It arrives on the
+  key and label, its `done()` run, its run cleared. It arrives on the
   page complete and re-openable like any other row. Raises `EntryNotFound`
   for a key the list does not declare.
 
@@ -616,16 +622,16 @@ def record_amount(store, run):
 class ProjectSection(SectionViewSet):
     wizard = project
 
-    def run_done(self, run):
+    def done(self, run):
         record_amount(self.get_journey_store(), run)
-        return super().run_done(run)
+        return super().done(run)
 
 
 class GrantApplication(TaskList):
     project = Section(ProjectSection, title="Project", reopen_at="review")
 ```
 
-The `Section` is unchanged; the richer thing goes in the slot. `run_done()`
+The `Section` is unchanged; the richer thing goes in the slot. `done()`
 runs after the stash is written and before the user is sent back to the
 page, on every completion — the first and each re-save.
 
@@ -775,8 +781,9 @@ page says *Locked* too.
 
 ### A section completes but its row still says Not started
 
-The section's viewset overrides `done()`. `SectionViewSet.done()` is what
-stashes — put the work in `run_done()` instead.
+The section's viewset overrides `finish()` without calling `super()`.
+`SectionViewSet.finish()` is what stashes; the application's hook is
+`done()`.
 
 ### Clicking a row starts a fresh run beside the one I was editing
 

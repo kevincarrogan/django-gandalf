@@ -189,7 +189,7 @@ def test_configurer_requires_template_name_for_form_class():
 
     with pytest.raises(
         ImproperlyConfigured,
-        match="Wizard.configure\\(\\) must receive template_name",
+        match="FirstStepForm needs template_name to generate its view",
     ):
         tree.Configurer(template_name=None).transform(step)
 

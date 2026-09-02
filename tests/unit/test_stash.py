@@ -20,6 +20,7 @@ from tests.testapp.forms import (
     ProfilePhotoForm,
     SecondStepForm,
 )
+from tests.support import configured
 
 
 class _Session(dict):
@@ -223,11 +224,9 @@ def test_stash_keeps_interior_holes_verbatim(request_factory):
 
 
 def _linear_wizard():
-    return (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(template_name="testapp/linear_wizard.html")
+    return configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -322,11 +321,9 @@ def test_a_stripped_required_file_step_parks_the_cursor_there(request_factory):
     """The stash kept the step's data but dropped its files, so on
     resurrection the required file field no longer validates — the walk
     parks exactly where the user has to re-upload."""
-    wizard = (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(ProfilePhotoForm, name="photo")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepForm, name="first").step(ProfilePhotoForm, name="photo"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_factory()
     bound = _fresh_bound(request, wizard=wizard)
@@ -343,10 +340,9 @@ def test_a_stripped_required_file_step_parks_the_cursor_there(request_factory):
 
 
 def test_a_stripped_optional_file_step_still_validates(request_factory):
-    wizard = (
-        Wizard()
-        .step(OptionalPhotoForm, name="photo")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(OptionalPhotoForm, name="photo"),
+        template_name="testapp/linear_wizard.html",
     )
     request = request_factory()
     bound = _fresh_bound(request, wizard=wizard)

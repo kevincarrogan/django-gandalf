@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from django import forms
@@ -25,7 +26,7 @@ from gandalf.types import Context
 
 
 if TYPE_CHECKING:
-    from gandalf.form_views import StepDeclaration
+    from gandalf.form_views import StepDeclaration, StepViewClass
 
 
 __all__ = [
@@ -455,77 +456,64 @@ class Wizard:
         declarations.append(tree.Expand(builder=builder))
         return self.__class__(tree=tree.build(declarations))
 
-    def configure(self, **configuration: Any) -> ConfiguredWizard:
-        return ConfiguredWizard(
-            tree=self.tree,
-            configuration=configuration,
-        )
-
 
 class ConfiguredWizard:
-    #: Every key `configure()` reads. A subclass that reads more extends it,
-    #: so an unknown key is still refused rather than silently ignored.
-    configuration_keys = frozenset(
-        {
-            "template_name",
-            "form_view_factory",
-            "file_storage_class",
-            "observer_class",
-            "cursor_walker_class",
-            "step_dispatcher_class",
-            "state_serializer_class",
-            "step_router_class",
-        }
-    )
+    """A declaration plus the seams a viewset runs it through.
+
+    What `run.wizard` is. Built by `WizardViewSet.configure_wizard()` from
+    the viewset's own attributes — the template its generated steps render
+    with, the observer, the walker and the rest — because those are the
+    view's concerns, and a `Wizard` is a value that has none. Nothing in
+    application code constructs one; a viewset does, once per declaration,
+    and hands the same object to every run of it.
+
+    The tree here is the declared tree with a `form_view` attached to every
+    step, which is the one thing a declaration cannot carry on its own: a
+    step declared as a bare `Form` has no view until something says which
+    template it renders with.
+    """
+
+    template_name: str | None = None
     file_storage_class = WizardFileStorage
     observer_class = WizardObserver
     cursor_walker_class = CursorWalker
     step_dispatcher_class = StepDispatcher
     state_serializer_class = StateSerializer
-    form_view_factory = staticmethod(form_view_factory)
+    form_view_factory: Callable[..., StepViewClass] = staticmethod(form_view_factory)
     step_router_class = StepNameRouter
 
-    def __init__(self, *, tree: Any, configuration: dict[str, Any]) -> None:
-        if "storage_class" in configuration:
-            raise ImproperlyConfigured(
-                "storage_class belongs on the WizardViewSet, not the wizard. "
-                "Storage has to exist before the wizard does — get_wizard() "
-                "is handed a Run that can already read stored state — "
-                "so the wizard cannot supply it. Set "
-                "WizardViewSet.storage_class instead."
-            )
-        unknown = sorted(set(configuration) - self.configuration_keys)
-        if unknown:
-            raise ImproperlyConfigured(
-                f"Wizard.configure() does not read {', '.join(unknown)}. "
-                f"It reads {', '.join(sorted(self.configuration_keys))} — a "
-                "key it does not read would be stored and never applied."
-            )
-        self.configuration = configuration
-        self.form_view_factory = configuration.get(
-            "form_view_factory", self.form_view_factory
-        )
-        self.tree = self._configure_tree(tree)
+    def __init__(
+        self,
+        declared: tree.Node | None,
+        *,
+        template_name: str | None = None,
+        form_view_factory: Callable[..., StepViewClass] | None = None,
+        file_storage_class: type[Any] | None = None,
+        observer_class: type[WizardObserver] | None = None,
+        cursor_walker_class: type[CursorWalker] | None = None,
+        step_dispatcher_class: type[StepDispatcher] | None = None,
+        state_serializer_class: type[StateSerializer] | None = None,
+        step_router_class: type[Any] | None = None,
+    ) -> None:
+        # `None` for any seam means the class default. A viewset passes
+        # every attribute it has, and the defaults here and there agree.
+        self.template_name = template_name
+        if form_view_factory is not None:
+            self.form_view_factory = form_view_factory
+        self.tree = self._configure_tree(declared)
         check_selectors(self)
-        self.file_storage_class = configuration.get(
-            "file_storage_class", self.file_storage_class
-        )
-        self.observer_class = configuration.get("observer_class", self.observer_class)
-        self.cursor_walker_class = configuration.get(
-            "cursor_walker_class", self.cursor_walker_class
-        )
-        self.step_dispatcher_class = configuration.get(
-            "step_dispatcher_class", self.step_dispatcher_class
-        )
-        self.state_serializer_class = configuration.get(
-            "state_serializer_class", self.state_serializer_class
-        )
-        self.step_router_class = configuration.get(
-            "step_router_class", self.step_router_class
-        )
-
-    def configure(self, **configuration: Any) -> ConfiguredWizard:
-        raise ImproperlyConfigured("ConfiguredWizard instances cannot be configured.")
+        if file_storage_class is not None:
+            self.file_storage_class = file_storage_class
+        if observer_class is not None:
+            self.observer_class = observer_class
+        if cursor_walker_class is not None:
+            self.cursor_walker_class = cursor_walker_class
+        if step_dispatcher_class is not None:
+            self.step_dispatcher_class = step_dispatcher_class
+        if state_serializer_class is not None:
+            self.state_serializer_class = state_serializer_class
+        if step_router_class is not None:
+            self.step_router_class = step_router_class
 
     def outline(self) -> list[dict[str, Any]]:
         """This wizard's declared shape, as data.
@@ -559,13 +547,12 @@ class ConfiguredWizard:
         return _outline(self.tree)
 
     def _configure_tree(self, root: tree.Node | None) -> tree.Node | None:
-        template_name = self.configuration.get("template_name")
         # `Transformer.transform` is deliberately open about what it returns;
         # a `Configurer` returns a tree of the same shape it was given.
         return cast(
             "tree.Node | None",
             tree.Configurer(
-                template_name=template_name,
+                template_name=self.template_name,
                 form_view_factory=self.form_view_factory,
             ).transform(root),
         )

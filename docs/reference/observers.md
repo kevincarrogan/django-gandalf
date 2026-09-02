@@ -90,12 +90,13 @@ follows `done()` both on the confirm POST and on `RunDriver.finish()`. A
 ### Installing one
 
 ```python
-wizard = Wizard().step(...).configure(observer_class=MyObserver)
+class SignupViewSet(WizardViewSet):
+    wizard = Wizard().step(...)
+    observer_class = MyObserver
 ```
 
-`observer_class` is a [configuration](configuration.md) key on
-`ConfiguredWizard`; the default is `WizardObserver`. A dynamic
-`get_wizard()` may configure a different observer per run.
+`observer_class` is a seam on the [viewset](configuration.md) — or on the
+`SectionViewSet` in a task list's slot; the default is `WizardObserver`.
 
 | Event | When | Given |
 | --- | --- | --- |
@@ -110,6 +111,7 @@ wizard = Wizard().step(...).configure(observer_class=MyObserver)
 
 ```python
 from gandalf.observers import WizardObserver
+from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard
 
 
@@ -122,15 +124,15 @@ class CountRejections(WizardObserver):
             )
 
 
-wizard = (
-    Wizard()
-    .step(ApplicantForm, name="applicant")
-    .step(BudgetForm, name="budget")
-    .configure(
-        template_name="applications/step.html",
-        observer_class=CountRejections,
+class ApplicationViewSet(WizardViewSet):
+    url_name = "grant-application"
+    template_name = "applications/step.html"
+    observer_class = CountRejections
+    wizard = (
+        Wizard()
+        .step(ApplicantForm, name="applicant")
+        .step(BudgetForm, name="budget")
     )
-)
 ```
 
 ### Telling a person's placements from a driver's

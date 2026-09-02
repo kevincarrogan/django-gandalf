@@ -37,6 +37,7 @@ from tests.testapp.views import (
     OpeningHoursStepView,
     SelfShapingAddressStepView,
 )
+from tests.support import configured
 
 
 def _bound_field(form, name):
@@ -176,11 +177,11 @@ class _Session(dict):
 @pytest.fixture
 def summary_view(rf):
     """A summary view over a two-step run with both answers stored."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(SummaryRowsForm, name="preferences")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(SummaryRowsForm, name="preferences"),
+        template_name="testapp/linear_wizard.html",
     )
     request = rf.get("/wizard/")
     request.session = _Session(
@@ -334,11 +335,11 @@ def summary_view_for(rf):
 
 @pytest.fixture
 def address_wizard():
-    return (
+    return configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(AddressForm, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(AddressForm, name="address", label="Address"),
+        template_name="testapp/linear_wizard.html",
     )
 
 
@@ -499,11 +500,11 @@ def test_an_answer_skips_a_field_the_step_does_not_ask(summary_view_for, address
     class _View(_SummaryView):
         summary_overrides = {"address": [Answer("town", "county", "postcode")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(_Dynamic, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(_Dynamic, name="address", label="Address"),
+        template_name="testapp/linear_wizard.html",
     )
 
     rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
@@ -520,11 +521,11 @@ def test_an_answer_naming_fields_a_declared_step_has_not_got_is_refused(
     class _View(_SummaryView):
         summary_overrides = {"who": [Answer("line_1", "town")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(AddressForm, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(AddressForm, name="address", label="Address"),
+        template_name="testapp/linear_wizard.html",
     )
 
     with pytest.raises(ImproperlyConfigured, match="line_1, town"):
@@ -540,12 +541,12 @@ def test_a_formset_step_elsewhere_does_not_stop_the_check(
     class _View(_SummaryView):
         summary_overrides = {"address": [Answer("town", "postcode")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
         .step(AddressForm, name="address", label="Address")
-        .step(OpeningHoursStepView, name="opening-hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
@@ -571,11 +572,11 @@ def test_a_formset_step_summarises_every_row(summary_view_for):
     rather than pretty — the page can say more with `build_summary_rows()`,
     and what three organisers should read like is its decision — but an
     answer nobody can see on the page is the one thing this must not do."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}])
@@ -593,10 +594,9 @@ def test_a_step_with_a_plain_form_view_is_iterated_directly(summary_view_for):
     """A step declared with a bare Django `FormView` carries no
     `get_answer_fields`, so it has no say and the page iterates its form —
     which is right, because a `BaseForm` yields its own bound fields."""
-    wizard = (
-        Wizard()
-        .step(FirstStepFromFormView, name="who", label="Who you are")
-        .configure(template_name="testapp/linear_wizard.html")
+    wizard = configured(
+        Wizard().step(FirstStepFromFormView, name="who", label="Who you are"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}])
@@ -617,11 +617,11 @@ def test_a_page_can_say_how_a_formset_step_reads(summary_view_for):
             for row in step.answer:
                 yield SummaryRow(step=step, question=row["day"], answer=row["opens"])
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
@@ -665,7 +665,7 @@ def test_a_key_naming_a_step_on_a_dormant_arm_is_kept(summary_view_for):
     class _View(_SummaryView):
         summary_overrides = {"address": [Answer("town", "postcode")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(AccountTypeForm, name="account_type", label="Account type")
         .branch(
@@ -674,8 +674,8 @@ def test_a_key_naming_a_step_on_a_dormant_arm_is_kept(summary_view_for):
                 Wizard().step(AddressForm, name="address"),
             ),
             default=Wizard().step(BusinessDetailsForm, name="business_name"),
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
     state = [
         {"step": {"account_type": "personal"}},
@@ -694,11 +694,11 @@ def test_names_are_not_checked_when_the_wizard_grows_mid_walk(summary_view_for):
     class _View(_SummaryView):
         summary_overrides = {"address": [Answer("town", "postcode")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who")
-        .expand(lambda context: Wizard().step(AddressForm, name="address"))
-        .configure(template_name="testapp/linear_wizard.html")
+        .expand(lambda context: Wizard().step(AddressForm, name="address")),
+        template_name="testapp/linear_wizard.html",
     )
     state = [{"step": {"name": "Ada"}}, {"expand": [{"step": ADDRESS}]}]
 
@@ -788,11 +788,11 @@ def test_a_value_nothing_rendered_is_escaped_like_any_other_string(address_rows)
 def test_a_value_template_is_given_the_row_it_renders(summary_view_for, address_state):
     """Through it the form: `cleaned_data` is where a value the form derived
     in `clean()` lives, and no field list can name one of those."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(GeocodedAddressForm, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(GeocodedAddressForm, name="address", label="Address"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, address_state, _TemplatedView)
@@ -1003,11 +1003,11 @@ def test_a_page_can_bring_a_spec_of_its_own(summary_view_for):
     class _View(_SummaryView):
         summary_overrides = {"opening-hours": [_Repeat("day", "opens")]}
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(OpeningHoursStepView, name="opening-hours", label="Opening hours"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
@@ -1024,11 +1024,11 @@ def self_shaping_rows(summary_view_for, address_state):
     """The rows for a wizard whose address step shapes itself."""
 
     def build(view_class):
-        wizard = (
+        wizard = configured(
             Wizard()
             .step(FirstStepForm, name="who", label="Who you are")
-            .step(SelfShapingAddressStepView, name="address", label="Address")
-            .configure(template_name="testapp/linear_wizard.html")
+            .step(SelfShapingAddressStepView, name="address", label="Address"),
+            template_name="testapp/linear_wizard.html",
         )
         view = summary_view_for(wizard, address_state, view_class)
         return view.get_context_data()["summary"]
@@ -1090,11 +1090,11 @@ def test_a_step_shaping_a_field_it_has_not_got_is_refused(
     class _TypoStepView(SelfShapingAddressStepView):
         summary_rows = [Hide("lookup_taken")]
 
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
-        .step(_TypoStepView, name="address", label="Address")
-        .configure(template_name="testapp/linear_wizard.html")
+        .step(_TypoStepView, name="address", label="Address"),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, address_state, _SummaryView)
@@ -1162,7 +1162,7 @@ def test_a_bare_form_step_can_say_it_at_the_declaration(
 ):
     """A step with no view of its own says it where it is declared, beside
     the name and the label it already says there."""
-    wizard = (
+    wizard = configured(
         Wizard()
         .step(FirstStepForm, name="who", label="Who you are")
         .step(
@@ -1173,8 +1173,8 @@ def test_a_bare_form_step_can_say_it_at_the_declaration(
                 Answer("line_1", "line_2", "town", "postcode"),
                 Hide("lookup_token"),
             ],
-        )
-        .configure(template_name="testapp/linear_wizard.html")
+        ),
+        template_name="testapp/linear_wizard.html",
     )
 
     view = summary_view_for(wizard, address_state, _SummaryView)

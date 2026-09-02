@@ -726,7 +726,7 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
     run.initialise()
 
     with pytest.raises(ImproperlyConfigured, match="key"):
-        view.done(run)
+        view.finish(run)
 
 
 def test_a_link_must_say_how_far_it_has_got():
@@ -834,8 +834,6 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
     """`label` is the *shape's* identity — bumped when a deploy reshapes the
     wizard, without renaming the section — and the section's own viewset
     is what stamps it."""
-    from gandalf.runtime import Run
-    from gandalf.storage import SessionStorage
 
     view_class = _view(
         _list(contact=Section(contact, label="contact-v2")), url_name="readme-task-list"
@@ -844,11 +842,9 @@ def test_a_section_stamps_its_declared_label_into_the_stash(rf, client):
     request.session = client.session
     view = view_class()
     view.setup(request)
-    context = WizardContext.from_request(request)
-    run = Run(context, SessionStorage(context))
-    run.initialise()
+    run = view_class.begin(request)
 
-    view.done(run)
+    view.finish(run)
 
     stashes = request.session["gandalf_journeys"]["default"]["stashes"]
     assert stashes["contact"]["label"] == "contact-v2"

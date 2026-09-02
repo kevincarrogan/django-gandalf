@@ -8,6 +8,7 @@ from gandalf.runtime import Run
 from gandalf.storage import SessionStorage
 from gandalf.wizard import Wizard, condition
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+from tests.support import configured
 
 
 class _Session(dict):
@@ -22,14 +23,10 @@ def request_with_session(rf):
 
 
 def _wizard(observer_class):
-    return (
-        Wizard()
-        .step(FirstStepForm, name="first")
-        .step(SecondStepForm, name="second")
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            observer_class=observer_class,
-        )
+    return configured(
+        Wizard().step(FirstStepForm, name="first").step(SecondStepForm, name="second"),
+        template_name="testapp/linear_wizard.html",
+        observer_class=observer_class,
     )
 
 
@@ -42,14 +39,12 @@ def _answered_ada(context):
 def _branching_wizard(observer_class):
     """The same two steps, with the second one behind a fork — so the
     submission that answers it is placed by a nested walk."""
-    return (
+    return configured(
         Wizard()
         .step(FirstStepForm, name="first")
-        .branch(condition(_answered_ada, Wizard().step(SecondStepForm, name="second")))
-        .configure(
-            template_name="testapp/linear_wizard.html",
-            observer_class=observer_class,
-        )
+        .branch(condition(_answered_ada, Wizard().step(SecondStepForm, name="second"))),
+        template_name="testapp/linear_wizard.html",
+        observer_class=observer_class,
     )
 
 
