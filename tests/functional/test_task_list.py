@@ -18,6 +18,7 @@ from pytest_django.asserts import assertContains, assertRedirects, assertTemplat
 
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
+from gandalf.tasklists import Destination
 from gandalf.tasklists import (
     BLOCKED,
     COMPLETE,
@@ -41,6 +42,15 @@ from gandalf.testing import (
 from tests.testapp.readme.ch12_task_list import GrantApplicationViewSet, contact
 from tests.testapp.readme.ch14_gated import GatedViewSet as ReadmeGatedViewSet
 from tests.testapp.views import GatedViewSet
+
+
+def _elsewhere(url_name="readme-task-list", status=COMPLETE):
+    """A destination that answers with one status, for a link in a test."""
+    return type(
+        "_Elsewhere",
+        (Destination,),
+        {"url_name": url_name, "status": classmethod(lambda cls, store: status)},
+    )
 
 
 ContactSectionViewSet = GrantApplicationViewSet.viewset_for("contact")
@@ -747,21 +757,39 @@ def test_a_groups_page_must_list_a_task_list():
 def test_a_link_must_say_how_far_it_has_got():
     """An entry with no viewset answers for itself: without a `status` the
     page would derive one from a stash key nothing writes."""
-    with pytest.raises(ImproperlyConfigured, match="status"):
-        Link("readme-task-list")
+
+    class _Mute(Destination):
+        url_name = "readme-task-list"
+
+    with pytest.raises(ImproperlyConfigured, match="how far it has got"):
+        Link(_Mute)
+
+
+def test_a_links_destination_must_name_where_it_goes():
+    class _Nowhere(Destination):
+        @classmethod
+        def status(cls, store):
+            return COMPLETE
+
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        Link(_Nowhere)
+
+
+def test_a_links_slot_holds_a_destination():
+    with pytest.raises(ImproperlyConfigured, match="Destination subclass"):
+        Link("readme-task-list")  # type: ignore[arg-type]
+
+
+def test_the_base_destination_answers_no_status_of_its_own():
+    with pytest.raises(ImproperlyConfigured, match="how far it has got"):
+        Destination.status(None)
 
 
 def test_a_link_links_past_the_door_and_answers_for_itself(rf, client):
     """A payment redirect, a page in another app: there is no run for the
     door to walk, so the row addresses it directly."""
     view = _view(
-        _list(
-            elsewhere=Link(
-                "readme-task-list",
-                title="Elsewhere",
-                status=lambda request, kwargs: COMPLETE,
-            )
-        ),
+        _list(elsewhere=Link(_elsewhere(), title="Elsewhere")),
         url_name="readme-task-list",
     )
 
@@ -774,7 +802,7 @@ def test_a_link_links_past_the_door_and_answers_for_itself(rf, client):
 def test_the_door_refuses_a_row_it_cannot_walk(rf, client):
     """Rows never point there, so arriving is a hand-typed or stale URL."""
     view = _view(
-        _list(elsewhere=Link("readme-task-list", status=lambda r, k: COMPLETE)),
+        _list(elsewhere=Link(_elsewhere("readme-task-list", COMPLETE))),
         url_name="readme-task-list",
     )
 

@@ -18,6 +18,7 @@ from gandalf.driver import (
     JourneyIncomplete,
     RunDriver,
 )
+from gandalf.tasklists import Destination
 from gandalf.tasklists import (
     COMPLETE,
     NOT_STARTED,
@@ -35,6 +36,15 @@ from tests.testapp.readme.ch12_task_list import (
 )
 from tests.testapp.readme.ch14_gated import GatedViewSet
 from tests.testapp.views import PartyViewSet, SubmitViewSet
+
+
+def _elsewhere(url_name="readme-task-list", status=COMPLETE):
+    """A destination that answers with one status, for a link in a test."""
+    return type(
+        "_Elsewhere",
+        (Destination,),
+        {"url_name": url_name, "status": classmethod(lambda cls, store: status)},
+    )
 
 
 @pytest.fixture
@@ -114,7 +124,7 @@ def test_a_link_describes_no_steps_because_they_are_not_here():
 
     class _Elsewhere(TaskList):
         contact = Section(CONTACT)
-        elsewhere = Link("readme-task-list", status=lambda request, kwargs: COMPLETE)
+        elsewhere = Link(_elsewhere("readme-task-list", COMPLETE))
 
     class _Page(TaskListViewSet):
         url_name = "readme-task-list"

@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
+from gandalf.tasklists import Destination
 from gandalf.tasklists import (
     SectionViewSet,
     COMPLETE,
@@ -36,12 +37,21 @@ from tests.testapp.views import GuestsViewSet, ScenarioViewSet
 FIRST = Wizard().step(FirstStepForm, name="first")
 
 
+def _elsewhere(url_name="readme-task-list", status=COMPLETE):
+    """A destination that answers with one status, for a link in a test."""
+    return type(
+        "_Elsewhere",
+        (Destination,),
+        {"url_name": url_name, "status": classmethod(lambda cls, store: status)},
+    )
+
+
 # --- an entry as a value ---------------------------------------------------------
 
 
 def test_entries_are_values():
     """Equal by kind, facts and key; hashable; readable."""
-    pay = Link("readme-task-list", title="Pay", status=lambda r, k: COMPLETE)
+    pay = Link(_elsewhere("readme-task-list", COMPLETE), title="Pay")
 
     assert Section(contact, title="A") == Section(contact, title="A")
     assert Section(contact).bound("a") != Section(contact).bound("b")
@@ -49,7 +59,7 @@ def test_entries_are_values():
     assert (Section(contact) == "not an entry") is False
     assert len({Section(contact).bound("a"), Section(contact).bound("a")}) == 1
     assert repr(pay.bound("pay")) == (
-        f"Link(title='Pay', url_name='readme-task-list', status={pay.status!r}, key='pay')"
+        f"Link(title='Pay', destination={pay.destination!r}, key='pay')"
     )
     assert pay.replace(title="Pay now").url_name == "readme-task-list"
     assert AddAnother(FIRST, min_items=1).replace(min_items=2).min_items == 2
@@ -144,7 +154,7 @@ def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf, client):
     page down with a KeyError."""
 
     class _Odd(TaskList):
-        pay = Link("readme-task-list", status=lambda request, kwargs: "half-done")
+        pay = Link(_elsewhere("readme-task-list", "half-done"))
 
     class _OddPage(TaskListViewSet):
         url_name = "odd-status-page"
@@ -159,7 +169,7 @@ def test_a_link_pointing_at_a_url_that_does_not_reverse_names_the_entry(rf, clie
     with nothing to say which declaration is wrong."""
 
     class _Broken(TaskList):
-        pay = Link("no-such-url-name", status=lambda request, kwargs: COMPLETE)
+        pay = Link(_elsewhere("no-such-url-name", COMPLETE))
 
     class _BrokenPage(TaskListViewSet):
         url_name = "broken-link-page"

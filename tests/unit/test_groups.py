@@ -12,6 +12,7 @@ door and ending shape as any entry.
 from http import HTTPStatus
 
 from gandalf.runtime import STASH_VERSION
+from gandalf.tasklists import Destination
 from gandalf.tasklists import (
     BLOCKED,
     COMPLETE,
@@ -29,6 +30,15 @@ from tests.testapp.readme.ch15_journey import (
     SupportingInformation,
 )
 from gandalf.wizard import Wizard
+
+
+def _elsewhere(url_name="readme-task-list", status=COMPLETE):
+    """A destination that answers with one status, for a link in a test."""
+    return type(
+        "_Elsewhere",
+        (Destination,),
+        {"url_name": url_name, "status": classmethod(lambda cls, store: status)},
+    )
 
 
 SupportingViewSet = GrantApplicationViewSet.viewset_for("supporting")
@@ -118,9 +128,7 @@ def test_a_page_knows_an_entry_that_is_a_group():
     assert not TaskListViewSet.is_group(
         Section(FIRST).bound("contact", ContactSectionViewSet)
     )
-    assert not TaskListViewSet.is_group(
-        Link("x", status=lambda r, k: 1).bound("elsewhere")
-    )
+    assert not TaskListViewSet.is_group(Link(_elsewhere("x")).bound("elsewhere"))
 
 
 # --- what the parent composes ----------------------------------------------------

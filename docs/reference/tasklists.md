@@ -10,6 +10,7 @@ from gandalf.tasklists import (
     INCOMPLETE,
     NOT_STARTED,
     AddAnother,
+    Destination,
     Entry,
     EntryNotFound,
     Group,
@@ -61,15 +62,15 @@ Each member is a `str` equal to its own value, so a template renders one
 directly (`tag--{{ row.status }}` gives `tag--not-started`) and compares it
 as it always did. Each is exported under its own name too, because
 `status == COMPLETE` reads better than a lookup — the type is there so the
-closed set is discoverable, and so a `Link`'s status callable has something
-to be checked against.
+closed set is discoverable, and so a `Destination`'s `status()` has
+something to be checked against.
 
 How an entry's status is derived, in precedence order:
 
 | Checked | Result |
 | --- | --- |
 | The section's `hidden()` (or the page's `entry_hidden()`) is true | The entry is not in `task_list.rows` at all — hidden outranks everything |
-| The entry is a `Link` | Whatever its `status` callable returns; nothing below runs |
+| The entry is a `Link` | Whatever its destination's `status(store)` returns; nothing below runs |
 | The section's `blocked()` (or the page's `entry_blocked()`) is true | `BLOCKED` — outranks a stash, so a section whose prerequisite was withdrawn after it was answered reports what the user can do now |
 | The entry is a group or an add-another | That page's `status_for()` — derived from its own rows |
 | A stash is held under the entry's full key | `COMPLETE` — the section ran to its own end and its answers were stashed |
@@ -173,8 +174,8 @@ A list the user grows, one run of `wizard` per item. The row links straight
 at the list's page and reads its declared status. The keyword arguments
 are [Add another](add-another.md)'s.
 
-A `Link`'s `status` callable must return one of the four statuses: the page
-renders a label for every row, so anything else is refused with
+A `Destination`'s `status()` must return one of the four statuses: the
+page renders a label for every row, so anything else is refused with
 `ImproperlyConfigured` naming the status, rather than taking the whole page
 down with a `KeyError`. Its `url_name` is reversed when the row is built,
 and a name that does not reverse is likewise refused by entry key rather
@@ -193,21 +194,35 @@ its Continue returns here rather than ending anything.
   A bare list gets a page that is a subclass of the root alone, rendering
   with the root's own `template_name`.
 
-#### `Link(url_name, *, title=None, status)`
+#### `Link(destination, *, title=None)`
 
 A row that links somewhere the task list does not run — a payment page, a
-page in another app. `status` is `callable(request, url_kwargs) -> str`,
-handed `entry_url_kwargs()`, and is required: without it the page would
-derive a status from a stash key nothing writes. `ImproperlyConfigured`
-at declaration otherwise.
+page in another app. The entry carries the title; the `Destination`
+subclass in its slot says where the row goes and how far it has got, the
+way the `SectionViewSet` in a section's slot says whether it is blocked.
+
+#### `Destination`
+
+The thing in a `Link`'s slot.
+
+- `url_name` — the URL name the row links to, reversed with the page's
+  URL kwargs. Required.
+- `status(cls, store)` *(classmethod)* — one of the four `EntryStatus`
+  values, read off the journey's store: `store.metadata`, `has_stash()`.
+  Required — the page cannot derive a status for a link from a stash
+  nothing writes — and asked once per row with no run and no request
+  behind it, exactly as a section's `blocked()` and `hidden()` are.
+
+`Link()` refuses, at declaration, a slot that is not a `Destination`
+subclass, one with no `url_name`, and one that declares no `status()`.
 
 #### `Entry`
 
 The base. `bound(key, viewset=None)` returns the entry with its key and
 viewset set — what `TaskListViewSet.materialise()` does. `reopen_at`,
-`url_name` and `status` are properties every kind answers (a `Section`'s
-`reopen_at`, a `Link`'s target and callable, `None` elsewhere), so the page
-reads one shape. `url_kwargs` are the extra kwargs an entry's own URLs take
+`url_name` and `destination` are attributes every kind answers (a
+`Section`'s `reopen_at`, a `Link`'s target and its destination, `None`
+elsewhere), so the page reads one shape. `url_kwargs` are the extra kwargs an entry's own URLs take
 beyond the page's — an item's id.
 
 ### `TaskListViewSet`
@@ -260,7 +275,7 @@ one. A root viewset registers itself as its list's `viewset`, which is what
 | `Section(wizard)` | a `SectionViewSet` subclass with the wizard, the full `key`, `task_list_url_name` and the stores | `<url_name>-<key>`; its runs `-run` and `-step` | `<key>/` — the bare URL is this page's door for the section; `<key>/<uuid:run_id>/…` is the run |
 | `AddAnother(wizard, …)` | an `AddAnotherViewSet` subclass — of the page in the slot, when there is one — with the entry, the full `key` and the stores | `<url_name>-<key>`; its item `-item`, `-remove`, `-item-run`, `-item-step` | `<key>/` — the list's page |
 | `Group(task_list)` | a subclass of **this** viewset class — and of the page in the slot, when there is one — over the group's list, with the full `key` and `task_list_url_name` | `<url_name>-<key>`, and `<url_name>-<key>-<subkey>` beneath it | `<key>/` — the group's page |
-| `Link(url_name, status=…)` | nothing | — | — |
+| `Link(destination)` | nothing | — | — |
 
 A group's page is a subclass of its root, so an override on the root — a
 status label, a title rule, `stash_unusable()` — applies to the whole tree;
@@ -771,6 +786,31 @@ to `apply-supporting` when it finishes — none of it typed. The page in the
 slot is what a view carries; `Group(SupportingInformation)` with the bare
 list is a page rendering with the root's template, as `Section(wizard)`
 with a bare wizard renders with `section_template_name`.
+
+### A row that links elsewhere
+
+```python
+from gandalf.tasklists import COMPLETE, NOT_STARTED, Destination, Link
+
+
+class Payment(Destination):
+    """The payment page is another app's; whether it has been paid is a
+    fact this journey recorded when the webhook came back."""
+
+    url_name = "payments:pay"
+
+    @classmethod
+    def status(cls, store):
+        return COMPLETE if store.metadata.get("paid") else NOT_STARTED
+
+
+class GrantApplication(TaskList):
+    contact = Section(contact, title="Contact details")
+    payment = Link(Payment, title="Pay the fee")
+```
+
+The row links straight at `payments:pay` — the door is never involved —
+and reads whatever `status()` says.
 
 ### Wording the statuses for the whole tree
 

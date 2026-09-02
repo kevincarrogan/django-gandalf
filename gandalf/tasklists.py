@@ -122,6 +122,7 @@ __all__ = [
     "INCOMPLETE",
     "NOT_STARTED",
     "AddAnother",
+    "Destination",
     "Entry",
     "EntryNotFound",
     "Group",
@@ -163,7 +164,7 @@ class EntryStatus(str, Enum):
     it always was (`tag--not-started`) and compares equal to its own
     spelling. Each member is exported under its own name as well, because a
     comparison reads better as `status == COMPLETE` than through a lookup;
-    the type is what a `Link`'s own status callable is checked against.
+    the type is what a `Destination`'s `status()` is checked against.
     """
 
     NOT_STARTED = "not-started"
@@ -213,9 +214,10 @@ class Entry:
 
     #: The step a finished entry re-opens at, where that applies.
     reopen_at: str | None = None
-    #: Where a link goes, and what decides its status; `None` for the rest.
+    #: Where a link goes, and the class that says how far it has got;
+    #: `None` for the rest.
     url_name: str | None = None
-    status: Callable[[HttpRequest, dict[str, Any]], EntryStatus] | None = None
+    destination: type[Destination] | None = None
 
     def __init__(
         self,
@@ -376,40 +378,82 @@ class Group(Entry):
         return {"title": self.title, "task_list": self.task_list}
 
 
+class Destination:
+    """Where a `Link` goes, and how far it has got — the thing in a link's
+    slot, as a `SectionViewSet` is in a section's.
+
+    A link points past the door at something the task list does not run:
+    a payment page, a page in another app. The page cannot derive a status
+    for it from a stash nothing writes, so the destination says, the way a
+    section says whether it is `blocked()` or `hidden()` — a classmethod
+    handed the journey's store, asked once per row, with no run and no
+    request behind it:
+
+        class Payment(Destination):
+            url_name = "pay"
+
+            @classmethod
+            def status(cls, store):
+                return COMPLETE if store.metadata.get("paid") else NOT_STARTED
+    """
+
+    #: The URL name the row links to, reversed with the page's URL kwargs.
+    url_name: str | None = None
+
+    @classmethod
+    def status(cls, store: JourneyStore) -> EntryStatus:
+        """How far this destination has got: one of the four `EntryStatus`
+        values, read off the store. Every destination declares its own."""
+        raise ImproperlyConfigured(
+            f"{cls.__name__} says nothing about how far it has got. Declare "
+            f"status(cls, store) on it, returning one of the four statuses."
+        )
+
+
 class Link(Entry):
     """A row that links somewhere the task list does not run — a payment
-    page, a page in another app. `status` decides what the row says of it,
-    called with the request and the URL kwargs the page would hand the
-    entry's own view; the page cannot derive one from a stash nothing
-    writes, so it is required."""
+    page, a page in another app. The `Destination` in its slot says where,
+    and how far it has got; the entry carries the title."""
 
     def __init__(
         self,
-        url_name: str,
+        destination: type[Destination],
         *,
         title: StrOrPromise | None = None,
-        status: Callable[[HttpRequest, dict[str, Any]], EntryStatus] | None = None,
         key: str = "",
         viewset: type[Any] | None = None,
         url_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        if status is None:
+        if not (isinstance(destination, type) and issubclass(destination, Destination)):
             raise ImproperlyConfigured(
-                f"A Link needs a status: the page cannot derive one for "
-                f"{url_name!r} from a stash nothing writes. Pass status=."
+                f"A Link's slot holds a Destination subclass saying where the "
+                f"row goes and how far it has got; {destination!r} is not one."
+            )
+        if destination.url_name is None:
+            raise ImproperlyConfigured(
+                f"{destination.__name__} names no url_name for the row to link to."
+            )
+        if not any(
+            "status" in vars(klass)
+            for klass in destination.__mro__[:-1]
+            if klass is not Destination
+        ):
+            raise ImproperlyConfigured(
+                f"{destination.__name__} says nothing about how far it has got: "
+                f"the page cannot derive a status for a link from a stash nothing "
+                f"writes. Declare status(cls, store) on it."
             )
         super().__init__(title=title, key=key, viewset=viewset, url_kwargs=url_kwargs)
-        self.url_name = url_name
-        self.status = status
+        self.destination = destination
+        self.url_name = destination.url_name
 
     def facts(self) -> dict[str, Any]:
-        return {"title": self.title, "url_name": self.url_name, "status": self.status}
+        return {"title": self.title, "destination": self.destination}
 
     def bound(self, key: str, viewset: type[Any] | None = None) -> Entry:
         return Link(
-            cast(str, self.url_name),
+            cast("type[Destination]", self.destination),
             title=self.title,
-            status=self.status,
             key=key,
             viewset=viewset,
             url_kwargs=self.url_kwargs,
@@ -1289,8 +1333,8 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         rows; a stash (complete); a run (incomplete); nothing (not started).
         Blocked outranks a stash so a section whose prerequisite was
         withdrawn after it was answered reports what the user can do now."""
-        if entry.status is not None:
-            return entry.status(self.request, self.entry_url_kwargs(entry))
+        if entry.destination is not None:
+            return entry.destination.status(store)
         if self.entry_blocked(entry, store):
             return BLOCKED
         if self.is_group(entry):
@@ -1344,7 +1388,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             return labels[status]
         raise ImproperlyConfigured(
             f"{self.__class__.__name__} cannot label the status {status!r}. "
-            f"A Link's status callable returns one of "
+            f"A Destination's status() returns one of "
             f"{', '.join(repr(known) for known in labels)}; override "
             "get_status_label() to add wording of your own."
         )

@@ -14,6 +14,7 @@ from django.views import View
 from gandalf.context import WizardContext
 from gandalf.runtime import STASH_VERSION
 from gandalf.storage import SessionJourneyStore, SessionStorage
+from gandalf.tasklists import Destination
 from gandalf.tasklists import (
     BLOCKED,
     COMPLETE,
@@ -37,6 +38,15 @@ from gandalf.viewsets import DoorRefused, WizardViewSet
 from gandalf.wizard import Wizard
 
 from tests.testapp.forms import FirstStepForm, SecondStepForm
+
+
+def _elsewhere(url_name="readme-task-list", status=COMPLETE):
+    """A destination that answers with one status, for a link in a test."""
+    return type(
+        "_Elsewhere",
+        (Destination,),
+        {"url_name": url_name, "status": classmethod(lambda cls, store: status)},
+    )
 
 
 class _Session(dict):
@@ -301,24 +311,50 @@ def test_entries_with_the_same_facts_compare_equal():
 def test_a_bare_entry_is_neither_a_link_nor_reopenable():
     entry = Entry(title="Bare").bound("bare")
 
-    assert (entry.reopen_at, entry.url_name, entry.status) == (None, None, None)
+    assert (entry.reopen_at, entry.url_name, entry.destination) == (None, None, None)
 
 
 def test_a_link_must_say_how_far_it_has_got():
     """Without a status the page would derive one from a stash key nothing
     writes."""
-    with pytest.raises(ImproperlyConfigured, match="status"):
-        Link("pay")
+
+    class _Mute(Destination):
+        url_name = "pay"
+
+    with pytest.raises(ImproperlyConfigured, match="how far it has got"):
+        Link(_Mute)
+
+
+def test_the_base_destination_answers_no_status_of_its_own():
+    """`Link()` refuses a destination that declares none, so this is only
+    reachable by asking the base directly — and it says why."""
+    with pytest.raises(ImproperlyConfigured, match="how far it has got"):
+        Destination.status(None)
+
+
+def test_a_links_destination_must_name_where_it_goes():
+    class _Nowhere(Destination):
+        @classmethod
+        def status(cls, store):
+            return COMPLETE
+
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        Link(_Nowhere)
+
+
+def test_a_links_slot_holds_a_destination():
+    with pytest.raises(ImproperlyConfigured, match="Destination subclass"):
+        Link("pay")  # type: ignore[arg-type]
 
 
 def test_a_link_binds_to_a_key_and_keeps_where_it_points():
-    status = lambda request, kwargs: COMPLETE  # noqa: E731
-    link = Link("readme-task-list", title="Pay", status=status).bound("payment")
+    destination = _elsewhere()
+    link = Link(destination, title="Pay").bound("payment")
 
-    assert (link.key, link.url_name, link.status, link.title) == (
+    assert (link.key, link.url_name, link.destination, link.title) == (
         "payment",
         "readme-task-list",
-        status,
+        destination,
         "Pay",
     )
     assert link.viewset is None
@@ -604,9 +640,7 @@ def test_a_blocked_section_is_refused_at_the_door(gated_page):
 def test_a_link_reporting_blocked_under_its_own_steam_is_refused_too(rf):
     """A link's `status` answers for itself, so the door asks the status
     rather than the hook — otherwise the two could disagree."""
-    gated = _list(
-        contact=Link("readme-task-list", status=lambda request, url_kwargs: BLOCKED)
-    )
+    gated = _list(contact=Link(_elsewhere("readme-task-list", BLOCKED)))
     view = _page(_view(gated), rf)
 
     assert view.get_rows()[0].status == BLOCKED
@@ -617,9 +651,7 @@ def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf):
     """A link's status is arbitrary code, and the page renders a label for
     every row — so a status outside the four is refused by name rather than
     taking the whole page down with a KeyError."""
-    odd = _list(
-        contact=Link("readme-task-list", status=lambda request, kwargs: "half-done")
-    )
+    odd = _list(contact=Link(_elsewhere("readme-task-list", "half-done")))
     view = _page(_view(odd), rf)
 
     with pytest.raises(ImproperlyConfigured, match="half-done"):
@@ -629,9 +661,7 @@ def test_a_link_reporting_a_status_the_page_cannot_label_says_so(rf):
 def test_a_link_pointing_at_a_url_that_does_not_reverse_names_the_entry(rf):
     """Otherwise every row on the page dies of one entry's NoReverseMatch,
     with nothing to say which declaration is wrong."""
-    broken = _list(
-        contact=Link("no-such-url-name", status=lambda request, kwargs: COMPLETE)
-    )
+    broken = _list(contact=Link(_elsewhere("no-such-url-name", COMPLETE)))
     view = _page(_view(broken), rf)
 
     with pytest.raises(ImproperlyConfigured, match="no-such-url-name"):
@@ -731,13 +761,7 @@ def test_a_section_answers_open_by_default(page):
 def test_a_link_is_never_asked(rf):
     """A link has no rule. It supplies its own `status` instead, which the
     door reads — and which may itself be `BLOCKED`."""
-    linked = _list(
-        payment=Link(
-            "readme-task-list",
-            title="Payment",
-            status=lambda request, url_kwargs: NOT_STARTED,
-        )
-    )
+    linked = _list(payment=Link(_elsewhere(status=NOT_STARTED), title="Payment"))
     view = _page(_view(linked), rf)
 
     store = view.get_journey_store()
@@ -1299,7 +1323,7 @@ def test_a_row_can_point_at_something_that_is_not_a_wizard(rf):
     """A payment redirect, a page in another app. The door exists to walk a
     run and pick a step; something with no run to walk has nothing for it to
     do, so the row addresses it directly."""
-    linked = _list(guests=Link("readme-task-list", status=lambda r, k: COMPLETE))
+    linked = _list(guests=Link(_elsewhere("readme-task-list", COMPLETE)))
 
     (row,) = _page(_view(linked), rf).get_rows()
 
@@ -1310,7 +1334,7 @@ def test_a_row_can_point_at_something_that_is_not_a_wizard(rf):
 
 def test_the_door_refuses_an_entry_it_cannot_walk(rf):
     """Rows never point there, so arriving is a hand-typed or stale URL."""
-    linked = _list(guests=Link("readme-task-list", status=lambda r, k: COMPLETE))
+    linked = _list(guests=Link(_elsewhere("readme-task-list", COMPLETE)))
     view = _page(_view(linked), rf, path="/readme/task-list/guests/")
 
     assert view.enter(view.get_entry("guests")) is None
@@ -1369,7 +1393,7 @@ def test_a_sections_bare_url_is_the_pages_door():
 
 
 def test_a_link_publishes_no_routes():
-    linked = _view(_list(pay=Link("readme-task-list", status=lambda r, k: COMPLETE)))
+    linked = _view(_list(pay=Link(_elsewhere("readme-task-list", COMPLETE))))
 
     root, door = linked.urls()
 
@@ -1407,9 +1431,7 @@ def test_the_door_redirects_into_the_section_it_names(rf):
 def test_the_door_sends_an_entry_it_cannot_walk_back_to_the_page(rf):
     """A link links past the door anyway — so arriving here is a hand-typed
     or stale URL."""
-    linked = _view(
-        _list(elsewhere=Link("readme-task-list", status=lambda r, k: COMPLETE))
-    )
+    linked = _view(_list(elsewhere=Link(_elsewhere("readme-task-list", COMPLETE))))
     request = rf.get("/readme/task-list/elsewhere/")
     request.session = _session()
 
@@ -1594,23 +1616,26 @@ def test_the_door_hands_every_section_view_the_journey(rf):
     assert SessionJourneyStore(view.request, "app-1").get_run("contact") is not None
 
 
-def test_a_status_callable_is_handed_the_journey_too(rf):
+def test_a_destination_is_handed_the_journeys_store(rf):
     seen = []
+
+    class _Guests(Destination):
+        url_name = "readme-apply"
+
+        @classmethod
+        def status(cls, store):
+            seen.append(store.journey)
+            return COMPLETE
+
     linked = _view(
-        _list(
-            guests=Link(
-                "readme-apply",
-                title="Guests",
-                status=lambda request, url_kwargs: seen.append(url_kwargs) or COMPLETE,
-            )
-        ),
+        _list(guests=Link(_Guests, title="Guests")),
         url_name="readme-apply",
     )
     view = _page(linked, rf, path="/apply/app-1/task-list/", journey="app-1")
 
     view.get_rows()
 
-    assert seen == [{"journey": "app-1"}]
+    assert seen == ["app-1"]
 
 
 def test_a_pages_sections_share_its_journey_by_construction():
@@ -1950,17 +1975,17 @@ def test_entries_compare_by_their_facts_and_key():
     with the same facts is not the same entry."""
     assert Section(CONTACT, title="A") == Section(CONTACT, title="A")
     assert Section(CONTACT).bound("a") != Section(CONTACT).bound("b")
-    assert Section(CONTACT) != Link("readme-task-list", status=lambda r, k: COMPLETE)
+    assert Section(CONTACT) != Link(_elsewhere("readme-task-list", COMPLETE))
     assert (Section(CONTACT) == "not an entry") is False
     assert len({Section(CONTACT).bound("a"), Section(CONTACT).bound("a")}) == 1
     assert repr(Section(CONTACT, title="A").bound("a")).startswith("Section(title='A'")
 
 
 def test_a_link_replaced_keeps_its_target():
-    link = Link("readme-task-list", title="Pay", status=lambda r, k: COMPLETE)
+    link = Link(_elsewhere("readme-task-list", COMPLETE), title="Pay")
 
     assert link.replace(title="Pay now").url_name == "readme-task-list"
-    assert link.bound("pay").status is link.status
+    assert link.bound("pay").destination is link.destination
 
 
 def test_a_list_mounted_twice_by_unrelated_pages_is_refused():
