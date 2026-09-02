@@ -38,6 +38,7 @@ from gandalf.escapes import Advance, Escape, Obliterate, Park
 from gandalf.form_views import FormSetStepView, StepFormView
 from gandalf.runtime import StepNotFound
 from gandalf.storage import RunNotFound, SessionStorage
+from gandalf.summary import Hide
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import Wizard, condition, on_field
 from tests.testapp.forms import (
@@ -55,6 +56,11 @@ from tests.testapp.forms import (
     ToppingsForm,
 )
 from tests.testapp.models import Application, WizardRun
+from tests.testapp.views import (
+    ColocatedSummaryWizardViewSet,
+    DeclaredSummaryWizardViewSet,
+    GroupedSummaryWizardViewSet,
+)
 
 
 class SignupForm(forms.Form):
@@ -2412,3 +2418,140 @@ def test_a_derived_pattern_does_not_overwrite_the_field_s_own():
         default_validators = [RegexValidator(r"^ignored$")]
 
     assert field_json_schema(_Both())["pattern"] == "^[A-Z]{1,2}[0-9].*"
+
+
+# --- What a step hides ------------------------------------------------------
+
+_ADDRESS = {
+    "line_1": "1 High Street",
+    "town": "Bath",
+    "postcode": "BA1 1AA",
+    "lookup_token": "tok-9f3a",
+}
+
+
+@pytest.mark.parametrize(
+    "viewset_class", [ColocatedSummaryWizardViewSet, DeclaredSummaryWizardViewSet]
+)
+def test_what_a_step_hides_is_not_described(viewset_class):
+    """`Hide("lookup_token")` says an answer is not the person's — the token
+    an address lookup returned — and the summary page is not the only
+    reader that shows a person their answers. What the driver describes
+    reads as the page would: the field is not asked for, and not read back.
+    Said once, on the step's view or at its declaration, and both readers
+    hear it."""
+    driver = RunDriver.begin(viewset_class)
+    outline = {entry["step"]: entry for entry in outline_steps(driver.outline())}
+
+    assert "lookup_token" not in outline["address"]["schema"]["properties"]
+
+    driver.submit({"name": "Ada"})
+    described = driver.describe()
+
+    assert described.step == "address"
+    assert "lookup_token" not in described.schema["properties"]
+
+    driver.submit(_ADDRESS)
+
+    assert driver.describe().answers["address"] == {
+        "line_1": "1 High Street",
+        "line_2": "",
+        "town": "Bath",
+        "postcode": "BA1 1AA",
+    }
+
+
+def test_a_hidden_answer_is_still_held_and_still_travels():
+    """Hidden from a reader, not from the run. `answers()` and
+    `placements()` are the record, and the driver's promise — read a step,
+    change one field, send it back — has to carry the token round with it
+    or an edit would blank the very answer the person could not retype."""
+    driver = RunDriver.begin(ColocatedSummaryWizardViewSet)
+    driver.submit({"name": "Ada"})
+    driver.submit(_ADDRESS)
+
+    assert driver.answers()["address"]["lookup_token"] == "tok-9f3a"
+    assert driver.placements()["address"].answers["lookup_token"] == "tok-9f3a"
+
+    driver.submit(
+        {**driver.answers()["address"], "line_1": "2 High Street"}, step="address"
+    )
+
+    assert driver.answers()["address"]["lookup_token"] == "tok-9f3a"
+
+
+def test_a_page_hiding_a_field_hides_it_from_that_page_only():
+    """A step owns how its answers read; `summary_overrides` is one page's
+    opinion about arranging them, and the driver is not that page. A token
+    hidden only on the review view is still described, because nothing the
+    step said asked otherwise."""
+    driver = RunDriver.begin(GroupedSummaryWizardViewSet)
+    driver.submit({"name": "Ada"})
+
+    assert "lookup_token" in driver.describe().schema["properties"]
+
+    driver.submit(_ADDRESS)
+
+    assert driver.describe().answers["address"]["lookup_token"] == "tok-9f3a"
+
+
+def test_a_repeated_step_declares_no_step_level_fields_to_hide():
+    """`Hide` names a step's own declared fields, and a step that repeats
+    its fields per row declares none at step level — so on the summary page
+    it reaches into no row, and the driver reads it the same way rather
+    than hiding what the page shows."""
+
+    class _Slot(forms.Form):
+        day = forms.CharField()
+        slot_id = forms.CharField(required=False)
+
+    class _SlotsStepView(FormSetStepView):
+        form_class = forms.formset_factory(_Slot)
+        template_name = "testapp/formset_step.html"
+        summary_rows = [Hide("slot_id")]
+
+    class _SlotsViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+        wizard = (
+            Wizard()
+            .step(_SlotsStepView, name="slots")
+            .step(SecondStepForm, name="email")
+        )
+
+        def done(self, run):
+            return HttpResponse("done")
+
+    driver = RunDriver.begin(_SlotsViewSet)
+
+    assert "slot_id" in driver.describe().schema["items"]["properties"]
+
+    driver.submit([{"day": "Monday", "slot_id": "s-1"}])
+
+    assert driver.describe().answers["slots"] == [{"day": "Monday", "slot_id": "s-1"}]
+
+
+def test_a_step_whose_only_required_field_is_hidden_requires_nothing():
+    """`form_json_schema()` says nothing about `required` when nothing is,
+    and hiding the one field that was keeps to that rather than leaving an
+    empty list behind."""
+
+    class _Nonce(forms.Form):
+        nonce = forms.CharField()
+        note = forms.CharField(required=False)
+
+    class _NonceStepView(StepFormView):
+        form_class = _Nonce
+        template_name = "testapp/linear_wizard.html"
+        summary_rows = [Hide("nonce")]
+
+    class _NonceViewSet(WizardViewSet):
+        template_name = "testapp/linear_wizard.html"
+        wizard = Wizard().step(_NonceStepView, name="nonce")
+
+        def done(self, run):
+            return HttpResponse("done")
+
+    schema = RunDriver.begin(_NonceViewSet).describe().schema
+
+    assert list(schema["properties"]) == ["note"]
+    assert "required" not in schema

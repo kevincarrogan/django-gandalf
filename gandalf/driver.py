@@ -49,8 +49,9 @@ from gandalf.runtime import (
     RuntimeStep,
     StepNotFound,
     Walk,
+    step_summary_rows,
 )
-from gandalf.summary import _flatten_choices
+from gandalf.summary import _flatten_choices, hidden_field_names
 from gandalf.types import Answer, FileRefs, JourneyStore, Metadata, Submission
 from gandalf.add_another import AddAnotherPage, AddAnotherViewSet
 from gandalf.tasklists import (
@@ -335,8 +336,22 @@ class RunDriver:
         # which is the difference between describing a run in one walk and
         # in two. Without it this method pays the very cost `json_safe` is
         # documented above as sparing its caller.
+        #
+        # Not `answers()`: that is the record, and this is a reading of it.
+        # A step that hides a field on the summary page — the token an
+        # address lookup returned — hides it here too, since a description
+        # is shown to a person by way of a model or a panel, and what the
+        # step said about its answers was said for every reader that shows
+        # them. The record keeps the field, so that an edit reading
+        # `placements()` carries it round rather than blanking it.
         with self.run.walking(cursor.state):
-            answers = self.answers(json_safe=json_safe)
+            answers = {
+                cast(str, step.name): _without_fields(
+                    self._placement(step, json_safe=json_safe).answers,
+                    hidden_field_names(step.summary_rows),
+                )
+                for step in self.run.path
+            }
         if cursor.node is None:
             return StepDescription(
                 step=None, schema=None, answers=answers, errors={}, complete=True
@@ -920,11 +935,11 @@ class RunDriver:
                     "view that fails for its own reasons reads the same."
                 ),
             }
-        return {"schema": self._describe_form(view, form)}
+        return {"schema": self._describe_form(declaration, view, form)}
 
     def _schema_for(self, declaration: tree.Step) -> dict[str, Any]:
         """The step as JSON Schema, asked of its view."""
-        return self._describe_form(*self._compose_form(declaration))
+        return self._describe_form(declaration, *self._compose_form(declaration))
 
     def _compose_form(self, declaration: tree.Step) -> tuple[FormView[Any], Any]:
         """The step's view and the form object it builds — user code, both.
@@ -937,18 +952,26 @@ class RunDriver:
         # GET-shaped, so no phantom "this field is required" errors.
         return view, view.get_form()
 
-    def _describe_form(self, view: FormView[Any], form: Any) -> dict[str, Any]:
-        """`form` as JSON Schema, asked of the view that built it.
+    def _describe_form(
+        self, declaration: tree.Step, view: FormView[Any], form: Any
+    ) -> dict[str, Any]:
+        """`form` as JSON Schema, asked of the view that built it, less the
+        fields the step hides.
 
         The view built the form object, so it is the one that knows how to
         describe it — `form_json_schema()` walks `form.fields`, which only
         a `BaseForm` has. A step declared with a bare Django `FormView` has
         no say and gets the form reading.
+
+        A field the step's own `summary_rows` hides is not asked for: the
+        person never answered it in their own words, so a schema listing it
+        invites a model to make one up. The step's declaration, not a
+        page's `summary_overrides` — a page's opinion is about that page.
         """
+        hidden = hidden_field_names(step_summary_rows(declaration, view))
         builder = getattr(view, "get_answer_schema", None)
-        if builder is None:
-            return form_json_schema(form)
-        return cast("dict[str, Any]", builder(form))
+        schema = form_json_schema(form) if builder is None else builder(form)
+        return cast("dict[str, Any]", _without_fields(schema, hidden))
 
 
 class JourneyDriver:
@@ -1270,6 +1293,31 @@ def _entry_kind(entry: Entry) -> str:
 
 def _step_name(declaration: tree.Step) -> str | None:
     return cast("str | None", (declaration.context or {}).get("name"))
+
+
+def _without_fields(described: Any, hidden: frozenset[str]) -> Any:
+    """`described` — a JSON Schema, or an answer — less the fields `hidden`
+    names.
+
+    A schema loses them from `properties` and `required`; an answer loses
+    the keys. A step that repeats its fields per row declares no fields at
+    step level, so a `Hide` on one names nothing — which is how the summary
+    page reads it too, and the rows come back whole.
+    """
+    if not hidden or not isinstance(described, dict):
+        return described
+    kept = {key: value for key, value in described.items() if key not in hidden}
+    properties = kept.get("properties")
+    if isinstance(properties, dict):
+        kept["properties"] = {
+            name: prop for name, prop in properties.items() if name not in hidden
+        }
+        required = [name for name in kept.get("required", ()) if name not in hidden]
+        if required:
+            kept["required"] = required
+        else:
+            kept.pop("required", None)
+    return kept
 
 
 def _json_safe(data: Any) -> Any:

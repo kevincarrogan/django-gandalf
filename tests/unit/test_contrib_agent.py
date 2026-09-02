@@ -1159,3 +1159,61 @@ def test_the_no_run_message_offers_resuming_before_starting():
     message = str(raised.value)
     assert "resume_run" in message
     assert "abandons whatever is already filled in" in message
+
+
+# --- what a step hides -------------------------------------------------
+
+
+def _addressed():
+    from tests.testapp.views import ColocatedSummaryWizardViewSet
+
+    tools = _tools(ColocatedSummaryWizardViewSet)
+    ctx = _ctx()
+    tools["start_run"](ctx)
+    result = tools["prefill"](
+        ctx,
+        {
+            "who": {"name": "Ada"},
+            "address": {
+                "line_1": "1 High Street",
+                "town": "Bath",
+                "postcode": "BA1 1AA",
+                "lookup_token": "tok-9f3a",
+            },
+        },
+    )
+    return tools, ctx, result
+
+
+def test_what_a_step_hides_is_not_shown_to_the_model():
+    """A step that hides the token an address lookup returned hides it from
+    the page a person checks — and from the model, which would otherwise
+    read it out to them, or be invited by the schema to make one up."""
+    tools, ctx, result = _addressed()
+
+    assert "lookup_token" not in result.return_value["answers"]["address"]
+    assert "lookup_token" not in ctx.deps.state.answers["address"]
+    outline = tools["get_outline"](ctx).return_value["outline"]
+    address = next(entry for entry in outline if entry.get("step") == "address")
+    assert "lookup_token" not in address["schema"]["properties"]
+
+
+def test_an_edit_keeps_what_the_step_hides():
+    """`edit_step` merges over what is stored, not over what the model was
+    shown, so correcting one line of the address carries the token the
+    model never saw round with it rather than blanking it."""
+    tools, ctx, _ = _addressed()
+
+    tools["edit_step"](ctx, "address", {"line_1": "2 High Street"})
+
+    stored = RunDriver.resume(
+        _viewset_of(tools), ctx.deps.state.run_id, context=ctx.deps.context
+    ).answers()["address"]
+    assert stored["line_1"] == "2 High Street"
+    assert stored["lookup_token"] == "tok-9f3a"
+
+
+def _viewset_of(tools):
+    from tests.testapp.views import ColocatedSummaryWizardViewSet
+
+    return ColocatedSummaryWizardViewSet

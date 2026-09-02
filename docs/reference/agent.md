@@ -66,6 +66,15 @@ submission, an unknown run id, an unreachable step, or a
 [door that will not open](driver.md) comes back as a `ModelRetry` rather
 than a result.
 
+`schema` and `answers` are what the person would see. A field the step's own
+[`summary_rows`](summary.md) hides — the token an address lookup returned —
+is neither asked for nor read back, so the model cannot read it out to them
+or be invited to make one up; the run keeps it, and `edit_step` merges over
+the run rather than over what the model was shown. An outline entry whose
+step cannot be described yet carries `schema: None` and a
+`schema_unavailable` sentence saying so, as the [driver's outline](driver.md)
+does.
+
 `answers` is keyed by step name and each value is an
 [`Answer`](driver.md) — a mapping of field name to value, or a list of one
 such mapping per row for a step that repeats its fields. `submit_step`,

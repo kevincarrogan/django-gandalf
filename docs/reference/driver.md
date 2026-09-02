@@ -116,6 +116,16 @@ Where the run is, as data a caller can act on.
 serialising the whole description does not read the answers a second time.
 A description costs one walk.
 
+A description is a reading, not the record. A field the step's own
+[`summary_rows`](summary.md) hides — `Hide("lookup_token")`, the token an
+address lookup returned — is left out of `schema` and of `answers`, as it is
+left off the summary page: a description is shown to a person by way of a
+model or a panel, and what the step said about its answers was said for every
+reader that shows them. `answers()` and `placements()` keep the field, so a
+caller editing a step by reading it back carries the token round rather than
+blanking it. Only the step's declaration hides; a page's `summary_overrides`
+is that page's opinion about arranging rows, and the driver is not that page.
+
 ### `submit(data, *, files=None, step=None, metadata=None)`
 
 Place `data` at the cursor step, or at the step `step` names.
@@ -265,7 +275,7 @@ JSON Schema of its form.
 
 | `kind` | Keys | Notes |
 | --- | --- | --- |
-| `step` | `step`, `schema` | `schema` is `None` for a step whose view cannot compose its form yet (it reads answers the run does not hold); the entry then also carries `schema_unavailable`, a sentence naming the failure's exception class, so a step that could not be described is tellable from one that asks nothing. `describe()` supplies the schema once the walk reaches the step. A form that composes and then cannot be *described* raises instead — see below. |
+| `step` | `step`, `schema` | `schema` is the step's form as JSON Schema, less any field the step's own `summary_rows` hides (see `describe()`). It is `None` for a step whose view cannot compose its form yet (it reads answers the run does not hold); the entry then also carries `schema_unavailable`, a sentence naming the failure's exception class, so a step that could not be described is tellable from one that asks nothing. `describe()` supplies the schema once the walk reaches the step. A form that composes and then cannot be *described* raises instead — see below. |
 | `branch` | `arms`, `default` | Every arm is shown, since which runs depends on answers. Each arm has `when` (the predicate's name), `description` (its docstring, or `None`) and `steps`. `default` is a list of entries. |
 | `switch` | `decided_by`, `description`, `cases`, `default`, `source` | `cases` are named outcomes, each `{"case": value, "steps": [...]}`. `source` — `{"step": ..., "field": ...}` — is present only when the selector is an `on_field`. |
 | `expand` | — | A marker. The steps an expansion grows do not exist until the answer that shapes them does. |

@@ -247,6 +247,12 @@ class ReviewStepView(SummaryMixin, StepFormView):
 and a formset step declares none at step level, so neither reaches into its
 rows. An `Answer` naming no fields does not need to.
 
+The summary page is not the only reader that shows a person their answers.
+What a step's own `summary_rows` hides, the [driver](driver.md) leaves out of
+`describe()` and `outline()` too — the schema an agent is given does not ask
+for the token, and the answers it reads back do not carry it — while the
+run's record keeps it. A page's `summary_overrides` hides on that page only.
+
 ### Spec validation
 
 The checks run before and during the build and raise

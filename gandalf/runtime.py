@@ -491,28 +491,9 @@ class RuntimeStep:
 
     @property
     def summary_rows(self) -> Iterable[Any]:
-        """How this step says its own answers read on a summary page.
-
-        Asked of the declaration first and `step_view` second. The step
-                is what knows an address is an address, and a page listing every
-                awkward step by name is carrying knowledge it did not generate — but
-                a step declared as a bare `forms.Form` has no view to say it on, so
-                `.step(AddressForm, name="address", summary_rows=[...])` says it
-                at the declaration instead. `.step()` refuses both at once. A step
-                declared with a plain Django `FormView` and no context has nothing
-                to say and says nothing.
-        """
-        context = self.declaration.context or {}
-        declared = context.get("summary_rows")
-        if declared:
-            # Said at the declaration, which is where a step with no view of
-            # its own has to say it. `.step()` refuses both at once, so this
-            # is not a precedence rule — only the cheaper question first.
-            return cast("Iterable[Any]", declared)
-        reader = getattr(self.step_view, "get_summary_row_specs", None)
-        if reader is None:
-            return ()
-        return cast("Iterable[Any]", reader())
+        """How this step says its own answers read on a summary page —
+        `step_summary_rows()` for this step's declaration and view."""
+        return step_summary_rows(self.declaration, self.step_view)
 
     @property
     def errors(self) -> dict[str, list[dict[str, Any]]]:
@@ -688,6 +669,32 @@ def _takewhile_before(steps: Iterator[RuntimeStep], name: str) -> Iterator[Runti
         if step.name == name:
             return
         yield step
+
+
+def step_summary_rows(declaration: tree.Step, view: Any) -> Iterable[Any]:
+    """How a step says its own answers read: the specs at its declaration,
+    or the ones its view declares.
+
+    The step is what knows an address is an address, and a page listing
+    every awkward step by name is carrying knowledge it did not generate —
+    but a step declared as a bare `forms.Form` has no view to say it on, so
+    `.step(AddressForm, name="address", summary_rows=[...])` says it at the
+    declaration instead. `.step()` refuses both at once, so asking the
+    declaration first is not a precedence rule, only the cheaper question.
+    A step declared with a plain Django `FormView` and no context has
+    nothing to say and says nothing.
+
+    A function rather than only `RuntimeStep.summary_rows` because the
+    driver asks it of a step the walk has not reached — an outline entry
+    has a declaration and a view it built, and no runtime step.
+    """
+    declared = (declaration.context or {}).get("summary_rows")
+    if declared:
+        return cast("Iterable[Any]", declared)
+    reader = getattr(view, "get_summary_row_specs", None)
+    if reader is None:
+        return ()
+    return cast("Iterable[Any]", reader())
 
 
 def first_route_step(state: RuntimeNode | None) -> RuntimeStep | None:

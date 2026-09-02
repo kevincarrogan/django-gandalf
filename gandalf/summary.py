@@ -42,7 +42,7 @@ domain needs.
 from __future__ import annotations
 
 import datetime
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field as dataclass_field, replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -79,6 +79,7 @@ __all__ = [
     "SummaryRow",
     "check_row_specs",
     "format_value",
+    "hidden_field_names",
 ]
 
 
@@ -169,6 +170,26 @@ class Hide:
     ) -> Iterator[SummaryRow]:
         """No rows: that is what hiding is."""
         return iter(())
+
+
+def hidden_field_names(specs: Iterable[Any]) -> frozenset[str]:
+    """The fields `specs` keep off the page: every one a `Hide` names.
+
+    Asked by readers that are not the summary page but show a person their
+    answers all the same — the driver, describing a step to an agent or a
+    panel. A token the summary drops is a token the agent should neither
+    read out nor be invited to supply, and the step said so once.
+
+    `Hide` by type rather than by asking a spec what it builds, because
+    that question needs a form and a run, and this one is asked of a
+    declaration. A custom spec that yields no rows hides nothing here.
+    """
+    return frozenset(
+        field_name
+        for spec in specs
+        if isinstance(spec, Hide)
+        for field_name in spec.fields
+    )
 
 
 @dataclass(frozen=True, init=False)

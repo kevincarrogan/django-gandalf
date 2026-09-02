@@ -359,7 +359,9 @@ with the step — on its view, or at its declaration for a step with no view
 of its own. Which steps get a row, in what order, and what the page says
 around them is the page's. A page that wants one step read differently says
 so in `summary_overrides` and wins, because a page can see what the step
-cannot: the other answers beside it.
+cannot: the other answers beside it. The driver is a reader of the step and
+not a page: what the step hides it hides from a description, and a page's
+overrides do not reach it.
 
 The corollary is the useful half: a review page carrying a list of every
 awkward step is carrying knowledge it did not generate, and it will be wrong
