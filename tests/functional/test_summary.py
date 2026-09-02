@@ -74,7 +74,7 @@ def test_every_answer_is_named_by_the_field_that_asked_it(wizard_driver):
 
     rows = run.get_step("summary").context["summary"]
 
-    assert [row.label for row in rows] == [
+    assert [row.question for row in rows] == [
         "Account type",
         "Preferred name",
         "Contact method",
@@ -88,7 +88,7 @@ def test_every_answer_is_named_by_the_field_that_asked_it(wizard_driver):
 def test_summary_renders_each_answer_as_display_text(business_run):
     rows = business_run.get_step("summary").context["summary"]
 
-    preferences = {row.label: row.value for row in rows[2:]}
+    preferences = {row.question: row.answer for row in rows[2:]}
 
     assert preferences == {
         "Contact method": "Post",
@@ -139,7 +139,7 @@ def test_summary_reflects_a_changed_answer(business_run):
 
     rows = business_run.get_step("summary").context["summary"]
 
-    assert rows[1].value == "Beta Ltd"
+    assert rows[1].answer == "Beta Ltd"
 
 
 def test_summary_follows_the_run_through_a_branch_flip(business_run):
@@ -153,7 +153,7 @@ def test_summary_follows_the_run_through_a_branch_flip(business_run):
         "preferred_name",
         *["preferences"] * 5,
     ]
-    assert rows[1].value == "Ada"
+    assert rows[1].answer == "Ada"
 
 
 def test_summary_rebuilds_each_answered_form_once(business_run):
@@ -202,7 +202,7 @@ def test_summary_renders_answers_that_have_no_plain_text_of_their_own(
 
     rows = run.get_step("summary").context["summary"]
 
-    assert {row.label: row.value for row in rows} == {
+    assert {row.question: row.answer for row in rows} == {
         "Delivery": "SMS",
         "Collect at": "Oct. 12, 2025, 9:30 a.m.",
         "Opens at": "9:30 a.m.",
@@ -220,7 +220,7 @@ def test_summary_hooks_are_overridable(wizard_driver):
 
     rows = run.get_step("summary").context["summary"]
 
-    assert [row.label for row in rows] == ["PREFERENCES"]
+    assert [row.question for row in rows] == ["PREFERENCES"]
     assert rows[0].parts == ("Post", "Cheese, Basil", "Yes", "12/10/2025")
 
 
@@ -278,7 +278,10 @@ def test_a_grouped_step_renders_as_one_line(address_run):
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     rows = response.context["summary"]
-    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
+    assert (rows[1].question, rows[1].answer) == (
+        "Address",
+        "12 High Street, Ely, CB7 4AA",
+    )
     assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 
@@ -314,7 +317,7 @@ def test_a_step_grown_mid_walk_is_shaped_by_name_like_any_other(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(row.step.name, row.value) for row in rows] == [
+    assert [(row.step.name, row.answer) for row in rows] == [
         ("delivery", "To my address"),
         ("address", "12 High Street, Ely, CB7 4AA"),
     ]
@@ -353,7 +356,7 @@ def test_an_answer_survives_a_step_that_asks_for_less(wizard_driver):
 
     rows = run.get_step("summary").context["summary"]
 
-    assert rows[0].value == "12 High Street, CB7 4AA"
+    assert rows[0].answer == "12 High Street, CB7 4AA"
 
 
 def test_an_answer_naming_a_field_a_declared_step_has_not_got_is_refused(
@@ -380,7 +383,7 @@ def test_an_answer_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
 
     rows = address_run.get_step("summary").context["summary"]
 
-    assert rows[1].value == "12 High Street, CB7 4AA"
+    assert rows[1].answer == "12 High Street, CB7 4AA"
 
 
 def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
@@ -407,7 +410,7 @@ def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
 
     rows = run.get_step("summary").context["summary"]
 
-    assert [row.value for row in rows] == [
+    assert [row.answer for row in rows] == [
         "Ada",
         "Monday",
         "09:00",
@@ -439,7 +442,7 @@ def templated_run(wizard_driver):
 
 
 def test_an_answer_renders_through_the_template_it_names(templated_run):
-    """The review page prints `row.value` and knows no step names; the
+    """The review page prints `row.answer` and knows no step names; the
     address's own partial decides how an address reads."""
     response = templated_run.get_step("summary")
 
@@ -636,7 +639,10 @@ def test_a_step_shapes_its_own_row_without_the_page_naming_it(colocated_run):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
+    assert (rows[1].question, rows[1].answer) == (
+        "Address",
+        "12 High Street, Ely, CB7 4AA",
+    )
     assertNotContains(response, "tok-9")
 
 
@@ -663,7 +669,10 @@ def test_a_bare_form_step_shapes_its_row_from_the_declaration(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
+    assert (rows[1].question, rows[1].answer) == (
+        "Address",
+        "12 High Street, Ely, CB7 4AA",
+    )
     assertNotContains(response, "tok-9")
 
 
@@ -697,7 +706,7 @@ def test_one_step_reads_as_the_questions_it_asked(questioned_run):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(row.label, row.value) for row in rows] == [
+    assert [(row.question, row.answer) for row in rows] == [
         ("Name", "Ada"),
         ("Address", "12 High Street, Ely"),
         ("Postcode", "CB7 4AA"),
@@ -726,7 +735,7 @@ def test_a_field_no_question_names_keeps_a_row_of_its_own(monkeypatch, questione
     response = questioned_run.get_step("summary")
 
     rows = response.context["summary"]
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Address", "12 High Street, Ely"),
         ("Postcode", "CB7 4AA"),
         ("Lookup token", "tok-9"),

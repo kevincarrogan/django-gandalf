@@ -287,14 +287,14 @@ def test_chapter_7_lists_every_answer_with_a_change_link(wizard_driver):
     rows = response.context["summary"]
     # Each row is named by the question that asked it, except the address,
     # which reads as one answer and takes its step's name.
-    assert [(row.label, row.url) for row in rows] == [
+    assert [(row.question, row.url) for row in rows] == [
         ("Are you applying as", run.step_url("applying-as")),
         ("What do you do?", run.step_url("about-you")),
         ("Email address", run.step_url("contact")),
         ("Address", run.step_url("address")),
     ]
     # The stored answers, as display text rather than raw values.
-    assert rows[0].value == "An individual"
+    assert rows[0].answer == "An individual"
     assertContains(
         response,
         f'<a href="{run.step_url("contact")}">Change Email address</a>',
@@ -311,7 +311,7 @@ def test_chapter_7_reads_an_address_back_as_one_line(wizard_driver):
     response = run.get_step("review")
 
     address = response.context["summary"][3]
-    assert (address.label, address.value) == (
+    assert (address.question, address.answer) == (
         "Address",
         "12 High Street, Ely, CB7 4AA",
     )

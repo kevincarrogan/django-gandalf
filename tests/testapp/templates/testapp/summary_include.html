@@ -8,13 +8,13 @@
         <dl class="summary">
             {# The same loop as every other review page. An answer that
                brought its own template has already been rendered into
-               `row.value`, so the page never asks which step it is
+               `row.answer`, so the page never asks which step it is
                holding. #}
             {% for row in summary %}
-                <dt>{{ row.label }}</dt>
+                <dt>{{ row.question }}</dt>
                 <dd>
-                    <span>{{ row.value }}</span>
-                    <a href="{{ row.url }}">Change {{ row.label }}</a>
+                    <span>{{ row.answer }}</span>
+                    <a href="{{ row.url }}">Change {{ row.question }}</a>
                 </dd>
             {% endfor %}
         </dl>

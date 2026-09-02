@@ -33,8 +33,9 @@ A "check your answers" step asks the same three questions of every answer —
 what is it called, what does it say, and where do I go to change it — so
 `SummaryMixin` answers them once. Mix it into the step's view — a
 `StepFormView`, as in chapter 6 — and the template gets a `summary` list: a
-flat list of rows, one per answer, each a label, a value and somewhere to go
-and change it.
+flat list of rows, one per answer, each a question, an answer and somewhere
+to go and change it — `{{ row.question }}` and `{{ row.answer }}`, reading
+back what `Question` and `Answer` wrote.
 
 ```python
 from gandalf.form_views import StepFormView
@@ -71,10 +72,10 @@ class ReviewedApplicationViewSet(WizardViewSet):
 <h1>Check your answers</h1>
 <dl>
   {% for row in summary %}
-    <dt>{{ row.label }}</dt>
+    <dt>{{ row.question }}</dt>
     <dd>
-      <span>{{ row.value }}</span>
-      <a href="{{ row.url }}">Change {{ row.label }}</a>
+      <span>{{ row.answer }}</span>
+      <a href="{{ row.url }}">Change {{ row.question }}</a>
     </dd>
   {% endfor %}
 </dl>
@@ -92,8 +93,8 @@ submission.
 The rows are the answers on the run's resolved route, in walk order — never
 the step doing the summarising, and never an answer left behind in a dormant
 arm. A step that asked three questions reads as three rows, all linking back
-to the page that asked them. Each row is named by the field that asked it, so
-the label on the page is the label on the form. Values are display text, not
+to the page that asked them. Each row's question is the field that asked it,
+so what the page shows is the label on the form. Values are display text, not
 stored data: a choice shows its label, a boolean shows Yes/No, an upload
 shows its filename.
 
@@ -148,8 +149,8 @@ places and the order they resolve in.
 
 An answer can bring its own markup too: `Answer("line_1", "line_2", "town",
 "postcode", template_name="grants/summary/address.html")` names the template
-that row's value renders through, Gandalf renders it, and `{{ row.value }}`
-prints what came back. The review template gains nothing to decide — no
+that row's answer renders through, Gandalf renders it, and
+`{{ row.answer }}` prints what came back. The review template gains nothing to decide — no
 `{% if %}` learning the name of every step whose answer does not read as one
 line. The partial is handed `row`, so it can render the pieces as lines
 (`row.parts`) or reach past them to the whole validated form

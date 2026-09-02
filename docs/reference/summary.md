@@ -1,7 +1,8 @@
 # Summary
 
 `gandalf.summary` — a check-your-answers page: the answers of a run as a
-flat list of rows, each a label, display text and the URL that changes it.
+flat list of rows, each a question, its answer as display text, and the URL
+that changes it.
 An optional module; nothing in the core depends on it.
 
 ```python
@@ -29,9 +30,9 @@ intact — you reach for a lower one only for what the ones above cannot say.
 | --- | --- | --- |
 | **Nothing** | mix in [`SummaryMixin`](#summarymixin) and loop `summary` in a template | every answer of every answered step, one row each, named by the field that asked it, values as display text |
 | **Declare** | [`summary_rows`](#where-shaping-is-declared) on the step's view, or at its declaration: `Answer`, `Hide` | answers joined onto one row or dropped, said once, next to the step |
-| | [`Question(label, spec)`](#questionlabel-spec) | a name for a row no single field asked |
+| | [`Question(text, spec)`](#questiontext-spec) | a question for a row no single field asked |
 | | `.step(Form, name="address", label="Address")` | the name such a row takes when no `Question` gives it one |
-| **Render** | [`Answer(template_name=…)`](#rendering-a-row-through-its-own-template) | that row's markup, rendered by Gandalf into `row.value` |
+| **Render** | [`Answer(template_name=…)`](#rendering-a-row-through-its-own-template) | that row's markup, rendered by Gandalf into `row.answer` |
 | **Override** | `summary_overrides` on the review page | this page saying something different from the step |
 | | `format_value(bound_field, value)` | how a value reads, everywhere on the page |
 | | `include_summary_field(step, bound_field)` | which answers appear at all |
@@ -164,9 +165,9 @@ do not special-case:
 | `get_summary_steps()` | `list[RuntimeStep]` | every step in `request.run.path` whose declaration is not `request.run.rendering` — the step being rendered |
 | `get_summary_rows()` | `list[SummaryRow]` | runs the checks, then `build_summary_rows()` per summarised step |
 | `build_summary_rows(step)` | `Iterator[SummaryRow]` | one step's rows: its fields — `step.answer_fields`, so the *step view* decides what they are — in form order with its specs folded in. What a spec contributes is the spec's own answer (`RowSpec.build_rows()`), not a branch here: it speaks once, at the first of its fields the page shows |
-| `build_field_row(step, form, bound_field)` | `SummaryRow` | one answer on a row of its own, named by the field that asked it |
-| `build_answer_row(step, form, spec, label=None)` | `SummaryRow` | several answers on one row (see `Answer`); `label` is the `Question`'s if one named it |
-| `render_row(row, template_name)` | `SummaryRow` | the row with its `value` rendered through `template_name`, when its spec named one. The only template Gandalf renders, and never one of its own |
+| `build_field_row(step, form, bound_field)` | `SummaryRow` | one answer on a row of its own, asked by the field that asked it |
+| `build_answer_row(step, form, spec, question=None)` | `SummaryRow` | several answers on one row (see `Answer`); `question` is the `Question`'s if one asked it |
+| `render_row(row, template_name)` | `SummaryRow` | the row with its `answer` rendered through `template_name`, when its spec named one. The only template Gandalf renders, and never one of its own |
 | `answered_bound_fields(step, form, spec)` | `Sequence[BoundField]` | the bound fields one row joins: the ones it names, or — naming none — what no other spec named, in form order |
 | `claimed_field_names(step)` | `set[str]` | every field name some spec of this step names. What is left is what a spec naming none speaks for |
 | `get_row_specs(step)` | `Sequence[RowSpec]` | this page's `summary_overrides` by step name, and failing that the step's own `summary_rows`; override to decide per run |
@@ -178,7 +179,7 @@ do not special-case:
 | `check_field_names(step_name, specs, fields, source)` | `None` | the check both of those defer to; `source` is what named the fields, so the message says where the fix is |
 | `get_declared_step_names()` | `set[str] \| None` | every `name` the wizard's tree declares; `None` when the tree contains an `.expand()`, whose steps are not known until walked |
 | `include_summary_field(step, bound_field)` | `bool` | `True`; return `False` to drop a field. Consulted for a field's own row and for each piece of a joined one |
-| `get_summary_label(step)` | `StrOrPromise` | the name a row takes when no field and no `Question` named it: the step's `label` context if it declares one, otherwise its name with `_` and `-` replaced by spaces and the first letter capitalised (`"business_name"` → `"Business name"`) |
+| `get_summary_question(step)` | `StrOrPromise` | what a row asks when no field and no `Question` asked it: the step's `label` context if it declares one, otherwise its name with `_` and `-` replaced by spaces and the first letter capitalised (`"business_name"` → `"Business name"`) |
 | `format_value(bound_field, value)` | `str` | the module-level `format_value` |
 | `get_context_data(**kwargs)` | `dict` | `super()`'s context with `summary_context_name` set to `get_summary_rows()` |
 
@@ -317,9 +318,10 @@ Some of a step's fields, read as one row.
 
 **Caveats**
 
-- It carries no label. The row is named by the step — `get_summary_label()`
-  — or by the [`Question`](#questionlabel-spec) around it. Two ways to name
-  one thing is what a summary page does not need.
+- It carries no question of its own. The row is asked by the step —
+  `get_summary_question()` — or by the [`Question`](#questiontext-spec)
+  around it. Two ways to name one thing is what a summary page does not
+  need.
 - Each piece is rendered through the view's `format_value()`, and the empty
   ones are dropped, so a blank second address line does not leave `", ,"`.
 - The spec takes the place of the first of its fields in form order and
@@ -339,9 +341,9 @@ Some of a step's fields, read as one row.
   is not in the active locale — so the row still carries the formatted
   answers in `parts`. A template takes whichever it wants.
 
-### `Question(label, spec)`
+### `Question(text, spec)`
 
-A name for a row the step could not name.
+The question a row asks, when the step could not ask it.
 
 A step is a page, and a page that asked one thing is named by the step: the
 address step's row is called Address without anyone saying so. A page that
@@ -365,19 +367,19 @@ Postcode   CB7 4AA                Change
 
 **Parameters**
 
-- `label` — the row's name.
-- `spec` — the one spec whose row it names.
+- `text` — the question itself.
+- `spec` — the one spec whose row it asks.
 
-**Attributes** — `label`, `spec`, and `fields`, which is its spec's. Frozen.
+**Attributes** — `text`, `spec`, and `fields`, which is its spec's. Frozen.
 
 **Caveats**
 
 - It wraps exactly one spec and does one thing to it. Everything about
   *what* the row says is the spec's, which is why a `Question` takes no
   separator, no template and no fields of its own.
-- The label goes *down* into the spec rather than being applied after, so a
-  value template rendering the row already sees the name the page will show
-  it under.
+- The question goes *down* into the spec rather than being applied after, so
+  a template rendering the answer already sees the question the page will
+  show it under.
 - Every row a step makes carries the same `step`, so `row.url` is the same
   page for all of them. That is the point: three things to check, one place
   to go and fix any of them.
@@ -415,7 +417,7 @@ anything answering these two questions is one.
 | Member | Type | What it says |
 | --- | --- | --- |
 | `fields` | `tuple[str, ...]` | the field names this spec speaks for. Empty means the rest |
-| `build_rows(view, step, form, label=None)` | `Iterator[SummaryRow]` | the rows it stands for — none, one, or several |
+| `build_rows(view, step, form, question=None)` | `Iterator[SummaryRow]` | the rows it stands for — none, one, or several |
 
 One rule holds them together, and it is the whole of the arrangement:
 
@@ -458,12 +460,12 @@ class Repeat:
     def fields(self):
         return ()
 
-    def build_rows(self, view, step, form, label=None):
+    def build_rows(self, view, step, form, question=None):
         for row in step.answer:
             yield SummaryRow(
                 step=step,
-                label=row[self.label_field],
-                value=row[self.value_field],
+                question=row[self.label_field],
+                answer=row[self.value_field],
                 form=form,
             )
 ```
@@ -474,22 +476,25 @@ summary_overrides = {"opening-hours": [Repeat("day", "opens")]}
 
 `view` is the summary page, so defer to it rather than deciding for it:
 `view.format_value()` renders a value, `view.include_summary_field()` says
-whether an answer is shown at all, `view.get_summary_label()` is the name a
-step gives a row that has none, and `view.claimed_field_names()` is what a
-spec naming no fields subtracts to find its own. `label` is the name a
-`Question` around it chose, and `None` when nothing did.
+whether an answer is shown at all, `view.get_summary_question()` is what a
+step asks on behalf of a row that asks nothing itself, and
+`view.claimed_field_names()` is what a spec naming no fields subtracts to
+find its own. `question` is what a `Question` around it asked, and `None`
+when nothing did.
 
 ### `SummaryRow`
 
-One row of a check-your-answers page. Frozen dataclass.
+One row of a check-your-answers page. Frozen dataclass. The page reads back
+the words the declaration wrote — `Question` and `Answer` there,
+`row.question` and `row.answer` here.
 
 | Attribute | Type | What it is |
 | --- | --- | --- |
 | `step` | `RuntimeStep` | the step this answer came from; `row.step.data` is the raw submission, `row.step.name` is what to group rows by |
-| `label` | `StrOrPromise` | the row's name — the field's label, the `Question`'s, or `get_summary_label(step)`. Never `None` |
-| `value` | `str` | the display text: the answer formatted, several joined, or a template already rendered — in which case it is marked safe, as `form.as_p()` is. `""` for an unanswered field |
+| `question` | `StrOrPromise` | what the row asks — the field's label, the `Question`'s text, or `get_summary_question(step)`. Never `None` |
+| `answer` | `str` | the display text: one answer formatted, several joined, or a template already rendered — in which case it is marked safe, as `form.as_p()` is. `""` for an unanswered field |
 | `name` | `str` | the answer's name: the field's, the first field a joined row showed, or the step's when it showed none. Default `""` |
-| `parts` | `tuple[str, ...]` | what a joined `value` was made from: one per non-empty answer, `(value,)` for an answered plain field, `()` for an empty one. Still populated when a template rendered the value. Default `()` |
+| `parts` | `tuple[str, ...]` | what a joined `answer` was made from: one per non-empty answer, `(value,)` for an answered plain field, `()` for an empty one. Still populated when a template rendered the answer. Default `()` |
 | `url` | `str \| None` | property — `step.url`, the step's own URL: the change link. `None` without a URL reverser (programmatic use) |
 | `form` | `BaseForm \| None` | the bound, validated form the answer came from — `form.cleaned_data` included, which is where a value derived in `clean()` lives. For a plain field it is the bound field's own form, which differs from the step's for a repeated step. Excluded from `repr` and equality |
 | `bound_field` | `BoundField \| None` | the Django `BoundField` the value came from — the widget, help text, field attributes. `None` for a row several fields made. Excluded from `repr` and equality |
@@ -581,10 +586,10 @@ class GrantApplicationViewSet(WizardViewSet):
 <h1>Check your answers</h1>
 <dl>
   {% for row in summary %}
-    <dt>{{ row.label }}</dt>
+    <dt>{{ row.question }}</dt>
     <dd>
-      <span>{{ row.value }}</span>
-      <a href="{{ row.url }}">Change {{ row.label }}</a>
+      <span>{{ row.answer }}</span>
+      <a href="{{ row.url }}">Change {{ row.question }}</a>
     </dd>
   {% endfor %}
 </dl>
@@ -594,7 +599,8 @@ class GrantApplicationViewSet(WizardViewSet):
 </form>
 ```
 
-One loop and nothing to decide: a label, a value and somewhere to change it.
+One loop and nothing to decide: a question, an answer and somewhere to
+change it.
 An empty submission is still a submission, so a fieldless `ConfirmForm`
 satisfies the step on POST.
 
@@ -634,16 +640,16 @@ class ReviewStepView(SummaryMixin, StepFormView):
     }
 ```
 
-That row is named by the step — `.step(…, label="Organisation address")`,
-else the name made readable. When the step's name is not the answer's,
-`Question("Where the work happens", Answer(…))` gives it one.
+That row is asked by the step — `.step(…, label="Organisation address")`,
+else the name made readable. When the step's name is not what the row asks,
+`Question("Where the work happens", Answer(…))` says what it asks.
 
 ### Rendering a row through its own template
 
 A review template that branches on which step it is holding
 (`{% if row.name == "line_1" %}`) accumulates knowledge of every step in the
 wizard. An `Answer` names the template that renders it instead, Gandalf
-renders it, and the review template goes on printing `{{ row.value }}`:
+renders it, and the review template goes on printing `{{ row.answer }}`:
 
 ```python
 from gandalf.form_views import StepFormView
@@ -675,14 +681,14 @@ class ReviewStepView(SummaryMixin, StepFormView):
 **The context.** The template is rendered with `row` and `view`, plus
 whatever the context processors add — not the review template's context,
 because it is rendered before the review template runs. `row` carries
-everything the answer knows: `row.value`, `row.parts`, `row.label`,
+everything the answer knows: `row.answer`, `row.parts`, `row.question`,
 `row.bound_field` for a plain field, and `row.form` for the whole validated
 form. Reach for `row.form.cleaned_data` when the thing to render is not a
 field at all — a value the form derived in `clean()`, or one it stitched
 together from several answers.
 
 **What comes back is marked safe**, exactly as a rendered template is
-anywhere in Django, so `{{ row.value }}` prints markup for a row that named
+anywhere in Django, so `{{ row.answer }}` prints markup for a row that named
 a template and escaped text for one that did not. There is nothing in the
 page's loop to change either way.
 
@@ -800,11 +806,11 @@ rendered while they are built, so the traceback comes from the view rather
 than from the markup — the step in it is the one whose spec named the
 template.
 
-### A row is named after the step rather than the question
+### A row asks the step's name rather than a question
 
-A row one field made is named by the field; a row several fields made has no
-field to name it, so it takes the step's `label`. Wrap the spec in a
-`Question` to name it something else.
+A row one field made asks what the field asked; a row several fields made has
+no one field to ask for it, so it takes the step's `label`. Wrap the spec in
+a `Question` to say what it asks.
 
 ### The summary offers to change itself
 

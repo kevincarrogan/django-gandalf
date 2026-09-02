@@ -14,10 +14,10 @@
         <h1>Check your answers</h1>
         <dl class="summary">
             {% for row in summary %}
-                <dt>{{ row.label }}</dt>
+                <dt>{{ row.question }}</dt>
                 <dd>
-                    <span>{{ row.value }}</span>
-                    <a href="{{ row.url }}">Change {{ row.label }}</a>
+                    <span>{{ row.answer }}</span>
+                    <a href="{{ row.url }}">Change {{ row.question }}</a>
                 </dd>
             {% endfor %}
         </dl>

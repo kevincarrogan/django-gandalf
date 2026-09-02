@@ -2045,8 +2045,8 @@ class CustomSummaryStepView(SummaryMixin, StepFormView):
     template_name = "testapp/summary_wizard.html"
     summary_overrides = {"preferences": [Answer()]}
 
-    def get_summary_label(self, step):
-        return super().get_summary_label(step).upper()
+    def get_summary_question(self, step):
+        return super().get_summary_question(step).upper()
 
     def include_summary_field(self, step, bound_field):
         return bound_field.name != "note"

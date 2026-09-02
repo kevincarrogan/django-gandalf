@@ -1,14 +1,14 @@
 """Check-your-answers pages: the answered steps of a run, as rows to display.
 
 A summary is a flat list, and a row is one thing the user can check and one
-thing they can change: a label, the answer as display text, and the URL of
-the page that asked it. `SummaryMixin` builds that list and puts it in the
+thing they can change: the question, the answer as display text, and the URL
+of the page that asked it. `SummaryMixin` builds that list and puts it in the
 template context, so a review page is one loop with nothing to decide:
 
     {% for row in summary %}
-      <dt>{{ row.label }}</dt>
-      <dd>{{ row.value }}</dd>
-      <dd><a href="{{ row.url }}">Change {{ row.label|lower }}</a></dd>
+      <dt>{{ row.question }}</dt>
+      <dd>{{ row.answer }}</dd>
+      <dd><a href="{{ row.url }}">Change {{ row.question|lower }}</a></dd>
     {% endfor %}
 
 A step reads as one row per field unless it says otherwise, which most steps
@@ -20,11 +20,11 @@ is anything that names the fields it speaks for and builds the rows it
 stands for, so a page can bring one of its own.
 
 `Answer` takes a `template_name`, and Gandalf renders it. That is the only
-thing the library renders: one row's *value*, through a template the caller
+thing the library renders: one row's *answer*, through a template the caller
 named. The page around it — the list, the change links, the headings — is
-the application's, and Gandalf ships no templates to build one with. A value
-rendered this way arrives as `row.value` already, so the page never asks
-which spec produced a row.
+the application's, and Gandalf ships no templates to build one with. An
+answer rendered this way arrives as `row.answer` already, so the page never
+asks which spec produced a row.
 
 Reading `RuntimeStep.form` reconstructs and re-validates that step's form,
 so a page that reached for it per row would pay a validation per row. Every
@@ -33,7 +33,7 @@ once per step per request, so the cost is one reconstruction per step
 however many rows it reads as.
 
 Every decision is also a hook: `get_summary_steps()` chooses the steps,
-`get_summary_label()` names a row the step had to name, `get_row_specs()`
+`get_summary_question()` asks what a step's own row asks, `get_row_specs()`
 shapes one step, `include_summary_field()` drops fields, and `format_value()`
 renders a value. The defaults suit a plain journey; override what your
 domain needs.
@@ -94,7 +94,7 @@ class Answer:
     arrives in form order.
 
     `template_name` is the row's own markup, rendered by Gandalf and handed
-    to the page as `SummaryRow.value`. An address that reads as lines rather
+    to the page as `SummaryRow.answer`. An address that reads as lines rather
     than as a comma run-on says so once, here, next to the fields it is
     about — rather than as an `{% if %}` in the review template, which would
     otherwise have to know the name of every step whose answer does not read
@@ -110,9 +110,10 @@ class Answer:
     is not a list of fields at all says so — listing every field of a step
     so that one template can ignore the list is ceremony.
 
-    It carries no label. A row is named by the step it belongs to, or by the
-    `Question` around it when the step's own name is not the answer's; two
-    ways to name one thing is what a summary page does not need.
+    It carries no question of its own. A row is asked by the step it belongs
+    to, or by the `Question` around it when the step's own name is not what
+    the row asks; two ways to name one thing is what a summary page does not
+    need.
 
     A field the step's form does not offer is skipped rather than refused: a
     dynamic `get_form_class()` may vary what a step asks, and a row has to
@@ -138,10 +139,10 @@ class Answer:
         view: SummaryMixin,
         step: RuntimeStep,
         form: BaseForm,
-        label: StrOrPromise | None = None,
+        question: StrOrPromise | None = None,
     ) -> Iterator[SummaryRow]:
         """One row, from the fields this spec names."""
-        yield view.build_answer_row(step, form, self, label)
+        yield view.build_answer_row(step, form, self, question)
 
 
 @dataclass(frozen=True, init=False)
@@ -164,7 +165,7 @@ class Hide:
         view: SummaryMixin,
         step: RuntimeStep,
         form: BaseForm,
-        label: StrOrPromise | None = None,
+        question: StrOrPromise | None = None,
     ) -> Iterator[SummaryRow]:
         """No rows: that is what hiding is."""
         return iter(())
@@ -193,11 +194,11 @@ class Question:
     them is a second way to be wrong.
     """
 
-    label: StrOrPromise
+    text: StrOrPromise
     spec: Any
 
-    def __init__(self, label: StrOrPromise, spec: Any) -> None:
-        object.__setattr__(self, "label", label)
+    def __init__(self, text: StrOrPromise, spec: Any) -> None:
+        object.__setattr__(self, "text", text)
         object.__setattr__(self, "spec", spec)
 
     @property
@@ -210,12 +211,12 @@ class Question:
         view: SummaryMixin,
         step: RuntimeStep,
         form: BaseForm,
-        label: StrOrPromise | None = None,
+        question: StrOrPromise | None = None,
     ) -> Iterator[SummaryRow]:
-        """Its spec's rows, named. The label goes *down* rather than being
-        applied after, so a value template rendering the row already sees
-        the name the page will show it under."""
-        yield from self.spec.build_rows(view, step, form, self.label)
+        """Its spec's rows, asked. The question goes *down* rather than being
+        applied after, so a template rendering the answer already sees the
+        question the page will show it under."""
+        yield from self.spec.build_rows(view, step, form, self.text)
 
 
 class RowSpec(Protocol):
@@ -251,44 +252,45 @@ class RowSpec(Protocol):
         view: SummaryMixin,
         step: RuntimeStep,
         form: BaseForm,
-        label: StrOrPromise | None = None,
+        question: StrOrPromise | None = None,
     ) -> Iterator[SummaryRow]:
         """The rows this spec stands for — none, one, or several.
 
         `view` is the summary page, so a spec defers to it rather than
         deciding for it: `view.format_value()` renders a value,
         `view.include_summary_field()` says whether an answer is shown at
-        all, `view.get_summary_label()` is the name a step gives a row that
-        has none, and `view.claimed_field_names()` is what a spec naming no
-        fields subtracts to find its own.
+        all, `view.get_summary_question()` is what a step asks on behalf of a
+        row that asks nothing itself, and `view.claimed_field_names()` is
+        what a spec naming no fields subtracts to find its own.
 
-        `label` is the name a `Question` around it chose, and None when
+        `question` is what a `Question` around it asked, and None when
         nothing did.
         """
 
 
 @dataclass(frozen=True)
 class SummaryRow:
-    """One row of a check-your-answers page: what it is called, what it
-    says, and where to go to change it.
+    """One row of a check-your-answers page: the question, the answer, and
+    where to go to change it. The page reads what the declaration wrote —
+    `Question` and `Answer` there, `row.question` and `row.answer` here.
 
-    `value` is display text, and the only thing a plain page needs to print.
-    It is the answer formatted, or several answers joined, or — when the
-    spec named a `template_name` — that template already rendered, in which
-    case it arrives marked safe exactly as a form's `as_p()` does. A page
-    prints `{{ row.value }}` and never asks which of the three it got.
+    `answer` is display text, and the only thing a plain page needs to
+    print. It is one answer formatted, or several joined, or — when the spec
+    named a `template_name` — that template already rendered, in which case
+    it arrives marked safe exactly as a form's `as_p()` does. A page prints
+    `{{ row.answer }}` and never asks which of the three it got.
 
-    `parts` are the pieces `value` was joined from, one per answered field,
-    so a value template can read an address as lines rather than as a comma
+    `parts` are the pieces `answer` was joined from, one per answered field,
+    so a template can read an address as lines rather than as a comma
     run-on. `name` is the answer's name — the field's, or the first field a
     multi-field row showed, or the step's when the row showed none.
 
-    `form` is the bound, validated form the answer came from, so a value
-    template can reach the whole answer rather than the pieces named here:
+    `form` is the bound, validated form the answer came from, so a template
+    can reach the whole answer rather than the pieces named here:
     `row.form.cleaned_data` is where a form that derives something in
     `clean()` puts it.
 
-    `bound_field` is the escape hatch: the Django `BoundField` the value
+    `bound_field` is the escape hatch: the Django `BoundField` the answer
     came from, for templates that need the widget, the help text, or the
     field's own attributes. It is None for a row several fields made, which
     no single `BoundField` can stand for.
@@ -299,8 +301,8 @@ class SummaryRow:
     """
 
     step: RuntimeStep
-    label: StrOrPromise
-    value: str
+    question: StrOrPromise
+    answer: str
     name: str = ""
     parts: tuple[str, ...] = ()
     form: BaseForm | None = dataclass_field(default=None, repr=False, compare=False)
@@ -336,13 +338,13 @@ def check_row_specs(specs: Sequence[RowSpec], source: str) -> None:
             continue
         if isinstance(spec.spec, Question):
             raise ImproperlyConfigured(
-                f"{source} has a Question ({spec.label!r}) inside a "
+                f"{source} has a Question ({spec.text!r}) inside a "
                 f"Question. A question names one row; naming it twice "
                 f"leaves nothing to decide which name wins."
             )
         if isinstance(spec.spec, Hide):
             raise ImproperlyConfigured(
-                f"{source} has a Hide inside a Question ({spec.label!r}), "
+                f"{source} has a Hide inside a Question ({spec.text!r}), "
                 f"which is a row named and then not shown. A Hide drops "
                 f"answers and belongs beside a question, not in one."
             )
@@ -736,8 +738,8 @@ class SummaryMixin(_SummaryMixinBase):
         )
         return SummaryRow(
             step=step,
-            label=bound_field.label,
-            value=value,
+            question=bound_field.label,
+            answer=value,
             name=bound_field.name,
             parts=(value,) if value else (),
             form=bound_field.form,
@@ -749,7 +751,7 @@ class SummaryMixin(_SummaryMixinBase):
         step: RuntimeStep,
         form: BaseForm,
         spec: Answer,
-        label: StrOrPromise | None = None,
+        question: StrOrPromise | None = None,
     ) -> SummaryRow:
         """Several answers, on one row.
 
@@ -758,7 +760,7 @@ class SummaryMixin(_SummaryMixinBase):
         reads street, town, postcode whatever the form does. Empty answers
         drop out, so a blank second line costs the address nothing.
 
-        `label` is the `Question`'s if one named this row, and the step's
+        `question` is the `Question`'s if one asked this row, and the step's
         own name when nothing did — a page that asked one thing having
         already named it.
         """
@@ -773,8 +775,10 @@ class SummaryMixin(_SummaryMixinBase):
         parts = tuple(value for _, value in shown if value)
         row = SummaryRow(
             step=step,
-            label=label if label is not None else self.get_summary_label(step),
-            value=spec.separator.join(parts),
+            question=(
+                question if question is not None else self.get_summary_question(step)
+            ),
+            answer=spec.separator.join(parts),
             name=shown[0][0] if shown else (step.name or ""),
             parts=parts,
             form=form,
@@ -782,11 +786,11 @@ class SummaryMixin(_SummaryMixinBase):
         return self.render_row(row, spec.template_name)
 
     def render_row(self, row: SummaryRow, template_name: str | None) -> SummaryRow:
-        """The row with its value rendered, when its spec named a template.
+        """The row with its answer rendered, when its spec named a template.
 
         The one thing Gandalf renders, and never one of its own: the
         template is the caller's, and what comes back is marked safe the way
-        any rendered template is, so the page prints `{{ row.value }}`
+        any rendered template is, so the page prints `{{ row.answer }}`
         without knowing which kind of row it holds.
 
         Rendered now rather than lazily in the template, so a template that
@@ -800,7 +804,7 @@ class SummaryMixin(_SummaryMixinBase):
             {"row": row, "view": self},
             request=self.request,
         )
-        return replace(row, value=rendered)
+        return replace(row, answer=rendered)
 
     def claimed_field_names(self, step: RuntimeStep) -> set[str]:
         """Every field name some spec of this step names.
@@ -847,14 +851,14 @@ class SummaryMixin(_SummaryMixinBase):
         hide fields the user should not be shown their own answer to."""
         return True
 
-    def get_summary_label(self, step: RuntimeStep) -> StrOrPromise:
-        """The name of a row the step itself has to name: its `label`
-        context if it declares one (`.step(Form, name="billing",
+    def get_summary_question(self, step: RuntimeStep) -> StrOrPromise:
+        """What a row asks when the step itself has to say: the step's
+        `label` context if it declares one (`.step(Form, name="billing",
         label="Billing")`), otherwise its name made readable.
 
-        A row an `Answer` built takes this when no `Question` named it,
+        A row an `Answer` built takes this when no `Question` asked it,
         because a page that asked one thing is named by the step. A row one
-        field built is named by the field."""
+        field built is asked by the field."""
         context = step.declaration.context or {}
         label: StrOrPromise | None = context.get(self.summary_label_context_key)
         if label is not None:

@@ -221,7 +221,7 @@ def test_context_carries_a_row_per_answer(summary_view):
 def test_a_row_is_named_by_the_field_that_asked_it(summary_view):
     rows = summary_view.get_context_data()["summary"]
 
-    assert rows[0].label == "Name"
+    assert rows[0].question == "Name"
 
 
 def test_a_row_links_to_the_step_that_changes_it(summary_view):
@@ -233,7 +233,7 @@ def test_a_row_links_to_the_step_that_changes_it(summary_view):
 def test_every_answer_reads_as_a_row_of_its_own(summary_view):
     rows = summary_view.get_context_data()["summary"]
 
-    assert [(row.name, row.value) for row in rows[1:]] == [
+    assert [(row.name, row.answer) for row in rows[1:]] == [
         ("contact_method", "Email"),
         ("toppings", "Olives"),
         ("marketing", "No"),
@@ -275,7 +275,7 @@ def test_values_can_be_formatted_per_field(summary_view):
 
     rows = view.get_context_data()["summary"]
 
-    assert rows[1].value == "EMAIL"
+    assert rows[1].answer == "EMAIL"
 
 
 def test_the_steps_summarised_can_be_narrowed(summary_view):
@@ -367,14 +367,14 @@ class _JoinedView(_SummaryView):
 def test_named_fields_read_as_one_row(address_rows):
     rows = address_rows(_JoinedView)
 
-    assert rows[1].value == "12 High Street, Ely, CB7 4AA"
+    assert rows[1].answer == "12 High Street, Ely, CB7 4AA"
 
 
 def test_an_answer_drops_the_pieces_that_were_left_empty(address_rows):
     """`line_2` is blank, and an address does not want ", , " for it."""
     rows = address_rows(_JoinedView)
 
-    assert ", ," not in rows[1].value
+    assert ", ," not in rows[1].answer
 
 
 def test_an_answer_that_nothing_named_takes_the_steps_own_name(address_rows):
@@ -382,7 +382,7 @@ def test_an_answer_that_nothing_named_takes_the_steps_own_name(address_rows):
     no `Question` around it reads as the step."""
     rows = address_rows(_JoinedView)
 
-    assert rows[1].label == "Address"
+    assert rows[1].question == "Address"
 
 
 def test_a_step_with_no_label_names_its_row_after_itself(summary_view):
@@ -394,7 +394,7 @@ def test_a_step_with_no_label_names_its_row_after_itself(summary_view):
 
     rows = _View(summary_view.request).get_context_data()["summary"]
 
-    assert rows[1].label == "Preferences"
+    assert rows[1].question == "Preferences"
 
 
 def test_an_answer_takes_the_place_of_its_first_field(address_rows):
@@ -408,7 +408,7 @@ def test_an_answer_takes_the_place_of_its_first_field(address_rows):
 def test_fields_no_answer_names_keep_a_row_of_their_own(address_rows):
     rows = address_rows(_JoinedView)
 
-    assert (rows[2].label, rows[2].value) == ("Lookup token", "tok-9")
+    assert (rows[2].question, rows[2].answer) == ("Lookup token", "tok-9")
 
 
 def test_an_answer_keeps_the_pieces_it_joined(address_rows):
@@ -442,7 +442,7 @@ def test_an_answer_joins_with_the_separator_it_was_given(address_rows):
 
     rows = address_rows(_View)
 
-    assert rows[3].value == "Ely — CB7 4AA"
+    assert rows[3].answer == "Ely — CB7 4AA"
 
 
 def test_an_answer_carries_no_bound_field(address_rows):
@@ -472,7 +472,7 @@ def test_an_answer_renders_its_pieces_through_the_pages_formatting(address_rows)
 
     rows = address_rows(_View)
 
-    assert rows[1].value == "12 HIGH STREET, ELY, CB7 4AA"
+    assert rows[1].answer == "12 HIGH STREET, ELY, CB7 4AA"
 
 
 def test_an_answer_skips_a_field_the_page_leaves_off(address_rows):
@@ -482,7 +482,7 @@ def test_an_answer_skips_a_field_the_page_leaves_off(address_rows):
 
     rows = address_rows(_View)
 
-    assert rows[1].value == "12 High Street, CB7 4AA"
+    assert rows[1].answer == "12 High Street, CB7 4AA"
 
 
 def test_an_answer_skips_a_field_the_step_does_not_ask(summary_view_for, address_state):
@@ -508,7 +508,7 @@ def test_an_answer_skips_a_field_the_step_does_not_ask(summary_view_for, address
 
     rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
 
-    assert rows[3].value == "Ely, CB7 4AA"
+    assert rows[3].answer == "Ely, CB7 4AA"
 
 
 def test_an_answer_naming_fields_a_declared_step_has_not_got_is_refused(
@@ -550,7 +550,7 @@ def test_a_formset_step_elsewhere_does_not_stop_the_check(
 
     rows = summary_view_for(wizard, address_state, _View).get_context_data()["summary"]
 
-    assert rows[3].value == "Ely, CB7 4AA"
+    assert rows[3].answer == "Ely, CB7 4AA"
 
 
 HOURS = {
@@ -581,7 +581,7 @@ def test_a_formset_step_summarises_every_row(summary_view_for):
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}])
     rows = view.get_context_data()["summary"]
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Day", "Monday"),
         ("Opens", "09:00"),
         ("Day", "Tuesday"),
@@ -602,7 +602,7 @@ def test_a_step_with_a_plain_form_view_is_iterated_directly(summary_view_for):
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}])
     rows = view.get_context_data()["summary"]
 
-    assert [(row.label, row.value) for row in rows] == [("Name", "Ada")]
+    assert [(row.question, row.answer) for row in rows] == [("Name", "Ada")]
 
 
 def test_a_page_can_say_how_a_formset_step_reads(summary_view_for):
@@ -615,7 +615,7 @@ def test_a_page_can_say_how_a_formset_step_reads(summary_view_for):
                 yield from super().build_summary_rows(step)
                 return
             for row in step.answer:
-                yield SummaryRow(step=step, label=row["day"], value=row["opens"])
+                yield SummaryRow(step=step, question=row["day"], answer=row["opens"])
 
     wizard = (
         Wizard()
@@ -627,7 +627,7 @@ def test_a_page_can_say_how_a_formset_step_reads(summary_view_for):
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
     rows = view.get_context_data()["summary"]
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Monday", "09:00"),
         ("Tuesday", "10:00"),
     ]
@@ -642,7 +642,7 @@ def test_specs_can_be_chosen_per_run(address_rows):
 
     rows = address_rows(_View)
 
-    assert rows[3].value == "Ely, CB7 4AA"
+    assert rows[3].answer == "Ely, CB7 4AA"
 
 
 def test_a_key_that_names_no_step_is_refused(address_rows):
@@ -704,7 +704,7 @@ def test_names_are_not_checked_when_the_wizard_grows_mid_walk(summary_view_for):
 
     rows = summary_view_for(wizard, state, _View).get_context_data()["summary"]
 
-    assert rows[3].value == "Ely, CB7 4AA"
+    assert rows[3].answer == "Ely, CB7 4AA"
 
 
 def test_a_field_named_by_two_specs_is_refused(address_rows):
@@ -767,22 +767,22 @@ def test_an_answer_renders_through_the_template_it_names(address_rows):
     `{% if %}` in the review template."""
     rows = address_rows(_TemplatedView)
 
-    assert "<li>12 High Street</li>" in rows[1].value
-    assert "<li>Ely</li>" in rows[1].value
+    assert "<li>12 High Street</li>" in rows[1].answer
+    assert "<li>Ely</li>" in rows[1].answer
 
 
 def test_a_rendered_value_arrives_marked_safe(address_rows):
-    """A page prints `{{ row.value }}` without knowing which kind of row it
+    """A page prints `{{ row.answer }}` without knowing which kind of row it
     is holding, so the markup has to survive the print."""
     rows = address_rows(_TemplatedView)
 
-    assert isinstance(rows[1].value, SafeString)
+    assert isinstance(rows[1].answer, SafeString)
 
 
 def test_a_value_nothing_rendered_is_escaped_like_any_other_string(address_rows):
     rows = address_rows(_JoinedView)
 
-    assert not isinstance(rows[1].value, SafeString)
+    assert not isinstance(rows[1].answer, SafeString)
 
 
 def test_a_value_template_is_given_the_row_it_renders(summary_view_for, address_state):
@@ -798,7 +798,7 @@ def test_a_value_template_is_given_the_row_it_renders(summary_view_for, address_
     view = summary_view_for(wizard, address_state, _TemplatedView)
     rows = view.get_context_data()["summary"]
 
-    assert "Outcode: CB7" in rows[1].value
+    assert "Outcode: CB7" in rows[1].answer
 
 
 def test_a_value_template_sees_the_name_the_page_will_show(
@@ -824,7 +824,7 @@ def test_a_value_template_sees_the_name_the_page_will_show(
     view = summary_view_for(address_wizard, address_state, _View)
     rows = view.get_context_data()["summary"]
 
-    assert "Where the work happens" in rows[1].value
+    assert "Where the work happens" in rows[1].answer
 
 
 def test_a_template_that_does_not_exist_fails_when_the_page_is_built(address_rows):
@@ -867,13 +867,13 @@ def test_an_answer_naming_no_fields_takes_the_whole_step(address_rows):
     rows = address_rows(_WholeStepView)
 
     assert [row.step.name for row in rows] == ["who", "address"]
-    assert "<li>12 High Street</li>" in rows[1].value
+    assert "<li>12 High Street</li>" in rows[1].answer
 
 
 def test_an_answer_naming_no_fields_is_named_by_its_step(address_rows):
     rows = address_rows(_WholeStepView)
 
-    assert rows[1].label == "Address"
+    assert rows[1].question == "Address"
 
 
 def test_it_still_carries_the_librarys_formatting(address_rows):
@@ -920,9 +920,9 @@ def test_an_answer_beside_one_naming_no_fields_takes_its_own_fields(address_rows
 
     rows = address_rows(_View)
 
-    assert [row.label for row in rows] == ["Name", "Address", "Where"]
+    assert [row.question for row in rows] == ["Name", "Address", "Where"]
     assert rows[1].parts == ("12 High Street", "tok-9")
-    assert rows[2].value == "Ely, CB7 4AA"
+    assert rows[2].answer == "Ely, CB7 4AA"
 
 
 def test_two_specs_naming_no_fields_are_refused(address_rows):
@@ -968,7 +968,7 @@ def test_an_answer_naming_no_fields_and_no_template_joins_the_rest(address_rows)
 
     rows = address_rows(_View)
 
-    assert [(row.label, row.value) for row in rows] == [
+    assert [(row.question, row.answer) for row in rows] == [
         ("Name", "Ada"),
         ("Address", "12 High Street, Ely, CB7 4AA"),
     ]
@@ -986,12 +986,12 @@ class _Repeat:
     def fields(self):
         return ()
 
-    def build_rows(self, view, step, form, label=None):
+    def build_rows(self, view, step, form, question=None):
         for row in step.answer:
             yield SummaryRow(
                 step=step,
-                label=row[self.label_field],
-                value=row[self.value_field],
+                question=row[self.label_field],
+                answer=row[self.value_field],
                 form=form,
             )
 
@@ -1013,7 +1013,7 @@ def test_a_page_can_bring_a_spec_of_its_own(summary_view_for):
     view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
     rows = view.get_context_data()["summary"]
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Monday", "09:00"),
         ("Tuesday", "10:00"),
     ]
@@ -1041,7 +1041,7 @@ def test_a_step_can_say_how_its_own_answers_read(self_shaping_rows):
     an address."""
     rows = self_shaping_rows(_SummaryView)
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Address", "12 High Street, Ely, CB7 4AA"),
     ]
 
@@ -1056,7 +1056,7 @@ def test_the_page_has_the_last_word(self_shaping_rows):
 
     rows = self_shaping_rows(_View)
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Address line 1", "12 High Street"),
         ("Address line 2", ""),
         ("Where", "Ely, CB7 4AA"),
@@ -1072,7 +1072,7 @@ def test_a_page_can_silence_a_step_that_shapes_itself(self_shaping_rows):
 
     rows = self_shaping_rows(_View)
 
-    assert [row.label for row in rows[1:]] == [
+    assert [row.question for row in rows[1:]] == [
         "Address line 1",
         "Address line 2",
         "Town or city",
@@ -1180,7 +1180,7 @@ def test_a_bare_form_step_can_say_it_at_the_declaration(
     view = summary_view_for(wizard, address_state, _SummaryView)
     rows = view.get_context_data()["summary"]
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Address", "12 High Street, Ely, CB7 4AA"),
     ]
 
@@ -1231,7 +1231,7 @@ class _QuestionedView(_SummaryView):
 def test_a_step_that_asked_twice_reads_as_two_rows(address_rows):
     rows = address_rows(_QuestionedView)
 
-    assert [(row.label, row.value) for row in rows] == [
+    assert [(row.question, row.answer) for row in rows] == [
         ("Name", "Ada"),
         ("Address", "12 High Street, Ely"),
         ("Postcode", "CB7 4AA"),
@@ -1262,8 +1262,8 @@ def test_a_question_names_a_row_that_names_no_fields(address_rows):
 
     rows = address_rows(_View)
 
-    assert rows[1].label == "Where the work happens"
-    assert "<li>12 High Street</li>" in rows[1].value
+    assert rows[1].question == "Where the work happens"
+    assert "<li>12 High Street</li>" in rows[1].answer
 
 
 def test_an_answer_beside_a_question_keeps_its_steps_name(address_rows):
@@ -1281,7 +1281,7 @@ def test_an_answer_beside_a_question_keeps_its_steps_name(address_rows):
 
     rows = address_rows(_View)
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Where", "12 High Street, Ely"),
         ("Address", "CB7 4AA, tok-9"),
     ]
@@ -1298,7 +1298,7 @@ def test_a_field_no_question_names_keeps_a_row_of_its_own(address_rows):
 
     rows = address_rows(_View)
 
-    assert [(row.label, row.value) for row in rows[1:]] == [
+    assert [(row.question, row.answer) for row in rows[1:]] == [
         ("Address", "12 High Street, Ely"),
         ("Postcode", "CB7 4AA"),
         ("Lookup token", "tok-9"),
