@@ -13,8 +13,8 @@ lists out of markup.
 
 The runtime already speaks this language. `Run.walk()` replays
 stored answers, places a submission at a claimed step, and stops where the
-run stops; `RuntimeStep.form` exposes a step's `errors` and `cleaned_data`
-as data. What agents need is a thin layer that packages those mechanics
+run stops; `RuntimeStep.answer` and `RuntimeStep.errors` expose what a step
+was answered with and what it refused, as data. What agents need is a thin layer that packages those mechanics
 behind a small, serializable vocabulary: *describe the current step, submit
 answers, read what's been answered, finish*.
 
@@ -159,8 +159,8 @@ catches either: the code type-checks against both objects and is wrong about
 one.
 
 So the reads go through the step's *view*, which is the thing that knows
-what its `get_form()` returned. `StepFormView` carries five hooks and
-`FormSetStepView` overrides four of them:
+what its `get_form()` returned. `StepFormView` carries six hooks, and
+`FormSetStepView` overrides the five that read a form object:
 
 | Hook | What it answers | Read by |
 |---|---|---|
@@ -168,7 +168,19 @@ what its `get_form()` returned. `StepFormView` carries five hooks and
 | `get_answer(form)` | what it was answered with | `answers()`, `placements()` |
 | `get_answer_fields(form)` | the bound fields it reads as | the summary page |
 | `get_answer_schema(form)` | the step as JSON Schema | `describe()`, `outline()` |
+| `get_summary_row_specs()` | how its answers read as rows — and, through `Hide`, which are not the person's to see | the summary page, `describe()`, `outline()` |
 | `get_submission(answer)` | that answer as the POST that made it | `submit()`, `prefill()` |
+
+The fifth is the newest, and the one that took a release to reach both
+readers. A step's `summary_rows` — on its view, or at its declaration for a
+step with no view of its own — was written for the check-your-answers page,
+and `Hide("lookup_token")` there says an answer is not the person's own. A
+driver describing the same step went on listing the token in the schema and
+reading it back in the answers, so an agent could recite it, or be invited
+to invent one. Now `describe()` and `outline()` leave a hidden field out,
+while `answers()` and `placements()` — the record, and what an edit reads
+to resubmit — keep it. A page's `summary_overrides` reaches neither: that
+is a page's opinion about arranging rows, and the driver is not a page.
 
 The last is the only one pointing inwards, and it is what keeps the driver's
 central promise true: `answers()` hands back what `submit()` takes, so an
@@ -235,10 +247,13 @@ the residue. Two driver primitives make that a loop instead of a wish:
   gives: every step with its JSON Schema, every fork with *all* of its
   possible routes, and `expand` markers where the tree grows from an
   answer. A step whose hand-written view composes its form from missing
-  answers reports `schema: None` until the walk reaches it — which is the
-  limit on front-loading, and a real one: of the three formtools wizards
-  ported into the test app, four of their fourteen steps say `None` before
-  the walk arrives.
+  answers reports `schema: None` until the walk reaches it, beside a
+  `schema_unavailable` sentence naming the exception's class — because a
+  step that could not be described has to be tellable from one that asks
+  nothing, and a formset once passed for the latter. That is the limit on
+  front-loading, and a real one: of the three formtools wizards ported
+  into the test app, four of their fourteen steps say `None` before the
+  walk arrives.
 
   How much a fork explains itself depends on how it was declared, and
   there are three levels:
@@ -362,10 +377,11 @@ Two things follow:
   AG-UI endpoint hands the agent the session the chat request arrived on
   — the same trust as running it as `request.user`. See *Sessions and the
   streamed response* below for the one setting that has to hold.
-- The handover is just a URL: `run.entry_url("confirm")` is the
-  wizard's own step URL. Nothing is exported, copied, or re-validated
-  specially — the person's first page load walks the same answers the
-  same way.
+- The handover is just a URL: `run.entry_url()` is the wizard's own step
+  URL, for the step the run is waiting on — naming one would assume every
+  wizard has a step called *confirm*, which was true of the demo and of
+  nothing else. Nothing is exported, copied, or re-validated specially —
+  the person's first page load walks the same answers the same way.
 
 An edit from the person behaves like any other edit: the walk re-routes
 from the changed step, keeps every later answer that still holds, and
@@ -415,7 +431,7 @@ The contract is `form.errors.get_json_data()`: field name → list of
 `ModelRetry` with the errors serialized into the message: the framework
 turns that into a retry prompt and spends the tool's retry budget, and the
 model corrects itself with no bespoke error plumbing. The walk keeps the
-rejected submission, exactly as the HTTP layer does, so `get_current_step`
+rejected submission, exactly as the HTTP layer does, so `get_run`
 re-reports the errors until a valid answer replaces them.
 
 ## Why not MCP (yet)
