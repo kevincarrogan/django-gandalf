@@ -33,6 +33,7 @@ from tests.testapp.forms import (
     SummaryRowsForm,
 )
 from tests.testapp.views import (
+    DynamicOpeningHoursStepView,
     FirstStepFromFormView,
     OpeningHoursStepView,
     SelfShapingAddressStepView,
@@ -588,6 +589,66 @@ def test_a_formset_step_summarises_every_row(summary_view_for):
         ("Day", "Tuesday"),
         ("Opens", "10:00"),
     ]
+
+
+def test_a_named_spec_does_not_reach_a_repeated_step_s_rows(summary_view_for):
+    """A spec that names fields names the step's *own*, and a formset step
+    has none — its fields belong to each of the n rows it repeats. Naming
+    one anyway is refused wherever the declaration can say so, but a step
+    that picks its form class per request cannot be checked ahead of the
+    walk, and what the walk must not do is hand a row's field to a spec
+    that was addressing the step: `form["day"]` on a formset is an index,
+    and asks for row "day".
+    """
+
+    class _View(_SummaryView):
+        def get_row_specs(self, step):
+            if step.name == "opening-hours":
+                return [Answer("day", "opens")]
+            return super().get_row_specs(step)
+
+    wizard = configured(
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(DynamicOpeningHoursStepView, name="opening-hours", label="Opening hours"),
+        template_name="testapp/linear_wizard.html",
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
+    rows = view.get_context_data()["summary"]
+
+    assert [(row.question, row.answer) for row in rows[1:]] == [
+        ("Day", "Monday"),
+        ("Opens", "09:00"),
+        ("Day", "Tuesday"),
+        ("Opens", "10:00"),
+    ]
+
+
+def test_a_spec_naming_no_fields_still_takes_a_repeated_step(summary_view_for):
+    """The other half of the same rule: a spec naming no fields is not
+    addressing a field at all, so a formset's rows are not out of its
+    reach — they are the step, and it speaks for the step."""
+
+    class _View(_SummaryView):
+        def get_row_specs(self, step):
+            if step.name == "opening-hours":
+                return [Answer(template_name="testapp/summary/hours.html")]
+            return super().get_row_specs(step)
+
+    wizard = configured(
+        Wizard()
+        .step(FirstStepForm, name="who", label="Who you are")
+        .step(DynamicOpeningHoursStepView, name="opening-hours", label="Opening hours"),
+        template_name="testapp/linear_wizard.html",
+    )
+
+    view = summary_view_for(wizard, [{"step": {"name": "Ada"}}, {"step": HOURS}], _View)
+    rows = view.get_context_data()["summary"]
+
+    assert len(rows) == 2
+    assert "<li>Monday from 09:00</li>" in rows[1].answer
+    assert "<li>Tuesday from 10:00</li>" in rows[1].answer
 
 
 def test_a_step_with_a_plain_form_view_is_iterated_directly(summary_view_for):

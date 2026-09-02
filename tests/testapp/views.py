@@ -2040,6 +2040,17 @@ class OpeningHoursStepView(FormSetStepView):
     template_name = "testapp/formset_step.html"
 
 
+class DynamicOpeningHoursStepView(FormSetStepView):
+    """A formset step that picks its form class per request, so the
+    declaration cannot say it declares no fields of its own — the two ways
+    the declaration is not the whole story, at once."""
+
+    template_name = "testapp/formset_step.html"
+
+    def get_form_class(self):
+        return OpeningHoursFormSet
+
+
 class OpeningHoursWizardViewSet(WizardViewSet):
     """A formset step, and a check-your-answers page over one.
 

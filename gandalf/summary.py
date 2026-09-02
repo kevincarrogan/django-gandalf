@@ -550,6 +550,12 @@ class SummaryMixin(_SummaryMixinBase):
         they come round. Only a spec naming no fields is different, because
         no field brings the walk to it — it speaks for the whole step, and
         the walk never starts.
+
+        A spec that names fields names the step's *own*, so the walk only
+        offers it a bound field of the step's own form. A repeated step's
+        fields belong to a row rather than to the step, and reach the page
+        as themselves. A spec naming none is not addressing a field at all,
+        and speaks for those rows like anything else the step holds.
         """
         specs = self.get_row_specs(step)
         # A page's `summary_overrides` reaches no other check until the walk
@@ -559,18 +565,20 @@ class SummaryMixin(_SummaryMixinBase):
         form = step.form
         by_field = self._specs_by_field(specs)
         whole = self.get_whole_step_spec(specs)
-        if whole is not None:
-            # It speaks for every field no other spec named, so it stands
-            # behind each of them and the walk reaches it like any other.
-            # `len(specs)` is a slot of its own: `_specs_by_field` indexes
-            # 0 to len(specs) - 1.
-            for bound_field in step.answer_fields:
-                by_field.setdefault(bound_field.name, (len(specs), whole))
+        # A spec naming no fields speaks for every field no other spec
+        # named, so it stands behind each of them and the walk reaches it
+        # like any other. `len(specs)` is a slot of its own:
+        # `_specs_by_field` indexes 0 to len(specs) - 1.
+        rest = (len(specs), whole) if whole is not None else None
         spoken: set[int] = set()
         for bound_field in step.answer_fields:
             if not self.include_summary_field(step, bound_field):
                 continue
-            found = by_field.get(bound_field.name)
+            found = (
+                by_field.get(bound_field.name, rest)
+                if bound_field.form is form
+                else rest
+            )
             if found is None:
                 yield self.build_field_row(step, form, bound_field)
                 continue
