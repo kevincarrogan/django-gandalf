@@ -43,8 +43,8 @@ class JourneyRecord(models.Model):
 
     The session store keeps this on the journey's record beside the runs
     and the stashes; a table keeps it on its own row, because it is the one
-    part of a journey that outlives submission. `data` is the envelope
-    `store.data` reads — both buckets, verbatim.
+    part of a journey that outlives submission. `meta` is the envelope
+    `store.metadata` reads — both buckets, verbatim.
     """
 
     owner = models.ForeignKey(
@@ -53,7 +53,7 @@ class JourneyRecord(models.Model):
         related_name="wizard_journeys",
     )
     journey = models.CharField(max_length=100)
-    data = models.JSONField(default=dict)
+    meta = models.JSONField(default=dict)
     completed = models.BooleanField(default=False)
 
     class Meta:

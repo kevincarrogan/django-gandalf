@@ -23,7 +23,7 @@ Four contracts are easy to miss and matter more than the rest:
 A durable hub needs **both** stores swapped, once, on the root viewset:
 `storage_class` for the runs and `journey_store_class` for the bookkeeping,
 and every member the hub builds gets the same two. A journey store is built
-with the journey as well as the context, and its `data` and `complete()`
+with the journey as well as the context, and its `metadata` and `complete()`
 are the journey's own — kept on a row that survives the members being
 deleted at submission. A durable *collection* needs `ModelItemStore`
 in place of `ModelJourneyStore` — it is the journey store plus an ordered
@@ -36,7 +36,7 @@ import uuid
 
 from django.core.exceptions import ValidationError
 
-from gandalf.storage import JourneyData, RunNotFound, StashNotFound
+from gandalf.storage import JourneyMetadata, RunNotFound, StashNotFound
 
 from .models import (
     ItemRecord,
@@ -116,7 +116,7 @@ class ModelJourneyStore:
     member clears its run and leaves the stash, which is what lets a completed
     member survive its run being deleted.
 
-    The journey's own facts — its data and its completion — live on a row of
+    The journey's own facts — its metadata and its completion — live on a row of
     their own, because they are the one part of a journey that survives
     submission: `complete()` deletes the members and keeps that row.
     """
@@ -176,18 +176,18 @@ class ModelJourneyStore:
         return JourneyRecord.objects.filter(**self._scope()).first()
 
     @property
-    def data(self):
-        return JourneyData(read=self._read_data, write=self._write_data)
+    def metadata(self):
+        return JourneyMetadata(read=self._read_metadata, write=self._write_metadata)
 
-    def _read_data(self):
+    def _read_metadata(self):
         record = self._journey()
-        return None if record is None else record.data
+        return None if record is None else record.meta
 
-    def _write_data(self, envelope):
+    def _write_metadata(self, envelope):
         # Written now, not at the end of a walk — the same contract as
         # `set_run_metadata`, for the same reason.
         JourneyRecord.objects.update_or_create(
-            **self._scope(), defaults={"data": envelope}
+            **self._scope(), defaults={"meta": envelope}
         )
 
     def complete(self):

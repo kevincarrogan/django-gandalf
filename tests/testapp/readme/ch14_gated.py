@@ -16,7 +16,7 @@ def record_amount(store, run):
     readable and a walk has already been paid — and written to the journey's
     data, where every other section reads it without a walk."""
     project = run.path.find_step(name="project")
-    store.data["amount"] = int(project.answer["amount"])
+    store.metadata["amount"] = int(project.answer["amount"])
 
 
 class ProjectSection(SectionViewSet):
@@ -41,7 +41,7 @@ class MatchFundingSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
+        return store.metadata.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
 
 
 class RefereesSection(SectionViewSet):

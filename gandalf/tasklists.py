@@ -577,7 +577,7 @@ class JourneyScoped:
 
     A journey is one record — `journey_store_class(context, journey)` — and
     every entry reads the same one, so a section nested two groups down
-    still reads `store.data` written at the top. Nesting is a key namespace,
+    still reads `store.metadata` written at the top. Nesting is a key namespace,
     not a second store: a group with a `key` prefixes it onto every entry it
     lists.
     """
@@ -662,7 +662,7 @@ class JourneyScoped:
     def submitted(self, store: JourneyStore) -> HttpResponseBase:
         """The page for a journey that has been submitted — what any request
         reaching the root after the tombstone gets. `Http404` until the app
-        says what a submitted journey looks like; `store.data` is what the
+        says what a submitted journey looks like; `store.metadata` is what the
         tombstone kept."""
         raise Http404(f"Journey {self.get_journey()!r} has been submitted.")
 
@@ -793,7 +793,7 @@ class SectionViewSet(JourneyScoped, WizardViewSet):
         """What this section does when it finishes, beyond being recorded.
         The run is still readable here and torn down after, so anything
         another section's `blocked()` or `hidden()` needs to know is read
-        off the path now and written to `store.data`, once. The default
+        off the path now and written to `store.metadata`, once. The default
         sends the user back to the task list."""
         return redirect(self.get_task_list_url())
 
@@ -1142,7 +1142,7 @@ class TaskListViewSet(JourneyScoped, TemplateView):
 
             def start_application(request):
                 journey = GrantApplication.begin(request)
-                journey.store.data["applying_as"] = request.user.applying_as
+                journey.store.metadata["applying_as"] = request.user.applying_as
                 return redirect(journey.url)
 
         `journey` is made up when not given; `url_kwargs` are the page's

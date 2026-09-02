@@ -64,14 +64,14 @@ answer, and only one of them is a wizard.
 
 If the application already knows — off the account, off last year's
 application, off the link they followed — it writes the answer rather than
-asking for it. `store.data` is the journey's memory, the next section's
+asking for it. `store.metadata` is the journey's memory, the next section's
 subject, and a seed written here is read by every `hidden()` and
 `blocked()` on the first render:
 
 ```python
 def start_application(request):
     journey = GrantApplication.begin(request)
-    journey.store.data["applying_as"] = request.user.applying_as
+    journey.store.metadata["applying_as"] = request.user.applying_as
     return redirect(journey.url)
 ```
 
@@ -83,7 +83,7 @@ def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
     step = run.path.find_step(name="applying-as")
-    store.data["applying_as"] = step.answer["applying_as"]
+    store.metadata["applying_as"] = step.answer["applying_as"]
 ```
 
 ```python
@@ -135,7 +135,7 @@ view's concern.
 
 ### A memory
 
-`store.data` is the journey's record of what its sections decided — the
+`store.metadata` is the journey's record of what its sections decided — the
 facts the rest of the journey turns on, kept where every section reads
 them without a walk. It is the same bag chapter 10's `run.metadata`
 is, kept for the journey rather than for one run, with per-section sub-bags
@@ -151,7 +151,7 @@ class DocumentsSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("applying_as") != "organisation"
+        return store.metadata.get("applying_as") != "organisation"
 ```
 
 The project section writes the amount and match funding reads it, exactly
@@ -190,15 +190,15 @@ class GrantApplicationViewSet(TaskListViewSet):
 
     def journey_done(self, page, store):
         application = Application.objects.create()
-        application.submit(store.data["email"])
-        store.data["reference"] = application.reference
+        application.submit(store.metadata["email"])
+        store.metadata["reference"] = application.reference
         return redirect(self.get_page_url())
 
     def submitted(self, store):
         return render(
             self.request,
             "testapp/journey_done.html",
-            {"reference": store.data["reference"]},
+            {"reference": store.metadata["reference"]},
         )
 ```
 
@@ -218,7 +218,7 @@ default — and only once that has returned tombstones the journey. A
 `journey_done()` that raises leaves every section resumable. After that,
 the runs and stashes are gone; the page answers with `submitted()`, which
 is `Http404` until you say what a submitted journey looks like. Anything
-the done page needs goes in `store.data`, which the tombstone keeps.
+the done page needs goes in `store.metadata`, which the tombstone keeps.
 
 ### A task list within the task list
 
@@ -258,7 +258,7 @@ prefix every section it lists is keyed under, so the referees section
 lives at `supporting:referees` in the journey's store — composed by the
 page, never typed. Everything still lives in the one journey record —
 `blocked()` reads `contact`, a root key, from two levels down, and the
-governing document's `hidden()` reads `store.data["applying_as"]`, written
+governing document's `hidden()` reads `store.metadata["applying_as"]`, written
 by the setup wizard at the root. Its page is built as a subclass of the
 one in the slot *and* of the root's, so a hook you override on
 `GrantApplicationViewSet` applies to it too, beneath the page's own; its row on the parent is its own rows' status; and only the root ends

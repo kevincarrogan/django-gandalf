@@ -87,7 +87,7 @@ tactics below are enough.
 - Accept that some checks belong only at submission time.
 - A [task list](tasklists.md) row deliberately pays none of this: two storage
   reads and a `reverse()`, never a walk. That is why what a section decided is written to
-  [`store.data`](journey-store.md) at completion rather than read out of a
+  [`store.metadata`](journey-store.md) at completion rather than read out of a
   stash at render time.
 
 `just bench` measures your own shapes, and `tests/functional/test_walk_cost.py`

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from gandalf.context import WizardContext
     from gandalf.runtime import Run
-    from gandalf.storage import JourneyData
+    from gandalf.storage import JourneyMetadata
 
     #: Display text that may still be a lazy translation — what Django hands
     #: back for a field label or a `gettext_lazy()` string, and what a
@@ -87,7 +87,7 @@ Item: TypeAlias = dict[str, Any]
 ItemRegistry: TypeAlias = dict[str, Any]
 
 #: Everything a session keeps about one journey — its sections' runs and
-#: stashes, its collections, its decided data, or the tombstone a submitted
+#: stashes, its collections, its metadata, or the tombstone a submitted
 #: journey leaves behind. See `SessionJourneyStore` for the layout.
 JourneyRecord: TypeAlias = dict[str, Any]
 
@@ -180,7 +180,7 @@ class JourneyStore(Protocol):
     def keys(self) -> list[str]: ...
 
     @property
-    def data(self) -> JourneyData: ...
+    def metadata(self) -> JourneyMetadata: ...
 
     def complete(self) -> None: ...
 

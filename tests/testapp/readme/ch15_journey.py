@@ -53,14 +53,14 @@ def record_applying_as(store, run):
     """Read the one answer the rest of the journey turns on, once, and write
     it where every other section can read it without a walk."""
     step = run.path.find_step(name="applying-as")
-    store.data["applying_as"] = step.answer["applying_as"]
+    store.metadata["applying_as"] = step.answer["applying_as"]
 
 
 def record_email(store, run):
     """What submitting needs, written once here rather than read out of the
     stash's positional state at journey_done()."""
     step = run.path.find_step(name="email")
-    store.data["email"] = step.answer["email"]
+    store.metadata["email"] = step.answer["email"]
 
 
 # --- the wizards ---------------------------------------------------------------
@@ -136,7 +136,7 @@ class MatchFundingSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
+        return store.metadata.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
 
 
 class RefereesSection(SectionViewSet):
@@ -158,7 +158,7 @@ class DocumentsSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("applying_as") != "organisation"
+        return store.metadata.get("applying_as") != "organisation"
 
 
 # --- the task list ---------------------------------------------------------------
@@ -205,15 +205,15 @@ class GrantApplicationViewSet(TaskListViewSet):
 
     def journey_done(self, page, store):
         application = Application.objects.create()
-        application.submit(store.data["email"])
-        store.data["reference"] = application.reference
+        application.submit(store.metadata["email"])
+        store.metadata["reference"] = application.reference
         return redirect(self.get_page_url())
 
     def submitted(self, store):
         return render(
             self.request,
             "testapp/journey_done.html",
-            {"reference": store.data["reference"]},
+            {"reference": store.metadata["reference"]},
         )
 
 

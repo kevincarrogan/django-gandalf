@@ -22,10 +22,10 @@ from gandalf.tasklists import BLOCKED, COMPLETE, NOT_STARTED
 from gandalf.storage import SessionJourneyStore
 from gandalf.testing import (
     seed_journey_complete,
-    seed_journey_data,
+    seed_journey_metadata,
     seed_section_stash,
     stored_journey,
-    stored_journey_data,
+    stored_journey_metadata,
     stored_section_run,
     stored_section_stashes,
 )
@@ -146,7 +146,7 @@ def test_the_setup_wizard_mints_a_journey_and_lands_on_its_page(client):
     # The setup answers are the journey's first section, already complete,
     # and the answer the journey turns on is in its data.
     assert _statuses(client, journey)["setup"] == COMPLETE
-    assert stored_journey_data(client, journey) == {
+    assert stored_journey_metadata(client, journey) == {
         "journey": {"applying_as": "organisation"}
     }
 
@@ -203,7 +203,7 @@ def test_a_section_appears_once_another_sections_answer_reveals_it(client):
     _finish_project(client, journey, 25_000)
 
     assert _statuses(client, journey)["match-funding"] == NOT_STARTED
-    assert stored_journey_data(client, journey)["journey"]["amount"] == 25_000
+    assert stored_journey_metadata(client, journey)["journey"]["amount"] == 25_000
 
 
 def test_a_section_disappears_again_when_the_answer_is_withdrawn(client):
@@ -522,10 +522,10 @@ def test_a_page_with_nothing_to_do_at_submit_is_misconfigured(client):
 def test_a_seeded_answer_reveals_a_section_without_driving_the_wizard(client):
     journey = _start(client)
 
-    seed_journey_data(client, {"amount": 20_000}, journey=journey)
+    seed_journey_metadata(client, {"amount": 20_000}, journey=journey)
 
     assert "match-funding" in _statuses(client, journey)
-    assert stored_journey_data(client, journey)["journey"] == {
+    assert stored_journey_metadata(client, journey)["journey"] == {
         "applying_as": "individual",
         "amount": 20_000,
     }
@@ -533,7 +533,7 @@ def test_a_seeded_answer_reveals_a_section_without_driving_the_wizard(client):
 
 def test_a_seeded_tombstone_reads_as_submitted(client):
     journey = _start(client)
-    seed_journey_data(client, {"reference": "GF-SEEDED"}, journey=journey)
+    seed_journey_metadata(client, {"reference": "GF-SEEDED"}, journey=journey)
 
     seed_journey_complete(client, journey=journey)
 

@@ -235,13 +235,13 @@ def test_a_one_per_session_journeys_store_is_the_one_the_page_reads(client):
     request = client.get(reverse("scenario-task-list")).wsgi_request
 
     journey = ScenarioViewSet.begin(request)
-    journey.store.data["amount"] = 10
+    journey.store.metadata["amount"] = 10
 
     page = ScenarioViewSet()
     page.setup(request, **journey.page_kwargs)
 
     assert journey.id == page.get_journey()
-    assert page.get_journey_store().data["amount"] == 10
+    assert page.get_journey_store().metadata["amount"] == 10
 
 
 def test_a_journey_begins_on_a_context_with_no_request(client):
@@ -259,7 +259,7 @@ def test_a_journey_begins_on_a_context_with_no_request(client):
     context = WizardContext(session=client.session)
 
     journey = GrantApplicationViewSet.begin_for(context, "app-7")
-    journey.store.data["applying_as"] = "organisation"
+    journey.store.metadata["applying_as"] = "organisation"
 
     assert journey.id == "app-7"
     assert journey.url == reverse("readme-apply", kwargs={"journey": "app-7"})
@@ -276,7 +276,7 @@ def test_a_journey_hides_a_section_a_request_less_caller_ruled_out(client):
     context = WizardContext(session=client.session)
 
     journey = GrantApplicationViewSet.begin_for(context, "app-8")
-    journey.store.data["applying_as"] = "individual"
+    journey.store.metadata["applying_as"] = "individual"
 
     supporting = client.get(journey.url + "supporting/")
     assert "Governing document" not in supporting.content.decode()
@@ -295,7 +295,7 @@ def test_a_journey_records_a_section_finished_with_no_request(client):
     journey.finish("setup", driver.run)
 
     assert journey.store.has_stash("setup")
-    assert journey.store.data["applying_as"] == "organisation"
+    assert journey.store.metadata["applying_as"] == "organisation"
 
 
 # --- pages that cannot reverse themselves -------------------------------------------

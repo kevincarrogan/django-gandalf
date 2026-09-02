@@ -407,12 +407,12 @@ page never runs them.
   `redirect(get_task_list_url())`.
 - `journey_done(page, store)` — the root's submit. No default: raises
   `ImproperlyConfigured` (*"… has nothing to do when its journey is
-  submitted"*). Anything the done page needs goes into `store.data`, which
+  submitted"*). Anything the done page needs goes into `store.metadata`, which
   the tombstone keeps.
 - `page_incomplete(page)` — default `redirect(get_page_url())`.
 - `submitted(store)` — the page a submitted journey shows, for the root's
   page and every door beneath it. Raises `Http404` by default. Override to
-  render a done page from `store.data`.
+  render a done page from `store.metadata`.
 
 **HTTP**
 
@@ -438,7 +438,7 @@ class ProjectSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("amount", 0) <= 10_000
+        return store.metadata.get("amount", 0) <= 10_000
 ```
 
 Nothing about the task list changes between the two. Reach a built one
@@ -452,7 +452,7 @@ attributes of its page.
 
 - `blocked(store)` / `hidden(store)` *(classmethods)* — whether the
   section is listed but locked, or not listed at all, for this request.
-  `False` by default. One read of the store each: use `store.data` and
+  `False` by default. One read of the store each: use `store.metadata` and
   `store.has_stash()`, never a stash's state — they run inside the row's
   no-walk promise. Classmethods because the page asks before any instance
   exists; a rule that needs the request goes on the page's
@@ -478,7 +478,7 @@ attributes of its page.
 - `done(run)` — what the section does when it finishes, beyond being
   recorded: the application's hook, as on any `WizardViewSet`. Runs on
   every completion — the first and each re-save — after the stash is
-  written. Write what the rest of the journey needs into `store.data`
+  written. Write what the rest of the journey needs into `store.metadata`
   here; the run is still readable. Default `redirect(get_task_list_url())`.
 - `dispatch()` / `submitted(store)` — a bookmarked run URL under a
   submitted journey is sent back to the page.
@@ -624,7 +624,7 @@ its own name) and `grant-contact-run` / `grant-contact-step` (the runs).
 ```python
 def record_amount(store, run):
     project = run.path.find_step(name="project")
-    store.data["amount"] = int(project.answer["amount"])
+    store.metadata["amount"] = int(project.answer["amount"])
 
 
 class ProjectSection(SectionViewSet):
@@ -659,7 +659,7 @@ class MatchFundingSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):             # not listed
-        return store.data.get("amount", 0) <= 10_000
+        return store.metadata.get("amount", 0) <= 10_000
 
 
 class GrantApplication(TaskList):
@@ -683,12 +683,12 @@ class GrantApplicationViewSet(TaskListViewSet):
 
     def journey_done(self, page, store):
         application = Application.objects.create()
-        application.submit(store.data["email"])
-        store.data["reference"] = application.reference   # the tombstone keeps this
+        application.submit(store.metadata["email"])
+        store.metadata["reference"] = application.reference   # the tombstone keeps this
         return redirect(self.get_page_url())
 
     def submitted(self, store):
-        return render(self.request, "grant/done.html", {"reference": store.data["reference"]})
+        return render(self.request, "grant/done.html", {"reference": store.metadata["reference"]})
 ```
 
 ```django
@@ -717,7 +717,7 @@ asking, and every `hidden()` and `blocked()` reads it on the first render:
 ```python
 def start_application(request):
     journey = GrantApplication.begin(request)
-    journey.store.data["applying_as"] = request.user.applying_as
+    journey.store.metadata["applying_as"] = request.user.applying_as
     return redirect(journey.url)
 ```
 
@@ -826,7 +826,7 @@ The viewset has no `task_list`. Set it to a `TaskList`.
 ### `Http404: Journey 'app-1' has been submitted.`
 
 The default `submitted()` on a root. Override it to render a done page from
-`store.data`.
+`store.metadata`.
 
 ### POST to the door returns 405
 

@@ -231,7 +231,7 @@ def test_a_groups_sections_read_the_journeys_own_data(rf):
     individual = _view(SupportingViewSet, _request(rf, record={}))
     organisation = _view(
         SupportingViewSet,
-        _request(rf, record={"data": {"journey": {"applying_as": "organisation"}}}),
+        _request(rf, record={"meta": {"journey": {"applying_as": "organisation"}}}),
     )
 
     assert [row.key for row in individual.get_page().rows] == ["referees"]
@@ -305,7 +305,7 @@ def test_a_groups_submit_is_refused_while_incomplete(rf):
 def test_group_done_is_the_groups_hook(rf):
     class _Recording(SupportingViewSet):
         def group_done(self, page, store):
-            store.data["supporting_done"] = page.completed
+            store.metadata["supporting_done"] = page.completed
             return super().group_done(page, store)
 
     stashes = CONTACT | {"supporting:referees": _stash("supporting:referees")}
@@ -316,7 +316,7 @@ def test_group_done_is_the_groups_hook(rf):
 
     page.submit()
 
-    assert page.get_journey_store().data["supporting_done"] == 1
+    assert page.get_journey_store().metadata["supporting_done"] == 1
 
 
 def test_a_group_under_a_submitted_journey_sends_the_user_up(rf):
@@ -336,7 +336,7 @@ def test_a_group_under_a_submitted_journey_sends_the_user_up(rf):
 def test_a_group_reports_incomplete_between(rf):
     record = {
         "stashes": CONTACT | {"supporting:referees": _stash("supporting:referees")},
-        "data": {"journey": {"applying_as": "organisation"}},
+        "meta": {"journey": {"applying_as": "organisation"}},
     }
 
     assert _statuses(rf, record)["supporting"] == INCOMPLETE

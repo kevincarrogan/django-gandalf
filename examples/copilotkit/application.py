@@ -66,7 +66,7 @@ class IdentitySection(ApplicationSection):
         """Record the name on the journey, where every other part can read
         it without walking this one again."""
         answer = run.path.find_step(name="name").answer
-        self.get_journey_store().data["applicant"] = (
+        self.get_journey_store().metadata["applicant"] = (
             f"{answer['first_name']} {answer['surname']}"
         )
         return super().done(run)
@@ -115,7 +115,7 @@ class CoverSection(ApplicationSection):
         """Price it here, where the run is in hand and a walk has already
         been paid for. The page's submit renders what this worked out."""
         store = self.get_journey_store()
-        store.data["quote"] = quote_for(
+        store.metadata["quote"] = quote_for(
             run, vehicle_values=lambda _: fleet_values(store)
         )
         return super().done(run)
@@ -166,6 +166,6 @@ class ApplicationViewSet(TaskListViewSet):
         """The one irreversible thing, and the person presses it. The quote
         was worked out when they confirmed the cover, so this records the
         application and shows them what it came to."""
-        quote = store.data["quote"]
+        quote = store.metadata["quote"]
         log_event("application", journey=self.get_journey(), **quote)
         return render(self.request, "hybrid/done.html", quote)

@@ -57,7 +57,7 @@ rather than missing.
 ### `MetadataBag(read, write, path)`
 
 `gandalf.metadata.MetadataBag` — the `MutableMapping[str, Any]` both
-`RunMetadata` and `JourneyData` are. `read` returns the whole envelope (or
+`RunMetadata` and `JourneyMetadata` are. `read` returns the whole envelope (or
 `None`); `write` stores a whole envelope; `path` names the bucket.
 
 **Mapping API** — `bag[key]`, `bag[key] = value`, `del bag[key]`, `key in
@@ -124,10 +124,10 @@ answers. If the start URL's drive-by visit makes `run_started()` too
 speculative, do the work on first answer from the first step's
 `form_valid()`, guarded on the bag.
 
-### `JourneyData`
+### `JourneyMetadata`
 
-`gandalf.storage.JourneyData` is the same `MetadataBag`, reached as
-`store.data` on a journey store, with buckets `"journey"` and `"members"`
+`gandalf.storage.JourneyMetadata` is the same `MetadataBag`, reached as
+`store.metadata` on a journey store, with buckets `"journey"` and `"members"`
 and `for_section(key)` in place of `for_step(name)`. It is where a section's
 `done()` records what the rest of the journey needs to know, and what
 its `blocked()` and `hidden()` read without paying a walk. See [Journey

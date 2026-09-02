@@ -320,21 +320,21 @@ def test_one_users_collection_is_not_another_users_to_read(logged_in, user):
 # --- the journey ------------------------------------------------------------
 
 
-def test_a_journeys_data_lives_on_its_own_row(user):
+def test_a_journeys_metadata_lives_on_its_own_row(user):
     """The one part of a journey that survives submission — kept on a row of
     its own, written now rather than at the end of a walk."""
     store = ModelJourneyStore(WizardContext(actor=user), "app-1")
 
-    store.data["applicant_type"] = "business"
-    store.data.for_section("employment")["checked"] = True
+    store.metadata["applicant_type"] = "business"
+    store.metadata.for_section("employment")["checked"] = True
 
     record = JourneyRecord.objects.get(owner=user, journey="app-1")
-    assert record.data == {
+    assert record.meta == {
         "journey": {"applicant_type": "business"},
         "sections": {"employment": {"checked": True}},
     }
     assert (
-        ModelJourneyStore(WizardContext(actor=user), "app-1").data["applicant_type"]
+        ModelJourneyStore(WizardContext(actor=user), "app-1").metadata["applicant_type"]
         == "business"
     )
 
@@ -353,7 +353,7 @@ def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
     store.put_stash("contact", {"state": []})
     store.add_item("guests", "a")
     store.set_declared_done("guests", True)
-    store.data["reference"] = "APP-1"
+    store.metadata["reference"] = "APP-1"
 
     store.complete()
 
@@ -361,7 +361,7 @@ def test_completing_a_journey_deletes_its_sections_and_keeps_its_row(user):
     assert store.keys() == []
     assert store.item_ids("guests") == []
     assert store.is_declared_done("guests") is False
-    assert store.data["reference"] == "APP-1"
+    assert store.metadata["reference"] == "APP-1"
     assert not SectionRecord.objects.filter(owner=user).exists()
     assert not ItemRecord.objects.filter(owner=user).exists()
 

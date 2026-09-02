@@ -47,14 +47,14 @@ __all__ = [
     "configured",
     "seed_item",
     "seed_journey_complete",
-    "seed_journey_data",
+    "seed_journey_metadata",
     "seed_run",
     "seed_section_run",
     "seed_section_stash",
     "seed_stash",
     "stored_items",
     "stored_journey",
-    "stored_journey_data",
+    "stored_journey_metadata",
     "stored_run",
     "stored_runs",
     "stored_section_run",
@@ -219,34 +219,36 @@ def seed_section_stash(
     _seed_journey(client, journey, "stashes", key, payload)
 
 
-def stored_journey_data(client: Client, journey: str = "default") -> Metadata:
-    """The journey's decided facts — the raw envelope `store.data` reads,
+def stored_journey_metadata(client: Client, journey: str = "default") -> Metadata:
+    """The journey's decided facts — the raw envelope `store.metadata` reads,
     both buckets — or an empty dict before anything was written."""
-    data: Metadata = stored_journey(client, journey).get("data", {})
-    return data
+    metadata: Metadata = stored_journey(client, journey).get("meta", {})
+    return metadata
 
 
-def seed_journey_data(client: Client, data: Metadata, journey: str = "default") -> None:
-    """Merge `data` into the journey's own decided facts (the top-level
-    bucket `store.data` reads), keeping what is already there. For arranging
-    a task list whose sections have already decided something — an answer that
-    hides or unlocks another section."""
+def seed_journey_metadata(
+    client: Client, metadata: Metadata, journey: str = "default"
+) -> None:
+    """Merge `metadata` into the journey's own decided facts (the top-level
+    bucket `store.metadata` reads), keeping what is already there. For
+    arranging a task list whose sections have already decided something —
+    an answer that hides or unlocks another section."""
     session = client.session
     journeys = session.setdefault(SessionJourneyStore.SESSION_KEY, {})
     record = journeys.setdefault(journey, {})
-    record.setdefault("data", {}).setdefault(JOURNEY_BUCKET, {}).update(data)
+    record.setdefault("meta", {}).setdefault(JOURNEY_BUCKET, {}).update(metadata)
     session.save()
 
 
 def seed_journey_complete(client: Client, journey: str = "default") -> None:
-    """Leave the tombstone a submitted journey leaves, keeping whatever data
-    the session already holds for it."""
+    """Leave the tombstone a submitted journey leaves, keeping whatever
+    metadata the session already holds for it."""
     session = client.session
     journeys = session.setdefault(SessionJourneyStore.SESSION_KEY, {})
     record = journeys.pop(journey, {})
     tombstone: JourneyRecord = {"completed": True}
-    if record.get("data"):
-        tombstone["data"] = record["data"]
+    if record.get("meta"):
+        tombstone["meta"] = record["meta"]
     journeys[journey] = tombstone
     session.save()
 

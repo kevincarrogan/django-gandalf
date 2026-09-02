@@ -166,7 +166,7 @@ def test_reading_a_journey_never_written_does_not_dirty_the_session():
     store.has_stash("contact")
     store.keys()
     store.is_complete()
-    store.data.get("anything")
+    store.metadata.get("anything")
 
     assert context.session.modified is False
     assert "gandalf_journeys" not in context.session
@@ -184,12 +184,12 @@ def test_journeys_keep_their_own_bookkeeping():
 
     first.set_run("contact", "run-1")
     first.put_stash("address", _PAYLOAD)
-    first.data["applicant_type"] = "business"
+    first.metadata["applicant_type"] = "business"
 
     assert second.get_run("contact") is None
     assert second.has_stash("address") is False
     assert second.keys() == []
-    assert "applicant_type" not in second.data
+    assert "applicant_type" not in second.metadata
     assert set(context.session["gandalf_journeys"]) == {"app-1"}
 
 
@@ -211,10 +211,10 @@ def test_journey_data_is_written_through_to_the_session():
     context = _Context()
     store = SessionJourneyStore(context, "default")
 
-    store.data["employment_status"] = "employed"
+    store.metadata["employment_status"] = "employed"
 
-    assert store.data["employment_status"] == "employed"
-    assert context.session["gandalf_journeys"]["default"]["data"] == {
+    assert store.metadata["employment_status"] == "employed"
+    assert context.session["gandalf_journeys"]["default"]["meta"] == {
         "journey": {"employment_status": "employed"}
     }
     assert context.session.modified is True
@@ -224,21 +224,21 @@ def test_journey_data_is_read_back_by_a_fresh_handle():
     """The bag holds nothing: a handle taken at the top of a request sees a
     write made further down it."""
     context = _Context()
-    SessionJourneyStore(context, "default").data["a"] = 1
+    SessionJourneyStore(context, "default").metadata["a"] = 1
 
-    assert SessionJourneyStore(context, "default").data["a"] == 1
+    assert SessionJourneyStore(context, "default").metadata["a"] == 1
 
 
 def test_a_sections_own_data_cannot_tread_on_the_journeys():
     store = SessionJourneyStore(_Context(), "default")
 
-    store.data["status"] = "journey"
-    store.data.for_section("employment")["status"] = "section"
-    store.data.for_section("contact")["status"] = "other"
+    store.metadata["status"] = "journey"
+    store.metadata.for_section("employment")["status"] = "section"
+    store.metadata.for_section("contact")["status"] = "other"
 
-    assert store.data["status"] == "journey"
-    assert store.data.for_section("employment")["status"] == "section"
-    assert store.data.for_section("contact")["status"] == "other"
+    assert store.metadata["status"] == "journey"
+    assert store.metadata.for_section("employment")["status"] == "section"
+    assert store.metadata.for_section("contact")["status"] == "other"
 
 
 def test_for_section_addresses_from_the_root():
@@ -246,22 +246,22 @@ def test_for_section_addresses_from_the_root():
     nobody asked for."""
     store = SessionJourneyStore(_Context(), "default")
 
-    store.data.for_section("a").for_section("b")["x"] = 1
+    store.metadata.for_section("a").for_section("b")["x"] = 1
 
-    assert store.data.for_section("b")["x"] == 1
-    assert "x" not in store.data.for_section("a")
+    assert store.metadata.for_section("b")["x"] == 1
+    assert "x" not in store.metadata.for_section("a")
 
 
 def test_journey_data_hands_back_a_copy():
     """Mutating what was read must not reach into the session unmarked."""
     context = _Context()
     store = SessionJourneyStore(context, "default")
-    store.data["nested"] = {"a": 1}
+    store.metadata["nested"] = {"a": 1}
     context.session.modified = False
 
-    store.data["nested"]["a"] = 2
+    store.metadata["nested"]["a"] = 2
 
-    assert store.data["nested"] == {"a": 1}
+    assert store.metadata["nested"] == {"a": 1}
     assert context.session.modified is False
 
 
@@ -275,7 +275,7 @@ def test_completing_a_journey_discards_its_sections_and_keeps_its_data():
     store = SessionJourneyStore(context, "default")
     store.set_run("contact", "run-1")
     store.put_stash("address", _PAYLOAD)
-    store.data["reference"] = "APP-1"
+    store.metadata["reference"] = "APP-1"
 
     store.complete()
 
@@ -283,10 +283,10 @@ def test_completing_a_journey_discards_its_sections_and_keeps_its_data():
     assert store.get_run("contact") is None
     assert store.has_stash("address") is False
     assert store.keys() == []
-    assert store.data["reference"] == "APP-1"
+    assert store.metadata["reference"] == "APP-1"
     assert context.session["gandalf_journeys"]["default"] == {
         "completed": True,
-        "data": {"journey": {"reference": "APP-1"}},
+        "meta": {"journey": {"reference": "APP-1"}},
     }
 
 
@@ -297,13 +297,13 @@ def test_a_journey_nobody_has_submitted_is_not_complete():
 def test_completing_a_journey_is_idempotent():
     context = _Context()
     store = SessionJourneyStore(context, "default")
-    store.data["reference"] = "APP-1"
+    store.metadata["reference"] = "APP-1"
 
     store.complete()
     store.complete()
 
     assert store.is_complete() is True
-    assert store.data["reference"] == "APP-1"
+    assert store.metadata["reference"] == "APP-1"
 
 
 def test_only_the_most_recently_completed_journeys_are_kept():

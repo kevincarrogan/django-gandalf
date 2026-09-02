@@ -3,7 +3,7 @@ it changes.
 
 Two things in Gandalf want exactly this shape: a run's record of what it did
 outside itself (`RunMetadata`, in `gandalf.runtime`), and a journey's record
-of what its sections decided (`JourneyData`, in `gandalf.storage`). They
+of what its sections decided (`JourneyMetadata`, in `gandalf.storage`). They
 differ only in where the envelope is kept and what the sub-bags are called,
 so the mapping lives here, behind a reader and a writer, and each of them is
 a thin subclass naming its own buckets.

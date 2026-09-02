@@ -6,7 +6,7 @@ answers, what they decided, and whether the journey has been submitted; and
 
 ```python
 from gandalf.storage import (
-    JourneyData,
+    JourneyMetadata,
     SessionItemStore,
     SessionJourneyStore,
     StashNotFound,
@@ -39,7 +39,7 @@ The shipped store, keeping one record per journey in the session.
 - `SESSION_KEY = "gandalf_journeys"`.
 - `max_completed_journeys = 10` — how many completion tombstones are kept
   per session; the oldest go first. Fewer than `SessionStorage`'s 25,
-  because a journey's tombstone keeps its data.
+  because a journey's tombstone keeps its metadata.
 - `stash_store_class = SessionStashStore` — the class behind `stashes`,
   pointed at the record's `"stashes"` mapping.
 - `journey` — the identity as given. `stashes` — the stash store.
@@ -50,7 +50,7 @@ The shipped store, keeping one record per journey in the session.
 session["gandalf_journeys"][journey] = {
     "runs": {key: run_id},        # sections being answered right now
     "stashes": {key: payload},    # sections that have finished
-    "data": {...},                # what the sections decided (JourneyData's envelope)
+    "meta": {...},                # what the sections decided (JourneyMetadata's envelope)
     "lists": {...},         # SessionItemStore only
     "completed": True,            # tombstone only
 }
@@ -84,19 +84,19 @@ its run being pruned.
 
 **What the sections decided**
 
-- `data` — property; a fresh `JourneyData` on every access, so a handle
+- `data` — property; a fresh `JourneyMetadata` on every access, so a handle
   taken at the top of a request sees a write made further down it.
 
 **The journey's own completion**
 
 - `complete()` — replaces the record with `{"completed": True}`, keeping
-  `"data"` when there is any. Runs, stashes and add-another registries go. Re-inserts
+  `"meta"` when there is any. Runs, stashes and add-another registries go. Re-inserts
   the record so the mapping is ordered by completion, then prunes to
   `max_completed_journeys`. Idempotent. Journeys in progress are never
   pruned.
 - `is_complete()` — whether the record is a tombstone.
 
-### `JourneyData(read, write, path=("journey",))`
+### `JourneyMetadata(read, write, path=("journey",))`
 
 The journey's record of what its sections decided: the facts a page, a
 `blocked()` and a `hidden()` read without walking anything. A
@@ -118,7 +118,7 @@ the journey rather than one run; the bag semantics are in
 
 **Methods**
 
-- `for_section(key)` — this journey's data for section `key`, addressed
+- `for_section(key)` — this journey's metadata for section `key`, addressed
   from the root whichever bag it is called on: a section can keep its own
   notes without treading on the journey or on another section.
 
@@ -172,7 +172,7 @@ class JourneyStore(Protocol):
     def delete_stash(self, key: str) -> None: ...
     def keys(self) -> list[str]: ...
     @property
-    def data(self) -> JourneyData: ...
+    def data(self) -> JourneyMetadata: ...
     def complete(self) -> None: ...
     def is_complete(self) -> bool: ...
 ```
@@ -181,7 +181,7 @@ Contracts a backend must keep:
 
 - `get_stash()` raises `StashNotFound`; `clear_run()` and `delete_stash()`
   are idempotent.
-- `data` returns a `JourneyData` whose `write` callable persists *now*, not
+- `data` returns a `JourneyMetadata` whose `write` callable persists *now*, not
   at the end of a walk — it is written from places that never persist
   state.
 - `complete()` discards runs and stashes, keeps `data`, and leaves the
@@ -211,7 +211,7 @@ page and built with the same pair, so all of them read the same segment.
 A store that keeps the same things in tables drops in by
 `journey_store_class` alone. [`tests/testapp/durable.py`](../../tests/testapp/durable.py)
 is a worked example: `ModelJourneyStore` keeps run id and stash on one row
-per section (they outlive each other), and the journey's data and completion
+per section (they outlive each other), and the journey's metadata and completion
 on a row of their own that survives `complete()` deleting the sections;
 `ModelItemStore` adds the registry with an explicit `position` and a
 uniqueness constraint. Both are scoped by `context.actor` and `journey`.
@@ -234,7 +234,7 @@ class ContactSection(SectionViewSet):
 
     def done(self, run):
         email = run.path.find_step(name="email")
-        self.get_journey_store().data["email"] = email.answer["email"]
+        self.get_journey_store().metadata["email"] = email.answer["email"]
         return super().done(run)
 
 
@@ -277,9 +277,9 @@ the page under that id. See [`Journey`](tasklists.md).
 
 ```python
 store = self.get_journey_store()
-store.data.for_section("budget").update({"lines": 3, "total": 420})
-store.data.for_section("budget")["total"]     # 420
-store.data.get("total")                       # None — a different bucket
+store.metadata.for_section("budget").update({"lines": 3, "total": 420})
+store.metadata.for_section("budget")["total"]     # 420
+store.metadata.get("total")                       # None — a different bucket
 ```
 
 ### Swapping in a durable store
@@ -309,10 +309,10 @@ gets both.
 deleted or lost with the session. Ask `has_stash()` first where "not
 finished" is an ordinary answer.
 
-### I set a nested value in `store.data` and it did not persist
+### I set a nested value in `store.metadata` and it did not persist
 
-Reads are deep copies: `store.data["budget"]["total"] = 1` changes the copy.
-Assign the whole value back — `store.data["budget"] = {**budget, "total": 1}`
+Reads are deep copies: `store.metadata["budget"]["total"] = 1` changes the copy.
+Assign the whole value back — `store.metadata["budget"] = {**budget, "total": 1}`
 — or use `for_section()` / `update()`.
 
 ### An older submitted application's done page now 404s

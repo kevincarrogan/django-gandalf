@@ -12,14 +12,14 @@ from gandalf.testing import (
     configured,
     seed_item,
     seed_journey_complete,
-    seed_journey_data,
+    seed_journey_metadata,
     seed_section_run,
     seed_section_stash,
     seed_run,
     seed_stash,
     stored_items,
     stored_journey,
-    stored_journey_data,
+    stored_journey_metadata,
     stored_section_run,
     stored_section_runs,
     stored_section_stash,
@@ -314,7 +314,7 @@ stashes.
 
 The session key `SessionJourneyStore.SESSION_KEY` (`"gandalf_journeys"`)
 holds one record per journey — its section runs, its stashes, its
-add-another registries, its data, and the tombstone a submitted journey
+add-another registries, its metadata, and the tombstone a submitted journey
 leaves. Every helper below takes `journey="default"`: the fixed journey a
 task list not mounted under a `<journey>` URL segment uses
 (`TaskListViewSet.journey`). For a page mounted
@@ -324,7 +324,7 @@ under one, pass the segment's value.
 | --- | --- | --- |
 | `"runs"` | entering a section | `stored_section_run(s)` |
 | `"stashes"` | a section finishing | `stored_section_stash(es)` |
-| `"data"` | `store.data`, under the `"journey"` bucket | `stored_journey_data` |
+| `"meta"` | `store.metadata`, under the `"journey"` bucket | `stored_journey_metadata` |
 | `"lists"` | an add-another page registering an item | `stored_items` |
 | `"completed"` | the journey being submitted | `stored_journey(...)["completed"]` |
 
@@ -369,23 +369,23 @@ Record section `key` as finished with `payload`, and save the session. For
 arranging a task list with sections already done, or a hand-built or tampered
 stash.
 
-#### `stored_journey_data(client, journey="default")`
+#### `stored_journey_metadata(client, journey="default")`
 
-The journey's decided facts — the raw envelope `store.data` reads, every
+The journey's decided facts — the raw envelope `store.metadata` reads, every
 bucket — or `{}` before anything was written. The journey's own facts sit
-under `"journey"`: `stored_journey_data(client)["journey"]["amount"]`.
+under `"journey"`: `stored_journey_metadata(client)["journey"]["amount"]`.
 
-#### `seed_journey_data(client, data, journey="default")`
+#### `seed_journey_metadata(client, metadata, journey="default")`
 
-Merge `data` into the journey's own decided facts (the `"journey"` bucket
-`store.data` reads), keeping what is already there, and save the session.
+Merge `metadata` into the journey's own decided facts (the `"journey"` bucket
+`store.metadata` reads), keeping what is already there, and save the session.
 For arranging a task list whose sections have already decided something —
 an answer that hides or unlocks another section.
 
 #### `seed_journey_complete(client, journey="default")`
 
 Replace the journey's record with the tombstone a submitted journey leaves:
-`{"completed": True}`, plus `"data"` when the record held any. Runs,
+`{"completed": True}`, plus `"meta"` when the record held any. Runs,
 stashes and add-another registries are dropped. Saves the session.
 
 #### `stored_items(client, key, journey="default")`
@@ -607,7 +607,7 @@ def test_lists_sections_and_drives_one_to_complete(client, wizard_driver):
 ```
 
 For a page mounted under `apply/<slug:journey>/`, every helper takes the
-segment: `seed_journey_data(client, {"amount": 20_000}, journey="app-1")`
+segment: `seed_journey_metadata(client, {"amount": 20_000}, journey="app-1")`
 reveals a section whose visibility hangs on `amount`, and
 `seed_journey_complete(client, journey="app-1")` makes the page read as
 submitted.

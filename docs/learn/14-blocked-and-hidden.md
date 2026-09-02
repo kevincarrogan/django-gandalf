@@ -59,7 +59,7 @@ def record_amount(store, run):
     readable and a walk has already been paid — and written to the journey's
     data, where every other section reads it without a walk."""
     project = run.path.find_step(name="project")
-    store.data["amount"] = int(project.answer["amount"])
+    store.metadata["amount"] = int(project.answer["amount"])
 
 
 class ProjectSection(SectionViewSet):
@@ -76,8 +76,8 @@ class ProjectSection(SectionViewSet):
         return super().done(run)
 ```
 
-`store.data` is the journey's record of what its sections decided — chapter
-14 has the whole of it. **Read `store.data` and `has_stash()` in
+`store.metadata` is the journey's record of what its sections decided — chapter
+14 has the whole of it. **Read `store.metadata` and `has_stash()` in
 `blocked()` and `hidden()`, never a stash's answers.** Reading an answer out
 of a stash costs a walk, and a row must never walk. `done()` is where a
 section pays that walk once, on a request that has already walked, and
@@ -103,7 +103,7 @@ class MatchFundingSection(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return store.data.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
+        return store.metadata.get("amount", 0) <= MATCH_FUNDING_THRESHOLD
 ```
 
 The list itself declares nothing about any of it — the richer thing is

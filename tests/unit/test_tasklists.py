@@ -46,7 +46,7 @@ class _Session(dict):
 #: The parts of a journey's record a test seeds, lifted under the journey
 #: key the store reads them from. Everything else (`gandalf_runs`) passes
 #: through untouched.
-_JOURNEY_PARTS = ("runs", "stashes", "lists", "data", "completed")
+_JOURNEY_PARTS = ("runs", "stashes", "lists", "meta", "completed")
 
 
 def _session(seed=None, journey="default"):
@@ -654,7 +654,7 @@ class _Employed(SectionViewSet):
 
     @classmethod
     def blocked(cls, store):
-        return not store.data.get("employed", False)
+        return not store.metadata.get("employed", False)
 
 
 class _SelfGated(TaskList):
@@ -677,7 +677,7 @@ def test_a_section_can_say_it_is_not_open_yet_itself(self_gated_page):
 
 
 def test_a_section_that_opens_says_so_too(self_gated_page):
-    (address,) = self_gated_page({"data": {"journey": {"employed": True}}}).get_rows()
+    (address,) = self_gated_page({"meta": {"journey": {"employed": True}}}).get_rows()
 
     assert address.status == NOT_STARTED
 
@@ -1436,7 +1436,7 @@ class _Partner(SectionViewSet):
 
     @classmethod
     def hidden(cls, store):
-        return not store.data.get("has_partner", False)
+        return not store.metadata.get("has_partner", False)
 
 
 class _WithPartner(TaskList):
@@ -1470,7 +1470,7 @@ def test_a_hidden_section_is_not_counted(partner_page):
 
 
 def test_a_section_appears_once_the_answer_that_reveals_it_is_given(partner_page):
-    view = partner_page({"data": {"journey": {"has_partner": True}}})
+    view = partner_page({"meta": {"journey": {"has_partner": True}}})
 
     rows = view.get_rows()
 
@@ -1504,7 +1504,7 @@ def test_the_driven_door_refuses_a_section_that_is_not_there(partner_page):
 
 def test_the_driven_door_opens_when_the_page_would(partner_page):
     """The gate is the page's rules, not a rule against callers."""
-    view = partner_page({"data": {"journey": {"has_partner": True}}})
+    view = partner_page({"meta": {"journey": {"has_partner": True}}})
     section = type(view).viewset_for("address")()
     section.setup(view.request)
 
@@ -1632,7 +1632,7 @@ def test_a_section_reads_its_journey_off_the_url_when_mounted_under_one(rf):
 
 
 def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
-    """The whole point of `store.data`: one walk at completion, and every
+    """The whole point of `store.metadata`: one walk at completion, and every
     later render reads a string."""
 
     class _Deciding(SectionViewSet):
@@ -1640,7 +1640,7 @@ def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
 
         def done(self, run):
             step = run.path.find_step(name="first")
-            self.get_journey_store().data["name"] = step.form.cleaned_data["name"]
+            self.get_journey_store().metadata["name"] = step.form.cleaned_data["name"]
             return super().done(run)
 
     viewset = _view(_list(contact=Section(_Deciding))).viewset_for("contact")
@@ -1653,7 +1653,7 @@ def test_finishing_a_section_writes_what_it_decided_where_the_page_reads_it(rf):
     view.finish(viewset.inspect(view.request, "run-1"))
 
     context = WizardContext.from_request(view.request)
-    assert SessionJourneyStore(context, "default").data["name"] == "Ada"
+    assert SessionJourneyStore(context, "default").metadata["name"] == "Ada"
 
 
 # --- beginning a journey ------------------------------------------------------
@@ -1701,7 +1701,7 @@ def test_finishing_an_unknown_section_is_refused(rf):
 
 class _Submittable(_PairPage):
     def journey_done(self, page, store):
-        store.data["reference"] = f"REF-{page.completed}"
+        store.metadata["reference"] = f"REF-{page.completed}"
         from django.http import HttpResponse
 
         return HttpResponse(b"submitted")
@@ -1725,7 +1725,7 @@ def test_submitting_a_complete_journey_does_the_work_then_tombstones_it(rf):
     assert response.content == b"submitted"
     assert store.is_complete() is True
     assert store.keys() == []
-    assert store.data["reference"] == "REF-2"
+    assert store.metadata["reference"] == "REF-2"
 
 
 def test_submitting_an_incomplete_journey_is_refused(rf):
@@ -1811,7 +1811,7 @@ def test_a_post_to_the_page_submits_the_journey(rf):
                     "declared_done": True,
                 }
             },
-            "data": {"journey": {"email": "a@b.c"}},
+            "meta": {"journey": {"email": "a@b.c"}},
         },
     )
 
@@ -1835,7 +1835,7 @@ def test_a_submitted_journeys_page_renders_what_the_tombstone_kept(rf):
         rf,
         "get",
         "/readme/apply/app-1/",
-        {"completed": True, "data": {"journey": {"reference": "APP-1"}}},
+        {"completed": True, "meta": {"journey": {"reference": "APP-1"}}},
     )
 
     assert response.status_code == 200
@@ -1848,7 +1848,7 @@ def test_a_submitted_journeys_door_is_refused(rf):
         rf,
         "get",
         "/readme/apply/app-1/contact/",
-        {"completed": True, "data": {"journey": {"reference": "APP-1"}}},
+        {"completed": True, "meta": {"journey": {"reference": "APP-1"}}},
         entry="contact",
     )
 

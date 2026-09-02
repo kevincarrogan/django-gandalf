@@ -223,12 +223,12 @@ class SessionStashStore:
         return list(self._read())
 
 
-#: The two buckets a journey's data is kept in — see `JourneyData`.
+#: The two buckets a journey's metadata is kept in — see `JourneyMetadata`.
 JOURNEY_BUCKET = "journey"
 SECTION_BUCKET = "sections"
 
 
-class JourneyData(MetadataBag):
+class JourneyMetadata(MetadataBag):
     """A journey's record of what its sections decided — the facts a task list and
     its doors read without walking anything.
 
@@ -241,10 +241,10 @@ class JourneyData(MetadataBag):
     to know. `blocked()` and `hidden()` read it back for free.
 
         # in a section's done()
-        store.data["employment_status"] = step.answer["status"]
+        store.metadata["employment_status"] = step.answer["status"]
 
         # in another section's blocked()
-        return store.data.get("employment_status") != "employed"
+        return store.metadata.get("employment_status") != "employed"
 
     Two buckets, as a run's metadata has: the journey's own keys, and one
     sub-bag per member under `for_section(key)`, so a member can keep its
@@ -265,8 +265,8 @@ class JourneyData(MetadataBag):
     ) -> None:
         super().__init__(read, write, path)
 
-    def for_section(self, key: str) -> JourneyData:
-        """This journey's data for the section `key` names. Addressed from
+    def for_section(self, key: str) -> JourneyMetadata:
+        """This journey's metadata for the section `key` names. Addressed from
         the root whichever bag it is called on."""
         return type(self)(self._read, self._write_envelope, (SECTION_BUCKET, key))
 
@@ -292,17 +292,17 @@ class SessionJourneyStore:
     a `SessionStashStore` pointed at the journey's record, so a task list's stashes
     and a hand-kept one are the same thing in two homes.
 
-    Then `data`, the journey's decided facts (see `JourneyData`), and the
-    journey's own completion: `complete()` discards the runs and the stashes,
-    keeps the data, and leaves a tombstone so a revisit reads as submitted
-    rather than as a journey nobody has started.
+    Then `metadata`, the journey's decided facts (see `JourneyMetadata`), and
+    the journey's own completion: `complete()` discards the runs and the
+    stashes, keeps the metadata, and leaves a tombstone so a revisit reads
+    as submitted rather than as a journey nobody has started.
 
     The session layout, one record per journey under one key::
 
         session["gandalf_journeys"][journey] = {
             "runs": {key: run_id},
             "stashes": {key: payload},
-            "data": {...},
+            "meta": {...},
             "completed": True,        # tombstone only
         }
 
@@ -313,8 +313,8 @@ class SessionJourneyStore:
     stash_store_class = SessionStashStore
     # A completed journey leaves a tombstone behind so a revisit can be
     # answered as submitted rather than mistaken for one that never existed.
-    # A tombstone keeps the journey's data, which is bigger than a run's, so
-    # fewer are kept than `SessionStorage.max_completed_runs`.
+    # A tombstone keeps the journey's metadata, which is bigger than a run's,
+    # so fewer are kept than `SessionStorage.max_completed_runs`.
     max_completed_journeys = 10
 
     def __init__(self, context: WizardContext, journey: str) -> None:
@@ -402,17 +402,18 @@ class SessionJourneyStore:
     # --- what the sections decided -----------------------------------------
 
     @property
-    def data(self) -> JourneyData:
-        """The journey's decided facts — see `JourneyData`. Built fresh per
-        access and holding nothing, so a handle taken at the top of a request
-        still sees a write made further down it."""
-        return JourneyData(read=self._read_data, write=self._write_data)
+    def metadata(self) -> JourneyMetadata:
+        """The journey's decided facts — see `JourneyMetadata`. Built fresh
+        per access and holding nothing, so a handle taken at the top of a
+        request still sees a write made further down it. Kept under the
+        record's `"meta"` key, as a run's bag is under its own."""
+        return JourneyMetadata(read=self._read_metadata, write=self._write_metadata)
 
-    def _read_data(self) -> Metadata | None:
-        return cast("Metadata | None", self._read().get("data"))
+    def _read_metadata(self) -> Metadata | None:
+        return cast("Metadata | None", self._read().get("meta"))
 
-    def _write_data(self, envelope: Metadata) -> None:
-        self._record()["data"] = envelope
+    def _write_metadata(self, envelope: Metadata) -> None:
+        self._record()["meta"] = envelope
         self.context.session_changed()
 
     # --- the journey's own completion --------------------------------------
@@ -421,17 +422,17 @@ class SessionJourneyStore:
         """Replace the journey's bookkeeping with a completion tombstone.
 
         The runs and the stashes go — a submitted journey can neither be
-        edited nor keep growing the session — and the data stays, because it
-        is what a done page still has to say. Re-inserting the record orders
+        edited nor keep growing the session — and the metadata stays,
+        because it is what a done page still has to say. Re-inserting the record orders
         the mapping by completion, which is what lets pruning drop the
         oldest. Idempotent.
         """
         journeys = self.context.session.setdefault(self.SESSION_KEY, {})
         previous = journeys.pop(self.journey, None) or {}
         tombstone: JourneyRecord = {"completed": True}
-        data = previous.get("data")
-        if data:
-            tombstone["data"] = data
+        metadata = previous.get("meta")
+        if metadata:
+            tombstone["meta"] = metadata
         journeys[self.journey] = tombstone
         self._prune_completed(journeys)
         self.context.session_changed()
