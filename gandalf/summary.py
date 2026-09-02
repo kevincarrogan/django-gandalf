@@ -216,16 +216,16 @@ class Question:
     """
 
     text: StrOrPromise
-    spec: Any
+    spec: RowSpec
 
-    def __init__(self, text: StrOrPromise, spec: Any) -> None:
+    def __init__(self, text: StrOrPromise, spec: RowSpec) -> None:
         object.__setattr__(self, "text", text)
         object.__setattr__(self, "spec", spec)
 
     @property
     def fields(self) -> tuple[str, ...]:
         """The fields its spec names — a question speaks for exactly those."""
-        return cast("tuple[str, ...]", self.spec.fields)
+        return self.spec.fields
 
     def build_rows(
         self,
