@@ -4,7 +4,7 @@ the same three questions asked of every answer."""
 from django.http import HttpResponse
 
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide, SummaryMixin
+from gandalf.summary import Answer, Hide, SummaryMixin
 from gandalf.viewsets import WizardViewSet
 from gandalf.wizard import MergeCleanedData
 
@@ -14,13 +14,13 @@ from .forms import AddressForm, ConfirmForm, EmailForm
 
 class AddressStepView(StepFormView):
     """The address step, saying how its own answers read: four fields on one
-    line, and the token that looked them up on none. Said here rather than on
+    row, and the token that looked them up on none. Said here rather than on
     a review page, because the step is what knows an address is an address."""
 
     form_class = AddressForm
     template_name = "testapp/linear_wizard.html"
-    summary_fields = [
-        Group("line_1", "line_2", "town", "postcode"),
+    summary_rows = [
+        Answer("line_1", "line_2", "town", "postcode"),
         Hide("lookup_token"),
     ]
 

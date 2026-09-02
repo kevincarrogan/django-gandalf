@@ -72,7 +72,7 @@ class ToppingsForm(forms.Form):
     )
 
 
-class SummaryFieldsForm(forms.Form):
+class SummaryRowsForm(forms.Form):
     """One of each answer a summary page has to render as text rather than
     as the raw stored value."""
 

@@ -6,12 +6,12 @@
     <div class="card">
         <h2>Check your answers</h2>
         <dl class="summary">
+            {# One loop, nothing to decide: a row is a label, a value and
+               somewhere to go and change it. #}
             {% for row in summary %}
                 <dt>{{ row.label }}</dt>
                 <dd>
-                    {% for field in row.fields %}
-                        <span>{% if field.label %}{{ field.label }}: {% endif %}{{ field.value }}</span>
-                    {% endfor %}
+                    <span>{{ row.value }}</span>
                     <a href="{{ row.url }}">Change {{ row.label }}</a>
                 </dd>
             {% endfor %}

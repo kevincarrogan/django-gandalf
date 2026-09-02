@@ -51,7 +51,7 @@ from tests.testapp.forms import (
     ReviewForm,
     SecondStepForm,
     SummaryDisplayForm,
-    SummaryFieldsForm,
+    SummaryRowsForm,
     ToppingsForm,
 )
 from tests.testapp.models import Application, WizardRun
@@ -179,7 +179,7 @@ def test_fractional_number_fields_map_to_number():
 
 
 def test_optional_boolean_field_maps_to_boolean():
-    field = SummaryFieldsForm().fields["marketing"]
+    field = SummaryRowsForm().fields["marketing"]
 
     assert field_json_schema(field) == {
         "type": "boolean",
@@ -380,7 +380,7 @@ def test_a_short_queryset_of_choices_is_enumerated_as_it_always_was():
 def test_temporal_fields_carry_their_formats():
     fields = SummaryDisplayForm().fields
 
-    assert field_json_schema(SummaryFieldsForm().fields["starts_on"]) == {
+    assert field_json_schema(SummaryRowsForm().fields["starts_on"]) == {
         "type": "string",
         "format": "date",
         "title": "Start date",

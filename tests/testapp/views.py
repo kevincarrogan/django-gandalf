@@ -41,7 +41,7 @@ from gandalf.storage import (
     SessionStorage,
     StashNotFound,
 )
-from gandalf.summary import Group, Hide, Question, Render, SummaryMixin
+from gandalf.summary import Answer, Hide, Question, SummaryMixin
 
 from . import catalogue
 from .counting import CountingCursorWalker, CountingStepDispatcher
@@ -71,7 +71,7 @@ from .forms import (
     SecondStepForm,
     SniffedPhotoForm,
     SummaryDisplayForm,
-    SummaryFieldsForm,
+    SummaryRowsForm,
     ToppingsForm,
 )
 
@@ -2022,7 +2022,7 @@ class SummaryWizardViewSet(WizardViewSet):
             ),
             default=Wizard().step(PersonalDetailsForm, name="preferred_name"),
         )
-        .step(SummaryFieldsForm, name="preferences", label="Preferences")
+        .step(SummaryRowsForm, name="preferences", label="Preferences")
         .step(SummaryStepView, name="summary")
         .configure(
             template_name="testapp/linear_wizard.html",
@@ -2037,10 +2037,13 @@ class SummaryWizardViewSet(WizardViewSet):
 
 class CustomSummaryStepView(SummaryMixin, StepFormView):
     """Every hook the mixin exposes, overridden: the step label, the value
-    formatting, and which fields appear at all."""
+    formatting, and which fields appear at all. The step reads as one row so
+    that the label hook has a row to name — a row one field made is named by
+    the field."""
 
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
+    summary_overrides = {"preferences": [Answer()]}
 
     def get_summary_label(self, step):
         return super().get_summary_label(step).upper()
@@ -2060,7 +2063,7 @@ class CustomSummaryWizardViewSet(WizardViewSet):
     template_name = "testapp/linear_wizard.html"
     wizard = (
         Wizard()
-        .step(SummaryFieldsForm, name="preferences")
+        .step(SummaryRowsForm, name="preferences")
         .step(CustomSummaryStepView, name="summary")
     )
 
@@ -2139,7 +2142,7 @@ class DynamicSummaryStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_wizard.html"
     summary_overrides = {
-        "address": [Group("line_1", "town", "postcode", separator=", ")]
+        "address": [Answer("line_1", "town", "postcode", separator=", ")]
     }
 
 
@@ -2169,7 +2172,7 @@ class GroupedSummaryStepView(SummaryMixin, StepFormView):
     template_name = "testapp/summary_wizard.html"
     summary_overrides = {
         "address": [
-            Group("line_1", "line_2", "town", "postcode", separator=", "),
+            Answer("line_1", "line_2", "town", "postcode", separator=", "),
             Hide("lookup_token"),
         ],
     }
@@ -2538,13 +2541,15 @@ class TemplatedSummaryStepView(SummaryMixin, StepFormView):
     template_name = "testapp/summary_include.html"
     summary_overrides = {
         "address": [
-            Group(
-                "line_1",
-                "line_2",
-                "town",
-                "postcode",
-                label="Address",
-                template_name="testapp/summary/address.html",
+            Question(
+                "Address",
+                Answer(
+                    "line_1",
+                    "line_2",
+                    "town",
+                    "postcode",
+                    template_name="testapp/summary/address.html",
+                ),
             ),
             Hide("lookup_token"),
         ],
@@ -2577,7 +2582,7 @@ class RenderedSummaryStepView(SummaryMixin, StepFormView):
     form_class = ConfirmForm
     template_name = "testapp/summary_include.html"
     summary_overrides = {
-        "opening-hours": [Render("testapp/summary/hours.html")],
+        "opening-hours": [Answer(template_name="testapp/summary/hours.html")],
     }
 
 
@@ -2605,8 +2610,8 @@ class SelfShapingAddressStepView(StepFormView):
 
     form_class = AddressForm
     template_name = "testapp/linear_wizard.html"
-    summary_fields = [
-        Group("line_1", "line_2", "town", "postcode", label="Address"),
+    summary_rows = [
+        Question("Address", Answer("line_1", "line_2", "town", "postcode")),
         Hide("lookup_token"),
     ]
 
@@ -2643,8 +2648,8 @@ class DeclaredSummaryWizardViewSet(WizardViewSet):
             AddressForm,
             name="address",
             label="Address",
-            summary_fields=[
-                Group("line_1", "line_2", "town", "postcode", label="Address"),
+            summary_rows=[
+                Question("Address", Answer("line_1", "line_2", "town", "postcode")),
                 Hide("lookup_token"),
             ],
         )
@@ -2669,9 +2674,9 @@ class QuestionedSummaryWizardViewSet(WizardViewSet):
             AddressForm,
             name="address",
             label="Address",
-            summary_fields=[
-                Question("Address", Group("line_1", "line_2", "town")),
-                Question("Postcode", Group("postcode")),
+            summary_rows=[
+                Question("Address", Answer("line_1", "line_2", "town")),
+                Question("Postcode", Answer("postcode")),
                 Hide("lookup_token"),
             ],
         )

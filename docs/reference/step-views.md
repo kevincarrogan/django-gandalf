@@ -103,21 +103,21 @@ A step declared with a bare Django `FormView` rather than a `StepFormView`
 carries none of these and gets the `BaseForm` readings, so nothing has to
 change to keep working.
 
-**`summary_fields`** — how this step's answers read on a
-[check-your-answers page](summary.md): a sequence of `Group` / `Hide` /
-`Render` specs about *this* step's fields, so there is no step name to key
+**`summary_rows`** — how this step's answers read on a
+[check-your-answers page](summary.md): a sequence of `Answer` / `Hide` /
+`Question` specs about *this* step's fields, so there is no step name to key
 them by. Default `()`.
 
 ```python
 from gandalf.form_views import StepFormView
-from gandalf.summary import Group, Hide
+from gandalf.summary import Answer, Hide
 
 
 class AddressStepView(StepFormView):
     form_class = AddressForm
     template_name = "grants/address.html"
-    summary_fields = [
-        Group("line_1", "line_2", "town", "postcode", label="Address"),
+    summary_rows = [
+        Answer("line_1", "line_2", "town", "postcode"),
         Hide("lookup_token"),
     ]
 ```
@@ -130,19 +130,20 @@ the two cannot share a name.
 
 A step declared as a bare `forms.Form` has no view to put this on and says
 it at the declaration instead —
-`.step(AddressForm, name="address", summary_fields=[...])`. Saying it in both
+`.step(AddressForm, name="address", summary_rows=[...])`. Saying it in both
 places is refused by [`.step()`](wizard.md#wizardstepform_class_or_form_view_class--context).
 
-A step view's `summary_fields` is checked when its class body executes: a
-field claimed by two specs, or two specs naming no fields, raises
+A step view's `summary_rows` is checked when its class body executes: a
+field claimed by two specs, two specs naming no fields, or a `Question`
+wrapping something that is not one row's worth of answer, each raise
 `ImproperlyConfigured` at import rather than when someone opens the summary
-page. Both are decidable from the list alone; the third refusal — a spec
-naming a field the step has not got — needs the wizard, so it stays with the
-[summary page](summary.md#spec-validation).
+page. All are decidable from the list alone; the refusal that is not — a
+spec naming a field the step has not got — needs the wizard, so it stays
+with the [summary page](summary.md#spec-validation).
 
-**`get_summary_fields()`** — those specs, for a summary page to start from.
-The default returns `summary_fields`. Override to decide per request; the
-summary page has the last word either way.
+**`get_summary_row_specs()`** — those specs, for a summary page to start
+from. The default returns `summary_rows`. Override to decide per request;
+the summary page has the last word either way.
 
 The view rather than the form, deliberately: a `forms.Form` is a Django
 object shared with everything else that asks it, so a Gandalf attribute on
@@ -197,7 +198,7 @@ page listing those would be listing the wrong objects.
 Flattening the rows is plain rather than pretty, and deliberately so. What
 three organisers should read like on a check-your-answers page is the
 page's decision, made with
-[`SummaryMixin.build_summary_row()`](summary.md). What a default must not
+[`SummaryMixin.build_summary_rows()`](summary.md). What a default must not
 do is show *nothing*: then the answers cannot be checked, which is what the
 page is for, and nobody can see that they are missing.
 

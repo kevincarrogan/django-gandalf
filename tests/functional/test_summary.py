@@ -18,7 +18,7 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from gandalf.summary import Group, Hide, Question, Render
+from gandalf.summary import Answer, Hide, Question
 from gandalf.wizard import Wizard
 from tests.testapp.forms import AddressForm
 from tests.testapp import views
@@ -54,15 +54,15 @@ def test_summary_lists_every_answered_step_in_route_order(business_run):
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     rows = response.context["summary"]
-    assert [row.name for row in rows] == [
+    assert [row.step.name for row in rows] == [
         "account_type",
         "business_name",
-        "preferences",
+        *["preferences"] * 5,
     ]
     assertContains(response, "<dt>Account type</dt>", html=True)
 
 
-def test_summary_labels_fall_back_to_the_step_name(wizard_driver):
+def test_every_answer_is_named_by_the_field_that_asked_it(wizard_driver):
     run = wizard_driver("summary-wizard").start()
     run.post_steps(
         [
@@ -77,14 +77,18 @@ def test_summary_labels_fall_back_to_the_step_name(wizard_driver):
     assert [row.label for row in rows] == [
         "Account type",
         "Preferred name",
-        "Preferences",
+        "Contact method",
+        "Toppings",
+        "Marketing emails",
+        "Start date",
+        "Note",
     ]
 
 
 def test_summary_renders_each_answer_as_display_text(business_run):
     rows = business_run.get_step("summary").context["summary"]
 
-    preferences = {field.label: field.value for field in rows[-1].fields}
+    preferences = {row.label: row.value for row in rows[2:]}
 
     assert preferences == {
         "Contact method": "Post",
@@ -98,7 +102,7 @@ def test_summary_renders_each_answer_as_display_text(business_run):
 def test_summary_omits_the_step_being_rendered(business_run):
     rows = business_run.get_step("summary").context["summary"]
 
-    assert "summary" not in [row.name for row in rows]
+    assert "summary" not in [row.step.name for row in rows]
 
 
 def test_each_row_links_to_the_step_that_changes_it(business_run):
@@ -109,7 +113,7 @@ def test_each_row_links_to_the_step_that_changes_it(business_run):
     assert [row.url for row in rows] == [
         business_run.step_url("account_type"),
         business_run.step_url("business_name"),
-        business_run.step_url("preferences"),
+        *[business_run.step_url("preferences")] * 5,
     ]
     assertContains(
         response,
@@ -135,7 +139,7 @@ def test_summary_reflects_a_changed_answer(business_run):
 
     rows = business_run.get_step("summary").context["summary"]
 
-    assert rows[1].fields[0].value == "Beta Ltd"
+    assert rows[1].value == "Beta Ltd"
 
 
 def test_summary_follows_the_run_through_a_branch_flip(business_run):
@@ -144,29 +148,29 @@ def test_summary_follows_the_run_through_a_branch_flip(business_run):
 
     rows = business_run.get_step("summary").context["summary"]
 
-    assert [row.name for row in rows] == [
+    assert [row.step.name for row in rows] == [
         "account_type",
         "preferred_name",
-        "preferences",
+        *["preferences"] * 5,
     ]
-    assert rows[1].fields[0].value == "Ada"
+    assert rows[1].value == "Ada"
 
 
 def test_summary_rebuilds_each_answered_form_once(business_run):
-    """The bind-once guarantee: one form reconstruction per row, however many
-    fields the page renders from it.
+    """The bind-once guarantee: one form reconstruction per *step*, however
+    many rows the page reads out of it.
 
     Four rather than three because this wizard's branch predicate reads an
     answer of its own to pick the arm — a cost the run pays on every request,
-    summary or not. The summary's own share is one per row, even though the
-    template renders five fields from the preferences row alone.
+    summary or not. The summary's own share is one per step, even though the
+    preferences step alone reads as five rows.
     """
     with counting_walks() as counts:
         response = business_run.get_step("summary")
 
     rows = response.context["summary"]
-    assert [len(row.fields) for row in rows] == [1, 1, 5]
-    assert counts.form_rebuilds == len(rows) + 1
+    assert len(rows) == 7
+    assert counts.form_rebuilds == 4
 
 
 def test_a_row_carries_the_form_behind_it(business_run):
@@ -198,7 +202,7 @@ def test_summary_renders_answers_that_have_no_plain_text_of_their_own(
 
     rows = run.get_step("summary").context["summary"]
 
-    assert {field.label: field.value for field in rows[0].fields} == {
+    assert {row.label: row.value for row in rows} == {
         "Delivery": "SMS",
         "Collect at": "Oct. 12, 2025, 9:30 a.m.",
         "Opens at": "9:30 a.m.",
@@ -217,13 +221,7 @@ def test_summary_hooks_are_overridable(wizard_driver):
     rows = run.get_step("summary").context["summary"]
 
     assert [row.label for row in rows] == ["PREFERENCES"]
-    assert [field.label for field in rows[0].fields] == [
-        "Contact method",
-        "Toppings",
-        "Marketing emails",
-        "Start date",
-    ]
-    assert rows[0].fields[-1].value == "12/10/2025"
+    assert rows[0].parts == ("Post", "Cheese, Basil", "Yes", "12/10/2025")
 
 
 def test_a_revisited_summary_step_does_not_list_itself(client, business_run):
@@ -244,9 +242,9 @@ def test_a_revisited_summary_step_does_not_list_itself(client, business_run):
     response = business_run.get_step("summary")
 
     assert response.status_code == HTTPStatus.OK
-    labels = [row.label for row in response.context["summary"]]
-    assert labels == ["Account type", "Business name", "Preferences"]
-    assertContains(response, "Change Preferences")
+    steps = [row.step.name for row in response.context["summary"]]
+    assert steps == ["account_type", "business_name", *["preferences"] * 5]
+    assertContains(response, "Change Contact method")
     assertNotContains(response, "Change Summary")
 
 
@@ -280,9 +278,7 @@ def test_a_grouped_step_renders_as_one_line(address_run):
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/summary_wizard.html")
     rows = response.context["summary"]
-    assert [(field.label, field.value) for field in rows[1].fields] == [
-        (None, "12 High Street, Ely, CB7 4AA"),
-    ]
+    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
     assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 
@@ -297,12 +293,13 @@ def test_a_grouped_step_still_links_to_the_step_that_changes_it(address_run):
 
 
 def test_a_grouped_row_costs_no_extra_form_rebuild(address_run):
-    """Grouping reads the same single form the row was already built from."""
+    """Joining reads the same single form the rows were already built
+    from."""
     with counting_walks() as counts:
         response = address_run.get_step("summary")
 
     rows = response.context["summary"]
-    assert [len(row.fields) for row in rows] == [1, 1]
+    assert len(rows) == 2
     assert counts.form_rebuilds == len(rows)
 
 
@@ -317,7 +314,7 @@ def test_a_step_grown_mid_walk_is_shaped_by_name_like_any_other(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(row.name, row.fields[0].value) for row in rows] == [
+    assert [(row.step.name, row.value) for row in rows] == [
         ("delivery", "To my address"),
         ("address", "12 High Street, Ely, CB7 4AA"),
     ]
@@ -329,7 +326,7 @@ def test_a_key_that_names_no_step_is_refused(monkeypatch, address_run):
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
         "summary_overrides",
-        {"postal_address": [Group("town", "postcode")]},
+        {"postal_address": [Answer("town", "postcode")]},
     )
 
     with pytest.raises(ImproperlyConfigured, match="postal_address"):
@@ -340,26 +337,26 @@ def test_a_field_named_by_two_specs_is_refused(monkeypatch, address_run):
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
         "summary_overrides",
-        {"address": [Group("line_1", "town"), Group("town", "postcode")]},
+        {"address": [Answer("line_1", "town"), Answer("town", "postcode")]},
     )
 
     with pytest.raises(ImproperlyConfigured, match="town"):
         address_run.get_step("summary")
 
 
-def test_a_group_survives_a_step_that_asks_for_less(wizard_driver):
-    """A dynamic `get_form_class()` need not offer every field a group
-    names, so the declaration cannot be checked and the group has to
+def test_an_answer_survives_a_step_that_asks_for_less(wizard_driver):
+    """A dynamic `get_form_class()` need not offer every field an answer
+    names, so the declaration cannot be checked and the row has to
     survive asking for less: `town` is named, never asked, and dropped."""
     run = wizard_driver("dynamic-summary-wizard").start()
     run.post_step("address", {"line_1": "12 High Street", "postcode": "CB7 4AA"})
 
     rows = run.get_step("summary").context["summary"]
 
-    assert rows[0].fields[0].value == "12 High Street, CB7 4AA"
+    assert rows[0].value == "12 High Street, CB7 4AA"
 
 
-def test_a_group_naming_a_field_a_declared_step_has_not_got_is_refused(
+def test_an_answer_naming_a_field_a_declared_step_has_not_got_is_refused(
     monkeypatch, address_run
 ):
     """Where the declaration does know the fields, a name it does not have
@@ -374,7 +371,7 @@ def test_a_group_naming_a_field_a_declared_step_has_not_got_is_refused(
         address_run.get_step("summary")
 
 
-def test_a_group_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
+def test_an_answer_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
     monkeypatch.setattr(
         views.GroupedSummaryStepView,
         "include_summary_field",
@@ -383,7 +380,7 @@ def test_a_group_skips_a_field_the_page_leaves_off(monkeypatch, address_run):
 
     rows = address_run.get_step("summary").context["summary"]
 
-    assert rows[1].fields[0].value == "12 High Street, CB7 4AA"
+    assert rows[1].value == "12 High Street, CB7 4AA"
 
 
 def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
@@ -410,8 +407,8 @@ def test_a_summary_lists_every_row_of_a_formset_step(wizard_driver):
 
     rows = run.get_step("summary").context["summary"]
 
-    assert [field.value for field in rows[0].fields] == ["Ada"]
-    assert [field.value for field in rows[1].fields] == [
+    assert [row.value for row in rows] == [
+        "Ada",
         "Monday",
         "09:00",
         "Tuesday",
@@ -441,9 +438,9 @@ def templated_run(wizard_driver):
     return run
 
 
-def test_a_group_renders_through_the_template_it_names(templated_run):
-    """The review template includes `field.template_name` and knows no step
-    names; the address's own partial decides how an address reads."""
+def test_an_answer_renders_through_the_template_it_names(templated_run):
+    """The review page prints `row.value` and knows no step names; the
+    address's own partial decides how an address reads."""
     response = templated_run.get_step("summary")
 
     assert response.status_code == HTTPStatus.OK
@@ -457,7 +454,7 @@ def test_a_group_renders_through_the_template_it_names(templated_run):
 
 def test_a_partial_can_read_an_answer_the_form_derived(templated_run):
     """`outcode` is in `cleaned_data` and in no field, so only the form can
-    say it — `field.form` is how the partial gets there."""
+    say it — `row.form` is how the partial gets there."""
     response = templated_run.get_step("summary")
 
     assertContains(response, "Outcode: CB7")
@@ -468,16 +465,14 @@ def test_an_answer_that_names_no_template_reads_as_its_value(templated_run):
     render through and the page reads its value instead."""
     response = templated_run.get_step("summary")
 
-    rows = response.context["summary"]
-    assert rows[0].fields[0].template_name is None
     assertContains(response, "<span>Ada</span>", html=True)
     assertNotContains(response, "tok_123")
 
 
-def test_a_render_shows_a_formset_step_as_its_rows(wizard_driver):
-    """The reference used to teach a whole `build_summary_row()` override
-    for this. A `Render` names no fields, and the formset's rows are in the
-    form it is handed."""
+def test_an_answer_shows_a_formset_step_as_its_rows(wizard_driver):
+    """The reference used to teach a whole `build_summary_rows()` override
+    for this. An answer naming no fields takes the whole step, and the
+    formset's rows are in the form it is handed."""
     run = wizard_driver("rendered-summary-wizard").start()
     run.post_steps(
         [
@@ -504,18 +499,18 @@ def test_a_render_shows_a_formset_step_as_its_rows(wizard_driver):
     assertTemplateUsed(response, "testapp/summary/hours.html")
     assertContains(response, "<li>Monday from 09:00</li>", html=True)
     assertContains(response, "<li>Tuesday from 10:00</li>", html=True)
-    rows = response.context["summary"]
-    assert len(rows[1].fields) == 1
+    assert len(response.context["summary"]) == 2
 
 
-def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_run):
-    """A `Render` takes the whole step; a `Hide` beside it still hides."""
+def test_a_whole_step_answer_leaves_out_what_a_hide_names(monkeypatch, templated_run):
+    """An answer naming no fields takes the whole step; a `Hide` beside it
+    still hides."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_overrides",
         {
             "address": [
-                Render("testapp/summary/address.html"),
+                Answer(template_name="testapp/summary/address.html"),
                 Hide("lookup_token"),
             ]
         },
@@ -529,11 +524,13 @@ def test_a_render_leaves_out_what_a_hide_names_over_http(monkeypatch, templated_
     assertNotContains(response, "tok_123")
 
 
-def test_a_render_asks_whether_to_include_each_answer(monkeypatch, templated_run):
+def test_a_whole_step_answer_asks_whether_to_include_each_field(
+    monkeypatch, templated_run
+):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_overrides",
-        {"address": [Render("testapp/summary/address.html")]},
+        {"address": [Answer(template_name="testapp/summary/address.html")]},
     )
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
@@ -547,18 +544,18 @@ def test_a_render_asks_whether_to_include_each_answer(monkeypatch, templated_run
     assertContains(response, "<li>CB7 4AA</li>", html=True)
 
 
-def test_a_group_beside_a_render_takes_its_own_fields_over_http(
+def test_an_answer_beside_a_whole_step_answer_takes_its_own_fields(
     monkeypatch, templated_run
 ):
     """The rest of the address renders through the template; the two fields
-    the group names keep a line of their own."""
+    the other answer names keep a row of their own."""
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_overrides",
         {
             "address": [
-                Render("testapp/summary/address.html"),
-                Group("town", "postcode"),
+                Answer(template_name="testapp/summary/address.html"),
+                Answer("town", "postcode"),
                 Hide("lookup_token"),
             ]
         },
@@ -579,8 +576,8 @@ def test_two_specs_naming_no_fields_are_refused_over_http(monkeypatch, templated
         "summary_overrides",
         {
             "address": [
-                Render("testapp/summary/address.html"),
-                Render("testapp/summary/answer.html"),
+                Answer(template_name="testapp/summary/address.html"),
+                Answer(template_name="testapp/summary/hours.html"),
             ]
         },
     )
@@ -589,7 +586,7 @@ def test_two_specs_naming_no_fields_are_refused_over_http(monkeypatch, templated
         templated_run.get_step("summary")
 
 
-def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
+def test_a_spec_left_with_nothing_still_renders(monkeypatch, templated_run):
     """Its template is the point, not the values it was handed — an empty
     formset says "none given" the same way."""
     monkeypatch.setattr(
@@ -597,8 +594,8 @@ def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
         "summary_overrides",
         {
             "address": [
-                Render("testapp/summary/address.html"),
-                Group("line_1", "line_2", "town", "postcode", "lookup_token"),
+                Answer(template_name="testapp/summary/address.html"),
+                Answer("line_1", "line_2", "town", "postcode", "lookup_token"),
             ]
         },
     )
@@ -607,14 +604,14 @@ def test_a_render_left_with_nothing_still_renders(monkeypatch, templated_run):
 
     assert response.status_code == HTTPStatus.OK
     assertTemplateUsed(response, "testapp/summary/address.html")
-    assert response.context["summary"][1].fields[-1].parts == ()
+    assert response.context["summary"][-1].parts == ()
 
 
-def test_a_group_naming_no_fields_takes_the_rest_over_http(monkeypatch, templated_run):
+def test_an_answer_naming_no_fields_takes_the_rest(monkeypatch, templated_run):
     monkeypatch.setattr(
         views.TemplatedSummaryStepView,
         "summary_overrides",
-        {"address": [Group(label="Address"), Hide("lookup_token")]},
+        {"address": [Answer(), Hide("lookup_token")]},
     )
 
     response = templated_run.get_step("summary")
@@ -639,9 +636,7 @@ def test_a_step_shapes_its_own_row_without_the_page_naming_it(colocated_run):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(field.label, field.value) for field in rows[1].fields] == [
-        ("Address", "12 High Street, Ely, CB7 4AA"),
-    ]
+    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
     assertNotContains(response, "tok-9")
 
 
@@ -650,11 +645,11 @@ def test_a_step_shaping_a_field_it_has_not_got_is_refused_over_http(
 ):
     monkeypatch.setattr(
         views.SelfShapingAddressStepView,
-        "summary_fields",
+        "summary_rows",
         [Hide("lookup_taken")],
     )
 
-    with pytest.raises(ImproperlyConfigured, match="own summary_fields"):
+    with pytest.raises(ImproperlyConfigured, match="own summary_rows"):
         colocated_run.get_step("summary")
 
 
@@ -668,9 +663,7 @@ def test_a_bare_form_step_shapes_its_row_from_the_declaration(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(field.label, field.value) for field in rows[1].fields] == [
-        ("Address", "12 High Street, Ely, CB7 4AA"),
-    ]
+    assert (rows[1].label, rows[1].value) == ("Address", "12 High Street, Ely, CB7 4AA")
     assertNotContains(response, "tok-9")
 
 
@@ -679,13 +672,13 @@ def test_a_step_saying_how_it_reads_in_two_places_is_refused():
         Wizard().step(
             views.SelfShapingAddressStepView,
             name="address",
-            summary_fields=[Group("town", "postcode")],
+            summary_rows=[Answer("town", "postcode")],
         )
 
 
-def test_a_form_carrying_summary_fields_is_refused():
+def test_a_form_carrying_the_attribute_is_refused():
     class _LeftoverForm(AddressForm):
-        summary_fields = [Group("town", "postcode")]
+        summary_rows = [Answer("town", "postcode")]
 
     with pytest.raises(ImproperlyConfigured, match="which nothing reads"):
         Wizard().step(_LeftoverForm, name="address")
@@ -704,8 +697,8 @@ def test_one_step_reads_as_the_questions_it_asked(questioned_run):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
-    assert [(row.label, row.fields[0].value) for row in rows] == [
-        ("Who you are", "Ada"),
+    assert [(row.label, row.value) for row in rows] == [
+        ("Name", "Ada"),
         ("Address", "12 High Street, Ely"),
         ("Postcode", "CB7 4AA"),
     ]
@@ -721,57 +714,72 @@ def test_every_row_of_a_step_changes_that_step(questioned_run):
     assert rows[1].url == rows[2].url == questioned_run.step_url("address")
 
 
-def test_an_answer_no_question_asks_is_refused_over_http(monkeypatch, questioned_run):
+def test_a_field_no_question_names_keeps_a_row_of_its_own(monkeypatch, questioned_run):
+    """Nothing to refuse and nothing to vanish: an answer no question names
+    keeps a row of its own, named by the field that asked it."""
     monkeypatch.setattr(
         views.SummaryStepView,
         "summary_overrides",
-        {"address": [Question("Address", Group("line_1", "line_2", "town"))]},
+        {"address": [Question("Address", Answer("line_1", "line_2", "town"))]},
     )
 
-    with pytest.raises(ImproperlyConfigured, match="in none of them"):
-        questioned_run.get_step("summary")
+    response = questioned_run.get_step("summary")
+
+    rows = response.context["summary"]
+    assert [(row.label, row.value) for row in rows[1:]] == [
+        ("Address", "12 High Street, Ely"),
+        ("Postcode", "CB7 4AA"),
+        ("Lookup token", "tok-9"),
+    ]
 
 
-def test_a_spec_beside_a_question_is_refused_over_http(monkeypatch, questioned_run):
-    monkeypatch.setattr(
-        views.SummaryStepView,
-        "summary_overrides",
-        {
-            "address": [
-                Question("Address", Group("line_1", "line_2", "town")),
-                Group("postcode"),
-            ]
-        },
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="no row to belong to"):
-        questioned_run.get_step("summary")
-
-
-def test_an_empty_question_is_refused_over_http(monkeypatch, questioned_run):
-    monkeypatch.setattr(
-        views.SummaryStepView,
-        "summary_overrides",
-        {"address": [Question("Address"), Hide("lookup_token")]},
-    )
-
-    with pytest.raises(ImproperlyConfigured, match="nothing in it"):
-        questioned_run.get_step("summary")
-
-
-def test_a_spec_naming_no_fields_inside_a_question_is_refused_over_http(
+def test_a_question_names_a_row_whose_value_comes_from_a_template(
     monkeypatch, questioned_run
 ):
+    """The shape that had nowhere to go before: a row named by the page that
+    asked it, whose value the step's own template renders."""
     monkeypatch.setattr(
         views.SummaryStepView,
         "summary_overrides",
         {
             "address": [
-                Question("Address", Render("testapp/summary/address.html")),
+                Question(
+                    "Where the work happens",
+                    Answer(template_name="testapp/summary/address.html"),
+                ),
                 Hide("lookup_token"),
             ]
         },
     )
 
-    with pytest.raises(ImproperlyConfigured, match="no rest"):
+    response = questioned_run.get_step("summary")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/summary/address.html")
+    assertContains(response, "<dt>Where the work happens</dt>", html=True)
+    assertContains(response, "<li>12 High Street</li>", html=True)
+
+
+def test_a_question_inside_a_question_is_refused_over_http(monkeypatch, questioned_run):
+    """A question names one row; naming it twice leaves nothing to decide
+    which name wins."""
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {"address": [Question("Address", Question("Postcode", Answer("postcode")))]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="inside a Question"):
+        questioned_run.get_step("summary")
+
+
+def test_a_hide_inside_a_question_is_refused_over_http(monkeypatch, questioned_run):
+    """A row named and then not shown."""
+    monkeypatch.setattr(
+        views.SummaryStepView,
+        "summary_overrides",
+        {"address": [Question("Address", Hide("lookup_token"))]},
+    )
+
+    with pytest.raises(ImproperlyConfigured, match="Hide inside a Question"):
         questioned_run.get_step("summary")

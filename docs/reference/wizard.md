@@ -73,9 +73,9 @@ Append a step.
   | --- | --- |
   | `name` | [`StepNameRouter`](#stepnamerouter) (the URL segment), `RuntimeStep.name`, `path.find_step(name=...)`, `on_field`, `outline()` |
   | `label` | the summary mixin's `summary_label_context_key` (see [Summary](summary.md)) |
-  | `summary_fields` | `RuntimeStep.summary_fields`, for a step with no view of its own to declare them on (see [Summary](summary.md#where-shaping-is-declared)) |
+  | `summary_rows` | `RuntimeStep.summary_rows`, for a step with no view of its own to declare them on (see [Summary](summary.md#where-shaping-is-declared)) |
 
-  `summary_fields` is checked where it is written: a list contradicting
+  `summary_rows` is checked where it is written: a list contradicting
   itself, a step whose view declares its own as well, or a `forms.Form` still
   carrying the attribute, each raise `ImproperlyConfigured` from `.step()`.
 

@@ -15,7 +15,7 @@ a pointer back to the [Learn](../learn/README.md) chapter that introduces it.
 - [WizardViewSet](viewsets.md) — URL names and hooks, `get_wizard()`, `run_started()`, `done()`, `run_unavailable()`, `begin()` / `inspect()` / `reopen()` / `resolve()`
 - [Step views](step-views.md) — `StepFormView`, what a step may read, template context
 - [Escapes](escapes.md) — `Park`, `Advance`, `Obliterate`
-- [Summary](summary.md) — `SummaryMixin`, `Group`, `Hide`, rows and fields
+- [Summary](summary.md) — `SummaryMixin`, `Answer`, `Question`, `Hide`, rows
 - [File uploads](file-uploads.md) — `WizardFileStorage`, refs, replay, cleanup
 
 ## The run

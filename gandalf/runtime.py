@@ -490,26 +490,26 @@ class RuntimeStep:
         return cast("Iterable[Any]", reader(self.form))
 
     @property
-    def summary_fields(self) -> Iterable[Any]:
+    def summary_rows(self) -> Iterable[Any]:
         """How this step says its own answers read on a summary page.
 
         Asked of the declaration first and `step_view` second. The step
                 is what knows an address is an address, and a page listing every
                 awkward step by name is carrying knowledge it did not generate — but
                 a step declared as a bare `forms.Form` has no view to say it on, so
-                `.step(AddressForm, name="address", summary_fields=[...])` says it
+                `.step(AddressForm, name="address", summary_rows=[...])` says it
                 at the declaration instead. `.step()` refuses both at once. A step
                 declared with a plain Django `FormView` and no context has nothing
                 to say and says nothing.
         """
         context = self.declaration.context or {}
-        declared = context.get("summary_fields")
+        declared = context.get("summary_rows")
         if declared:
             # Said at the declaration, which is where a step with no view of
             # its own has to say it. `.step()` refuses both at once, so this
             # is not a precedence rule — only the cheaper question first.
             return cast("Iterable[Any]", declared)
-        reader = getattr(self.step_view, "get_summary_fields", None)
+        reader = getattr(self.step_view, "get_summary_row_specs", None)
         if reader is None:
             return ()
         return cast("Iterable[Any]", reader())

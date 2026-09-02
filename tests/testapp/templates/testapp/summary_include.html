@@ -6,18 +6,14 @@
     <div class="card">
         <h2>Check your answers</h2>
         <dl class="summary">
+            {# The same loop as every other review page. An answer that
+               brought its own template has already been rendered into
+               `row.value`, so the page never asks which step it is
+               holding. #}
             {% for row in summary %}
                 <dt>{{ row.label }}</dt>
                 <dd>
-                    {# No step names here: each answer names its own
-                       template, or none and reads as its value. #}
-                    {% for field in row.fields %}
-                        {% if field.template_name %}
-                            {% include field.template_name %}
-                        {% else %}
-                            <span>{{ field.value }}</span>
-                        {% endif %}
-                    {% endfor %}
+                    <span>{{ row.value }}</span>
                     <a href="{{ row.url }}">Change {{ row.label }}</a>
                 </dd>
             {% endfor %}

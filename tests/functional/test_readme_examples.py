@@ -285,31 +285,36 @@ def test_chapter_7_lists_every_answer_with_a_change_link(wizard_driver):
 
     assert response.status_code == HTTPStatus.OK
     rows = response.context["summary"]
+    # Each row is named by the question that asked it, except the address,
+    # which reads as one answer and takes its step's name.
     assert [(row.label, row.url) for row in rows] == [
-        ("Applying as", run.step_url("applying-as")),
-        ("About you", run.step_url("about-you")),
-        ("Email", run.step_url("contact")),
+        ("Are you applying as", run.step_url("applying-as")),
+        ("What do you do?", run.step_url("about-you")),
+        ("Email address", run.step_url("contact")),
         ("Address", run.step_url("address")),
     ]
     # The stored answers, as display text rather than raw values.
-    assert [field.value for field in rows[0].fields] == ["An individual"]
+    assert rows[0].value == "An individual"
     assertContains(
-        response, f'<a href="{run.step_url("contact")}">Change Email</a>', html=True
+        response,
+        f'<a href="{run.step_url("contact")}">Change Email address</a>',
+        html=True,
     )
 
 
 def test_chapter_7_reads_an_address_back_as_one_line(wizard_driver):
-    # README "Shaping a row" snippet: four fields grouped, the lookup's own
-    # answer hidden, and the row still labelled by the step.
+    # README "Shaping a row" snippet: four fields on one row, the lookup's
+    # own answer hidden, and the row still named by the step.
     run = wizard_driver("readme-review").start()
     _individual(run)
 
     response = run.get_step("review")
 
     address = response.context["summary"][3]
-    assert [(field.label, field.value) for field in address.fields] == [
-        (None, "12 High Street, Ely, CB7 4AA"),
-    ]
+    assert (address.label, address.value) == (
+        "Address",
+        "12 High Street, Ely, CB7 4AA",
+    )
     assertContains(response, "<span>12 High Street, Ely, CB7 4AA</span>", html=True)
 
 

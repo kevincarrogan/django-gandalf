@@ -12,7 +12,7 @@ from gandalf.types import Answer, Submission, WizardRequest
 if TYPE_CHECKING:
     # Imported for the annotation only: `gandalf.summary` is built on this
     # module, so the dependency runs one way at runtime.
-    from gandalf.summary import FieldSpec
+    from gandalf.summary import RowSpec
 
     # `FormView` is generic to type checkers but not at runtime — it carries
     # no `__class_getitem__` in any supported Django — so the parameter is
@@ -138,7 +138,7 @@ class StepFormView(_StepFormViewBase):
     #: there is no step name to key them by. A review page overrides what it
     #: wants said differently, in its own `summary_overrides`, and inherits
     #: the rest.
-    summary_fields: Sequence[FieldSpec] = ()
+    summary_rows: Sequence[RowSpec] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Check a step view's own specs when its class body runs.
@@ -150,7 +150,7 @@ class StepFormView(_StepFormViewBase):
         decided per request is checked per request, in the summary page.
         """
         super().__init_subclass__(**kwargs)
-        if not cls.summary_fields:
+        if not cls.summary_rows:
             # Nothing to contradict, and nothing to import: this runs for
             # every step view in a project, `FormSetStepView` included —
             # which is defined while `gandalf.summary` is still importing
@@ -158,11 +158,11 @@ class StepFormView(_StepFormViewBase):
             return
         # Imported inside the guard for that reason: `gandalf.summary` is
         # built on this module, so the dependency runs one way at runtime.
-        from gandalf.summary import check_field_specs
+        from gandalf.summary import check_row_specs
 
-        check_field_specs(cls.summary_fields, f"{cls.__name__}.summary_fields")
+        check_row_specs(cls.summary_rows, f"{cls.__name__}.summary_rows")
 
-    def get_summary_fields(self) -> Sequence[FieldSpec]:
+    def get_summary_row_specs(self) -> Sequence[RowSpec]:
         """How this step's answers read, for a summary page to start from.
 
         The step is the thing that knows an address is an address, and a
@@ -180,7 +180,7 @@ class StepFormView(_StepFormViewBase):
         Override to decide per request; the summary page has the last word
         either way.
         """
-        return self.summary_fields
+        return self.summary_rows
 
     def get_answer_schema(self, form: Any) -> dict[str, Any]:
         """This step as a JSON Schema — what an agent is told it asks.
@@ -271,7 +271,7 @@ class FormSetStepView(StepFormView):
         is plain rather than pretty, and deliberately so: what three
         organisers should read like on a check-your-answers page is the
         page's decision, made with `summary.Render` or, past what a
-        template can say, `SummaryMixin.build_summary_row()`. What
+        template can say, `SummaryMixin.build_summary_rows()`. What
         it must not do is show nothing, because then the answers cannot be
         checked and nobody can see that they are missing.
         """

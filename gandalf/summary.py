@@ -1,42 +1,56 @@
-"""Check-your-answers pages: the answered steps of a run, ready to display.
+"""Check-your-answers pages: the answered steps of a run, as rows to display.
 
-A summary step asks the same three questions of every answer — what is it
-called, what does it say, and where do I go to change it — so `SummaryMixin`
-answers them once. Mix it into the step's `FormView` and the template gets a
-`summary` list: one `SummaryRow` per answered step, carrying its label, its
-fields as display text, and the URL that edits it.
+A summary is a flat list, and a row is one thing the user can check and one
+thing they can change: a label, the answer as display text, and the URL of
+the page that asked it. `SummaryMixin` builds that list and puts it in the
+template context, so a review page is one loop with nothing to decide:
 
-Reading `RuntimeStep.form` reconstructs and re-validates that step's form, so
-a page that reaches for it per field would pay a validation per field. The
-mixin builds each row from a single form, and `RuntimeStep.form` itself is
-built once per step per request, so the cost is one reconstruction per row
-however much the template reads.
+    {% for row in summary %}
+      <dt>{{ row.label }}</dt>
+      <dd>{{ row.value }}</dd>
+      <dd><a href="{{ row.url }}">Change {{ row.label|lower }}</a></dd>
+    {% endfor %}
 
-One field per answer suits most steps and not all of them: an address is
-five answers and one line. `summary_fields` says so declaratively, keyed by
-step name — `Group` shows several of a step's fields as one answer, `Hide`
-shows none of them, `Render` gives them to one template — and fields no
-spec names keep a line of their own. A spec is anything that names the
-fields it speaks for and builds the answers it stands for, so a page can
-bring one of its own.
+A step reads as one row per field unless it says otherwise, which most steps
+want. One that reads otherwise says so in `summary_rows`, keyed by nothing
+because it is about itself: `Answer` reads several of a step's fields as one
+row — an address is five answers and one line — `Question` names a row the
+step could not name for it, and `Hide` keeps an answer off the page. A spec
+is anything that names the fields it speaks for and builds the rows it
+stands for, so a page can bring one of its own.
+
+`Answer` takes a `template_name`, and Gandalf renders it. That is the only
+thing the library renders: one row's *value*, through a template the caller
+named. The page around it — the list, the change links, the headings — is
+the application's, and Gandalf ships no templates to build one with. A value
+rendered this way arrives as `row.value` already, so the page never asks
+which spec produced a row.
+
+Reading `RuntimeStep.form` reconstructs and re-validates that step's form,
+so a page that reached for it per row would pay a validation per row. Every
+row of a step is built from one form, and `RuntimeStep.form` itself is built
+once per step per request, so the cost is one reconstruction per step
+however many rows it reads as.
 
 Every decision is also a hook: `get_summary_steps()` chooses the steps,
-`get_summary_label()` names one, `get_field_specs()` shapes one step's
-fields, `include_summary_field()` drops fields, and `format_value()` renders
-a value. The defaults suit a plain journey; override what your domain needs.
+`get_summary_label()` names a row the step had to name, `get_row_specs()`
+shapes one step, `include_summary_field()` drops fields, and `format_value()`
+renders a value. The defaults suit a plain journey; override what your
+domain needs.
 """
 
 from __future__ import annotations
 
 import datetime
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field as dataclass_field
+from dataclasses import dataclass, field as dataclass_field, replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files import File
 from django.forms import BaseForm
 from django.forms.boundfield import BoundField
+from django.template.loader import render_to_string
 from django.utils import formats
 from django.utils.text import capfirst
 from django.utils.translation import gettext
@@ -57,69 +71,77 @@ else:
 
 
 __all__ = [
-    "Question",
-    "check_field_specs",
-    "FieldSpec",
-    "Group",
+    "Answer",
     "Hide",
-    "Render",
-    "SummaryField",
+    "Question",
+    "RowSpec",
     "SummaryMixin",
     "SummaryRow",
+    "check_row_specs",
     "format_value",
 ]
 
 
 @dataclass(frozen=True, init=False)
-class Group:
-    """Several of a step's fields, shown as one answer.
+class Answer:
+    """Some of a step's fields, read as one row.
 
-    `Group("line_1", "line_2", "town", "postcode")` turns four lines into
-    one: each answer is rendered as the text it would have shown on its own,
-    the empty ones are dropped — a blank second line does not leave ", ," in
-    the middle of an address — and what is left is joined with `separator`.
-    A group takes the place of the first of its fields, so the row still
-    reads in form order.
+    `Answer("line_1", "line_2", "town", "postcode")` turns four answers into
+    one: each is rendered as the text it would have shown on its own, the
+    empty ones are dropped — a blank second line does not leave ", ," in the
+    middle of an address — and what is left is joined with `separator`. An
+    answer takes the place of the first of its fields, so the row still
+    arrives in form order.
 
-    `label` is optional because a step whose every field is grouped is
-    already named by its row, and repeating that name would say the same
-    thing twice. A group without one leaves the row's heading to speak, and
-    its `SummaryField.label` is None.
+    `template_name` is the row's own markup, rendered by Gandalf and handed
+    to the page as `SummaryRow.value`. An address that reads as lines rather
+    than as a comma run-on says so once, here, next to the fields it is
+    about — rather than as an `{% if %}` in the review template, which would
+    otherwise have to know the name of every step whose answer does not read
+    as one line. The template is given the row it is rendering as `row`, so
+    `row.parts` is the answers in the order this spec named them and
+    `row.form` is the bound, validated form they came from —
+    `row.form.cleaned_data` included, which is where a value the form
+    derived in `clean()` lives and where a formset's rows are. That is the
+    reach a field list cannot offer, and it is offered anyway.
 
-    `template_name` is the group's own markup: the template the summary
-    page renders this answer through, reached as `SummaryField.template_name`
-    and included by the page. An address that reads as lines rather than as a
-    comma run-on says so once, here, next to the fields it is about — rather
-    than as an `{% if %}` in the review template, which would otherwise have
-    to know the name of every step whose answers do not read as one line.
+    Naming no fields means *the rest*: every field of the step no other spec
+    named. `Answer(template_name="hours.html")` is how a step whose answer
+    is not a list of fields at all says so — listing every field of a step
+    so that one template can ignore the list is ceremony.
+
+    It carries no label. A row is named by the step it belongs to, or by the
+    `Question` around it when the step's own name is not the answer's; two
+    ways to name one thing is what a summary page does not need.
 
     A field the step's form does not offer is skipped rather than refused: a
-    dynamic `get_form_class()` may vary what a step asks, and a group has to
+    dynamic `get_form_class()` may vary what a step asks, and a row has to
     survive asking for less.
     """
 
     fields: tuple[str, ...]
-    label: StrOrPromise | None = None
     separator: str = ", "
     template_name: str | None = None
 
     def __init__(
         self,
         *fields: str,
-        label: StrOrPromise | None = None,
         separator: str = ", ",
         template_name: str | None = None,
     ) -> None:
         object.__setattr__(self, "fields", fields)
-        object.__setattr__(self, "label", label)
         object.__setattr__(self, "separator", separator)
         object.__setattr__(self, "template_name", template_name)
 
-    def build_fields(
-        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
-    ) -> Iterator[SummaryField]:
-        """One answer, from the fields this group names."""
-        yield view.build_group_field(step, form, self)
+    def build_rows(
+        self,
+        view: SummaryMixin,
+        step: RuntimeStep,
+        form: BaseForm,
+        label: StrOrPromise | None = None,
+    ) -> Iterator[SummaryRow]:
+        """One row, from the fields this spec names."""
+        yield view.build_answer_row(step, form, self, label)
 
 
 @dataclass(frozen=True, init=False)
@@ -128,7 +150,8 @@ class Hide:
 
     `Hide("lookup_token")` drops an answer the user never gave in their own
     words — the token an address lookup returned, a hidden nonce — from the
-    page that reads their answers back.
+    page that reads their answers back. It claims its fields and builds no
+    row, which is what hiding is.
     """
 
     fields: tuple[str, ...]
@@ -136,117 +159,81 @@ class Hide:
     def __init__(self, *fields: str) -> None:
         object.__setattr__(self, "fields", fields)
 
-    def build_fields(
-        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
-    ) -> Iterator[SummaryField]:
-        """Nothing: that is what hiding is."""
+    def build_rows(
+        self,
+        view: SummaryMixin,
+        step: RuntimeStep,
+        form: BaseForm,
+        label: StrOrPromise | None = None,
+    ) -> Iterator[SummaryRow]:
+        """No rows: that is what hiding is."""
         return iter(())
-
-
-@dataclass(frozen=True)
-class Render:
-    """The step's answer, rendered through one template.
-
-    `Group` says which fields read as one answer; `Render` says the step
-    does, and needs no field list to say it — listing every field of a step
-    so that one template can ignore the list is ceremony. Naming no fields,
-    it speaks for every field no other spec named: a `Hide` beside it still
-    hides, and a `Group` beside it takes its own fields and leaves the rest.
-    Two specs naming no fields is the one shape refused — what is left over
-    cannot go to both.
-
-    The template is handed the `SummaryField`, and through it the form:
-    `field.form.cleaned_data` is where a value the form derived in `clean()`
-    lives, and where a formset's rows are. That is the reach `Group` cannot
-    offer, because a value no field holds cannot be named in a field list.
-
-    Rendering from `cleaned_data` gives up `format_value` — a choice is its
-    key rather than its label, a boolean is `True` rather than Yes, a date
-    is not in the active locale — so the field still carries the formatted
-    answers in `parts` and `value`. A template takes whichever it wants.
-
-    It takes the template and nothing else. A group carries a `label` and a
-    `separator` because a group without a template is still rendered by the
-    library — the join and the sub-heading are the only say the page has.
-    Past `Render` the markup is the caller's, and the two would be the
-    library shaping output it is not producing. A group is usually one
-    answer among a row's several, where a `Render` is usually the only one:
-    `row.label` names it, and a template written for one step can write any
-    sub-heading it likes.
-    """
-
-    template_name: str
-
-    @property
-    def fields(self) -> tuple[str, ...]:
-        """No fields: a `Render` names none, and takes them all."""
-        return ()
-
-    def build_fields(
-        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
-    ) -> Iterator[SummaryField]:
-        """One answer, from the whole step."""
-        yield view.build_render_field(step, form, self)
 
 
 @dataclass(frozen=True, init=False)
 class Question:
-    """One of several questions a step asked, and so one of several rows.
+    """A row's name, for a row the step could not name.
 
-    A summary row is one thing the user can change, and most steps ask one
-    thing. A step that asked three — an address, a postcode and a date on
-    one page — reads as three rows, all linking back to the page that asked
-    them:
+    A step is a page, and a page that asked one thing is named by the step:
+    the address step's row is called Address without anyone saying so. A
+    page that asked three — an address, a date of birth and a nationality —
+    reads as three rows sharing one change link, and the step's name will do
+    for at most one of them. `Question` is where the other two get theirs:
 
-        summary_fields = [
-            Question("Address", Group("line_1", "line_2", "town")),
-            Question("Postcode", Group("postcode")),
+        summary_rows = [
+            Question("Address", Answer("line_1", "line_2", "town")),
+            Question("Date of birth", Answer(template_name="dob.html")),
             Hide("lookup_token"),
         ]
 
-    `label` is the row's heading, taking the place of the step's own. The
-    specs shape the answers inside it exactly as they would in a row of
-    their own.
-
-    Its rules are stricter than a plain list's, because a row that quietly
-    holds nothing is a question the user is never asked to check. Every
-    field the step shows must be named by one `Question` or a `Hide`; a spec
-    naming no fields cannot go inside one, *the rest* having no meaning once
-    there is more than one row to be the rest of; and nothing but `Question`
-    and `Hide` may sit beside them, a bare `Group` having no row to belong
-    to.
+    It wraps exactly one spec and does one thing to it — names the row it
+    builds. Everything about *what* the row says is the spec's, which is why
+    a `Question` takes no separator, no template and no fields of its own:
+    the spec inside it already answers all three, and a second way to say
+    them is a second way to be wrong.
     """
 
     label: StrOrPromise
-    specs: tuple[Any, ...]
+    spec: Any
 
-    def __init__(self, label: StrOrPromise, *specs: Any) -> None:
+    def __init__(self, label: StrOrPromise, spec: Any) -> None:
         object.__setattr__(self, "label", label)
-        object.__setattr__(self, "specs", specs)
+        object.__setattr__(self, "spec", spec)
 
     @property
     def fields(self) -> tuple[str, ...]:
-        """Every field this question's specs name."""
-        return tuple(name for spec in self.specs for name in spec.fields)
+        """The fields its spec names — a question speaks for exactly those."""
+        return cast("tuple[str, ...]", self.spec.fields)
+
+    def build_rows(
+        self,
+        view: SummaryMixin,
+        step: RuntimeStep,
+        form: BaseForm,
+        label: StrOrPromise | None = None,
+    ) -> Iterator[SummaryRow]:
+        """Its spec's rows, named. The label goes *down* rather than being
+        applied after, so a value template rendering the row already sees
+        the name the page will show it under."""
+        yield from self.spec.build_rows(view, step, form, self.label)
 
 
-class FieldSpec(Protocol):
-    """One instruction about a step's answers, as `summary_fields` carries
-    them. `Group`, `Hide` and `Render` are the ones Gandalf ships; anything
-    answering these two questions is one.
+class RowSpec(Protocol):
+    """One instruction about a step's answers, as `summary_rows` carries
+    them. `Answer`, `Hide` and `Question` are the ones Gandalf ships;
+    anything answering these two questions is one.
 
-    A spec **names** the fields it speaks for, and **builds** the answers it
+    A spec **names** the fields it speaks for, and **builds** the rows it
     stands for. There is one rule between them, and it is the whole of the
     arrangement:
 
         A spec speaks for the fields it names. A spec naming none speaks
         for every field no other spec named.
 
-    So `Hide("token")` claims the token and yields nothing, which is what
-    hiding is. `Render("hours.html")` claims whatever is left, which is
-    usually the lot. And a `Group` beside a `Render` is not a conflict to
-    refuse but a sentence that parses: these fields on one line, the rest
-    through that template.
+    So `Hide("token")` claims the token and builds nothing. An `Answer`
+    naming no fields claims whatever is left, which is usually the lot. And
+    an `Answer` beside one is not a conflict to refuse but a sentence that
+    parses: these fields on one row, the rest on another.
 
     A spec speaks once, at the first of its fields the page shows. One
     naming no fields speaks at the first field nothing else claimed — or
@@ -259,136 +246,106 @@ class FieldSpec(Protocol):
     def fields(self) -> tuple[str, ...]:
         """The field names this spec speaks for. Empty means the rest."""
 
-    def build_fields(
-        self, view: SummaryMixin, step: RuntimeStep, form: BaseForm
-    ) -> Iterator[SummaryField]:
-        """The answers this spec stands for — none, one, or several.
+    def build_rows(
+        self,
+        view: SummaryMixin,
+        step: RuntimeStep,
+        form: BaseForm,
+        label: StrOrPromise | None = None,
+    ) -> Iterator[SummaryRow]:
+        """The rows this spec stands for — none, one, or several.
 
         `view` is the summary page, so a spec defers to it rather than
         deciding for it: `view.format_value()` renders a value,
         `view.include_summary_field()` says whether an answer is shown at
-        all, and `view.claimed_field_names()` is what a spec naming no
+        all, `view.get_summary_label()` is the name a step gives a row that
+        has none, and `view.claimed_field_names()` is what a spec naming no
         fields subtracts to find its own.
+
+        `label` is the name a `Question` around it chose, and None when
+        nothing did.
         """
 
 
 @dataclass(frozen=True)
-class SummaryField:
-    """One answered field, as display text.
+class SummaryRow:
+    """One row of a check-your-answers page: what it is called, what it
+    says, and where to go to change it.
 
-    `label` is None for a `Group` carrying no label of its own — the row's
-    heading names it instead. `parts` are the pieces `value` was joined
-    from: one per answered field for a group, and the field's own text for
-    a plain field, so a template can render an address as lines rather than
-    as a comma run-on.
+    `value` is display text, and the only thing a plain page needs to print.
+    It is the answer formatted, or several answers joined, or — when the
+    spec named a `template_name` — that template already rendered, in which
+    case it arrives marked safe exactly as a form's `as_p()` does. A page
+    prints `{{ row.value }}` and never asks which of the three it got.
 
-    `template_name` is the template this answer renders through — the
-    group's own if it named one, otherwise the page's
-    `summary_field_template_name`, and `None` when neither named one, since
-    Gandalf ships no templates to fall back on. A page that names a default
-    includes it without branching:
+    `parts` are the pieces `value` was joined from, one per answered field,
+    so a value template can read an address as lines rather than as a comma
+    run-on. `name` is the answer's name — the field's, or the first field a
+    multi-field row showed, or the step's when the row showed none.
 
-        {% for field in row.fields %}{% include field.template_name %}{% endfor %}
+    `form` is the bound, validated form the answer came from, so a value
+    template can reach the whole answer rather than the pieces named here:
+    `row.form.cleaned_data` is where a form that derives something in
+    `clean()` puts it.
 
-    and one that does not says so:
+    `bound_field` is the escape hatch: the Django `BoundField` the value
+    came from, for templates that need the widget, the help text, or the
+    field's own attributes. It is None for a row several fields made, which
+    no single `BoundField` can stand for.
 
-        {% if field.template_name %}{% include field.template_name %}
-        {% else %}{{ field.value }}{% endif %}
-
-    `form` is the bound, validated form the answer came from, so a template
-    rendering this field can read the whole answer rather than the pieces
-    named here — `field.form.cleaned_data` included, which is where a form
-    that derives something in `clean()` puts it. A group has no single
-    `BoundField` to reach it through, and this is how it gets there anyway.
-
-    `bound_field` is the escape hatch: the Django `BoundField` the value came
-    from, for templates that need the widget, the help text, or the field's
-    own attributes. It is None for a group, which no single `BoundField` can
-    stand for.
+    `step` is the underlying `RuntimeStep`, so a template that needs the raw
+    submission (`row.step.data`), the step's context, or its name to group
+    rows by can still reach them.
     """
 
-    name: str
-    label: StrOrPromise | None
+    step: RuntimeStep
+    label: StrOrPromise
     value: str
+    name: str = ""
     parts: tuple[str, ...] = ()
-    template_name: str | None = None
     form: BaseForm | None = dataclass_field(default=None, repr=False, compare=False)
     bound_field: BoundField | None = dataclass_field(
         default=None, repr=False, compare=False
     )
 
-
-@dataclass(frozen=True)
-class SummaryRow:
-    """One answered step: what it is called, what it says, and where to
-    change it. `step` is the underlying `RuntimeStep`, so a template that
-    needs the raw submission (`row.step.data`) or the step's context can
-    still reach them."""
-
-    step: RuntimeStep
-    label: StrOrPromise
-    fields: tuple[SummaryField, ...] = ()
-
-    @property
-    def name(self) -> str | None:
-        """The step's routable name."""
-        return self.step.name
-
     @property
     def url(self) -> str | None:
-        """The step's own URL — the change link for this answer."""
+        """The step's own URL — the change link for this row."""
         return self.step.url
 
-    @property
-    def form(self) -> BaseForm:
-        """The bound, validated form behind this row."""
-        return self.step.form
 
-
-def check_field_specs(specs: Sequence[FieldSpec], source: str) -> None:
+def check_row_specs(specs: Sequence[RowSpec], source: str) -> None:
     """Refuse a list of specs that contradicts itself.
 
-        The two things a list can say wrong knowing nothing but itself: a field
-        claimed by two specs, and two specs naming no fields. Both are decidable
-        from the declaration, which is why `StepFormView.__init_subclass__` asks
-        at import — a step view saying something impossible should not wait for
-        someone to open the summary page to find out.
+    The things a list can say wrong knowing nothing but itself: a field
+    claimed by two specs, two specs naming no fields, and a `Question`
+    wrapping something that is not one row's worth of answer. All are
+    decidable from the declaration, which is why
+    `StepFormView.__init_subclass__` asks at import — a step view saying
+    something impossible should not wait for someone to open the summary
+    page to find out.
 
-    A `Question` brings three more, all decidable the same way: nothing
-        but a `Question` or a `Hide` may sit beside one, an empty `Question` is a
-        row with nothing to check, and a spec naming no fields inside one has no
-        *rest* to speak for.
+    The refusals not here need the step. Whether a spec names a field its
+    step has not got waits for the page that knows which step it is
+    holding.
 
-        The refusals not here need the step. Whether a spec names a field its
-        step has not got, and whether every field a step shows ended up in some
-        question, both wait for the page that knows which step it is holding.
-
-        `source` is what declared them, because the fix is there.
+    `source` is what declared them, because the fix is there.
     """
-    questions = [spec for spec in specs if isinstance(spec, Question)]
-    if questions:
-        for spec in specs:
-            if isinstance(spec, (Question, Hide)):
-                continue
+    for spec in specs:
+        if not isinstance(spec, Question):
+            continue
+        if isinstance(spec.spec, Question):
             raise ImproperlyConfigured(
-                f"{source} puts a spec beside a Question with no row to "
-                f"belong to. Once a step reads as several rows, every answer "
-                f"is in one of them: move it into a Question, or Hide it."
+                f"{source} has a Question ({spec.label!r}) inside a "
+                f"Question. A question names one row; naming it twice "
+                f"leaves nothing to decide which name wins."
             )
-        for question in questions:
-            if not question.specs:
-                raise ImproperlyConfigured(
-                    f"{source} has a Question ({question.label!r}) with "
-                    f"nothing in it, which is a row the user is asked to "
-                    f"check and shown nothing to check."
-                )
-            if any(not spec.fields for spec in question.specs):
-                raise ImproperlyConfigured(
-                    f"{source} has a spec inside a Question "
-                    f"({question.label!r}) that names no fields. A spec "
-                    f"naming none speaks for the rest, and there is no rest "
-                    f"of one row among several — name its fields."
-                )
+        if isinstance(spec.spec, Hide):
+            raise ImproperlyConfigured(
+                f"{source} has a Hide inside a Question ({spec.label!r}), "
+                f"which is a row named and then not shown. A Hide drops "
+                f"answers and belongs beside a question, not in one."
+            )
     seen: set[str] = set()
     for spec in specs:
         for field_name in spec.fields:
@@ -478,8 +435,8 @@ def format_value(bound_field: BoundField, value: Any) -> str:
 
 
 class SummaryMixin(_SummaryMixinBase):
-    """Adds `summary` — one `SummaryRow` per answered step — to a step
-    view's template context.
+    """Adds `summary` — a flat list of `SummaryRow` — to a step view's
+    template context.
 
     Mix into the `FormView` of a check-your-answers step:
 
@@ -497,41 +454,31 @@ class SummaryMixin(_SummaryMixinBase):
     step doing the summarising, which is dropped explicitly because a run
     revisited or re-opened arrives with that answer stored too.
 
-    A step whose answers do not read as one line per field says so in
-    `summary_fields`:
+    A step whose answers do not read as one row per field says so in its own
+    `summary_rows`. A page that wants one of them read differently *here*
+    says so in `summary_overrides`, keyed by step name:
 
         class ReviewStepView(SummaryMixin, StepFormView):
-            summary_fields = {
+            summary_overrides = {
                 "address": [
-                    Group("line_1", "line_2", "town", "postcode"),
+                    Answer("line_1", "line_2", "town", "postcode"),
                     Hide("lookup_token"),
                 ],
             }
 
-    A step whose answer is not a list of fields at all says so with
-    `Render`, which names a template and no fields:
-
-        class ReviewStepView(SummaryMixin, StepFormView):
-            summary_fields = {
-                "opening-hours": [Render("hours/summary.html")],
-            }
+    The page has the last word; the step is where the answer normally
+    belongs, being the thing that knows an address is an address.
     """
 
     summary_context_name = "summary"
     summary_label_context_key = "label"
 
-    #: The template an answer renders through when its `Group` names none —
-    #: and the one every plain field renders through. `None` because Gandalf
-    #: ships no templates: set it to give a page, or a whole design system,
-    #: its own house style for an answer.
-    summary_field_template_name: str | None = None
-
     #: What this page wants said differently, keyed by step name. A step
     #: this mapping does not mention reads as *it* says it reads — its own
-    #: `summary_fields` — and failing that as one line per field. A key with
+    #: `summary_rows` — and failing that as one row per field. A key with
     #: an empty sequence is an opinion, not a silence: it overrides the step
     #: back to plain.
-    summary_overrides: Mapping[str, Sequence[FieldSpec]] = {}
+    summary_overrides: Mapping[str, Sequence[RowSpec]] = {}
 
     def get_summary_steps(self) -> list[RuntimeStep]:
         """The steps to summarise: every answered step on the route, except
@@ -552,7 +499,7 @@ class SummaryMixin(_SummaryMixinBase):
 
     def get_summary_rows(self) -> list[SummaryRow]:
         self.check_summary_overrides()
-        self.check_summary_field_names()
+        self.check_summary_row_names()
         fields = declared_step_fields(self.request.run.wizard)
         rows: list[SummaryRow] = []
         for step in self.get_summary_steps():
@@ -566,58 +513,56 @@ class SummaryMixin(_SummaryMixinBase):
         return rows
 
     def build_summary_rows(self, step: RuntimeStep) -> Iterator[SummaryRow]:
-        """The rows one step makes: one, unless it says otherwise.
+        """The rows one step makes: one per field, with its specs folded in.
 
-        A step is a page, and most pages ask one thing. A page that asked
-        three says so with `Question`, and reads as three rows sharing one
-        change link — which is what the user sees: three things to check,
-        one place to go and fix any of them.
+        An `Answer` replaces the first of its fields and swallows the rest,
+        a hidden field yields nothing, and every field no spec named keeps a
+        row of its own — which is why a field added to a form appears on the
+        summary the moment it is added, whatever else the step says.
+
+        Which of those a spec does is the spec's own answer, not a branch
+        here: the walk reaches a field, finds the spec that named it, and
+        asks it to speak. A spec speaks once, at the first of its fields the
+        page shows, and accounts for the rest of them by saying nothing when
+        they come round. Only a spec naming no fields is different, because
+        no field brings the walk to it — it speaks for the whole step, and
+        the walk never starts.
         """
-        specs = self.get_field_specs(step)
+        specs = self.get_row_specs(step)
         # A page's `summary_overrides` reaches no other check until the walk
-        # asks a spec to speak, and a walk that reads as rows never gets
-        # there — so the list is checked here, whoever wrote it.
-        check_field_specs(specs, self.field_specs_source(step))
-        questions = [spec for spec in specs if isinstance(spec, Question)]
-        if not questions:
-            yield self.build_summary_row(step)
-            return
-        self.check_every_answer_is_asked(step, questions)
+        # asks a spec to speak — so the list is checked here, whoever wrote
+        # it, and a step view's own is checked twice rather than never.
+        check_row_specs(specs, self.row_specs_source(step))
         form = step.form
-        for question in questions:
-            yield SummaryRow(
-                step=step,
-                label=question.label,
-                fields=tuple(self.build_question_fields(step, form, question)),
-            )
-
-    def check_every_answer_is_asked(
-        self, step: RuntimeStep, questions: Sequence[Question]
-    ) -> None:
-        """Refuse a step whose questions leave one of its answers out.
-
-        A plain row shows every field the step has, so a new one appears on
-        the summary the moment it is added. Questions name their fields, so a
-        new one belongs to none of them and would vanish silently — an answer
-        the user gave and is never shown back. The fix is to say where it
-        goes, which is what this asks for.
-        """
-        claimed = self.claimed_field_names(step)
-        missing = sorted(
-            bound_field.name
-            for bound_field in step.answer_fields
-            if bound_field.name not in claimed
-            and self.include_summary_field(step, bound_field)
-        )
-        if not missing:
-            return
-        labels = ", ".join(repr(question.label) for question in questions)
-        raise ImproperlyConfigured(
-            f"Step {step.name!r} reads as several rows ({labels}), and these "
-            f"answers are in none of them: {', '.join(missing)}. Every answer "
-            f"a step shows belongs to one Question or to a Hide, or it is "
-            f"never shown back to the person who gave it."
-        )
+        by_field = self._specs_by_field(specs)
+        whole = self.get_whole_step_spec(specs)
+        if whole is not None:
+            # It speaks for every field no other spec named, so it stands
+            # behind each of them and the walk reaches it like any other.
+            # `len(specs)` is a slot of its own: `_specs_by_field` indexes
+            # 0 to len(specs) - 1.
+            for bound_field in step.answer_fields:
+                by_field.setdefault(bound_field.name, (len(specs), whole))
+        spoken: set[int] = set()
+        for bound_field in step.answer_fields:
+            if not self.include_summary_field(step, bound_field):
+                continue
+            found = by_field.get(bound_field.name)
+            if found is None:
+                yield self.build_field_row(step, form, bound_field)
+                continue
+            index, spec = found
+            if index in spoken:
+                # A spec speaks once, at the first of its fields the page
+                # shows; the rest of them are its to account for.
+                continue
+            spoken.add(index)
+            yield from spec.build_rows(self, step, form)
+        if whole is not None and len(specs) not in spoken:
+            # Nothing was left for it: a step whose every field another spec
+            # named, or one with no fields at all — an empty formset. It
+            # still speaks, because its template is the point.
+            yield from whole.build_rows(self, step, form)
 
     def check_step_field_names(
         self,
@@ -629,7 +574,7 @@ class SummaryMixin(_SummaryMixinBase):
         The same rule the page's specs answer to, and for the same reason: a
         misspelt `Hide` hides nothing and renders the answer it was meant to
         keep off the page. A step this page overrides is checked as the
-        page's, once, in `check_summary_field_names()`.
+        page's, once, in `check_summary_row_names()`.
         """
         if fields is None:
             return
@@ -638,9 +583,9 @@ class SummaryMixin(_SummaryMixinBase):
             return
         self.check_field_names(
             name,
-            self.get_field_specs(step),
+            self.get_row_specs(step),
             fields,
-            f"step {name!r}'s own summary_fields",
+            f"step {name!r}'s own summary_rows",
         )
 
     def check_summary_overrides(self) -> None:
@@ -648,7 +593,7 @@ class SummaryMixin(_SummaryMixinBase):
         wizard.
 
         A renamed step would otherwise take its shaping with it and go
-        quietly back to one line per field — the kind of regression a page
+        quietly back to one row per field — the kind of regression a page
         only shows you in production. Checked against what the wizard
         *declares* rather than what this run walked, so a key naming a step
         on the arm not taken is fine.
@@ -668,12 +613,12 @@ class SummaryMixin(_SummaryMixinBase):
             f"{', '.join(sorted(declared))}."
         )
 
-    def check_summary_field_names(self) -> None:
+    def check_summary_row_names(self) -> None:
         """Refuse a spec naming a field its step does not have, whether this
         page named it or the step did.
 
         At render a field a step does not offer is skipped, deliberately —
-        a dynamic `get_form_class()` may ask for less and a group has to
+        a dynamic `get_form_class()` may ask for less and a row has to
         survive that. Which is exactly why a *typo* needs catching here: a
         misspelt `Hide` hides nothing, and the answer it was meant to keep
         off the page is rendered onto it. Checked only where the
@@ -692,7 +637,7 @@ class SummaryMixin(_SummaryMixinBase):
     def check_field_names(
         self,
         step_name: str,
-        specs: Sequence[FieldSpec],
+        specs: Sequence[RowSpec],
         fields: Mapping[str, Mapping[str, Any] | None],
         source: str,
     ) -> None:
@@ -724,98 +669,11 @@ class SummaryMixin(_SummaryMixinBase):
         """
         return declared_step_names(self.request.run.wizard)
 
-    def build_summary_row(self, step: RuntimeStep) -> SummaryRow:
-        form = step.form
-        return SummaryRow(
-            step=step,
-            label=self.get_summary_label(step),
-            fields=tuple(self.build_summary_fields(step, form)),
-        )
-
-    def build_question_fields(
-        self, step: RuntimeStep, form: BaseForm, question: Question
-    ) -> Iterator[SummaryField]:
-        """One question's answers, in form order.
-
-        The step's own fields, narrowed to the ones this question names, run
-        through the same walk a whole row's are. A question names its fields
-        — `check_field_specs()` refuses a spec inside one that does not — so
-        there is no remainder here to account for.
-        """
-        named = set(question.fields)
-        shown = [
-            bound_field
-            for bound_field in step.answer_fields
-            if bound_field.name in named
-        ]
-        yield from self.build_fields_from(step, form, question.specs, shown)
-
-    def build_summary_fields(
-        self, step: RuntimeStep, form: BaseForm
-    ) -> Iterator[SummaryField]:
-        """The step's answers as display text, in form order, with its specs
-        folded in: a group replaces the first of its fields and swallows the
-        rest, a hidden field yields nothing, and everything else keeps a line
-        of its own.
-
-        Which of those a spec does is the spec's own answer, not a branch
-        here: the walk reaches a field, finds the spec that named it, and
-        asks it to speak. A spec speaks once, at the first of its fields the
-        page shows, and accounts for the rest of them by saying nothing when
-        they come round. Only a spec naming no fields is different, because
-        no field brings the walk to it — it speaks for the whole step, and
-        the walk never starts.
-        """
-        yield from self.build_fields_from(
-            step, form, self.get_field_specs(step), list(step.answer_fields)
-        )
-
-    def build_fields_from(
-        self,
-        step: RuntimeStep,
-        form: BaseForm,
-        specs: Sequence[Any],
-        bound_fields: Sequence[BoundField],
-    ) -> Iterator[SummaryField]:
-        """`specs` folded over `bound_fields`: the walk itself, shared by a
-        whole row and by one `Question` of several."""
-        by_field = self._specs_by_field(step, specs)
-        whole = self.get_whole_step_spec(step, specs)
-        if whole is not None:
-            # It speaks for every field no other spec named, so it stands
-            # behind each of them and the walk reaches it like any other.
-            # `len(specs)` is a slot of its own: `_specs_by_field` indexes
-            # 0 to len(specs) - 1.
-            for bound_field in bound_fields:
-                by_field.setdefault(bound_field.name, (len(specs), whole))
-        spoken: set[int] = set()
-        for bound_field in bound_fields:
-            if not self.include_summary_field(step, bound_field):
-                continue
-            found = by_field.get(bound_field.name)
-            if found is None:
-                yield self.build_summary_field(step, form, bound_field)
-                continue
-            index, spec = found
-            if index in spoken:
-                # A spec speaks once, at the first of its fields the page
-                # shows; the rest of them are its to account for.
-                continue
-            spoken.add(index)
-            yield from spec.build_fields(self, step, form)
-        if whole is not None and len(specs) not in spoken:
-            # Nothing was left for it: a step whose every field another spec
-            # named, or one with no fields at all — an empty formset. It
-            # still speaks, because its template is the point.
-            yield from whole.build_fields(self, step, form)
-
-    def get_whole_step_spec(
-        self, step: RuntimeStep, specs: Sequence[FieldSpec]
-    ) -> FieldSpec | None:
+    def get_whole_step_spec(self, specs: Sequence[RowSpec]) -> RowSpec | None:
         """The spec that speaks for what no other spec named, if the step
         has one: the spec naming no fields.
 
-        Two of them is refused by `check_field_specs()`, which the walk has
+        Two of them is refused by `check_row_specs()`, which the walk has
         already run — what is left over cannot go to both, and a page
         rendering half its answers through one template and half through
         another, silently, is a mistake being made quietly.
@@ -825,14 +683,14 @@ class SummaryMixin(_SummaryMixinBase):
             return None
         return whole[0]
 
-    def get_field_specs(self, step: RuntimeStep) -> Sequence[FieldSpec]:
-        """How one step's fields are shown.
+    def get_row_specs(self, step: RuntimeStep) -> Sequence[RowSpec]:
+        """How one step's answers read as rows.
 
-        This page's `summary_overrides` by step name, and failing that
-        what the step says about itself — a step view's or form's own
-        `summary_fields`. The page has the last word, and says nothing about
-        the steps it has no opinion on: an address that reads as an address
-        wherever it is asked says so once, next to the address.
+        This page's `summary_overrides` by step name, and failing that what
+        the step says about itself — a step view's own `summary_rows`. The
+        page has the last word, and says nothing about the steps it has no
+        opinion on: an address that reads as an address wherever it is asked
+        says so once, next to the address.
 
         Override to decide per run.
         """
@@ -842,38 +700,31 @@ class SummaryMixin(_SummaryMixinBase):
         name = cast(str, step.name)
         if name in self.summary_overrides:
             return self.summary_overrides[name]
-        return cast("Sequence[FieldSpec]", list(step.summary_fields))
+        return cast("Sequence[RowSpec]", list(step.summary_rows))
 
     def _specs_by_field(
-        self, step: RuntimeStep, specs: Sequence[FieldSpec]
-    ) -> dict[str, tuple[int, FieldSpec]]:
+        self, specs: Sequence[RowSpec]
+    ) -> dict[str, tuple[int, RowSpec]]:
         """Each named field's spec, by field name, with the spec's position
-        — which is what tells two identically written groups apart.
-
-        The list is checked first. A step view's own specs were checked at
-        import; these may not have been — `get_field_specs()` can decide per
-        run, and a page's `summary_overrides` is a mapping nothing walks
-        until now.
-        """
-        check_field_specs(specs, self.field_specs_source(step))
-        by_field: dict[str, tuple[int, FieldSpec]] = {}
+        — which is what tells two identically written specs apart."""
+        by_field: dict[str, tuple[int, RowSpec]] = {}
         for index, spec in enumerate(specs):
             for field_name in spec.fields:
                 by_field[field_name] = (index, spec)
         return by_field
 
-    def field_specs_source(self, step: RuntimeStep) -> str:
+    def row_specs_source(self, step: RuntimeStep) -> str:
         """What declared the specs a step is being shown with — this page,
         or the step. Names the place a refusal should be fixed."""
         name = cast(str, step.name)
         if name in self.summary_overrides:
             return f"{self.__class__.__name__}.summary_overrides[{name!r}]"
-        return f"step {name!r}'s own summary_fields"
+        return f"step {name!r}'s own summary_rows"
 
-    def build_summary_field(
+    def build_field_row(
         self, step: RuntimeStep, form: BaseForm, bound_field: BoundField
-    ) -> SummaryField:
-        """One answer, on a line of its own.
+    ) -> SummaryRow:
+        """One answer, on a row of its own, named by the field that asked it.
 
         The cleaned value comes from the bound field's *own* form, which is
         `form` itself for all but a repeated step — where the fields belong
@@ -883,47 +734,73 @@ class SummaryMixin(_SummaryMixinBase):
         value = self.format_value(
             bound_field, bound_field.form.cleaned_data.get(bound_field.name)
         )
-        return SummaryField(
-            name=bound_field.name,
+        return SummaryRow(
+            step=step,
             label=bound_field.label,
             value=value,
+            name=bound_field.name,
             parts=(value,) if value else (),
-            template_name=self.summary_field_template_name,
             form=bound_field.form,
             bound_field=bound_field,
         )
 
-    def build_group_field(
-        self, step: RuntimeStep, form: BaseForm, spec: Group
-    ) -> SummaryField:
-        """Several answers, on one line.
+    def build_answer_row(
+        self,
+        step: RuntimeStep,
+        form: BaseForm,
+        spec: Answer,
+        label: StrOrPromise | None = None,
+    ) -> SummaryRow:
+        """Several answers, on one row.
 
-        The pieces are joined in the order the group names them, not the
+        The pieces are joined in the order the spec names them, not the
         order the form asks them, because that order is the point: an address
         reads street, town, postcode whatever the form does. Empty answers
         drop out, so a blank second line costs the address nothing.
+
+        `label` is the `Question`'s if one named this row, and the step's
+        own name when nothing did — a page that asked one thing having
+        already named it.
         """
         shown: list[tuple[str, str]] = []
-        for field_name in self.grouped_field_names(step, spec):
-            try:
-                bound_field = form[field_name]
-            except KeyError:
-                # A dynamic `get_form_class()` need not offer every field a
-                # group names, and a group has to survive asking for less.
-                continue
+        for bound_field in self.answered_bound_fields(step, form, spec):
             if not self.include_summary_field(step, bound_field):
                 continue
-            value = self.format_value(bound_field, form.cleaned_data.get(field_name))
-            shown.append((field_name, value))
+            value = self.format_value(
+                bound_field, bound_field.form.cleaned_data.get(bound_field.name)
+            )
+            shown.append((bound_field.name, value))
         parts = tuple(value for _, value in shown if value)
-        return SummaryField(
-            name=shown[0][0] if shown else (step.name or ""),
-            label=spec.label,
+        row = SummaryRow(
+            step=step,
+            label=label if label is not None else self.get_summary_label(step),
             value=spec.separator.join(parts),
+            name=shown[0][0] if shown else (step.name or ""),
             parts=parts,
-            template_name=spec.template_name or self.summary_field_template_name,
             form=form,
         )
+        return self.render_row(row, spec.template_name)
+
+    def render_row(self, row: SummaryRow, template_name: str | None) -> SummaryRow:
+        """The row with its value rendered, when its spec named a template.
+
+        The one thing Gandalf renders, and never one of its own: the
+        template is the caller's, and what comes back is marked safe the way
+        any rendered template is, so the page prints `{{ row.value }}`
+        without knowing which kind of row it holds.
+
+        Rendered now rather than lazily in the template, so a template that
+        does not exist fails while the page is being built — with a
+        traceback naming the step — rather than halfway through the markup.
+        """
+        if template_name is None:
+            return row
+        rendered = render_to_string(
+            template_name,
+            {"row": row, "view": self},
+            request=self.request,
+        )
+        return replace(row, value=rendered)
 
     def claimed_field_names(self, step: RuntimeStep) -> set[str]:
         """Every field name some spec of this step names.
@@ -932,78 +809,52 @@ class SummaryMixin(_SummaryMixinBase):
         the only reason anything asks. The walk itself never does: a named
         field's spec answers for it when the walk arrives.
         """
-        return {name for spec in self.get_field_specs(step) for name in spec.fields}
+        return {name for spec in self.get_row_specs(step) for name in spec.fields}
 
-    def build_render_field(
-        self,
-        step: RuntimeStep,
-        form: BaseForm,
-        spec: Render,
-    ) -> SummaryField:
-        """The whole step's answer, on one template.
+    def answered_bound_fields(
+        self, step: RuntimeStep, form: BaseForm, spec: Answer
+    ) -> Sequence[BoundField]:
+        """The bound fields one row joins: the ones its spec names, in its
+        own order.
 
-        Every field the step shows, in form order — a `Hide` and
-        `include_summary_field()` still drop what they drop — formatted as
-        `Group` would format them, so a template that wants the library's
-        display text has it and one that wants past it has `form`.
-
-        The name is the first answer shown, as a group's is, and the step's
-        own when there is none to take: a `Render` renders whatever the
-        step holds, an empty answer included, because the template is the
-        point rather than the values.
-
-        `value` is the answers joined plainly, for a template that wants
-        the one-line reading. A template wanting another join has `parts`
-        and Django's `join` filter, which is why the spec takes no
-        separator; `label` is None for the same kind of reason, the row's
-        heading being the only name a one-field row needs.
-        """
-        claimed = self.claimed_field_names(step)
-        shown: list[tuple[str, str]] = []
-        for bound_field in step.answer_fields:
-            if bound_field.name in claimed:
-                continue
-            if not self.include_summary_field(step, bound_field):
-                continue
-            value = self.format_value(
-                bound_field, bound_field.form.cleaned_data.get(bound_field.name)
-            )
-            shown.append((bound_field.name, value))
-        parts = tuple(value for _, value in shown if value)
-        return SummaryField(
-            name=shown[0][0] if shown else (step.name or ""),
-            label=None,
-            value=", ".join(parts),
-            parts=parts,
-            template_name=spec.template_name,
-            form=form,
-        )
-
-    def grouped_field_names(self, step: RuntimeStep, spec: Group) -> Sequence[str]:
-        """The fields a group joins: the ones it names, in its own order.
-
-        A group naming none takes what no other spec named, in form order —
+        A spec naming none takes what no other spec named, in form order —
         the same rule every spec answers to, which here reads as *the rest
-        of this step, on one line*.
+        of this step, on one row*. Those come from `step.answer_fields`
+        rather than by name, because a repeated step's rows share their
+        field names and looking one up would collapse seven days into one.
+
+        A field the step's form does not offer is skipped rather than
+        refused: a dynamic `get_form_class()` may ask for less, and a row
+        has to survive it.
         """
-        if spec.fields:
-            return spec.fields
-        claimed = self.claimed_field_names(step)
-        return [
-            bound_field.name
-            for bound_field in step.answer_fields
-            if bound_field.name not in claimed
-        ]
+        if not spec.fields:
+            claimed = self.claimed_field_names(step)
+            return [
+                bound_field
+                for bound_field in step.answer_fields
+                if bound_field.name not in claimed
+            ]
+        found: list[BoundField] = []
+        for field_name in spec.fields:
+            try:
+                found.append(form[field_name])
+            except KeyError:
+                continue
+        return found
 
     def include_summary_field(self, step: RuntimeStep, bound_field: BoundField) -> bool:
-        """Whether `bound_field` earns a line on the summary. Override to
+        """Whether `bound_field` earns a place on the summary. Override to
         hide fields the user should not be shown their own answer to."""
         return True
 
     def get_summary_label(self, step: RuntimeStep) -> StrOrPromise:
-        """The heading for a step's row: its `label` context if it declares
-        one (`.step(Form, name="billing", label="Billing")`),
-        otherwise its name made readable."""
+        """The name of a row the step itself has to name: its `label`
+        context if it declares one (`.step(Form, name="billing",
+        label="Billing")`), otherwise its name made readable.
+
+        A row an `Answer` built takes this when no `Question` named it,
+        because a page that asked one thing is named by the step. A row one
+        field built is named by the field."""
         context = step.declaration.context or {}
         label: StrOrPromise | None = context.get(self.summary_label_context_key)
         if label is not None:

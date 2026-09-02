@@ -172,24 +172,25 @@ def test_a_summary_render_validates_each_answer_twice(run_at_summary):
 
     Proving an answer and displaying it are separate passes over the same
     form: the walk re-dispatches each stored answer to prove it still
-    stands, and then `SummaryMixin` reads `RuntimeStep.form` per row to get
+    stands, and then `SummaryMixin` reads `RuntimeStep.form` per step to get
     `cleaned_data` for the display text. Both run `clean()`, so a
     check-your-answers page costs two validations per answered step where
     an ordinary step page costs one.
 
-    The extra rebuild on top of the three rows is the branch predicate,
-    which reads an answer of its own to pick the arm — a route's own reads
-    are charged the same way, summary or not.
+    Per *step*, not per row: three steps read as seven rows here, and the
+    rows are free. The extra rebuild on top of the three is the branch
+    predicate, which reads an answer of its own to pick the arm — a route's
+    own reads are charged the same way, summary or not.
     """
     with counting_walks() as counts:
         response = run_at_summary.get_step("summary")
 
     assert response.status_code == HTTPStatus.OK
-    assert len(response.context["summary"]) == 3
+    assert len(response.context["summary"]) == 7
     assert counts.walks == 1
     # Proving: one per answered step.
     assert counts.validations == 3
-    # Displaying: one per row, plus the branch predicate's own read.
+    # Displaying: one per answered step, plus the branch predicate's own read.
     assert counts.form_rebuilds == 3 + 1
 
 

@@ -16,9 +16,7 @@
             {% for row in summary %}
                 <dt>{{ row.label }}</dt>
                 <dd>
-                    {% for field in row.fields %}
-                        <span>{% if field.label %}{{ field.label }}: {% endif %}{{ field.value }}</span>
-                    {% endfor %}
+                    <span>{{ row.value }}</span>
                     <a href="{{ row.url }}">Change {{ row.label }}</a>
                 </dd>
             {% endfor %}

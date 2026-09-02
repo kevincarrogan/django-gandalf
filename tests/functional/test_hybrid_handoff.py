@@ -91,9 +91,9 @@ def test_the_person_lands_on_their_answers_and_can_change_any_of_them(
     # Everything the agent filled is on the page...
     assertContains(response, "Analytical Engines Ltd")
     assertContains(response, "AE123456")
-    # ...each with a way to change it.
-    assertContains(response, "Change Your company")
-    assertContains(response, "Change Cover")
+    # ...each with a way to change it, named by the question that asked it.
+    assertContains(response, "Change Company name")
+    assertContains(response, "Change Cover needed")
 
 
 def test_an_edit_by_the_person_survives_into_the_quote(client, customer, filled_run):
