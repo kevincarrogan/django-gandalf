@@ -28,7 +28,7 @@ from tests.testapp.forms import (
     ToppingsForm,
 )
 from tests.testapp.views import OpeningHoursStepView
-from tests.support import configured
+from gandalf.testing import configured
 
 
 def _replay(run, *args, **kwargs):

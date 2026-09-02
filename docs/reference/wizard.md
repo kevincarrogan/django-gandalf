@@ -283,6 +283,8 @@ A declaration plus the seams a viewset runs it through: what `run.wizard`
 is. Built by [`WizardViewSet.configure_wizard()`](viewsets.md#configure_wizardwizard)
 from the viewset's own attributes, once per declaration per viewset class;
 application code never constructs one, and a viewset is never handed one.
+A test with no viewset gets one from
+[`gandalf.testing.configured()`](testing.md#configuredwizard-seams).
 
 **Attributes** — each is the viewset's value or the class default; see
 [Configuration](configuration.md) for what each is for.

@@ -9,7 +9,7 @@ from django.urls import reverse
 from gandalf.wizard import Wizard, declared_step_fields, on_field, switch
 from tests.testapp import views
 from tests.testapp.forms import BusinessDetailsForm
-from tests.support import configured
+from gandalf.testing import configured
 
 
 def test_a_switch_routes_to_the_case_its_selector_names(wizard_driver):

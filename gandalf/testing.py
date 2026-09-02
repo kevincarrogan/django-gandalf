@@ -29,6 +29,7 @@ from gandalf.storage import (
     SessionStorage,
 )
 from gandalf.types import JourneyRecord, Metadata, RunData, Stash, State
+from gandalf.wizard import ConfiguredWizard, Wizard
 
 
 if TYPE_CHECKING:
@@ -43,6 +44,7 @@ __all__ = [
     "RunDiscoveryError",
     "WizardTestDriver",
     "WizardRun",
+    "configured",
     "seed_item",
     "seed_journey_complete",
     "seed_journey_data",
@@ -62,6 +64,24 @@ __all__ = [
     "stored_stash",
     "stored_stashes",
 ]
+
+
+def configured(wizard: Wizard, **seams: Any) -> ConfiguredWizard:
+    """A `ConfiguredWizard` for a test that builds a `Run` by hand.
+
+    A viewset builds one from its own attributes (`configure_wizard()`),
+    and a run reached through a viewset — the test client, `RunDriver` —
+    never needs this. A test of a predicate, a reducer or a walk has no
+    viewset, only a `Run`, and a `Run` holds a configured wizard; say the
+    seams a viewset would have carried as keywords::
+
+        run = Run(context, SessionStorage(context),
+                  wizard=configured(application, template_name="grants/step.html"))
+
+    `template_name` is the one most tests need, since a step declared from
+    a bare `Form` has no view without it.
+    """
+    return ConfiguredWizard(wizard.tree, **seams)
 
 
 class RunDiscoveryError(AssertionError):

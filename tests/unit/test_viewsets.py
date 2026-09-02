@@ -19,7 +19,7 @@ from tests.testapp.forms import (
     ReviewForm,
     SecondStepForm,
 )
-from tests.support import configured
+from gandalf.testing import configured
 
 
 class _Session(dict):

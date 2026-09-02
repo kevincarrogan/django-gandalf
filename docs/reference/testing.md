@@ -1,13 +1,15 @@
 # Testing
 
 `gandalf.testing` — test-client helpers for driving a wizard and reading the
-session it writes, and the `wizard_driver` pytest fixture that hands them out.
+session it writes, the `wizard_driver` pytest fixture that hands them out,
+and `configured()` for a test that builds a `Run` with no viewset at all.
 
 ```python
 from gandalf.testing import (
     RunDiscoveryError,
     WizardRun,
     WizardTestDriver,
+    configured,
     seed_item,
     seed_journey_complete,
     seed_journey_data,
@@ -246,6 +248,21 @@ it, or `seed_run()` it first.
 A subclass of `AssertionError`. The session does not identify exactly one
 run — none where one was expected, or several where the discovery needed to
 be unambiguous. Raised by `start()`, `only_run()` and `new_run()`.
+
+### `configured(wizard, **seams)`
+
+A `ConfiguredWizard` from a `Wizard`, with the seams a viewset would have
+carried given as keywords — `template_name`, `observer_class`,
+`file_storage_class`, and the rest of [Configuration](configuration.md).
+
+**Returns** what `run.wizard` is: the declaration with a view attached to
+every step. `template_name` is the one most tests need, since a step
+declared from a bare `Form` has no view without it; it raises exactly as a
+viewset would for a step it cannot generate a view for.
+
+**Caveats** — for a test with no viewset. Anything reached through one —
+the test client, [`RunDriver`](driver.md), the `wizard_driver` fixture —
+configures the wizard itself, from the viewset's attributes.
 
 ### Run store
 
@@ -498,6 +515,38 @@ def test_resumes_at_the_contact_step(wizard_driver, client):
 
 `client.session` builds a fresh session object on every access, so hold one
 reference, hand it to the driver, and save that same object.
+
+### A run with no viewset
+
+A predicate, a reducer or a walk is tested against a `Run`, and a `Run`
+needs a configured wizard and somewhere to keep its state. Neither needs a
+viewset:
+
+```python
+from gandalf.context import WizardContext
+from gandalf.runtime import Run
+from gandalf.storage import SessionStorage
+from gandalf.testing import configured
+from gandalf.wizard import Wizard
+
+
+def test_the_organisation_arm_is_taken(rf):
+    request = rf.get("/")
+    request.session = {"gandalf_runs": {"run": {"state": [{"step": {"applying_as": "organisation"}}]}}}
+    context = WizardContext.from_request(request)
+    run = Run(
+        context,
+        SessionStorage(context),
+        wizard=configured(application, template_name="grants/step.html"),
+    )
+    run.retrieve("run")
+
+    assert run.path.find_step(name="organisation") is not None
+```
+
+The state is written verbatim, so this is for a walk whose answers are
+already known; to *place* answers, drive the run with a
+[`RunDriver`](driver.md) instead.
 
 ### Testing a task list through the journey store
 

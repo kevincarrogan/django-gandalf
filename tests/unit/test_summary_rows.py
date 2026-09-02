@@ -37,7 +37,7 @@ from tests.testapp.views import (
     OpeningHoursStepView,
     SelfShapingAddressStepView,
 )
-from tests.support import configured
+from gandalf.testing import configured
 
 
 def _bound_field(form, name):

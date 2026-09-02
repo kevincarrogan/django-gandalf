@@ -28,7 +28,7 @@ from tests.testapp.forms import (
     PersonalDetailsForm,
     ReviewForm,
 )
-from tests.support import configured
+from gandalf.testing import configured
 
 
 class _Session(dict):
