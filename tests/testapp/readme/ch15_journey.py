@@ -169,6 +169,13 @@ class SupportingInformation(TaskList):
     documents = Section(DocumentsSection, title="Governing document")
 
 
+class SupportingInformationPage(TaskListViewSet):
+    """The group's page: what a view carries, for the list it lists."""
+
+    task_list = SupportingInformation
+    template_name = "testapp/nested_task_list.html"
+
+
 class GrantApplication(TaskList):
     """What the application is: its sections, in the order the page lists
     them. A value — `GrantApplication.begin(request)` starts one."""
@@ -180,11 +187,7 @@ class GrantApplication(TaskList):
     match_funding = Section(
         MatchFundingSection, title="Match funding", key="match-funding"
     )
-    supporting = Group(
-        SupportingInformation,
-        title="Supporting information",
-        template_name="testapp/nested_task_list.html",
-    )
+    supporting = Group(SupportingInformationPage, title="Supporting information")
 
 
 class GrantApplicationViewSet(TaskListViewSet):

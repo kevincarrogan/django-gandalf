@@ -42,7 +42,11 @@ mounts the page beneath the list, or set as `add_another` on a root
 variant.
 
 - `wizard` — runs one item: a `Wizard`, or an `ItemViewSet` subclass for
-  an item with behaviour of its own (`done()`, `item_removed()`).
+  an item with behaviour of its own (`done()`, `item_removed()`). Or an
+  `AddAnotherViewSet` subclass, for a *page* with behaviour of its own —
+  its templates, a gate on every item, a title rule — naming the item in
+  its own `wizard`; the page is built on that class, and the entry it is
+  handed has the item in its slot, exactly as a root page's does.
 - `title` — what the row on the task list above renders.
 - `item_name` — what an unfinished item is called in a positional title
   (`Budget line 2`). `None` uses the item wizard's first step `label`,
@@ -67,9 +71,10 @@ variant.
 
 The page's templates are not the entry's business. An entry of a task list
 renders with the `TaskListViewSet`'s `add_another_template_name` and
-`remove_template_name`, as a section renders with its
-`section_template_name`; a root `AddAnotherViewSet` sets `template_name`
-and `remove_template_name` on the class.
+`remove_template_name` unless the page in its slot names its own, as a
+section renders with `section_template_name` unless the `SectionViewSet`
+in its slot does; a root `AddAnotherViewSet` sets `template_name` and
+`remove_template_name` on the class.
 
 ### `AddAnotherViewSet`
 
@@ -94,12 +99,13 @@ defaults and additions:
 
 | Attribute | Default | Meaning |
 | --- | --- | --- |
-| `add_another` | `None` | The entry. Required. |
+| `add_another` | `None` | The entry. Required on a root; a page in an `AddAnother`'s slot is handed the list's. |
+| `wizard` | `None` | The item, for a page in an `AddAnother`'s slot: a `Wizard` or an `ItemViewSet` subclass. A root names its item inside `add_another`. |
 | `url_name` | `None` | Name of the page pattern; `-item`, `-remove`, `-item-run` and `-item-step` are derived from it. Required. |
 | `key` | `None` | The key items are registered and keyed under, and the key a parent task list lists this page by. **Required** — never `None`, whether or not a task list above lists it. |
 | `item_viewset` | generated | The `ItemViewSet` subclass built from `add_another.wizard`, for a driver that addresses an item. |
 | `task_list_url_name` | `None` | Where *Continue* goes. `None` makes the page a *root*: `submit()` then ends the journey. |
-| `template_name` / `remove_template_name` | from the entry | The page and the confirmation page. |
+| `template_name` / `remove_template_name` | the root's defaults | The page and the confirmation page. |
 | `section_template_name` | `None` | The template the item wizard renders with when its `Wizard` carries none. |
 | `form_class` | `AddAnotherForm` | The form the page POST is validated with. |
 | `items_context_name` | `"items"` | Where the `AddAnotherPage` lands in the template context. |
@@ -184,10 +190,10 @@ The actions:
 | `enter(entry)` / `resume_section()` / `reopen_section()` / `start_section()` / `stash_unusable()` | `TaskListViewSet`'s | see [Task lists](tasklists.md) |
 
 An item's own behaviour — saving it, forgetting it — lives on the
-`ItemViewSet` in the entry's slot, beside its wizard. A hook every
-add-another page in a tree shares — `get_placeholder_title()`, say — goes
-on an `AddAnotherViewSet` subclass set as the root's
-`add_another_viewset_class`.
+`ItemViewSet` in the entry's slot, beside its wizard. A page's own —
+`get_placeholder_title()`, `entry_blocked()`, a template — lives on an
+`AddAnotherViewSet` subclass in the slot, naming the item in its `wizard`;
+a hook several pages share is a base class each of them extends.
 
 #### The add order
 
@@ -545,15 +551,19 @@ name.
 ### Gating every item until the project is described
 
 ```python
-class GatedAddAnotherViewSet(AddAnotherViewSet):
+class BudgetPage(AddAnotherViewSet):
+    wizard = budget_line
+
     def entry_blocked(self, entry, store):
         return not store.has_stash("project")
 
 
-class GrantApplicationViewSet(TaskListViewSet):
-    add_another_viewset_class = GatedAddAnotherViewSet
-    ...
+class GrantApplication(TaskList):
+    budget = AddAnother(BudgetPage, title="Budget", item_title="item", min_items=1)
 ```
+
+The entry keeps the facts; the page in the slot carries the rule, and
+names the item wizard it runs.
 
 Blocked rows read *Cannot start yet*, the door refuses them, and *Add
 another* still registers a row — the user is returned to the page with a
@@ -606,7 +616,8 @@ reached through the routes its page publishes.
 ### `ImproperlyConfigured: Set remove_template_name ...`
 
 The remove route was reached and there is no confirmation page to render.
-Set `remove_template_name` on the entry, or on a root viewset.
+Set `remove_template_name` on the page in the slot, on the task list
+viewset above it as the default, or on a root viewset.
 
 ---
 

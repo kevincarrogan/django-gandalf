@@ -16,7 +16,8 @@ Declared as an entry of a task list —
         )
 
 — which mounts it beneath the page, rendering with the page's
-`add_another_template_name` and `remove_template_name`; or mounted on its
+`add_another_template_name` and `remove_template_name` unless an
+`AddAnotherViewSet` subclass in the slot names its own; or mounted on its
 own:
 
     class VehiclesViewSet(AddAnotherViewSet):
@@ -71,6 +72,7 @@ from gandalf.tasklists import (
     SectionViewSet,
     TaskListPage,
     TaskListViewSet,
+    WizardLike,
     class_name_for,
 )
 from gandalf.types import ItemStore, JourneyStore, StrOrPromise
@@ -274,6 +276,11 @@ class AddAnotherViewSet(TaskListViewSet):
     """
 
     add_another: AddAnother | None = None
+    #: The item this page runs, one run each — a `Wizard`, or an
+    #: `ItemViewSet` subclass — for a page declared in an `AddAnother`'s
+    #: slot, whose entry is the list's. A root page names its item inside
+    #: `add_another` instead.
+    wizard: WizardLike | None = None
     #: The generated `ItemViewSet`, for a driver that addresses an item.
     item_viewset: type[ItemViewSet] | None = None
     page_context_name: str | None = None
@@ -297,11 +304,20 @@ class AddAnotherViewSet(TaskListViewSet):
                 f"to the key its items are registered under."
             )
         cls.check_item_title(entry)
+        item = entry.wizard
+        if isinstance(item, type) and issubclass(item, TaskListViewSet):
+            # A task list resolves a page in the slot before it hands the
+            # entry over; a root page holds the entry as written.
+            raise ImproperlyConfigured(
+                f"{cls.__name__}.add_another names a page, {item.__name__}, "
+                f"where its item goes. A root page's entry holds the item — "
+                f"a Wizard, or an ItemViewSet subclass."
+            )
         item_url_name = f"{cls.url_name}-item"
-        bases = cls.wizard_bases(entry.wizard, ItemViewSet)
+        bases = cls.wizard_bases(item, ItemViewSet)
         attrs = {
             **cls.scoped_attrs(item_url_name),
-            **cls.wizard_attrs(entry.wizard, bases),
+            **cls.wizard_attrs(item, bases),
             "list_key": cls.key,
             "label": entry.label,
             "item_title": staticmethod(entry.item_title)

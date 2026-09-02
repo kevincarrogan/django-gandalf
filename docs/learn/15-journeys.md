@@ -174,11 +174,7 @@ class GrantApplication(TaskList):
     project = Section(ProjectSection, title="Project", reopen_at="review")
     budget = budget
     match_funding = Section(MatchFundingSection, title="Match funding", key="match-funding")
-    supporting = Group(
-        SupportingInformation,
-        title="Supporting information",
-        template_name="testapp/nested_task_list.html",
-    )
+    supporting = Group(SupportingInformationPage, title="Supporting information")
 
 
 class GrantApplicationViewSet(TaskListViewSet):
@@ -234,7 +230,17 @@ list is an entry like any other, so it is listed like any other: a `Group`.
 class SupportingInformation(TaskList):
     referees = Section(RefereesSection, title="Referees")
     documents = Section(DocumentsSection, title="Governing document")
+
+
+class SupportingInformationPage(TaskListViewSet):
+    task_list = SupportingInformation
+    template_name = "testapp/nested_task_list.html"
 ```
+
+The list is the value; the page in the slot carries what a view carries —
+here a template, and it could carry a hook. `Group(SupportingInformation)`
+with the bare list works too, rendering with the root's own template, the
+way `Section(wizard)` with a bare wizard does.
 
 ```python
 class RefereesSection(SectionViewSet):
@@ -253,10 +259,9 @@ lives at `supporting:referees` in the journey's store — composed by the
 page, never typed. Everything still lives in the one journey record —
 `blocked()` reads `contact`, a root key, from two levels down, and the
 governing document's `hidden()` reads `store.data["applying_as"]`, written
-by the setup wizard at the root. A group has no viewset of its own, so its
-page template goes on the `Group`; its page is built as a subclass of the
-root's, so a hook you override on `GrantApplicationViewSet` applies to it
-too; its row on the parent is its own rows' status; and only the root ends
+by the setup wizard at the root. Its page is built as a subclass of the
+one in the slot *and* of the root's, so a hook you override on
+`GrantApplicationViewSet` applies to it too, beneath the page's own; its row on the parent is its own rows' status; and only the root ends
 the journey: a POST to the supporting page goes back up to the application.
 
 ### Beyond the session

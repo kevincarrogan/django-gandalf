@@ -34,7 +34,7 @@ from gandalf.wizard import Wizard
 from tests.testapp.forms import GuestForm
 from gandalf.context import WizardContext
 from gandalf.driver import RunDriver
-from tests.testapp.views import GuestsViewSet, PartyViewSet
+from tests.testapp.views import GUESTS, GuestsViewSet, Party, PartyViewSet
 from gandalf.testing import (
     seed_item,
     stored_items,
@@ -753,18 +753,69 @@ def test_an_item_wizard_the_declaration_cannot_see_is_taken_on_trust(rf):
     assert view.get_item_name() == "Standalone guest"
 
 
-def test_an_add_another_base_that_names_its_own_pages_keeps_them():
+def test_a_page_in_the_slot_names_its_own_template_and_keeps_the_roots_defaults():
     class _Themed(AddAnotherViewSet):
+        wizard = GUESTS.wizard
         template_name = "testapp/task_list.html"
+
+    class _ThemedParty(Party):
+        guests = GUESTS.replace(wizard=_Themed, title="Guests")
 
     class _Party(PartyViewSet):
         url_name = "themed-party"
-        add_another_viewset_class = _Themed
+        task_list = _ThemedParty
 
     assert _Party.viewset_for("guests").template_name == "testapp/task_list.html"
     assert (
         _Party.viewset_for("guests").remove_template_name == "testapp/items_remove.html"
     )
+
+
+def test_a_page_in_the_slot_must_name_its_item():
+    class _Nameless(AddAnotherViewSet):
+        template_name = "testapp/task_list.html"
+
+    class _Listed(Party):
+        guests = GUESTS.replace(wizard=_Nameless)
+
+    with pytest.raises(ImproperlyConfigured, match="names no wizard"):
+        type("_Party", (PartyViewSet,), {"url_name": "nameless", "task_list": _Listed})
+
+
+def test_a_page_in_the_slot_gets_its_entry_from_the_list():
+    class _Doubled(AddAnotherViewSet):
+        wizard = GUESTS.wizard
+        add_another = GUESTS
+
+    class _Listed(Party):
+        guests = GUESTS.replace(wizard=_Doubled)
+
+    with pytest.raises(ImproperlyConfigured, match="its entry is the list's"):
+        type("_Party", (PartyViewSet,), {"url_name": "doubled", "task_list": _Listed})
+
+
+def test_a_task_list_page_in_an_add_another_slot_is_refused():
+    from gandalf.tasklists import TaskListViewSet
+
+    class _Page(TaskListViewSet):
+        task_list = Party
+
+    class _Listed(Party):
+        guests = GUESTS.replace(wizard=_Page)
+
+    with pytest.raises(ImproperlyConfigured, match="not an add-another page"):
+        type("_Party", (PartyViewSet,), {"url_name": "paged", "task_list": _Listed})
+
+
+def test_a_root_page_names_its_item_not_a_page():
+    class _Page(AddAnotherViewSet):
+        wizard = GUESTS.wizard
+
+    with pytest.raises(ImproperlyConfigured, match="names a page"):
+
+        class _Root(GuestsViewSet):
+            url_name = "paged-guests"
+            add_another = GUESTS.replace(wizard=_Page)
 
 
 def test_a_list_with_no_confirmation_page_is_misconfigured(rf, client):

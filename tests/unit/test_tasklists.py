@@ -1891,14 +1891,55 @@ def test_a_group_entry_is_a_page_beneath_the_list():
     class _Inner(TaskList):
         x = Section(CONTACT)
 
-    viewset = _view(
-        _list(inner=Group(_Inner, template_name="testapp/nested_task_list.html"))
-    ).viewset_for("inner")
+    viewset = _view(_list(inner=Group(_Inner))).viewset_for("inner")
 
     assert issubclass(viewset, TaskListViewSet)
     assert viewset.task_list is _Inner
     assert viewset.key == "inner"
+    # Nothing of its own to say, so the root's page template is its own.
+    assert viewset.template_name == "testapp/task_list.html"
+
+
+def test_a_group_may_put_its_page_in_the_slot():
+    """The page carries what a view carries — its template, a hook — and
+    is built as a subclass of it and of the root, so a hook on the root
+    still reaches it, beneath the page's own."""
+
+    class _Inner(TaskList):
+        x = Section(CONTACT)
+
+    class _InnerPage(TaskListViewSet):
+        task_list = _Inner
+        template_name = "testapp/nested_task_list.html"
+
+        def get_status_label(self, status):
+            return "Inner"
+
+    class _Root(TaskListViewSet):
+        url_name = "party-task-list"
+        template_name = "testapp/task_list.html"
+        task_list = _list(inner=Group(_InnerPage, title="Inner"))
+
+        def get_entry_title(self, entry):
+            return "Root"
+
+    viewset = _Root.viewset_for("inner")
+
+    assert issubclass(viewset, _InnerPage)
+    assert issubclass(viewset, _Root)
+    assert viewset.task_list is _Inner
+    assert viewset.key == "inner"
     assert viewset.template_name == "testapp/nested_task_list.html"
+    assert viewset().get_status_label(COMPLETE) == "Inner"
+    assert viewset().get_entry_title(Section(CONTACT).bound("x")) == "Root"
+
+
+def test_a_groups_page_must_list_a_task_list():
+    class _Pageless(TaskListViewSet):
+        template_name = "testapp/nested_task_list.html"
+
+    with pytest.raises(ImproperlyConfigured, match="no task list to be a group of"):
+        _view(_list(inner=Group(_Pageless)))
 
 
 # --- an entry as a value ---------------------------------------------------------

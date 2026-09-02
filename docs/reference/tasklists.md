@@ -180,12 +180,18 @@ down with a `KeyError`. Its `url_name` is reversed when the row is built,
 and a name that does not reverse is likewise refused by entry key rather
 than as a bare `NoReverseMatch`.
 
-#### `Group(task_list, *, title=None, template_name=None)`
+#### `Group(task_list, *, title=None)`
 
 A task list within this one. Its sections are keyed under this entry's key
 in the same journey record, its row here reads its own rows' status, and
-its Continue returns here rather than ending anything. `template_name` is
-the group's page — a group has no viewset of its own to set one on.
+its Continue returns here rather than ending anything.
+
+- `task_list` — a `TaskList`; or a `TaskListViewSet` subclass declaring
+  `task_list = …`, for a group with a page of its own: a template, a hook.
+  The group's page is built as a subclass of that class *and* of the root,
+  so the page's overrides come first and the root's hooks still reach it.
+  A bare list gets a page that is a subclass of the root alone, rendering
+  with the root's own `template_name`.
 
 #### `Link(url_name, *, title=None, status)`
 
@@ -226,12 +232,11 @@ class GrantApplicationViewSet(TaskListViewSet):
 | `task_list` | `None` | The `TaskList`. Required. |
 | `url_name` | `None` | The page's URL name, and the prefix of every name beneath it. Required. |
 | `template_name` | — | The page (from `TemplateView`). |
-| `section_template_name` | `None` | The template this list's sections render with when their `Wizard` carries none. |
-| `add_another_template_name` | `None` | The page every add-another entry in the tree renders with, unless `add_another_viewset_class` names its own. |
+| `section_template_name` | `None` | The template this list's sections render with when their `Wizard` carries none; a `SectionViewSet` in the slot names its own. |
+| `add_another_template_name` | `None` | The page an add-another entry in the tree renders with when no `AddAnotherViewSet` in its slot names its own. |
 | `remove_template_name` | `None` | The confirmation page before an add-another item is removed, likewise. |
 | `storage_class` | `SessionStorage` | The run storage every section of the tree uses. |
 | `journey_store_class` | `SessionItemStore` | The store the journey's bookkeeping lives in, for the whole tree. Must satisfy `gandalf.types.JourneyStore` — `ItemStore` if the tree has an add-another. |
-| `add_another_viewset_class` | `None` | The base every add-another page in the tree is built on; `None` means `AddAnotherViewSet`. |
 | `journey` | `"default"` | The fixed journey used when the URL carries none. |
 | `journey_url_kwarg` | `"journey"` | The URL kwarg the journey is read from when mounted under one. |
 | `key_separator` | `":"` | What joins a group's prefix to an entry's key. |
@@ -253,14 +258,15 @@ one. A root viewset registers itself as its list's `viewset`, which is what
 | Declared as | Built | URL name | Mounted at |
 | --- | --- | --- | --- |
 | `Section(wizard)` | a `SectionViewSet` subclass with the wizard, the full `key`, `task_list_url_name` and the stores | `<url_name>-<key>`; its runs `-run` and `-step` | `<key>/` — the bare URL is this page's door for the section; `<key>/<uuid:run_id>/…` is the run |
-| `AddAnother(wizard, …)` | an `AddAnotherViewSet` subclass with the entry, the full `key` and the stores | `<url_name>-<key>`; its item `-item`, `-remove`, `-item-run`, `-item-step` | `<key>/` — the list's page |
-| `Group(task_list)` | a subclass of **this** viewset class over the group's list, with the full `key` and `task_list_url_name` | `<url_name>-<key>`, and `<url_name>-<key>-<subkey>` beneath it | `<key>/` — the group's page |
+| `AddAnother(wizard, …)` | an `AddAnotherViewSet` subclass — of the page in the slot, when there is one — with the entry, the full `key` and the stores | `<url_name>-<key>`; its item `-item`, `-remove`, `-item-run`, `-item-step` | `<key>/` — the list's page |
+| `Group(task_list)` | a subclass of **this** viewset class — and of the page in the slot, when there is one — over the group's list, with the full `key` and `task_list_url_name` | `<url_name>-<key>`, and `<url_name>-<key>-<subkey>` beneath it | `<key>/` — the group's page |
 | `Link(url_name, status=…)` | nothing | — | — |
 
 A group's page is a subclass of its root, so an override on the root — a
-status label, a title rule, `stash_unusable()` — applies to the whole tree.
-`journey_done()` and `submitted()` are the root's alone: a group's page
-never runs them.
+status label, a title rule, `stash_unusable()` — applies to the whole tree;
+a page in the group's slot comes first in the bases, so its own overrides
+win. `journey_done()` and `submitted()` are the root's alone: a group's
+page never runs them.
 
 - `urls()` *(classmethod)* — requires `url_name`. Publishes the page, then
   every entry's routes under its segment, then the door last:
@@ -287,7 +293,9 @@ never runs them.
 - `declared_entries()` *(classmethod)* — `task_list.entries`, or `None`.
 - `materialise()` / `materialise_entry()` / `build_section()` /
   `build_add_another()` / `build_group()` *(classmethods)* — the
-  generation, one hook per kind, for a subclass that needs a different base.
+  generation, one hook per kind. `page_in_slot(declared)` says whether an
+  entry's slot holds a page class; `page_bases(page, base)` gives the
+  bases a built page gets.
 
 **Identity and nesting**
 
@@ -747,18 +755,22 @@ class SupportingInformation(TaskList):
     documents = Section(DocumentsSection, title="Governing document")
 
 
+class SupportingInformationPage(TaskListViewSet):
+    task_list = SupportingInformation
+    template_name = "grant/supporting.html"
+
+
 class GrantApplication(TaskList):
     contact = Section(contact, title="Contact details")
-    supporting = Group(
-        SupportingInformation,
-        title="Supporting information",
-        template_name="grant/supporting.html",
-    )
+    supporting = Group(SupportingInformationPage, title="Supporting information")
 ```
 
 The referees section is keyed `"supporting:referees"` in the store, mounted
 at `supporting/referees/`, named `apply-supporting-referees`, and returns
-to `apply-supporting` when it finishes — none of it typed.
+to `apply-supporting` when it finishes — none of it typed. The page in the
+slot is what a view carries; `Group(SupportingInformation)` with the bare
+list is a page rendering with the root's template, as `Section(wizard)`
+with a bare wizard renders with `section_template_name`.
 
 ### Wording the statuses for the whole tree
 

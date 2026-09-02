@@ -165,18 +165,80 @@ def test_a_task_list_hands_its_add_another_pages_to_the_lists_it_builds():
     assert viewset.remove_template_name == "testapp/items_remove.html"
 
 
-def test_an_add_another_base_that_names_its_own_pages_keeps_them():
+def test_a_page_in_the_slot_names_its_own_templates():
+    """The root's templates are defaults; a page that says otherwise wins,
+    and it is the page the entry is built on."""
+
     class _Themed(AddAnotherViewSet):
+        wizard = GUEST
         template_name = "testapp/task_list.html"
         remove_template_name = "testapp/items_remove.html"
 
     viewset = _view(
-        _list(guests=GUESTS.replace(title="Guests")),
-        add_another_viewset_class=_Themed,
+        _list(guests=GUESTS.replace(wizard=_Themed, title="Guests")),
         add_another_template_name="testapp/items.html",
     ).viewset_for("guests")
 
+    assert issubclass(viewset, _Themed)
     assert viewset.template_name == "testapp/task_list.html"
+    assert viewset.url_name == "party-task-list-guests"
+    assert viewset.task_list_url_name == "party-task-list"
+    assert viewset.item_viewset.list_key == "guests"
+    # The page's entry has the item in its slot, as a root page's does.
+    assert viewset.add_another.wizard is GUEST
+    assert viewset.add_another.title == "Guests"
+
+
+def test_a_page_in_the_slot_may_name_an_item_with_behaviour():
+    class _Saved(ItemViewSet):
+        wizard = GUEST
+
+    class _Page(AddAnotherViewSet):
+        wizard = _Saved
+
+    viewset = _view(_list(guests=GUESTS.replace(wizard=_Page))).viewset_for("guests")
+
+    assert issubclass(viewset.item_viewset, _Saved)
+    assert viewset.item_viewset.item_title == "name"
+
+
+def test_a_page_in_the_slot_must_name_its_item():
+    class _Nameless(AddAnotherViewSet):
+        template_name = "testapp/items.html"
+
+    with pytest.raises(ImproperlyConfigured, match="names no wizard"):
+        _view(_list(guests=GUESTS.replace(wizard=_Nameless)))
+
+
+def test_a_page_in_the_slot_gets_its_entry_from_the_list():
+    class _Doubled(AddAnotherViewSet):
+        wizard = GUEST
+        add_another = GUESTS
+
+    with pytest.raises(ImproperlyConfigured, match="its entry is the list's"):
+        _view(_list(guests=GUESTS.replace(wizard=_Doubled)))
+
+
+def test_a_root_page_names_its_item_not_a_page():
+    """A page in a slot is resolved by the list above it; a root has no list
+    above, so its entry holds the item as written."""
+
+    class _Page(AddAnotherViewSet):
+        wizard = GUEST
+
+    with pytest.raises(ImproperlyConfigured, match="names a page"):
+
+        class _Root(_Guests):
+            url_name = "paged-guests"
+            add_another = GUESTS.replace(wizard=_Page)
+
+
+def test_a_task_list_page_is_not_an_add_another_page():
+    class _Page(TaskListViewSet):
+        task_list = _list(venue=Section(GUEST))
+
+    with pytest.raises(ImproperlyConfigured, match="not an add-another page"):
+        _view(_list(guests=GUESTS.replace(wizard=_Page)))
 
 
 def test_an_item_name_defaults_to_the_first_steps_label(rf):
@@ -285,17 +347,6 @@ def test_a_task_list_builds_an_add_another_beneath_itself():
     assert viewset.url_name == "party-task-list-guests"
     assert viewset.task_list_url_name == "party-task-list"
     assert viewset.item_viewset.list_key == "guests"
-
-
-def test_a_task_list_names_the_base_its_add_anothers_are_built_on():
-    class _Base(AddAnotherViewSet):
-        pass
-
-    viewset = _view(_list(guests=GUESTS), add_another_viewset_class=_Base).viewset_for(
-        "guests"
-    )
-
-    assert issubclass(viewset, _Base)
 
 
 def test_an_add_another_in_a_group_is_keyed_under_the_groups_prefix():

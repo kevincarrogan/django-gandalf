@@ -729,6 +729,21 @@ def test_a_section_without_a_key_cannot_register_as_finished(rf, client):
         view.finish(run)
 
 
+def test_a_groups_page_must_list_a_task_list():
+    from gandalf.tasklists import Group, TaskList, TaskListViewSet
+
+    class _Pageless(TaskListViewSet):
+        template_name = "testapp/nested_task_list.html"
+
+    class _Listed(TaskList):
+        inner = Group(_Pageless)
+
+    with pytest.raises(ImproperlyConfigured, match="no task list to be a group of"):
+        type(
+            "_Root", (TaskListViewSet,), {"url_name": "pageless", "task_list": _Listed}
+        )
+
+
 def test_a_link_must_say_how_far_it_has_got():
     """An entry with no viewset answers for itself: without a `status` the
     page would derive one from a stash key nothing writes."""

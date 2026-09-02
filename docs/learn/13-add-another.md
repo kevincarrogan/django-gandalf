@@ -53,7 +53,10 @@ class ProjectViewSet(TaskListViewSet):
 
 One mount, as before. The list puts the budget page at
 `readme/project/budget/`, and each line's wizard beneath the door for that
-line.
+line. The two templates on the viewset are defaults for every add-another
+page in the tree; a page that wants its own — or a hook of its own — is an
+`AddAnotherViewSet` subclass in the entry's slot, naming the line wizard in
+its `wizard`, the same move as a `SectionViewSet` in a `Section`.
 
 ```python
 urlpatterns = [

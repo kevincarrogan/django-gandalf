@@ -304,14 +304,21 @@ class AddAnother(Entry):
     run, or a callable handed the run — is what names a finished one.
     `min_items` is how many a declared-done list needs before it counts as
     complete. `reopen_at` names the step a finished item re-opens at.
-    `label` is every item's stash label. The page's templates are the
-    `TaskListViewSet`'s `add_another_template_name` and
-    `remove_template_name`, as a section's is its `section_template_name`.
+    `label` is every item's stash label.
+
+    `wizard` is the item's: a `Wizard`, or an `ItemViewSet` subclass with
+    the item's behaviour. For behaviour of the *page* — its templates, a
+    gate on every item, a title rule — put an `AddAnotherViewSet` subclass
+    in the slot instead, naming the item in its own `wizard`; the page then
+    carries what a view carries, and the entry stays the facts. A page in
+    no slot renders with the `TaskListViewSet`'s
+    `add_another_template_name` and `remove_template_name`, as a plain
+    section does with its `section_template_name`.
     """
 
     def __init__(
         self,
-        wizard: WizardLike,
+        wizard: WizardLike | type[TaskListViewSet],
         *,
         title: StrOrPromise | None = None,
         item_name: StrOrPromise | None = None,
@@ -347,28 +354,26 @@ class Group(Entry):
     """A task list within this one: its sections are keyed under this
     entry's key in the same journey, its row here reads its own rows'
     status, and its Continue returns here rather than ending anything.
-    `template_name` is the group's page."""
+
+    `task_list` is the list, or a `TaskListViewSet` subclass over it — the
+    group's page, carrying what a view carries: its template, a hook of its
+    own. The page is built as a subclass of it *and* of the root, so a hook
+    overridden on the root still reaches it."""
 
     def __init__(
         self,
-        task_list: type[TaskList],
+        task_list: type[TaskList] | type[TaskListViewSet],
         *,
         title: StrOrPromise | None = None,
-        template_name: str | None = None,
         key: str = "",
         viewset: type[Any] | None = None,
         url_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(title=title, key=key, viewset=viewset, url_kwargs=url_kwargs)
         self.task_list = task_list
-        self.template_name = template_name
 
     def facts(self) -> dict[str, Any]:
-        return {
-            "title": self.title,
-            "task_list": self.task_list,
-            "template_name": self.template_name,
-        }
+        return {"title": self.title, "task_list": self.task_list}
 
 
 class Link(Entry):
@@ -818,16 +823,14 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     #: The run storage every section of this tree uses.
     storage_class: StorageClass = SessionStorage
     #: The template this list's sections render with when their `Wizard`
-    #: carries none of its own.
+    #: carries none of its own — a `SectionViewSet` in the slot names its
+    #: own.
     section_template_name: str | None = None
-    #: The templates every add-another page in the tree renders with — the
-    #: list, and the confirmation before an item is removed — unless the
-    #: page's own class names its own.
+    #: The templates an add-another page in the tree renders with — the
+    #: list, and the confirmation before an item is removed — when no
+    #: `AddAnotherViewSet` in its slot names its own.
     add_another_template_name: str | None = None
     remove_template_name: str | None = None
-    #: The base every add-another page in this tree is built on; `None`
-    #: means `gandalf.add_another.AddAnotherViewSet`.
-    add_another_viewset_class: type[Any] | None = None
     #: The entries, bound to their keys and viewsets.
     entries: list[Entry] = []
     #: Where the `TaskListPage` lands in the template context. `None`
@@ -844,8 +847,10 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         if cls.declared_entries() is not None and cls.url_name is not None:
             cls.materialise()
         # A root viewset is the list's way into a journey; a group's page
-        # (built below, with a key) is reached only through its root.
-        if cls.task_list is not None and cls.key is None:
+        # (built below, with a key) is reached only through its root, and
+        # so is a page declared for a `Group`'s slot, which has no URL of
+        # its own until the root builds one on it.
+        if cls.task_list is not None and cls.key is None and cls.url_name is not None:
             cls.task_list.mount(cls)
 
     @classmethod
@@ -926,6 +931,18 @@ class TaskListViewSet(JourneyScoped, TemplateView):
             return (declared,)
         return (base, declared)
 
+    @staticmethod
+    def page_bases(page: type | None, base: type) -> tuple[type, ...]:
+        """The bases a page built for an entry gets: the page class in the
+        entry's slot, if any, and the base it must be — one of them when
+        the slot already is the other, so a hook on either still applies
+        and the MRO stays consistent."""
+        if page is None or issubclass(base, page):
+            return (base,)
+        if issubclass(page, base):
+            return (page,)
+        return (page, base)
+
     @classmethod
     def wizard_attrs(
         cls, wizard: WizardLike | None, bases: tuple[type, ...]
@@ -979,40 +996,91 @@ class TaskListViewSet(JourneyScoped, TemplateView):
     def build_add_another(
         cls, key: str, entry: AddAnother, full_key: str, url_name: str
     ) -> type[AddAnotherViewSet]:
+        """The page for an add-another entry, over the item its slot names.
+
+        The slot holds the item — a `Wizard` or an `ItemViewSet` — or an
+        `AddAnotherViewSet` subclass that names the item in its own
+        `wizard`; the page is then built on that class, and the entry it
+        is handed has the item in its slot, exactly as a root page's does.
+        """
         from gandalf.add_another import AddAnotherViewSet
 
-        cls.check_reopen_at(key, entry, entry.wizard)
+        page = cls.page_in_slot(entry.wizard)
+        if page is not None:
+            if not issubclass(page, AddAnotherViewSet):
+                raise ImproperlyConfigured(
+                    f"{cls.__name__}.{key} lists {page.__name__}, which is not "
+                    f"an add-another page. Put an AddAnotherViewSet subclass "
+                    f"in an AddAnother's slot, or declare the entry as a Group."
+                )
+            if page.add_another is not None:
+                raise ImproperlyConfigured(
+                    f"{page.__name__} sits in {cls.__name__}.{key}'s slot, so "
+                    f"its entry is the list's. Drop its add_another and name "
+                    f"the item in {page.__name__}.wizard."
+                )
+            if page.wizard is None:
+                raise ImproperlyConfigured(
+                    f"{page.__name__} names no wizard to run its items with. "
+                    f"Set {page.__name__}.wizard to the item's Wizard, or to "
+                    f"an ItemViewSet subclass."
+                )
+            item: WizardLike = page.wizard
+            entry = cast(AddAnother, entry.replace(wizard=item))
+        else:
+            # Not a page, so one of the two things an item is.
+            item = cast(WizardLike, entry.wizard)
+        cls.check_reopen_at(key, entry, item)
+        bases = cls.page_bases(page, AddAnotherViewSet)
         attrs = {
             **cls.scoped_attrs(url_name),
             "add_another": entry,
             "key": full_key,
-            "section_template_name": cls.section_template_name,
         }
-        base = cls.add_another_viewset_class or AddAnotherViewSet
+        # The root's templates are defaults: a page that names its own
+        # keeps them.
         for own, theirs in (
+            ("section_template_name", "section_template_name"),
             ("add_another_template_name", "template_name"),
             ("remove_template_name", "remove_template_name"),
         ):
             declared = getattr(cls, own)
-            if declared is not None and getattr(base, theirs, None) is None:
+            if declared is not None and all(
+                getattr(base, theirs, None) is None for base in bases
+            ):
                 attrs[theirs] = declared
-        return type(class_name_for(key, "AddAnotherViewSet"), (base,), attrs)
+        return type(class_name_for(key, "AddAnotherViewSet"), bases, attrs)
+
+    @staticmethod
+    def page_in_slot(declared: Any) -> type[TaskListViewSet] | None:
+        """The page class an entry's slot holds, or `None` when it holds a
+        value — a `TaskList`, a `Wizard`, an item — for the library to wrap."""
+        if isinstance(declared, type) and issubclass(declared, TaskListViewSet):
+            return declared
+        return None
 
     @classmethod
     def build_group(
         cls, key: str, entry: Group, full_key: str, url_name: str
     ) -> type[TaskListViewSet]:
         """A group's page is a subclass of this one — its hooks apply — over
-        the group's own entries and template."""
-        assert entry.task_list is not None
+        the group's own entries; and of the page in the slot, when the
+        group declares one, whose template and hooks come first."""
+        page = cls.page_in_slot(entry.task_list)
+        task_list = entry.task_list if page is None else page.task_list
+        if task_list is None:
+            raise ImproperlyConfigured(
+                f"{cls.__name__}.{key} lists {entry.task_list.__name__}, which "
+                f"has no task list to be a group of. A Group's page declares "
+                f"task_list = ...; an add-another page is declared with "
+                f"AddAnother."
+            )
         attrs = {
             **cls.scoped_attrs(url_name),
-            "task_list": entry.task_list,
+            "task_list": task_list,
             "key": full_key,
-            "section_template_name": cls.section_template_name,
-            "template_name": entry.template_name or cls.template_name,
         }
-        return type(class_name_for(key, "ViewSet"), (cls,), attrs)
+        return type(class_name_for(key, "ViewSet"), cls.page_bases(page, cls), attrs)
 
     @classmethod
     def door_first(
