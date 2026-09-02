@@ -316,6 +316,15 @@ page never runs them.
   caller with no request: a management command, an agent, anything that is
   not a browser. `context.url_kwargs` are the mount-prefix kwargs.
   `begin()` is this with a request wrapped in a `WizardContext`.
+- `page_url_for(context, journey)` / `journey_id_for(context, journey)` /
+  `page_url_kwargs_for(context, journey)` *(classmethods)* — this page's
+  URL for a journey, the key it will actually read for one, and the kwargs
+  it is reversed with: `get_page_url()`, `get_journey()` and
+  `get_page_url_kwargs()` for a caller with no request. A page mounted
+  under no `<journey>` segment has nowhere to put an id, so it drops it
+  and reports its fixed `journey`. What a `Journey` reads its `url` and
+  `id` off — and any page can be asked for any journey, so a second page
+  over the same record answers for itself.
 - `declared_entries()` *(classmethod)* — `task_list.entries`, or `None`.
 - `materialise()` / `materialise_entry()` / `build_section()` /
   `build_add_another()` / `build_group()` *(classmethods)* — the
@@ -530,18 +539,24 @@ def done(self, run):
 is made up when not given, and `url_kwargs` are the page's mount-prefix
 kwargs, if any.
 
-Built on a [`WizardContext`](run.md#wizardcontext), not a request. An id, a
-record keyed by it and a URL to the page are the whole of a journey, and
-none of the three is HTTP — so `begin_for()` needs no request at all, and
-`Journey(viewset, context, id)` is the constructor. Only `finish()` needs
-one, because recording a section dispatches a Django view; it uses the
-browser's where there is one and `context.http_request()` where there is
-not, the same seam as `WizardViewSet.for_context()`.
+Built on a [`WizardContext`](run.md#wizardcontext), not a request. An id
+and a record keyed by it are not HTTP — so `begin_for()` needs no request
+at all, and `Journey(viewset, context, id)` is the constructor. Only
+`finish()` needs one, because recording a section dispatches a Django
+view; it uses the browser's where there is one and `context.http_request()`
+where there is not, the same seam as `WizardViewSet.for_context()`.
 
-**Attributes** — `id`; `store` (the page's `journey_store_class` for this
-id); `url` (the page under this id, or the page's one URL for a list not
-mounted under a journey segment); `page_kwargs`; `task_list_viewset`;
-`context`.
+The handle owns the id it was begun with and the context. A URL is a
+view's to answer, so everything page-shaped is asked of the page the
+journey began on — `id` is its `journey_id_for()`, `url` its
+`page_url_for()` — the way a `Run` asks the viewset that attached itself
+for a step's URL rather than reversing one.
+
+**Attributes** — `id` (the key the page will actually read: the id under
+a `<journey>` segment, the page's fixed `journey` where there is none);
+`store` (the page's `journey_store_class` for this id); `url` (the page
+this journey began on, under this journey); `page_kwargs`;
+`task_list_viewset`; `context`.
 
 - `finish(section, run)` — record a finished run as `section`,
   exactly as finishing it from the page would: stashed under the section's

@@ -1210,6 +1210,59 @@ class TaskListViewSet(JourneyScoped, TemplateView):
         """
         return Journey(cls, context, journey or uuid.uuid4().hex)
 
+    @classmethod
+    def page_url_kwargs_for(
+        cls, context: WizardContext, journey: str
+    ) -> dict[str, Any]:
+        """The kwargs this page is reversed with for `journey`: the mount
+        prefix `context.url_kwargs` carries and, when the page is mounted
+        under a journey segment, the id under `journey_url_kwarg`.
+
+        A page mounted under no such segment keeps one journey per session
+        and has nowhere to put an id, so the id is dropped and the prefix
+        alone is the page. `get_page_url_kwargs()` for a caller with no
+        request — the page's knowledge, asked of the class, so a `Journey`
+        can carry the answer without owning the reasoning.
+        """
+        prefix = context.url_kwargs
+        kwargs = {**prefix, cls.journey_url_kwarg: journey}
+        try:
+            reverse(cls.require_url_name(), kwargs=kwargs)
+        except NoReverseMatch:
+            return dict(prefix)
+        return kwargs
+
+    @classmethod
+    def journey_id_for(cls, context: WizardContext, journey: str) -> str:
+        """The key this page will actually read for a journey begun as
+        `journey`: that id under a `<journey>` segment, the fixed `journey`
+        where there is none. `get_journey()` for a caller with no request.
+
+        Not simply what was proposed. Reporting an id the page has nowhere
+        to put would name a store nothing else ever looks in — empty for
+        ever, and anything written through it invisible to the page it
+        was written for.
+        """
+        kwargs = cls.page_url_kwargs_for(context, journey)
+        return str(kwargs.get(cls.journey_url_kwarg, cls.journey))
+
+    @classmethod
+    def page_url_for(cls, context: WizardContext, journey: str) -> str:
+        """This page's URL for `journey` — `get_page_url()` for a caller
+        with no request. Any page can be asked for any journey: a second
+        page over the same record answers for itself."""
+        return reverse(
+            cls.require_url_name(), kwargs=cls.page_url_kwargs_for(context, journey)
+        )
+
+    @classmethod
+    def require_url_name(cls) -> str:
+        if cls.url_name is None:
+            raise ImproperlyConfigured(
+                f"Set url_name (or override get_page_url) on {cls.__name__}."
+            )
+        return cls.url_name
+
     # --- this page's place on the journey -------------------------------------
 
     def get_key(self) -> str | None:
@@ -1581,10 +1634,18 @@ class Journey:
     label, its `done()` run — so it arrives complete and re-openable like
     any other row.
 
-    Built on a `WizardContext` rather than a request, because of what a
-    journey turns out to be: an id, a record keyed by it, and a URL. None
-    of those is HTTP. Only `finish()` needs a request — it dispatches a
-    Django view — and that is the one seam `context.http_request()` is for.
+    What the handle owns is the id it was begun with and the context it
+    was begun in. Everything page-shaped — which key the page will read,
+    what URL it answers to — is the page's knowledge, and is asked of the
+    page the journey began on, the way a `Run` asks the viewset that
+    attached itself for a step's URL rather than reversing one. A second
+    page over the same record answers the same questions for itself:
+    `OtherPage.page_url_for(journey.context, journey.id)`.
+
+    Built on a `WizardContext` rather than a request: an id and a record
+    keyed by it are not HTTP. Only `finish()` needs a request — it
+    dispatches a Django view — and that is the one seam
+    `context.http_request()` is for.
     """
 
     def __init__(
@@ -1599,42 +1660,21 @@ class Journey:
 
     @property
     def page_kwargs(self) -> dict[str, Any]:
-        """The kwargs the page is reversed with: the mount prefix and, when
-        the page is mounted under a journey segment, this journey."""
-        viewset = self.task_list_viewset
-        prefix = self.context.url_kwargs
-        kwargs = {**prefix, viewset.journey_url_kwarg: self._proposed_id}
-        try:
-            reverse(cast(str, viewset.url_name), kwargs=kwargs)
-        except NoReverseMatch:
-            # One journey per session: no segment to put the id in.
-            return dict(prefix)
-        return kwargs
+        """The kwargs the page is reversed with for this journey."""
+        return self.task_list_viewset.page_url_kwargs_for(
+            self.context, self._proposed_id
+        )
 
     @property
     def id(self) -> str:
-        """This journey's identity — the key its page will actually read.
-
-        Not simply what `begin()` was handed. A page with no `<journey>`
-        segment keeps one journey per session under a fixed key, and has
-        nowhere to put an id that was made up for it; every entry beneath
-        it reads that fixed key through `get_journey()`. Reporting the
-        proposed id would name a store nothing else ever looks in — empty
-        for ever, and anything written through it invisible to the page it
-        was written for.
-        """
-        return str(
-            self.page_kwargs.get(
-                self.task_list_viewset.journey_url_kwarg,
-                self.task_list_viewset.journey,
-            )
-        )
+        """This journey's identity — the key its page will actually read,
+        which for a page with no `<journey>` segment is its fixed one."""
+        return self.task_list_viewset.journey_id_for(self.context, self._proposed_id)
 
     @property
     def url(self) -> str:
-        return reverse(
-            cast(str, self.task_list_viewset.url_name), kwargs=self.page_kwargs
-        )
+        """The page this journey began on, under this journey."""
+        return self.task_list_viewset.page_url_for(self.context, self._proposed_id)
 
     @property
     def store(self) -> JourneyStore:

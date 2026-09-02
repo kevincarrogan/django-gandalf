@@ -458,6 +458,43 @@ def test_a_list_begins_a_journey_with_no_request_at_all():
     assert journey.store.keys() == []
 
 
+def test_a_journey_asks_its_page_for_everything_page_shaped():
+    """A URL is a view's to answer. The handle carries the id it was begun
+    with and the context; which key the page reads and what URL it answers
+    to are the page's classmethods, so a second page over the same record
+    can answer for itself without a `Journey` in hand."""
+    solo = _list(contact=Section(CONTACT))
+    page = _view(solo, url_name="readme-apply")
+    context = WizardContext(session=_session())
+
+    journey = solo.begin_for(context, journey="app-1")
+
+    assert page.page_url_kwargs_for(context, "app-1") == {"journey": "app-1"}
+    assert page.journey_id_for(context, "app-1") == journey.id == "app-1"
+    assert page.page_url_for(context, "app-1") == journey.url
+
+
+def test_a_page_with_no_journey_segment_reports_the_key_it_will_read():
+    """The page's half of the fixed-key case: an id it has nowhere to put
+    is dropped, and the key it reports is the one every entry beneath it
+    reads."""
+    solo = _list(contact=Section(CONTACT))
+    page = _view(solo, url_name="scenario-task-list")
+    context = WizardContext(session=_session())
+
+    assert page.page_url_kwargs_for(context, "app-1") == {}
+    assert page.journey_id_for(context, "app-1") == page.journey == "default"
+    assert page.page_url_for(context, "app-1") == "/scenario-task-list/"
+
+
+def test_a_page_with_no_url_name_cannot_answer_for_a_journey():
+    solo = _list(contact=Section(CONTACT))
+    page = _view(solo, url_name=None)
+
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        page.page_url_for(WizardContext(session=_session()), "app-1")
+
+
 def test_an_unmounted_list_cannot_begin_a_journey(rf):
     class _Loose(TaskList):
         only = Section(CONTACT)

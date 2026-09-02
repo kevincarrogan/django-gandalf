@@ -256,10 +256,9 @@ def test_a_one_per_session_journeys_store_is_the_one_the_page_reads(client):
 
 def test_a_journey_begins_on_a_context_with_no_request(client):
     """`begin()` takes a request, and a management command or an agent has
-    none. An id, a record keyed by it and a URL to the page are the whole
-    of a journey, and not one of the three is HTTP — so the door that
-    insisted on a request was asking for something it never used, and the
-    driver got past it by fabricating one.
+    none. An id and a record keyed by it are the journey's own, and neither
+    is HTTP — so the door that insisted on a request was asking for
+    something it never used, and the driver got past it by fabricating one.
 
     Seeded here rather than merely begun, because that is what a caller
     with no browser is for: the fact the setup wizard exists to ask for,
@@ -322,6 +321,8 @@ def test_a_page_without_a_url_name_cannot_reverse_itself_or_a_door(rf):
         view.get_page_url()
     with pytest.raises(ImproperlyConfigured, match="entry_url_name"):
         view.get_entry_url(Section(FIRST).bound("first"))
+    with pytest.raises(ImproperlyConfigured, match="url_name"):
+        _Nameless.page_url_for(WizardContext(session={}), "app-1")
 
 
 def test_an_add_another_page_without_a_url_name_cannot_reverse_an_item(rf):
