@@ -153,6 +153,17 @@ the stash is re-opened; default: the full key. Bump it when a deploy
 reshapes the wizard so an old-shape payload is refused rather than walked
 into a tree it no longer fits.
 
+**The positional is the slot, named for the value it usually holds.** A
+`Section` takes a `wizard`, a `Group` a `task_list`, an `AddAnother` the
+`wizard` that runs one item. Each also takes a class in that slot — the
+viewset that carries the value under the same attribute name and adds
+what a view adds: `Section(ProjectSection)` where `ProjectSection.wizard`
+is the wizard, `Group(SupportingInformationPage)` where the page's
+`task_list` is the list, `AddAnother(BudgetPage)` where the page's `wizard`
+is the item's wizard or its `ItemViewSet`. So the name says what the slot
+is *for*, and a class in it says where to find that thing. `Link` is the
+one entry with no value form: its slot only ever holds a `Destination`.
+
 #### `Section(wizard, *, title=None, reopen_at=None, label=None)`
 
 A wizard the user finishes on its own and can come back to.
