@@ -1,3 +1,4 @@
+import datetime
 from http import HTTPStatus
 import os
 import re
@@ -2331,3 +2332,74 @@ def test_declaring_a_step_the_old_way_says_so_rather_than_routing_nowhere():
 
     with pytest.raises(ImproperlyConfigured, match="name='email'"):
         Wizard().step(FirstStepForm, context={"name": "first"})
+
+
+@pytest.fixture
+def multi_widget_run(wizard_driver):
+    """A run of the multi-widget wizard with both awkward steps answered:
+    the three-box date and the prefixed name."""
+    run = wizard_driver("multi-widget-wizard").start()
+    run.post_steps(
+        [
+            (
+                "start",
+                {"start_date_0": "3", "start_date_1": "9", "start_date_2": "2026"},
+            ),
+            ("project", {"project-name": "Orchard survey"}),
+        ]
+    )
+    return run
+
+
+def test_editing_multi_widget_step_refills_every_box(multi_widget_run):
+    """A MultiWidget posts under its own names, none of them the field's.
+    The edit render is filled from the answer, so all three boxes show."""
+    response = multi_widget_run.get_step("start")
+
+    assert response.status_code == HTTPStatus.OK
+    assertTemplateUsed(response, "testapp/linear_wizard.html")
+    form = response.context["form"]
+    assert form.is_bound is False
+    assert form.initial == {"start_date": datetime.date(2026, 9, 3)}
+    assertContains(response, 'name="start_date_0" value="3"')
+    assertContains(response, 'name="start_date_1" value="9"')
+    assertContains(response, 'name="start_date_2" value="2026"')
+
+
+def test_editing_prefixed_step_refills_its_field(multi_widget_run):
+    """A prefixed step posts `project-name` for a field called `name`; the
+    edit render still finds the answer."""
+    response = multi_widget_run.get_step("project")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].initial == {"name": "Orchard survey"}
+    assertContains(response, 'name="project-name" value="Orchard survey"')
+
+
+def test_editing_formset_step_refills_every_row(wizard_driver):
+    """A formset's answer is a list of rows, which is also its `initial`."""
+    run = wizard_driver("opening-hours-wizard").start()
+    run.post_steps(
+        [
+            ("who", {"name": "Ada"}),
+            (
+                "opening-hours",
+                {
+                    "form-TOTAL_FORMS": "2",
+                    "form-INITIAL_FORMS": "0",
+                    "form-MIN_NUM_FORMS": "0",
+                    "form-MAX_NUM_FORMS": "7",
+                    "form-0-day": "Monday",
+                    "form-0-opens": "09:00",
+                    "form-1-day": "Tuesday",
+                    "form-1-opens": "10:00",
+                },
+            ),
+        ]
+    )
+
+    response = run.get_step("opening-hours")
+
+    assert response.status_code == HTTPStatus.OK
+    assertContains(response, 'name="form-0-day" value="Monday"')
+    assertContains(response, 'name="form-1-opens" value="10:00"')

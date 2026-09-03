@@ -404,8 +404,16 @@ application = (
 ```
 
 `super().get_initial()` matters: when a completed step is rendered for
-editing, Gandalf hands the stored submission to the view as `initial`, and
-an override that builds a fresh dict throws it away.
+editing, Gandalf hands the stored answer to the view as `initial`, and an
+override that builds a fresh dict throws it away.
+
+The answer, not the submission: `initial` is what `get_answer()` reads back
+— field name to cleaned value for a form, a list of one mapping per row for
+a formset — rather than the keys the browser posted. That is what lets a
+`MultiValueField` over a `MultiWidget` refill all of its boxes (the widget
+decompresses the one cleaned value; the posted `start_date_0`,
+`start_date_1`, `start_date_2` name no field), a prefixed step find its
+`name` under `project-name`, and a formset lay its rows out again.
 
 ### Passing the request into the form
 
@@ -505,7 +513,7 @@ anything that must happen once belongs in `run_started()` or `done()`. See
 ### My edit of a completed step renders an empty form
 
 `get_initial()` was overridden without calling `super()`. Gandalf passes the
-stored submission as the view's `initial`; `super().get_initial()` is what
+stored answer as the view's `initial`; `super().get_initial()` is what
 returns it.
 
 ---

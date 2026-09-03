@@ -67,6 +67,7 @@ from .forms import (
     OptionalPhotoForm,
     PersonalDetailsForm,
     ProfilePhotoForm,
+    ProjectStartForm,
     ReviewForm,
     SecondStepForm,
     SniffedPhotoForm,
@@ -2620,6 +2621,34 @@ class QuestionedSummaryWizardViewSet(WizardViewSet):
             ],
         )
         .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
+class ProjectNameStepView(StepFormView):
+    """A step whose form carries a prefix, so its POST keys are not its
+    field names either: `project-name`, for a field called `name`."""
+
+    form_class = FirstStepForm
+    template_name = "testapp/linear_wizard.html"
+    prefix = "project"
+
+
+class MultiWidgetWizardViewSet(WizardViewSet):
+    description = (
+        "Steps whose POST keys are not their field names: a three-box date "
+        "field over a MultiWidget, and a prefixed step. Answer both, then "
+        "open either again and it is still filled in."
+    )
+    url_name = "multi-widget-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(ProjectStartForm, name="start")
+        .step(ProjectNameStepView, name="project")
+        .step(ConfirmForm, name="confirm")
     )
 
     def done(self, run):

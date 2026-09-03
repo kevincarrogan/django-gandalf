@@ -185,6 +185,7 @@ urlpatterns = [
     ),
     path("file-uploading-wizard/", include(views.FileUploadingWizardViewSet.urls())),
     path("opening-hours-wizard/", include(views.OpeningHoursWizardViewSet.urls())),
+    path("multi-widget-wizard/", include(views.MultiWidgetWizardViewSet.urls())),
     path("member-editing-wizard/", include(views.MemberEditingWizardViewSet.urls())),
     path("wizardless-wizard/", include(views.WizardlessWizardViewSet.urls())),
     path("file-editing-wizard/", include(views.FileEditingWizardViewSet.urls())),

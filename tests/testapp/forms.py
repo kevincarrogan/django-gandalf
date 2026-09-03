@@ -1,4 +1,7 @@
+import datetime
+
 from django import forms
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 from gandalf.escapes import Advance, Escape, Park
@@ -285,3 +288,53 @@ class GeocodedAddressForm(AddressForm):
         postcode = cleaned_data.get("postcode") or ""
         cleaned_data["outcode"] = postcode.split(" ")[0]
         return cleaned_data
+
+
+class DayMonthYearWidget(forms.MultiWidget):
+    """Three boxes for one date, the way a GOV.UK date input asks for it.
+
+    A `MultiWidget` posts under *its own* names — `start_date_0`,
+    `start_date_1`, `start_date_2` — and none of them is the field's, which
+    is what an edit render has to survive: a step revisited for editing is
+    filled from the answer, not from the keys the browser sent.
+    """
+
+    def __init__(self, attrs=None):
+        super().__init__(
+            [
+                forms.NumberInput(attrs),
+                forms.NumberInput(attrs),
+                forms.NumberInput(attrs),
+            ],
+            attrs,
+        )
+
+    def decompress(self, value):
+        if value is None:
+            return [None, None, None]
+        return [value.day, value.month, value.year]
+
+
+class DayMonthYearField(forms.MultiValueField):
+    """The field over that widget: three integers in, one `date` out."""
+
+    widget = DayMonthYearWidget
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            fields=(forms.IntegerField(), forms.IntegerField(), forms.IntegerField()),
+            **kwargs,
+        )
+
+    def compress(self, data_list):
+        if not data_list:
+            return None
+        day, month, year = data_list
+        try:
+            return datetime.date(year, month, day)
+        except ValueError as error:
+            raise ValidationError(str(error)) from error
+
+
+class ProjectStartForm(forms.Form):
+    start_date = DayMonthYearField()

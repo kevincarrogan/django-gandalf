@@ -24,6 +24,7 @@ from gandalf.form_views import answer_errors
 from gandalf.metadata import MetadataBag
 from gandalf.observers import WizardObserver
 from gandalf.types import (
+    Answer,
     Context,
     FileRefs,
     RunData,
@@ -833,7 +834,7 @@ class StepDispatcher:
         step: tree.Step,
         request: HttpRequest,
         *args: Any,
-        initial: dict[str, Any] | None = None,
+        initial: Answer | None = None,
         **kwargs: Any,
     ) -> HttpResponseBase:
         view_kwargs = {} if initial is None else {"initial": initial}
@@ -1361,11 +1362,22 @@ class Run:
         url_kwargs: dict[str, Any] | None = None,
         **context: Any,
     ) -> HttpResponseBase:
-        """Render a step pre-filled with its stored submission.
+        """Render a step pre-filled with its stored answer.
 
         `target` accepts an already-walked runtime step; without one the run
         is walked with `context` as the claim, so the step only renders if
         the run can actually reach it.
+
+        The answer, not the submission. A submission is what the browser
+        posted, keyed the way the widgets asked for it — `start_date_0`,
+        `start_date_1`, `start_date_2` for one date field over a
+        `MultiWidget`, `billing-email` for a prefixed step, `form-0-day`
+        for a formset row — and none of those keys names a field. What a
+        form's `initial` takes is field name to *value*, the shape the
+        step's view already reads its answer back as, so this asks for
+        that: a `date` the widget decompresses into its three boxes, a
+        list of rows a formset lays out one form each. Stored uploads ride
+        along the same way, reopened by `RuntimeStep.form`.
         """
         if url_kwargs is None:
             url_kwargs = {}
@@ -1376,14 +1388,11 @@ class Run:
             if not walk.reached or reached_target.data is None:
                 raise StepNotFound(context)
             target = reached_target
-        initial = dict(target.data or {})
-        for field, ref in (target.files or {}).items():
-            initial[field] = self.file_storage.open(ref)
         return self.dispatcher.dispatch(
             target.declaration,
             self.dispatcher.build_request("GET"),
             *args,
-            initial=initial,
+            initial=target.answer,
             **url_kwargs,
         )
 

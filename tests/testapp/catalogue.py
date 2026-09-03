@@ -197,6 +197,12 @@ GROUPS = (
             Example("merged-payload-wizard"),
             Example("multi-value-wizard"),
             Example(
+                "multi-widget-wizard",
+                note="A three-box date field and a prefixed step: POST keys "
+                "that are not field names. Answer both, then open either "
+                "again and it is still filled in.",
+            ),
+            Example(
                 "empty-wizard", note="No steps at all, so it completes on arrival."
             ),
             Example(
