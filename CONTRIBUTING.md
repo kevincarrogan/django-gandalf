@@ -46,6 +46,21 @@ just test-functional
 The unit suite exercises package behavior directly. The functional suite
 exercises the package through Django's test client.
 
+### The shape matrix
+
+`tests/functional/test_shape_matrix.py` runs every seam that reads or
+writes a step's answer against every form shape that breaks a naive
+implementation of one: a formset, a `MultiWidget`, a prefixed step, a
+file, and a plain step as the control. Each awkward shape posts under
+keys that are not its field names, which is the assumption this family of
+bugs keeps rediscovering.
+
+Add a seam and you add one test, which runs against all five shapes at
+once. Add a shape and you add a row to `SHAPES` and a step to
+`ShapeMatrixWizardViewSet`. A cell a seam does not handle yet is marked
+`xfail(strict=True)` with the reason, so the gap stays visible and the
+test starts failing the day somebody closes it.
+
 Check package coverage with:
 
 ```bash

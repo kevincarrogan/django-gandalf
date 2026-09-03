@@ -197,6 +197,12 @@ GROUPS = (
             Example("merged-payload-wizard"),
             Example("multi-value-wizard"),
             Example(
+                "shape-matrix-wizard",
+                note="Every awkward shape in one wizard, with a summary over "
+                "all of them. The fixture behind the shape-by-seam matrix: a "
+                "seam is only proved by meeting all five.",
+            ),
+            Example(
                 "multi-widget-wizard",
                 note="A three-box date field and a prefixed step: POST keys "
                 "that are not field names. Answer both, then open either "

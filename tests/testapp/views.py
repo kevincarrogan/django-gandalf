@@ -2653,3 +2653,49 @@ class MultiWidgetWizardViewSet(WizardViewSet):
 
     def done(self, run):
         return HttpResponse(f"completed {run.run_id}")
+
+
+class ContactStepView(StepFormView):
+    """The prefixed shape for the matrix wizard: `contact-email` for a
+    field called `email`."""
+
+    form_class = SecondStepForm
+    template_name = "testapp/linear_wizard.html"
+    prefix = "contact"
+
+
+class ShapeMatrixWizardViewSet(WizardViewSet):
+    """Every form shape that breaks a naive implementation, in one wizard.
+
+    The four awkward ones each violate a different assumption a step's
+    reader might make: a formset is not a `BaseForm` and answers with a
+    list of rows; a `MultiWidget` posts under keys that name no field; a
+    prefix renames every key a step posts; a file is answered with an
+    object that is not JSON and is never re-posted by a browser. A plain
+    step sits alongside them as the control — the shape under which a
+    broken seam still looks like it works.
+
+    They share one wizard so that every seam can be checked against every
+    shape from a single run, and one summary page so the last seam has
+    somewhere to render them all.
+    """
+
+    description = (
+        "Every awkward form shape in one wizard: a formset, a MultiWidget, a "
+        "prefixed step and a file, beside a plain step as the control. The "
+        "summary lists all five."
+    )
+    url_name = "shape-matrix-wizard"
+    template_name = "testapp/linear_wizard.html"
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="plain")
+        .step(ProjectStartForm, name="multiwidget")
+        .step(ContactStepView, name="prefixed")
+        .step(OpeningHoursStepView, name="formset")
+        .step(ProfilePhotoForm, name="file")
+        .step(SummaryStepView, name="summary")
+    )
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
