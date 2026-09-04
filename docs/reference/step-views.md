@@ -117,6 +117,13 @@ suffixes from its `widgets_names` — so a `SplitDateTimeField`, or a
 three-box date field from a design system, round-trips with nothing to
 configure.
 
+A file input contributes no keys at all. A browser never re-sends one, so
+the POST that produced the answer did not carry the upload either: it
+arrived beside the submission and that is where it stays. This is why an
+answer read from a step with a file can be submitted straight back — the
+upload is simply not part of it, and a step re-answered without one keeps
+the file it has.
+
 ### `value_to_datadict(name, value)`, for a widget that names its own keys
 
 What no general rule can derive is a widget that invents its own scheme.

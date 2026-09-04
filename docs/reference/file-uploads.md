@@ -271,6 +271,28 @@ browser cannot pre-fill a file input; submitting without choosing a file
 for that field — check the field name — or the step was escaped with
 `Park`, which discards the escaping submission's uploads.
 
+### The edit page does not show which file is already held
+
+Expected, and the template's to fix. The stored upload does reach the form
+as `initial`, so the value is there to render. What does not render it is
+Django's default widget: `ClearableFileInput` shows what is held only for a
+value with a `url`, and a `StoredUpload` deliberately has none — a wizard's
+in-progress upload is not a published file, and plenty of backends have no
+public URL to give it in the first place.
+
+So say it in the template, from the value already in front of you:
+
+```django
+{% if form.initial.document %}
+  <p>Currently held: {{ form.initial.document.name }}
+     ({{ form.initial.document.size|filesizeformat }})</p>
+{% endif %}
+{{ form.document }}
+```
+
+A [check-your-answers page](summary.md) needs none of this: it renders a
+value rather than an input, so it shows the filename already.
+
 ### Two uploads with the same name overwrote each other
 
 Only possible on a subclass that changed the key in `save()`. Keep the

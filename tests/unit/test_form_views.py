@@ -3,6 +3,7 @@
 import datetime
 
 from django import forms
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.views.generic.edit import FormView
 
 from gandalf.form_views import FormSetStepView, StepFormView, form_view_factory
@@ -126,3 +127,28 @@ def test_a_formset_row_expands_its_composite_widgets_too(rf):
 
     assert submission["form-0-start_date_0"] == 3
     assert submission["form-0-start_date_2"] == 2026
+
+
+class _DocumentForm(forms.Form):
+    title = forms.CharField()
+    document = forms.FileField()
+
+
+class _DocumentStepView(StepFormView):
+    form_class = _DocumentForm
+    template_name = "testapp/linear_wizard.html"
+
+
+def test_a_file_contributes_no_keys_to_a_submission(rf):
+    """A browser never re-sends a file input, so the POST that produced the
+    answer did not carry the upload either — it arrived beside it. An
+    answer read back from a file step can be submitted straight back
+    precisely because the file is not part of it, and the fields around it
+    still are."""
+    submission = _submission(
+        _DocumentStepView,
+        {"title": "Passport", "document": SimpleUploadedFile("p.png", b"bytes")},
+        rf,
+    )
+
+    assert submission == {"title": "Passport"}

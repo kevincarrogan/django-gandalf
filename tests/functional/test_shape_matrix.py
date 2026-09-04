@@ -27,10 +27,12 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Any
 
+from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
 import pytest
 
 from gandalf.driver import RunDriver
+from gandalf.wizard import on_field
 from tests.testapp.views import ShapeMatrixWizardViewSet
 
 
@@ -77,6 +79,11 @@ class Shape:
     summary_shows: str = ""
     #: Uploads for a driver submission, which take them beside the data.
     driver_files: Callable[[], dict[str, Any]] = field(default=dict)
+    #: The field a switch would route on, and the text `on_field()` yields
+    #: for this answer. A `None` value means the shape cannot be routed on
+    #: and declaring the switch has to say so.
+    switch_field: str = ""
+    switch_value: str | None = None
 
     def check_answer(self, actual: Any) -> None:
         if callable(self.answer):
@@ -97,6 +104,8 @@ SHAPES = (
         error_keys=["name"],
         schema_type="object",
         summary_shows="Ada",
+        switch_field="name",
+        switch_value="Ada",
     ),
     Shape(
         id="multiwidget",
@@ -119,6 +128,8 @@ SHAPES = (
         error_keys=["start_date"],
         schema_type="object",
         summary_shows="2026",
+        switch_field="start_date",
+        switch_value="2026-09-03",
     ),
     Shape(
         id="ownkeys",
@@ -139,6 +150,8 @@ SHAPES = (
         error_keys=["closing_date"],
         schema_type="object",
         summary_shows="2026",
+        switch_field="closing_date",
+        switch_value="2026-09-03",
     ),
     Shape(
         id="prefixed",
@@ -151,6 +164,8 @@ SHAPES = (
         error_keys=["email"],
         schema_type="object",
         summary_shows="ada@example.com",
+        switch_field="email",
+        switch_value="ada@example.com",
     ),
     Shape(
         id="formset",
@@ -182,6 +197,50 @@ SHAPES = (
         schema_type="array",
         folds=False,
         summary_shows="Monday",
+        switch_field="day",
+        switch_value=None,
+    ),
+    Shape(
+        id="list",
+        step="list",
+        post=lambda: {"toppings": ["cheese", "basil"]},
+        answer={"toppings": ["cheese", "basil"]},
+        fields=["toppings"],
+        refilled=['value="cheese"', 'value="basil"'],
+        invalid={"toppings": ["anchovies"]},
+        error_keys=["toppings"],
+        schema_type="object",
+        summary_shows="Cheese",
+        switch_field="toppings",
+        switch_value="cheese",
+    ),
+    Shape(
+        id="derived",
+        step="derived",
+        post=lambda: {
+            "line_1": "1 High Street",
+            "town": "Ely",
+            "postcode": "CB7 4AA",
+        },
+        # `outcode` is the one nothing asked for: it exists in the answer
+        # and in no field, which is the shape that catches a reader
+        # assuming an answer and a form list the same things.
+        answer={
+            "line_1": "1 High Street",
+            "line_2": "",
+            "town": "Ely",
+            "postcode": "CB7 4AA",
+            "lookup_token": "",
+            "outcode": "CB7",
+        },
+        fields=["line_1", "line_2", "town", "postcode", "lookup_token"],
+        refilled=['name="line_1" value="1 High Street"', 'value="CB7 4AA"'],
+        invalid={},
+        error_keys=["line_1", "town", "postcode"],
+        schema_type="object",
+        summary_shows="Ely",
+        switch_field="postcode",
+        switch_value="CB7 4AA",
     ),
     Shape(
         id="file",
@@ -201,6 +260,8 @@ SHAPES = (
         schema_type="object",
         summary_shows="badge.png",
         driver_files=lambda: {"photo": _photo()},
+        switch_field="photo",
+        switch_value="badge.png",
     ),
 )
 
@@ -310,16 +371,7 @@ def test_seam_schema_describes_every_shape(shape, driver_for):
     assert outline[shape.step]["schema"]["type"] == shape.schema_type
 
 
-@pytest.mark.parametrize(
-    "shape",
-    shapes(
-        file=(
-            "answers() hands the stored upload back inside the answer, and "
-            "submit() refuses a file in `data` because state is JSON — so the "
-            "answer it just gave cannot be handed straight back."
-        ),
-    ),
-)
+@pytest.mark.parametrize("shape", SHAPES, ids=IDS)
 def test_seam_an_answer_submits_straight_back(shape, driver_for):
     """Seam: `get_submission()` — the inverse. Reading a step and
     submitting what you were handed is the round trip `submit()` promises,
@@ -378,3 +430,23 @@ def test_seam_the_summary_shows_every_shape(shape, answered_run):
 
     shown = " ".join(str(row.answer) for row in rows if row.step.name == shape.step)
     assert shape.summary_shows in shown
+
+
+@pytest.mark.parametrize("shape", SHAPES, ids=IDS)
+def test_seam_a_switch_selector_reads_every_shape(shape, driver_for):
+    """Seam: `on_field()`, which reads one answered field to decide a route.
+
+    The one reader that has to be able to say no. A step answering with
+    rows has no single value to route on, and saying so when the wizard is
+    declared is worth more than saying it mid-walk, when the run is already
+    somewhere and the answer is already given.
+    """
+    selector = on_field(shape.step, shape.switch_field)
+
+    if shape.switch_value is None:
+        with pytest.raises(ImproperlyConfigured):
+            selector.check(ShapeMatrixWizardViewSet.wizard)
+        return
+
+    selector.check(ShapeMatrixWizardViewSet.wizard)
+    assert shape.switch_value in selector(driver_for().run.context)

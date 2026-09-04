@@ -404,6 +404,15 @@ def _widget_submission(field: Any, html_name: str, value: Any) -> Submission:
     writer = getattr(widget, "value_to_datadict", None)
     if writer is not None:
         return dict(writer(html_name, value))
+    if isinstance(widget, forms.FileInput):
+        # Nothing. A browser never re-sends a file input, so the POST that
+        # produced this answer did not carry the upload either — it arrived
+        # beside the submission, and that is where it still lives. Saying so
+        # is also the only thing that *can* be said: an upload is an object
+        # and state is JSON, so putting one back under its field name fails
+        # at the point the run is written. A step re-answered without its
+        # file keeps the file it has.
+        return {}
     if isinstance(widget, forms.MultiWidget):
         # `widgets_names` and `decompress()` are a `MultiWidget`'s own public
         # layout, and have been since Django 4.0; django-stubs carries

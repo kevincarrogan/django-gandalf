@@ -2679,7 +2679,9 @@ class ShapeMatrixWizardViewSet(WizardViewSet):
     A widget that names its keys its own way is the fifth: Django's
     `SelectDateWidget` is not a `MultiWidget` and posts `_year`, `_month`
     and `_day`, which no general rule can derive and only the widget can
-    state.
+    state. A field answered with a list posts one input per value rather
+    than one per field, and a `clean()` that derives something no field
+    asked for puts a key in the answer that no widget will ever render.
 
     They share one wizard so that every seam can be checked against every
     shape from a single run, and one summary page so the last seam has
@@ -2700,6 +2702,8 @@ class ShapeMatrixWizardViewSet(WizardViewSet):
         .step(ClosingDateForm, name="ownkeys")
         .step(ContactStepView, name="prefixed")
         .step(OpeningHoursStepView, name="formset")
+        .step(ToppingsForm, name="list")
+        .step(GeocodedAddressForm, name="derived")
         .step(ProfilePhotoForm, name="file")
         .step(SummaryStepView, name="summary")
     )
