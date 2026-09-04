@@ -50,8 +50,8 @@ exercises the package through Django's test client.
 
 `tests/functional/test_shape_matrix.py` runs every seam that reads or
 writes a step's answer against every form shape that breaks a naive
-implementation of one: a formset, a `MultiWidget`, a prefixed step, a
-file, and a plain step as the control. Each awkward shape posts under
+implementation of one: a formset, a `MultiWidget`, a widget that names its
+own POST keys, a prefixed step, a file, and a plain step as the control. Each awkward shape posts under
 keys that are not its field names, which is the assumption this family of
 bugs keeps rediscovering.
 

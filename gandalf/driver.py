@@ -833,11 +833,19 @@ class RunDriver:
         posted as a management form and n numbered rows. Values are reduced
         to the ones a browser would have sent first, because that is true
         whatever shape the step answers in.
+
+        In that order, and it matters. What a widget can take apart is the
+        value the step answered with — `decompress()` reads a `date`, not
+        the string a date is rendered as — so the step converts first and
+        the result is made JSON-safe after. Reversed, a composite field
+        would be handed its own serialisation and find nothing in it.
         """
-        answer = _json_safe(answer)
         if declaration is None:
-            return cast("Submission", answer)
-        return answer_submission(self._view_for(declaration), answer)
+            return cast("Submission", _json_safe(answer))
+        return cast(
+            "Submission",
+            _json_safe(answer_submission(self._view_for(declaration), answer)),
+        )
 
     def _view_for(self, declaration: tree.Step) -> FormView[Any]:
         form_view_class = cast("StepViewClass", declaration.form_view)

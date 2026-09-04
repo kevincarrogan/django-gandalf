@@ -121,6 +121,26 @@ SHAPES = (
         summary_shows="2026",
     ),
     Shape(
+        id="ownkeys",
+        step="ownkeys",
+        post=lambda: {
+            "closing_date_day": "3",
+            "closing_date_month": "9",
+            "closing_date_year": "2026",
+        },
+        answer={"closing_date": datetime.date(2026, 9, 3)},
+        fields=["closing_date"],
+        refilled=['name="closing_date_day"', 'value="2026" selected'],
+        invalid={
+            "closing_date_day": "",
+            "closing_date_month": "9",
+            "closing_date_year": "2026",
+        },
+        error_keys=["closing_date"],
+        schema_type="object",
+        summary_shows="2026",
+    ),
+    Shape(
         id="prefixed",
         step="prefixed",
         post=lambda: {"contact-email": "ada@example.com"},
@@ -293,11 +313,6 @@ def test_seam_schema_describes_every_shape(shape, driver_for):
 @pytest.mark.parametrize(
     "shape",
     shapes(
-        multiwidget=(
-            "get_submission() puts the compressed value under the field name, "
-            "but a MultiWidget reads start_date_0/_1/_2 and finds nothing, so "
-            "the round trip submit() promises comes back 'required'."
-        ),
         file=(
             "answers() hands the stored upload back inside the answer, and "
             "submit() refuses a file in `data` because state is JSON — so the "

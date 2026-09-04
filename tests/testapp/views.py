@@ -66,6 +66,7 @@ from .forms import (
     OpeningHoursFormSet,
     OptionalPhotoForm,
     PersonalDetailsForm,
+    ClosingDateForm,
     ProfilePhotoForm,
     ProjectStartForm,
     ReviewForm,
@@ -2675,6 +2676,11 @@ class ShapeMatrixWizardViewSet(WizardViewSet):
     step sits alongside them as the control — the shape under which a
     broken seam still looks like it works.
 
+    A widget that names its keys its own way is the fifth: Django's
+    `SelectDateWidget` is not a `MultiWidget` and posts `_year`, `_month`
+    and `_day`, which no general rule can derive and only the widget can
+    state.
+
     They share one wizard so that every seam can be checked against every
     shape from a single run, and one summary page so the last seam has
     somewhere to render them all.
@@ -2691,6 +2697,7 @@ class ShapeMatrixWizardViewSet(WizardViewSet):
         Wizard()
         .step(FirstStepForm, name="plain")
         .step(ProjectStartForm, name="multiwidget")
+        .step(ClosingDateForm, name="ownkeys")
         .step(ContactStepView, name="prefixed")
         .step(OpeningHoursStepView, name="formset")
         .step(ProfilePhotoForm, name="file")

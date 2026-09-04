@@ -200,16 +200,22 @@ class StepFormView(_StepFormViewBase):
 
         The inverse of `get_answer()`, and what lets a caller read a step,
         change one field and submit it straight back with nothing to
-        convert in between. A form's answer is already the shape a browser
-        posts — field name to value — so this only puts the step's prefix
-        around it.
+        convert in between.
+
+        Two renamings stand between an answer and a submission, and a
+        plain form has neither, which is why it is easy to write this as
+        though there were none. A prefix renames every key the step posts.
+        A widget may post under keys that are not the field's name at all,
+        which is what any `MultiWidget` does — one date field, three boxes,
+        and `start_date` naming none of them. Asked of the form, so that
+        both are read off the object that actually names them.
 
         Override beside a form object whose answer is not a submission. It
         is the one direction the other four hooks do not cover: they all
         describe what a step holds, and this is how something gets *into*
         it.
         """
-        return _under_prefix(self.get_prefix(), answer)
+        return _as_submission(self.get_form(), self.get_prefix(), answer)
 
 
 class FormSetStepView(StepFormView):
@@ -325,9 +331,18 @@ class FormSetStepView(StepFormView):
             f"{prefix}-MIN_NUM_FORMS": str(formset.min_num),
             f"{prefix}-MAX_NUM_FORMS": str(formset.max_num),
         }
+        # A row repeats a form, so a composite widget inside one is
+        # renamed by the row *and* by itself. The fields come from
+        # `empty_form` because a row's answer says what was filled in,
+        # not what asked for it.
+        row_fields = getattr(formset.empty_form, "fields", {})
         for index, row in enumerate(answer):
             for name, value in row.items():
-                submission[f"{prefix}-{index}-{name}"] = value
+                submission.update(
+                    _widget_submission(
+                        row_fields.get(name), f"{prefix}-{index}-{name}", value
+                    )
+                )
         return submission
 
 
@@ -359,19 +374,65 @@ def answer_submission(view: Any, answer: Answer) -> Submission:
     """
     writer = getattr(view, "get_submission", None)
     if writer is None:
-        return _under_prefix(view.get_prefix(), answer)
+        return _as_submission(view.get_form(), view.get_prefix(), answer)
     return cast("Submission", writer(answer))
 
 
-def _under_prefix(prefix: str | None, answer: Answer) -> Submission:
-    """A form's answer is the shape a browser posts; this is the only thing
-    between the two, and both the hook and its fallback use it."""
-    if prefix is None:
-        return cast("Submission", answer)
-    return {
-        f"{prefix}-{name}": value
-        for name, value in cast("dict[str, Any]", answer).items()
-    }
+def _widget_submission(field: Any, html_name: str, value: Any) -> Submission:
+    """One answered field as the POST keys that would have carried it.
+
+    A widget owns the shape of its own POST, and Django states that in one
+    direction only: `value_from_datadict()` is how a widget reads what it
+    was sent, and there is no mirror of it because nothing in Django ever
+    needs to *write* a POST. A wizard does — an answer read back out has to
+    be submittable again — so the mirror is named here, and a widget that
+    lays its keys out its own way says so with `value_to_datadict(name,
+    value)`.
+
+    A `MultiWidget` needs no such method, because Django already states its
+    layout: its parts come from `decompress()`, under the suffixes in
+    `widgets_names`. That covers `SplitDateTimeField` and every three-box
+    date field built the ordinary way. What it cannot cover is a widget
+    that invents a scheme — Django's own `SelectDateWidget` is not a
+    `MultiWidget` at all and names its keys `_year`, `_month` and `_day` —
+    and that is what the hook is for.
+
+    Anything else posts one value under the field's own name, which is the
+    shape that always worked and the reason the other two went unnoticed.
+    """
+    widget = getattr(field, "widget", None)
+    writer = getattr(widget, "value_to_datadict", None)
+    if writer is not None:
+        return dict(writer(html_name, value))
+    if isinstance(widget, forms.MultiWidget):
+        # `widgets_names` and `decompress()` are a `MultiWidget`'s own public
+        # layout, and have been since Django 4.0; django-stubs carries
+        # neither faithfully, so the reads are cast rather than guarded.
+        composite = cast("Any", widget)
+        return {
+            f"{html_name}{suffix}": part
+            for suffix, part in zip(
+                composite.widgets_names, composite.decompress(value)
+            )
+        }
+    return {html_name: value}
+
+
+def _as_submission(form: Any, prefix: str | None, answer: Answer) -> Submission:
+    """A form's answer as the POST that would have produced it.
+
+    The two renamings, in the order a browser applies them: the prefix
+    names the field, and the widget names its inputs under that. A key the
+    form has no field for is left under its own name — a value `clean()`
+    derived is still part of the answer, and the step that put it there is
+    the one that knows what to do with it.
+    """
+    fields = getattr(form, "fields", {})
+    submission: Submission = {}
+    for name, value in cast("dict[str, Any]", answer).items():
+        html_name = name if prefix is None else f"{prefix}-{name}"
+        submission.update(_widget_submission(fields.get(name), html_name, value))
+    return submission
 
 
 def form_view_factory(

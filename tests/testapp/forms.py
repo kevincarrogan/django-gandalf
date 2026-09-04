@@ -338,3 +338,30 @@ class DayMonthYearField(forms.MultiValueField):
 
 class ProjectStartForm(forms.Form):
     start_date = DayMonthYearField()
+
+
+class PostableSelectDateWidget(forms.SelectDateWidget):
+    """Django's own three-select date widget, taught to write its value back
+    out as well as read it in.
+
+    `SelectDateWidget` is the case a `MultiWidget` rule cannot reach: it is
+    not a `MultiWidget`, and it names its keys `_year`, `_month` and `_day`
+    rather than `_0`, `_1` and `_2`. Only the widget knows that, so only
+    the widget can say it — which is what `value_to_datadict()` is for, and
+    this is what implementing it looks like.
+    """
+
+    def value_to_datadict(self, name, value):
+        if value is None:
+            return {}
+        return {
+            self.year_field % name: value.year,
+            self.month_field % name: value.month,
+            self.day_field % name: value.day,
+        }
+
+
+class ClosingDateForm(forms.Form):
+    closing_date = forms.DateField(
+        widget=PostableSelectDateWidget(years=range(2024, 2030))
+    )

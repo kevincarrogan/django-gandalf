@@ -93,11 +93,61 @@ agent is told it asks. Override it beside a form object
 
 **`get_submission(answer)`** — `answer` as the POST that would have produced
 it, and the only one of the five that goes the other way: the four above
-describe what a step holds, and this is how something gets *into* it. A
-form's answer is already the shape a browser posts, so the default puts the
-step's `get_prefix()` around it and stops. Override it beside a form object
-whose answer is not a submission; [`RunDriver.submit()`](driver.md) asks here,
-which is what lets a caller read a step, change one field and send it back.
+describe what a step holds, and this is how something gets *into* it.
+Override it beside a form object whose answer is not a submission;
+[`RunDriver.submit()`](driver.md) asks here, which is what lets a caller read
+a step, change one field and send it back.
+
+### How an answer becomes a POST
+
+Two renamings stand between an answer and the submission that would have
+produced it, and a plain form has neither, which is why it is easy to write
+this as though there were none.
+
+The step's `get_prefix()` renames every key the step posts, so a field
+called `email` on a step prefixed `contact` is posted as `contact-email`.
+
+The field's *widget* may then post under keys that are not the field's name
+at all. A `forms.MultiValueField` rendered by a `forms.MultiWidget` is the
+common case: one `start_date` field asks for three boxes and posts
+`start_date_0`, `start_date_1` and `start_date_2`, none of which is
+`start_date`. The default handles this on its own, because Django states
+the layout — the parts come from the widget's `decompress()` and the
+suffixes from its `widgets_names` — so a `SplitDateTimeField`, or a
+three-box date field from a design system, round-trips with nothing to
+configure.
+
+### `value_to_datadict(name, value)`, for a widget that names its own keys
+
+What no general rule can derive is a widget that invents its own scheme.
+Django's own `SelectDateWidget` is one: it is not a `MultiWidget`, and it
+posts `_year`, `_month` and `_day`. Only the widget knows that, so the
+widget is where it is said.
+
+Django already owns the reading direction, `value_from_datadict(data,
+files, name)`. Give a widget the mirror of it and Gandalf will use it:
+
+```python
+from django import forms
+
+
+class PostableSelectDateWidget(forms.SelectDateWidget):
+    def value_to_datadict(self, name, value):
+        if value is None:
+            return {}
+        return {
+            self.year_field % name: value.year,
+            self.month_field % name: value.month,
+            self.day_field % name: value.day,
+        }
+```
+
+It returns the POST keys that would have carried `value`, under the field's
+already-prefixed HTML `name`. It is consulted before the `MultiWidget` rule,
+so a `MultiWidget` subclass can override the default layout as well as
+supply one. A step that wants the last word still has `get_submission()`
+above both — but a widget's key layout belongs to the widget, and putting it
+on the step means repeating it in every step that uses the field.
 
 A step declared with a bare Django `FormView` rather than a `StepFormView`
 carries none of these and gets the `BaseForm` readings, so nothing has to
