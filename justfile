@@ -105,8 +105,19 @@ agent-log runs="1":
 bench:
     uv run python -m benchmarks
 
+# One environment per pair, and deliberately not the one you work in.
+# `uv run --python` rebuilds the *project* environment at `.venv` with the
+# interpreter asked for and only the groups named — so without this, running
+# the matrix left `.venv` on the matrix's Python with the `lint` group gone,
+# and the next commit died inside the git hook with "No module named
+# pre_commit". That reads as a broken pre-commit install rather than as the
+# recipe someone ran a minute earlier, which is what makes it worth the disk.
+#
+# Costs one install the first time each pair is used, and nothing after.
+# `.venv-*` is git-ignored. CI is unaffected: a runner builds one cell and
+# throws the machine away.
 test-django python_version django_version:
-    uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
+    UV_PROJECT_ENVIRONMENT=.venv-{{python_version}}-django{{django_version}} uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
 
 serve port="8000":
     PYTHONPATH=. uv run django-admin migrate --settings tests.serve_settings

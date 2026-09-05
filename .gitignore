@@ -8,6 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+# Per-pair environments built by `just test-django`, kept out of the one
+# you work in so the recipe cannot change it underneath you.
+.venv-*
 .uv-cache
 
 .pytest_cache
