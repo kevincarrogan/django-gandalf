@@ -576,6 +576,7 @@ GROUPS = (
                 "a redirect to the start.",
             ),
             Example("walk-counting-wizard"),
+            Example("walk-counting-branch-wizard"),
         ),
     ),
     Group(

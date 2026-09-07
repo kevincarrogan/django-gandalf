@@ -228,11 +228,12 @@ lookups as `find_step`.
   arm, or anything inside a preserved region past the cursor. `find_step`
   returns `None` for all of those, so guard the lookup unless the step is
   unconditionally upstream.
-- **Each access of `run.path` rebuilds the step nodes**, and
-  outside a step render each access walks. A `RuntimeStep.form` is memoised
-  per node, so `wizard.path.find_step(name="x").form` twice is two
-  validations. Read `path` once and hold the steps you iterate. See [Walk
-  costs](walk-costs.md).
+- **Outside a step render, each access of `run.path` walks.** Inside a
+  walk or a render it rebuilds the step nodes from the tree already held,
+  and `RuntimeStep.form` is memoised on that tree, so
+  `wizard.path.find_step(name="x").form` twice is one validation there and
+  two walks in `done()`. Read `path` once and hold the steps you iterate.
+  See [Walk costs](walk-costs.md).
 - Inside a walk — a predicate, a builder, a replayed step view — `path` is
   the prefix validated so far on this request, not a fresh walk.
 
@@ -247,7 +248,7 @@ Dataclass; nodes are built by the walk and by `path`.
 | --- | --- |
 | `name` | The step's routable name — its `name` context. `None` for a step declared without one. |
 | `url` | `run.step_url(self.declaration)`. `None` without a URL reverser. |
-| `form` | A bound, validated form (memoised per node). Built through the step view's public composition API — `setup()` with a synthetic POST of the stored submission and files, then `get_form()` and `is_valid()` — so `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()` and `get_prefix()` overrides are honoured. `form_valid()`, `post()`, `dispatch()` and `setup()` overrides are not run. A stored answer whose `clean()` escapes still reconstructs, but `cleaned_data` holds only what was cleaned before the raise. |
+| `form` | A bound, validated form (memoised per step per request, on the walk's node every `path` copy points back to). Built through the step view's public composition API — `setup()` with a synthetic POST of the stored submission and files, then `get_form()` and `is_valid()` — so `form_class`, `get_form_class()`, `get_form_kwargs()`, `get_initial()` and `get_prefix()` overrides are honoured. `form_valid()`, `post()`, `dispatch()` and `setup()` overrides are not run. A stored answer whose `clean()` escapes still reconstructs, but `cleaned_data` holds only what was cleaned before the raise. |
 | `data` | The raw stored submission: POST keys to their single value, or a list for a key sent more than once. `None` for a hole. |
 | `files` | `{field_name: FileRef}` for the step's stored uploads, or `None`. |
 | `metadata` | What the placement recorded about itself (`{"unattended": True}` from a driver), or `None`. Not the run's metadata bag. |
@@ -256,7 +257,8 @@ Dataclass; nodes are built by the walk and by `path`.
 
 ### `RuntimeStep.step_view`
 
-The step's view, set up with the stored submission, built once per node.
+The step's view, set up with the stored submission, built once per step per
+request like `form`.
 `form` is what this view's `get_form()` returned, so anything the library
 reads *about* that object — what the step refused, what it asks — is asked
 of the view, which knows what kind of object it built. An application

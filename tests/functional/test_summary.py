@@ -160,17 +160,17 @@ def test_summary_rebuilds_each_answered_form_once(business_run):
     """The bind-once guarantee: one form reconstruction per *step*, however
     many rows the page reads out of it.
 
-    Four rather than three because this wizard's branch predicate reads an
-    answer of its own to pick the arm — a cost the run pays on every request,
-    summary or not. The summary's own share is one per step, even though the
-    preferences step alone reads as five rows.
+    Three, even though this wizard's branch predicate reads the account type
+    for itself to pick the arm: the predicate's read and the summary's read
+    both go through `path`, and both land on the same walk node, where the
+    form is memoised once. The preferences step alone reads as five rows.
     """
     with counting_walks() as counts:
         response = business_run.get_step("summary")
 
     rows = response.context["summary"]
     assert len(rows) == 7
-    assert counts.form_rebuilds == 4
+    assert counts.form_rebuilds == 3
 
 
 def test_a_row_carries_the_form_behind_it(business_run):

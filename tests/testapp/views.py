@@ -1568,6 +1568,62 @@ class WalkCountingWizardViewSet(WizardViewSet):
         return HttpResponse(f"completed {run.run_id}")
 
 
+def _first_name_is_ada(context):
+    """A predicate that reads one answer the expensive-looking way: through
+    four separate `path` accesses, as a formtools condition calls
+    `get_cleaned_data_for_step()` per use."""
+    for _ in range(3):
+        context.run.path.find_step(name="first").answer
+    return context.run.path.find_step(name="first").answer["name"] == "Ada"
+
+
+class ReadingStepView(StepFormView):
+    """A step view that looks the first answer up twice while rendering —
+    once for its initial and once for its context — as a real one does."""
+
+    form_class = PersonalDetailsForm
+    template_name = "testapp/linear_wizard.html"
+
+    def get_initial(self):
+        first = self.request.run.path.find_step(name="first")
+        return {"preferred_name": first.answer["name"]}
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["first_name"] = self.request.run.path.find_step(name="first").answer[
+            "name"
+        ]
+        return context
+
+
+class WalkCountingBranchWizardViewSet(WizardViewSet):
+    description = (
+        "The counting wizard with a branch whose predicate, and the step it "
+        "selects, read the first answer repeatedly — so a test can pin that "
+        "reading one answer many times on one request validates it once."
+    )
+    template_name = "testapp/linear_wizard.html"
+    step_dispatcher_class = CountingStepDispatcher
+    cursor_walker_class = CountingCursorWalker
+    wizard = (
+        Wizard()
+        .step(FirstStepForm, name="first")
+        .step(SecondStepForm, name="second")
+        .branch(
+            wizard.condition(
+                _first_name_is_ada, Wizard().step(ReadingStepView, name="third")
+            ),
+            default=Wizard().step(PersonalDetailsForm, name="third-default"),
+        )
+        .step(ReviewForm, name="fourth")
+    )
+
+    url_name = "walk-counting-branch-wizard"
+
+    def done(self, run):
+        return HttpResponse(f"completed {run.run_id}")
+
+
 def build_item_steps(context):
     """Expansion builder: read the count answered earlier and produce that
     many item steps. Runs mid-walk, behind the validated count."""

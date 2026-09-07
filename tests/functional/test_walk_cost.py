@@ -178,9 +178,10 @@ def test_a_summary_render_validates_each_answer_twice(run_at_summary):
     an ordinary step page costs one.
 
     Per *step*, not per row: three steps read as seven rows here, and the
-    rows are free. The extra rebuild on top of the three is the branch
-    predicate, which reads an answer of its own to pick the arm — a route's
-    own reads are charged the same way, summary or not.
+    rows are free. The branch predicate's own read of the account type is
+    free too: it reads through `path` inside the walk, the summary reads
+    through `path` inside the render, and both copies point at the same
+    walk node, where the form is memoised once.
     """
     with counting_walks() as counts:
         response = run_at_summary.get_step("summary")
@@ -190,8 +191,48 @@ def test_a_summary_render_validates_each_answer_twice(run_at_summary):
     assert counts.walks == 1
     # Proving: one per answered step.
     assert counts.validations == 3
-    # Displaying: one per answered step, plus the branch predicate's own read.
-    assert counts.form_rebuilds == 3 + 1
+    # Displaying: one per answered step; the branch predicate's read of one
+    # of them is the same reconstruction, not another.
+    assert counts.form_rebuilds == 3
+
+
+# --- reading one answer many times -----------------------------------------
+
+
+@pytest.fixture
+def run_at_branch(wizard_driver):
+    """The branching counting wizard, answered up to the branch's arm."""
+    run = wizard_driver("walk-counting-branch-wizard").start()
+    run.post_steps(
+        [
+            ("first", {"name": "Ada"}),
+            ("second", {"email": "ada@example.com"}),
+        ]
+    )
+    return run
+
+
+def test_reading_one_answer_many_times_validates_it_once(run_at_branch):
+    """django-formtools' issue #134, the shape that cannot happen here.
+
+    A formtools condition that calls `get_cleaned_data_for_step()` rebuilt
+    and re-validated that step's form on every call, and the wizard asked
+    every condition from a dozen places per request. The equivalent idiom
+    here — `context.run.path.find_step(name=...)` per read — is written
+    exactly as often, so it has to be free: the predicate below looks the
+    first answer up through four separate `path` accesses, and the step view
+    it selects looks it up twice more while rendering, and the form is
+    reconstructed once.
+    """
+    with counting_walks() as counts:
+        response = run_at_branch.get_step("third")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].initial == {"preferred_name": "Ada"}
+    assert counts.walks == 1
+    assert counts.validations == 2
+    assert counts.renders == 1
+    assert counts.form_rebuilds == 1
 
 
 # --- a page of sections ------------------------------------------------------

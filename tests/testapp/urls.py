@@ -229,6 +229,10 @@ urlpatterns = [
         "walk-counting-wizard/",
         include(views.WalkCountingWizardViewSet.urls()),
     ),
+    path(
+        "walk-counting-branch-wizard/",
+        include(views.WalkCountingBranchWizardViewSet.urls()),
+    ),
     path("expand-wizard/", include(views.ExpandWizardViewSet.urls())),
     path(
         "empty-expand-wizard/",

@@ -385,6 +385,12 @@ class RuntimeStep:
     metadata: Metadata | None = None
     next: RuntimeNode | None = None
     run: Run | None = dataclass_field(default=None, repr=False, compare=False)
+    #: The walk's own node this one was copied from, when `path` built it.
+    #: `form` and `step_view` are memoised there, so every copy of one node
+    #: on one request shares a single reconstruction.
+    source: RuntimeStep | None = dataclass_field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def name(self) -> str | None:
@@ -406,11 +412,14 @@ class RuntimeStep:
     def form(self) -> BaseForm:
         """Reconstruct a bound, validated form for this step.
 
-        Built once per node: a request that reads a step's answer several
-        times — a summary page listing every field, a template reaching for
-        `cleaned_data` twice — pays one form validation, not one per read.
-        `path` builds fresh nodes on each access, so hold the steps you are
-        iterating rather than re-reading `wizard.path` per field.
+        Built once per step per request: a request that reads a step's
+        answer several times — a summary page listing every field, a
+        template reaching for `cleaned_data` twice, a predicate and a step
+        view both asking the same question — pays one form validation, not
+        one per read. `path` builds fresh nodes on each access, but each
+        carries its `source`, the walk's own node, and the form is memoised
+        there. Outside a render each `path` access is a fresh walk with
+        fresh nodes, so hold the steps you iterate there.
 
         Drives the step's `FormView` through its public composition API:
         instantiates the view, calls `view.setup()` with a synthetic POST
@@ -433,6 +442,8 @@ class RuntimeStep:
         Raise from `form_valid()` instead when the answer must stay wholly
         readable afterwards.
         """
+        if self.source is not None:
+            return self.source.form
         form: BaseForm = self.step_view.get_form()
         try:
             form.is_valid()
@@ -444,13 +455,16 @@ class RuntimeStep:
     def step_view(self) -> FormView[Any]:
         """The step's view, set up with the stored submission.
 
-        Built once per node, and the seam an application answers through:
+        Built once per step per request (memoised on `source`, like `form`),
+        and the seam an application answers through:
         `form` is what this view's `get_form()` returned, so anything the
         library reads *about* that object — what the step refused, what it
         asks — belongs on the view, which knows what kind of object it
         built. Reading it off the object directly means guessing, and a
         formset is where the guess is wrong.
         """
+        if self.source is not None:
+            return self.source.step_view
         form_view_class = cast("StepViewClass", self.declaration.form_view)
         run = cast("Run", self.run)
         request = run.dispatcher.build_request(
@@ -1148,11 +1162,12 @@ class Run:
         the validated prefix so far and `path.find_step(...)` reads prior
         answers.
 
-        Each access rebuilds the step nodes, so a node read from one access
-        shares no memoised `.form` with the next: re-reading this per answer
-        costs a validation per answer. Outside a render there is no recorded
-        cursor to reuse either, so every access walks. Read it once and hold
-        the steps you iterate.
+        Each access rebuilds the step nodes, but every copy points back at
+        the walk's own node as its `source`, where `.form` is memoised — so
+        inside a walk or a render, reading one answer through several
+        `path` accesses costs one validation. Outside a render there is no
+        recorded cursor to reuse, so every access walks and re-proves every
+        answer. Read it once and hold the steps you iterate.
         """
         return Path(PathFlattener().transform(self.runtime_tree))
 
@@ -1776,7 +1791,13 @@ class PathFlattener(tree.Transformer):
     ) -> RuntimeStep | None:
         if runtime_step.data is None:
             return next_result
-        return replace(runtime_step, next=next_result)
+        # A copy of a copy still names the walk's node, so however many
+        # times `path` is read, one node memoises the form for all of them.
+        return replace(
+            runtime_step,
+            next=next_result,
+            source=runtime_step.source or runtime_step,
+        )
 
     def visit_preserved_branch(
         self, preserved_branch: PreservedBranch, next_result: RuntimeStep | None

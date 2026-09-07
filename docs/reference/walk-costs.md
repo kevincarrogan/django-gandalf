@@ -29,13 +29,16 @@ the walk dispatches the step's view to prove it, and
   on every request that resolves its arm.
 - An `.expand()` builder that reads the count is charged the same way.
 
-Within one read, the form is built once per step however many fields you
-render from it — `RuntimeStep.form` is cached per step per request. What
-adds up is reading *again*: `path` builds fresh step nodes on each access, so
-iterate the steps you hold rather than re-reading `wizard.path` per field.
-Outside a render — in `done()`, a completion page, a driver reading a run —
-every `path` access walks: looking each of `k` steps up separately costs `k²`
-validations in that one request, where iterating once costs `k`.
+Within one request, the form is built once per step however many times you
+read it — `RuntimeStep.form` is memoised on the walk's own node, and every
+node `path` hands out points back at it. So a predicate that reads an answer
+through three separate `path` accesses, or a step view whose `get_initial()`
+and `get_context_data()` both look the same step up, still pays one
+validation. That holds inside a walk and inside a step render. Outside a
+render — in `done()`, a completion page, a driver reading a run — there is no
+tree to point back at, so every `path` access walks: looking each of `k`
+steps up separately costs `k²` validations in that one request, where
+iterating once costs `k`.
 
 ## What matters
 
