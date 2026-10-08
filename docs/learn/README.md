@@ -22,12 +22,12 @@ checked in CI, not just prose.
 To click through them:
 
 ```bash
-just serve
+just dev
 ```
 
 That starts Django at **http://127.0.0.1:8000/**, whose index page lists the
 chapters in order. Each chapter ends with a **▶ Try it live** link to its
-start URL. These are local URLs — they only resolve while `just serve` is
+start URL. These are local URLs — they only resolve while `just dev` is
 running.
 
 ## One wizard

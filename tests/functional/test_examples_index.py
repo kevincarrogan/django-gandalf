@@ -1,6 +1,6 @@
 """The demo site's front door and the banner it puts on every wizard page.
 
-`just serve` publishes every wizard in the test app. These tests hold the
+`just dev` publishes every wizard in the test app. These tests hold the
 catalogue that organises them honest: a wizard nobody grouped is a wizard
 nobody can find, and a wizard page that does not say which example it is
 leaves the reader guessing at exactly the moment they are trying to test
@@ -45,7 +45,7 @@ def test_every_catalogued_example_resolves_to_a_live_url():
 
 
 def test_index_page_groups_the_examples_with_an_explanation(client):
-    # `just serve` lands on this page.
+    # `just dev` lands on this page.
     response = client.get(reverse("index"))
 
     assert response.status_code == HTTPStatus.OK

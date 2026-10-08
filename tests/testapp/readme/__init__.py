@@ -2,7 +2,7 @@
 chapter.
 
 Each module here is one chapter of ``docs/learn/`` — the exact code the chapter
-shows, mounted under ``readme/`` so that ``just serve`` exposes it and
+shows, mounted under ``readme/`` so that ``just dev`` exposes it and
 ``tests/functional/test_readme_examples.py`` drives it. A chapter imports the
 one before it and grows it, which is the first thing the walkthrough teaches: a
 ``Wizard`` is a value, so the previous chapter's declaration is still intact

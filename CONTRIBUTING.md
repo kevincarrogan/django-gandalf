@@ -28,6 +28,18 @@ explicitly, so the compatibility matrix still spans 3.10 to 3.14 as
 
 ## Testing and linting
 
+Run what CI runs on every push with:
+
+```bash
+just check
+```
+
+`check` runs `check-docs`, `typecheck`, `coverage-unit` and
+`coverage-functional`, the same recipes as the docs, type check, unit and
+functional workflows. The Django matrix (`just test-django`) and the UI smoke
+test (`just test-ui`) are CI jobs too, but too slow for every push locally:
+run them by hand when you touch what they cover.
+
 Run the test suite with:
 
 ```bash
@@ -122,7 +134,9 @@ rather than paying for the casts the walk would otherwise need.
 Run linting and formatting with:
 
 ```bash
-pre-commit run --all-files
+just lint          # every pre-commit hook over the tree
+just format        # ruff format, in place
+just format-check  # ruff format, changing nothing
 ```
 
 To install the Git hooks locally:

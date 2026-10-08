@@ -2,108 +2,66 @@
 # live in a file rather than in your shell history.
 set dotenv-load := true
 
-test:
-    uv run pytest
+[doc("List every recipe, grouped")]
+default:
+    @just --list
 
-test-unit:
-    uv run pytest tests/unit
+# --- Dev ----------------------------------------------------------------------
 
-test-functional:
-    uv run pytest tests/functional
+[doc("Serve every test-app wizard and Learn chapter at http://127.0.0.1:8000/")]
+[group("dev")]
+dev port="8000":
+    PYTHONPATH=. uv run django-admin migrate --settings tests.serve_settings
+    PYTHONPATH=. uv run django-admin runserver 127.0.0.1:{{port}} --settings tests.serve_settings
 
-coverage:
-    uv run pytest --cov=gandalf --cov-report=term-missing
-
-coverage-unit:
-    uv run --extra agent pytest tests/unit --cov=gandalf --cov-config=coverage-unit.ini --cov-report=term-missing --cov-report=xml:coverage-unit.xml
-
-# The agents group is here for the demo's suites, not for the library's: three
-# functional tests `importorskip` without it and a broken branch reports green.
-# They need no model key — each one scripts a FunctionModel or uses the canned
-# `test` model — so this costs install time and nothing else.
-coverage-functional:
-    uv run --extra agent --group agents pytest tests/functional --cov=gandalf --cov-report=term-missing --cov-report=xml:coverage-functional.xml
-
-# The extra as well as the lint group: `gandalf.contrib.agent` imports
-# pydantic-ai, and mypy cannot check what it cannot resolve. Without it
-# this passes locally for anyone who has the extra and fails in CI, which
-# is the worst of both.
-# Every link between the Markdown files, and every #anchor. A rename moves
-# a heading as easily as a file, and both failures are silent: a dead link
-# still renders as a link, and a stale anchor scrolls to the top of the
-# right page, which looks like it worked. External URLs are left alone —
-# CI that fails when someone else's site is down is CI nobody trusts.
-check-docs:
-    uv run python tools/check_docs.py
-
-typecheck:
-    uv run --group lint --extra agent mypy
-
-# The demo's suites on their own, for a faster loop than `just
-# coverage-functional`. Add a file here when you add one that needs the group,
-# or this reports a false all-clear; the CI gate is coverage-functional, which
-# takes the whole directory and cannot go stale this way.
-test-agents:
-    uv run --extra agent --group agents pytest tests/functional/test_copilotkit_spike.py tests/functional/test_hybrid_handoff.py tests/functional/test_application_journey.py
-
-# Port 8000 is busy on most machines (and `just serve` wants it too), so the
+# Port 8000 is busy on most machines (and `just dev` wants it too), so the
 # hybrid demo lives at 8100. Override on both recipes together if you move it.
+[doc("Run the hybrid demo's Django over ASGI (port 8100 unless given)")]
+[group("dev")]
 copilotkit-server port="8100":
     PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
     uv run --extra agent --group agents uvicorn examples.copilotkit.asgi:application --port {{port}}
 
+[doc("Run the hybrid demo's Vite UI, proxying to copilotkit-server's port")]
+[group("dev")]
 copilotkit-ui django_port="8100":
     [ -d .nodeenv ] || uvx nodeenv --prebuilt .nodeenv
     PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui install
     GANDALF_DJANGO_URL="http://localhost:{{django_port}}" PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui run dev
 
-# The demo UI in a real browser: does each page mount, does it mount without
-# throwing, does the composer still attach a photo, is Vite still proxying
-# Django. `npm run build` sees none of that — it checks syntax and stops, and
-# four failures shipped past it in one afternoon (#81).
-#
-# Starts both servers itself, or uses them if you already have the demo up.
-# Also runs in CI (`.github/workflows/ui-smoke.yml`) whenever the demo or the
-# agent contrib changes — the whole point is a check nobody has to remember.
-test-ui:
-    [ -d .nodeenv ] || uvx nodeenv --prebuilt .nodeenv
-    PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui install
-    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npx playwright install chromium
-    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm test
+# --- Quality ------------------------------------------------------------------
 
-# What describing the wizard costs an agent (counts tokens, generates none)
-agent-cost:
-    PYTHONPATH=. uv run --extra agent --group agents python -m examples.costs
+# Mirrors the per-push workflows: docs, typecheck, unit-tests and
+# functional-tests. The Django matrix (`test-django`, eleven environments) and
+# the UI smoke test (`test-ui`, Node and a browser, path-filtered in CI) are
+# left to CI and run by hand when you touch what they cover.
+[doc("The CI gate: docs links, types, and unit and functional coverage")]
+[group("quality")]
+check: check-docs typecheck coverage-unit coverage-functional
 
-# Run the scenarios against a real model and score what happened. Needs a
-# model key; costs real money. Pass a number to repeat each scenario.
-agent-eval repeats="1" only="":
-    PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
-    uv run --extra agent --group agents python -m examples.evals {{repeats}} {{only}}
+[doc("Run the whole test suite (pass pytest arguments through)")]
+[group("quality")]
+test *args:
+    uv run pytest {{args}}
 
-# Show the agent a photograph of a driving licence and print what it read
-# off it, beside where the run stopped. Needs a model key; costs a real
-# call, and an image is worth about a thousand tokens of one.
-# `check` keeps the picture on the run; `identity` is the wizard with no
-# file step at all — five pages of plain text, read from the photo.
-# Say something to the adaptive agent and see how it decides to ask back.
-# Add `heard` to send it as a transcript instead, which is the browser's
-# path once somebody stops speaking. Needs a model key; costs one call.
-collect-demo said mode="typed":
-    PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
-    PYTHONPATH=. uv run --extra agent --group agents python -m examples.collect_demo {{quote(said)}} {{mode}}
+[doc("Run the unit suite (pass pytest arguments through)")]
+[group("quality")]
+test-unit *args:
+    uv run pytest tests/unit {{args}}
 
-photo-demo image wizard="check":
-    PYTHONPATH=. uv run --group agents django-admin migrate --settings examples.copilotkit.settings
-    PYTHONPATH=. uv run --group agents python -m examples.photo_demo {{image}} {{wizard}}
+[doc("Run the functional suite (pass pytest arguments through)")]
+[group("quality")]
+test-functional *args:
+    uv run pytest tests/functional {{args}}
 
-# Read back the most recent agent run: what it called, what it said, what
-# it cost, and the events either side of it. Pass a number for more runs.
-agent-log runs="1":
-    uv run --extra agent --group agents python -m examples.agentlog {{runs}}
-
-bench:
-    uv run python -m benchmarks
+# The demo's suites on their own, for a faster loop than `just
+# coverage-functional`. Add a file here when you add one that needs the group,
+# or this reports a false all-clear; the CI gate is coverage-functional, which
+# takes the whole directory and cannot go stale this way.
+[doc("Run the agent demo's functional suites (no model key needed)")]
+[group("quality")]
+test-agents:
+    uv run --extra agent --group agents pytest tests/functional/test_copilotkit_spike.py tests/functional/test_hybrid_handoff.py tests/functional/test_application_journey.py
 
 # One environment per pair, and deliberately not the one you work in.
 # `uv run --python` rebuilds the *project* environment at `.venv` with the
@@ -116,9 +74,123 @@ bench:
 # Costs one install the first time each pair is used, and nothing after.
 # `.venv-*` is git-ignored. CI is unaffected: a runner builds one cell and
 # throws the machine away.
+[doc("Run the suite on one Python / Django pair, e.g. `just test-django 3.12 6.0`")]
+[group("quality")]
 test-django python_version django_version:
     UV_PROJECT_ENVIRONMENT=.venv-{{python_version}}-django{{django_version}} uv run --python {{python_version}} --group dev --with "django~={{django_version}}" pytest
 
-serve port="8000":
-    PYTHONPATH=. uv run django-admin migrate --settings tests.serve_settings
-    PYTHONPATH=. uv run django-admin runserver 127.0.0.1:{{port}} --settings tests.serve_settings
+# The demo UI in a real browser: does each page mount, does it mount without
+# throwing, does the composer still attach a photo, is Vite still proxying
+# Django. `npm run build` sees none of that — it checks syntax and stops, and
+# four failures shipped past it in one afternoon (#81).
+#
+# Starts both servers itself, or uses them if you already have the demo up.
+# Also runs in CI (`.github/workflows/ui-smoke.yml`) whenever the demo or the
+# agent contrib changes — the whole point is a check nobody has to remember.
+[doc("Smoke-test the demo UI in headless Chromium")]
+[group("quality")]
+test-ui:
+    [ -d .nodeenv ] || uvx nodeenv --prebuilt .nodeenv
+    PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm --prefix examples/copilotkit/ui install
+    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npx playwright install chromium
+    cd examples/copilotkit/ui && PATH="{{justfile_directory()}}/.nodeenv/bin:$PATH" npm test
+
+[doc("Run the whole suite with a branch coverage report")]
+[group("quality")]
+coverage:
+    uv run pytest --cov=gandalf --cov-report=term-missing
+
+[doc("Run the unit suite with its coverage gate, as CI does")]
+[group("quality")]
+coverage-unit:
+    uv run --extra agent pytest tests/unit --cov=gandalf --cov-config=coverage-unit.ini --cov-report=term-missing --cov-report=xml:coverage-unit.xml
+
+# The agents group is here for the demo's suites, not for the library's: three
+# functional tests `importorskip` without it and a broken branch reports green.
+# They need no model key — each one scripts a FunctionModel or uses the canned
+# `test` model — so this costs install time and nothing else.
+[doc("Run the functional suite with its coverage gate, as CI does")]
+[group("quality")]
+coverage-functional:
+    uv run --extra agent --group agents pytest tests/functional --cov=gandalf --cov-report=term-missing --cov-report=xml:coverage-functional.xml
+
+[doc("Run every pre-commit hook over the tree; `just lint ruff` for one")]
+[group("quality")]
+lint *args:
+    uv run --group lint pre-commit run --show-diff-on-failure --all-files {{args}}
+
+[doc("Format the code in place with ruff")]
+[group("quality")]
+format:
+    uv run --group lint ruff format .
+
+[doc("Check the code is formatted, changing nothing")]
+[group("quality")]
+format-check:
+    uv run --group lint ruff format --check .
+
+# The extra as well as the lint group: `gandalf.contrib.agent` imports
+# pydantic-ai, and mypy cannot check what it cannot resolve. Without it
+# this passes locally for anyone who has the extra and fails in CI, which
+# is the worst of both.
+[doc("Type-check gandalf with mypy and django-stubs")]
+[group("quality")]
+typecheck:
+    uv run --group lint --extra agent mypy
+
+# Every link between the Markdown files, and every #anchor. A rename moves
+# a heading as easily as a file, and both failures are silent: a dead link
+# still renders as a link, and a stale anchor scrolls to the top of the
+# right page, which looks like it worked. External URLs are left alone —
+# CI that fails when someone else's site is down is CI nobody trusts.
+[doc("Check every relative link and #anchor in the Markdown docs")]
+[group("quality")]
+check-docs:
+    uv run python tools/check_docs.py
+
+[doc("Measure walk costs across wizard shapes and sizes")]
+[group("quality")]
+bench:
+    uv run python -m benchmarks
+
+# --- Agent --------------------------------------------------------------------
+
+[doc("What describing the wizard costs an agent (counts tokens, generates none)")]
+[group("agent")]
+agent-cost:
+    PYTHONPATH=. uv run --extra agent --group agents python -m examples.costs
+
+[doc("Read back the latest agent run (calls, replies, cost, events); pass a number for more")]
+[group("agent")]
+agent-log runs="1":
+    uv run --extra agent --group agents python -m examples.agentlog {{runs}}
+
+# --- Paid: each of these calls a real model -----------------------------------
+
+# Runs the scenarios against a real model and scores what happened. Needs a
+# model key. Pass a number to repeat each scenario.
+[doc("Score the agent scenarios against a real model (paid: needs a model key)")]
+[group("paid")]
+agent-eval repeats="1" only="":
+    PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
+    uv run --extra agent --group agents python -m examples.evals {{repeats}} {{only}}
+
+# Say something to the adaptive agent and see how it decides to ask back.
+# Add `heard` to send it as a transcript instead, which is the browser's
+# path once somebody stops speaking. Needs a model key; costs one call.
+[doc("Send the adaptive agent one utterance and show how it asks back (paid: one model call)")]
+[group("paid")]
+collect-demo said mode="typed":
+    PYTHONPATH=. uv run --extra agent --group agents django-admin migrate --settings examples.copilotkit.settings
+    PYTHONPATH=. uv run --extra agent --group agents python -m examples.collect_demo {{quote(said)}} {{mode}}
+
+# Show the agent a photograph of a driving licence and print what it read
+# off it, beside where the run stopped. Needs a model key; costs a real
+# call, and an image is worth about a thousand tokens of one.
+# `check` keeps the picture on the run; `identity` is the wizard with no
+# file step at all — five pages of plain text, read from the photo.
+[doc("Show the agent a licence photo and print what it read (paid: one model call with an image)")]
+[group("paid")]
+photo-demo image wizard="check":
+    PYTHONPATH=. uv run --group agents django-admin migrate --settings examples.copilotkit.settings
+    PYTHONPATH=. uv run --group agents python -m examples.photo_demo {{image}} {{wizard}}

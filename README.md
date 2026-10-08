@@ -67,7 +67,7 @@ troubleshooting. Come here when you know what you are looking for.
 Every Learn chapter is real code under
 [`tests/testapp/readme/`](tests/testapp/readme/), driven end to end by
 [`tests/functional/test_readme_examples.py`](tests/functional/test_readme_examples.py).
-`just serve` runs them at http://127.0.0.1:8000/ so you can click through.
+`just dev` runs them at http://127.0.0.1:8000/ so you can click through.
 
 ## Contributing
 
