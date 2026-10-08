@@ -1,6 +1,6 @@
 """What the demo site knows about itself.
 
-`just serve` publishes every wizard in the test app. Flat and alphabetical
+`just dev` publishes every wizard in the test app. Flat and alphabetical
 that is a wall of names, and the only way to learn what one of them does is
 to go and read its viewset — which is a poor deal for someone who opened the
 site to *look* at a behaviour rather than read about it.

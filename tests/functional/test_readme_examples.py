@@ -73,7 +73,7 @@ def test_readme_chapter_start_url_is_reachable(client, wizard_driver, name, url_
 
 
 def test_demo_index_page_lists_the_chapters(client):
-    # `just serve` lands on this page; it must render and link to the chapters.
+    # `just dev` lands on this page; it must render and link to the chapters.
     response = client.get(reverse("index"))
 
     assert response.status_code == HTTPStatus.OK
