@@ -4,7 +4,7 @@ set dotenv-load := true
 
 [doc("List every recipe, grouped")]
 default:
-    @just --list
+    @just --list --unsorted
 
 # --- Dev ----------------------------------------------------------------------
 
